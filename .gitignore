@@ -55,3 +55,4 @@ htmlcov/
 
 # Local conversation logs
 docs/CONVERSATION_LOG.md
+docs/DEVELOPMENT_CONVERSATION_VERBOSE.md
