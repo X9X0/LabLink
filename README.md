@@ -12,15 +12,26 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 - **Client**: Cross-platform desktop GUI for equipment control, monitoring, and data visualization
 - **Communication**: WebSocket for real-time data streaming, REST API for control commands
 
-## Features (Planned)
+## Features
 
-- [ ] Automatic Raspberry Pi discovery on local network
-- [ ] Easy SSH-based server deployment to Raspberry Pi
-- [ ] Support for multiple equipment types (scopes, power supplies, loads)
-- [ ] Real-time data streaming and visualization
-- [ ] Configurable data logging and buffering
-- [ ] Multi-server management from single client
-- [ ] Modular driver architecture for easy equipment addition
+### Implemented ✓
+
+- [x] Modular driver architecture for equipment
+- [x] REST API for equipment control and management
+- [x] WebSocket support for real-time data streaming
+- [x] Device discovery via VISA
+- [x] Multi-device connection management
+- [x] Configurable data buffering and formats
+- [x] Complete equipment drivers for Rigol and BK Precision devices
+
+### In Development
+
+- [ ] Desktop GUI client (PyQt6)
+- [ ] Automatic Raspberry Pi network discovery
+- [ ] SSH-based server deployment wizard
+- [ ] Real-time data visualization
+- [ ] Data logging and export functionality
+- [ ] Multi-server management interface
 
 ## Supported Equipment
 
@@ -37,9 +48,50 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 - **Communication**: WebSockets, REST API
 - **Data Formats**: CSV, HDF5, NumPy binary
 
+## Quick Start
+
+### Server Setup
+
+1. Install dependencies:
+   ```bash
+   cd server
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Run the server:
+   ```bash
+   python main.py
+   ```
+
+3. Access API documentation:
+   - Open browser to `http://localhost:8000/docs`
+
+4. Test the server:
+   ```bash
+   python ../test_client.py
+   ```
+
+For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTED.md).
+
+## Documentation
+
+- [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
+- [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
+
 ## Project Status
 
-In initial development phase.
+**Phase 1 Complete**: Core server functionality implemented
+- REST API operational
+- WebSocket streaming functional
+- All equipment drivers working
+
+**Next Phase**: GUI client development
+
+## Contributing
+
+This project is in active development. Contributions, feature requests, and bug reports are welcome!
 
 ## License
 
