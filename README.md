@@ -29,6 +29,12 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 - [x] Safety limits and interlocks (voltage/current/power limits, emergency stop)
 - [x] Equipment lock/session management (multi-user access control, exclusive/observer modes)
 - [x] Equipment state management (capture/restore/compare states, versioning)
+- [x] **Data acquisition & logging system** (continuous/triggered modes, 26 API endpoints)
+  - [x] Multiple acquisition modes (continuous, single-shot, triggered)
+  - [x] Advanced statistics (FFT, trend detection, data quality assessment)
+  - [x] Multi-instrument synchronization
+  - [x] Real-time WebSocket streaming
+  - [x] Multiple export formats (CSV, NumPy, JSON, HDF5)
 
 ### In Development
 
@@ -36,7 +42,6 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 - [ ] Automatic Raspberry Pi network discovery
 - [ ] SSH-based server deployment wizard
 - [ ] Real-time data visualization
-- [ ] Data logging and export functionality
 - [ ] Multi-server management interface
 
 ## Supported Equipment
@@ -89,13 +94,15 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
+- [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
+- [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.5.0
+**Current Version**: v0.6.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
-- ✅ REST API operational
+- ✅ REST API operational (50+ endpoints)
 - ✅ WebSocket streaming functional
 - ✅ All equipment drivers working
 - ✅ Configuration management system
@@ -105,7 +112,16 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Equipment lock/session management
 - ✅ Equipment state management
 
-**Next Phase**: Data acquisition system → GUI client development
+**Phase 2 Complete**: Data acquisition & logging system
+- ✅ Continuous, single-shot, and triggered acquisition modes
+- ✅ Advanced statistics (FFT, trend detection, data quality)
+- ✅ Multi-instrument synchronization
+- ✅ Real-time WebSocket streaming
+- ✅ Multiple export formats (CSV, NumPy, JSON, HDF5)
+- ✅ 26 acquisition API endpoints
+- ✅ Comprehensive documentation
+
+**Next Phase**: GUI client development
 
 ## Contributing
 

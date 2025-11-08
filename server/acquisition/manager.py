@@ -549,6 +549,237 @@ class AcquisitionManager:
 
         return True
 
+    def compute_rolling_stats(self, acquisition_id: str, channel: str, num_samples: Optional[int] = None):
+        """
+        Compute rolling statistics for a channel.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            num_samples: Number of samples to analyze (None = all available)
+
+        Returns:
+            RollingStats object or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data
+        data, _ = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.compute_rolling_stats(channel_data)
+
+    def compute_fft(
+        self,
+        acquisition_id: str,
+        channel: str,
+        num_samples: Optional[int] = None,
+        window: str = "hann"
+    ):
+        """
+        Compute FFT analysis for a channel.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            num_samples: Number of samples to analyze (None = all available)
+            window: Window function ('hann', 'hamming', 'blackman')
+
+        Returns:
+            FrequencyAnalysis object or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data
+        data, _ = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.compute_fft(channel_data, session.config.sample_rate, window)
+
+    def detect_trend(
+        self,
+        acquisition_id: str,
+        channel: str,
+        num_samples: Optional[int] = None
+    ):
+        """
+        Detect trend in channel data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            num_samples: Number of samples to analyze (None = all available)
+
+        Returns:
+            TrendAnalysis object or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data with timestamps
+        data, timestamps = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.detect_trend(channel_data, timestamps)
+
+    def assess_data_quality(
+        self,
+        acquisition_id: str,
+        channel: str,
+        num_samples: Optional[int] = None,
+        outlier_threshold: float = 3.0
+    ):
+        """
+        Assess data quality for a channel.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            num_samples: Number of samples to analyze (None = all available)
+            outlier_threshold: Number of std deviations for outlier detection
+
+        Returns:
+            DataQuality object or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data
+        data, _ = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.assess_data_quality(channel_data, outlier_threshold)
+
+    def detect_peaks(
+        self,
+        acquisition_id: str,
+        channel: str,
+        num_samples: Optional[int] = None,
+        prominence: Optional[float] = None,
+        distance: Optional[int] = None,
+        height: Optional[float] = None
+    ):
+        """
+        Detect peaks in channel data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            num_samples: Number of samples to analyze (None = all available)
+            prominence: Required prominence of peaks
+            distance: Minimum distance between peaks
+            height: Minimum height of peaks
+
+        Returns:
+            PeakInfo object or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data
+        data, _ = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.detect_peaks(channel_data, prominence, distance, height)
+
+    def detect_threshold_crossings(
+        self,
+        acquisition_id: str,
+        channel: str,
+        threshold: float,
+        direction: str = "both",
+        num_samples: Optional[int] = None
+    ):
+        """
+        Detect threshold crossings in channel data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Channel name
+            threshold: Threshold value
+            direction: 'rising', 'falling', or 'both'
+            num_samples: Number of samples to analyze (None = all available)
+
+        Returns:
+            Dictionary with crossing indices or None if session not found
+        """
+        from .statistics import stats_engine
+
+        session = self.get_session(acquisition_id)
+        if session is None:
+            return None
+
+        # Get channel data
+        data, _ = self.get_buffer_data(acquisition_id, num_samples)
+
+        # Find channel index
+        try:
+            channel_idx = session.config.channels.index(channel)
+        except ValueError:
+            logger.error(f"Channel {channel} not found in acquisition {acquisition_id}")
+            return None
+
+        channel_data = data[channel_idx, :]
+
+        return stats_engine.detect_threshold_crossings(channel_data, threshold, direction)
+
 
 # Global acquisition manager instance
 acquisition_manager = AcquisitionManager()

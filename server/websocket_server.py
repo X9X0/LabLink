@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from typing import Set
+from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 from equipment.manager import equipment_manager
 
@@ -122,6 +123,83 @@ class StreamManager:
                 logger.error(f"Error in streaming task: {e}")
                 await asyncio.sleep(interval_sec)
 
+    async def _stream_acquisition(self, acquisition_id: str, interval_ms: int, num_samples: int = 100):
+        """Stream real-time acquisition data."""
+        from acquisition import acquisition_manager
+
+        interval_sec = interval_ms / 1000.0
+
+        while True:
+            try:
+                # Get acquisition session
+                session = acquisition_manager.get_session(acquisition_id)
+                if session is None:
+                    logger.warning(f"Acquisition {acquisition_id} not found, stopping stream")
+                    break
+
+                # Get latest data from buffer
+                data, timestamps = acquisition_manager.get_buffer_data(acquisition_id, num_samples)
+
+                if len(timestamps) == 0:
+                    # No data yet, just send status
+                    message = {
+                        "type": "acquisition_stream",
+                        "acquisition_id": acquisition_id,
+                        "state": session.state,
+                        "stats": session.stats.dict(),
+                        "data": None
+                    }
+                else:
+                    # Convert to JSON-serializable format
+                    message = {
+                        "type": "acquisition_stream",
+                        "acquisition_id": acquisition_id,
+                        "state": session.state,
+                        "stats": session.stats.dict(),
+                        "data": {
+                            "timestamps": [datetime.fromtimestamp(t).isoformat() for t in timestamps],
+                            "values": {
+                                channel: data[i, :].tolist()
+                                for i, channel in enumerate(session.config.channels)
+                            },
+                            "count": len(timestamps)
+                        }
+                    }
+
+                await self.broadcast(message)
+
+                # Wait for next interval
+                await asyncio.sleep(interval_sec)
+
+            except asyncio.CancelledError:
+                logger.info(f"Acquisition streaming task cancelled for {acquisition_id}")
+                break
+            except Exception as e:
+                logger.error(f"Error in acquisition streaming task: {e}")
+                await asyncio.sleep(interval_sec)
+
+    async def start_acquisition_stream(self, acquisition_id: str, interval_ms: int = 100, num_samples: int = 100):
+        """Start streaming acquisition data."""
+        task_key = f"acquisition_{acquisition_id}"
+
+        # Stop existing stream if any
+        if task_key in self.streaming_tasks:
+            self.streaming_tasks[task_key].cancel()
+
+        # Create new streaming task
+        task = asyncio.create_task(self._stream_acquisition(acquisition_id, interval_ms, num_samples))
+        self.streaming_tasks[task_key] = task
+        logger.info(f"Started acquisition streaming for {acquisition_id}")
+
+    async def stop_acquisition_stream(self, acquisition_id: str):
+        """Stop streaming acquisition data."""
+        task_key = f"acquisition_{acquisition_id}"
+
+        if task_key in self.streaming_tasks:
+            self.streaming_tasks[task_key].cancel()
+            del self.streaming_tasks[task_key]
+            logger.info(f"Stopped acquisition streaming for {acquisition_id}")
+
 
 # Global stream manager
 stream_manager = StreamManager()
@@ -157,6 +235,24 @@ async def handle_websocket(websocket: WebSocket):
                 await stream_manager.send_to_client(
                     websocket,
                     {"type": "stream_stopped", "equipment_id": equipment_id, "stream_type": stream_type},
+                )
+
+            elif msg_type == "start_acquisition_stream":
+                acquisition_id = message.get("acquisition_id")
+                interval_ms = message.get("interval_ms", 100)
+                num_samples = message.get("num_samples", 100)
+                await stream_manager.start_acquisition_stream(acquisition_id, interval_ms, num_samples)
+                await stream_manager.send_to_client(
+                    websocket,
+                    {"type": "acquisition_stream_started", "acquisition_id": acquisition_id},
+                )
+
+            elif msg_type == "stop_acquisition_stream":
+                acquisition_id = message.get("acquisition_id")
+                await stream_manager.stop_acquisition_stream(acquisition_id)
+                await stream_manager.send_to_client(
+                    websocket,
+                    {"type": "acquisition_stream_stopped", "acquisition_id": acquisition_id},
                 )
 
             elif msg_type == "ping":
