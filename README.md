@@ -41,6 +41,20 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Performance metrics logging
   - [x] Audit trail and access logs
   - [x] Equipment event logging
+- [x] **Alarm & notification system** (threshold monitoring, multi-channel alerts)
+  - [x] 8 alarm types (threshold, deviation, rate-of-change, equipment error, etc.)
+  - [x] 4 severity levels (info, warning, error, critical)
+  - [x] Multi-channel notifications (email, SMS, WebSocket)
+  - [x] Automatic alarm monitoring and lifecycle management
+  - [x] Alarm history and statistics
+  - [x] 16 alarm management API endpoints
+- [x] **Scheduled operations** (automated tasks with APScheduler)
+  - [x] 6 schedule types (acquisition, state capture, measurement, command, test, script)
+  - [x] 6 trigger types (cron, interval, date, daily, weekly, monthly)
+  - [x] Job execution history and statistics
+  - [x] Job pause/resume/manual trigger
+  - [x] Maximum execution limits and date ranges
+  - [x] 14 scheduler API endpoints
 
 ### In Development
 
@@ -102,11 +116,13 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
 - [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
 - [Advanced Logging System](server/LOGGING_SYSTEM.md) - Logging configuration and best practices
+- [Alarm & Notification System](server/ALARM_SYSTEM.md) - Alarm configuration and notification setup
+- [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.7.0
+**Current Version**: v0.9.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (50+ endpoints)
@@ -126,10 +142,14 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Real-time WebSocket streaming
 - ✅ Multiple export formats (CSV, NumPy, JSON, HDF5)
 - ✅ 26 acquisition API endpoints
-- ✅ Advanced logging system (JSON, rotation, audit trails)
-- ✅ Comprehensive documentation
 
-**Next Phase**: Quick wins (Alarms, Scheduling, Diagnostics) → GUI client development
+**Phase 2.5 Complete**: Quick wins (Logging, Alarms, Scheduling)
+- ✅ Advanced logging system (JSON, rotation, audit trails, performance metrics)
+- ✅ Alarm & notification system (8 types, multi-channel, 16 endpoints)
+- ✅ Scheduled operations (6 schedule types, 6 triggers, 14 endpoints)
+- ✅ Comprehensive documentation for all systems
+
+**Next Phase**: Equipment diagnostics → GUI client development
 
 ## Contributing
 

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.8.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.9.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -70,6 +70,10 @@ async def lifespan(app: FastAPI):
     acq_export_dir = settings.acquisition_export_dir if hasattr(settings, 'acquisition_export_dir') else "./data/acquisitions"
     acquisition_manager.set_export_directory(acq_export_dir)
 
+    # Start scheduler
+    from scheduler import scheduler_manager
+    await scheduler_manager.start()
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -78,6 +82,10 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("LabLink Server shutting down...")
+
+    # Stop scheduler
+    from scheduler import scheduler_manager
+    await scheduler_manager.shutdown()
 
     # Stop lock cleanup task
     from equipment.locks import lock_manager
@@ -97,7 +105,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.8.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
 
@@ -122,6 +130,7 @@ app.include_router(locks_router, prefix="/api", tags=["locks"])
 app.include_router(state_router, prefix="/api", tags=["state"])
 app.include_router(acquisition_router, prefix="/api", tags=["acquisition"])
 app.include_router(alarms_router, prefix="/api", tags=["alarms"])
+app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
 
 
 @app.get("/")
@@ -129,7 +138,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "status": "running",
     }
 
