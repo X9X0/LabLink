@@ -55,6 +55,14 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Job pause/resume/manual trigger
   - [x] Maximum execution limits and date ranges
   - [x] 14 scheduler API endpoints
+- [x] **Equipment diagnostics** (health monitoring and performance benchmarking)
+  - [x] Comprehensive health checks (connection, communication, performance, functionality)
+  - [x] Equipment health scoring (0-100) with status levels
+  - [x] Performance benchmarking and command latency measurement
+  - [x] Communication statistics (success rate, response times, error tracking)
+  - [x] System-wide diagnostics and resource monitoring
+  - [x] Diagnostic report generation
+  - [x] 11 diagnostics API endpoints
 
 ### In Development
 
@@ -118,14 +126,15 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Advanced Logging System](server/LOGGING_SYSTEM.md) - Logging configuration and best practices
 - [Alarm & Notification System](server/ALARM_SYSTEM.md) - Alarm configuration and notification setup
 - [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
+- [Equipment Diagnostics](server/DIAGNOSTICS_SYSTEM.md) - Health monitoring and performance diagnostics
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.9.0
+**Current Version**: v0.10.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
-- ✅ REST API operational (50+ endpoints)
+- ✅ REST API operational (90+ endpoints)
 - ✅ WebSocket streaming functional
 - ✅ All equipment drivers working
 - ✅ Configuration management system
@@ -135,7 +144,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Equipment lock/session management
 - ✅ Equipment state management
 
-**Phase 2 Complete**: Data acquisition & logging system
+**Phase 2 Complete**: Data acquisition & advanced features
 - ✅ Continuous, single-shot, and triggered acquisition modes
 - ✅ Advanced statistics (FFT, trend detection, data quality)
 - ✅ Multi-instrument synchronization
@@ -143,13 +152,14 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Multiple export formats (CSV, NumPy, JSON, HDF5)
 - ✅ 26 acquisition API endpoints
 
-**Phase 2.5 Complete**: Quick wins (Logging, Alarms, Scheduling)
+**Phase 2.5 Complete**: Operations & monitoring (Logging, Alarms, Scheduling, Diagnostics)
 - ✅ Advanced logging system (JSON, rotation, audit trails, performance metrics)
 - ✅ Alarm & notification system (8 types, multi-channel, 16 endpoints)
 - ✅ Scheduled operations (6 schedule types, 6 triggers, 14 endpoints)
+- ✅ Equipment diagnostics (health checks, benchmarking, 11 endpoints)
 - ✅ Comprehensive documentation for all systems
 
-**Next Phase**: Equipment diagnostics → GUI client development
+**Next Phase**: GUI client development
 
 ## Contributing
 

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.9.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.10.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.9.0",
+    version="0.10.0",
     lifespan=lifespan,
 )
 
@@ -131,6 +131,7 @@ app.include_router(state_router, prefix="/api", tags=["state"])
 app.include_router(acquisition_router, prefix="/api", tags=["acquisition"])
 app.include_router(alarms_router, prefix="/api", tags=["alarms"])
 app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
+app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
 
 
 @app.get("/")
@@ -138,7 +139,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.9.0",
+        "version": "0.10.0",
         "status": "running",
     }
 
