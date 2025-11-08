@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # LabLink Server
+  lablink-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lablink-server
+    image: lablink-server:0.10.0
+
+    ports:
+      - "8000:8000"  # REST API
+      - "8001:8001"  # WebSocket
+
+    volumes:
+      # Persistent data
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./states:/app/states
+
+      # Configuration (optional)
+      - ./server/config:/app/config
+
+    environment:
+      # Server configuration
+      - LABLINK_SERVER_NAME=LabLink Production
+      - LABLINK_LOG_LEVEL=INFO
+      - LABLINK_HOST=0.0.0.0
+      - LABLINK_API_PORT=8000
+      - LABLINK_WS_PORT=8001
+
+      # Feature flags
+      - LABLINK_ENABLE_AUTO_RECONNECT=true
+      - LABLINK_ENABLE_HEALTH_MONITORING=true
+      - LABLINK_ENABLE_PROFILES=true
+      - LABLINK_ENABLE_SAFETY_LIMITS=true
+      - LABLINK_SAFE_STATE_ON_DISCONNECT=true
+      - LABLINK_ENABLE_EQUIPMENT_LOCKS=true
+
+      # Timeouts
+      - LABLINK_LOCK_TIMEOUT_SEC=300
+      - LABLINK_SESSION_TIMEOUT_SEC=3600
+
+    # USB device access (for equipment)
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+    # Privileged mode for USB access
+    # Remove if not needed
+    privileged: false
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network
+    networks:
+      - lablink-network
+
+  # Optional: PostgreSQL database
+  # Uncomment if you want to add database support
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: lablink-postgres
+  #   environment:
+  #     POSTGRES_DB: lablink
+  #     POSTGRES_USER: lablink
+  #     POSTGRES_PASSWORD: changeme
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - lablink-network
+  #   restart: unless-stopped
+
+  # Optional: Redis for caching/pub-sub
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: lablink-redis
+  #   networks:
+  #     - lablink-network
+  #   restart: unless-stopped
+
+networks:
+  lablink-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
