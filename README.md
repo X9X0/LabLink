@@ -35,6 +35,12 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Multi-instrument synchronization
   - [x] Real-time WebSocket streaming
   - [x] Multiple export formats (CSV, NumPy, JSON, HDF5)
+- [x] **Advanced logging system** (structured logging, rotation, metrics)
+  - [x] Structured JSON logging with multiple formatters
+  - [x] Automatic log rotation and compression
+  - [x] Performance metrics logging
+  - [x] Audit trail and access logs
+  - [x] Equipment event logging
 
 ### In Development
 
@@ -95,11 +101,12 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
 - [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
+- [Advanced Logging System](server/LOGGING_SYSTEM.md) - Logging configuration and best practices
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.6.0
+**Current Version**: v0.7.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (50+ endpoints)
@@ -119,9 +126,10 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Real-time WebSocket streaming
 - ✅ Multiple export formats (CSV, NumPy, JSON, HDF5)
 - ✅ 26 acquisition API endpoints
+- ✅ Advanced logging system (JSON, rotation, audit trails)
 - ✅ Comprehensive documentation
 
-**Next Phase**: GUI client development
+**Next Phase**: Quick wins (Alarms, Scheduling, Diagnostics) → GUI client development
 
 ## Contributing
 

@@ -8,22 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router
 from websocket_server import handle_websocket
+from logging_config import setup_logging, LoggingMiddleware, get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=settings.get_numeric_log_level(),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Setup advanced logging system
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.6.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.8.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -99,7 +97,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.6.0",
+    version="0.8.0",
     lifespan=lifespan,
 )
 
@@ -112,6 +110,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add logging middleware
+app.add_middleware(LoggingMiddleware)
+
 # Include routers
 app.include_router(equipment_router, prefix="/api/equipment", tags=["equipment"])
 app.include_router(data_router, prefix="/api/data", tags=["data"])
@@ -120,6 +121,7 @@ app.include_router(safety_router, prefix="/api/safety", tags=["safety"])
 app.include_router(locks_router, prefix="/api", tags=["locks"])
 app.include_router(state_router, prefix="/api", tags=["state"])
 app.include_router(acquisition_router, prefix="/api", tags=["acquisition"])
+app.include_router(alarms_router, prefix="/api", tags=["alarms"])
 
 
 @app.get("/")
@@ -127,7 +129,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.6.0",
+        "version": "0.8.0",
         "status": "running",
     }
 
