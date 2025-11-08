@@ -10,8 +10,9 @@ sys.path.append("../../shared")
 from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 
 from .base import BaseEquipment
-from .rigol_scope import RigolMSO2072A
-from .bk_power_supply import BK9206B, BK9130B
+from .rigol_scope import RigolMSO2072A, RigolDS1104
+from .rigol_electronic_load import RigolDL3021A
+from .bk_power_supply import BK9206B, BK9205B, BK9130B, BK1685B
 from .bk_electronic_load import BK1902B
 
 logger = logging.getLogger(__name__)
@@ -101,12 +102,22 @@ class EquipmentManager:
         # Rigol oscilloscopes
         if "MSO2072A" in model_upper or "MSO2072" in model_upper:
             return RigolMSO2072A(self.resource_manager, resource_string)
+        elif "DS1104" in model_upper or "DS1104Z" in model_upper:
+            return RigolDS1104(self.resource_manager, resource_string)
+
+        # Rigol electronic loads
+        elif "DL3021" in model_upper:
+            return RigolDL3021A(self.resource_manager, resource_string)
 
         # BK Precision power supplies
         elif "9206" in model_upper:
             return BK9206B(self.resource_manager, resource_string)
+        elif "9205" in model_upper:
+            return BK9205B(self.resource_manager, resource_string)
         elif "9130" in model_upper or "9131" in model_upper:
             return BK9130B(self.resource_manager, resource_string)
+        elif "1685" in model_upper:
+            return BK1685B(self.resource_manager, resource_string)
 
         # BK Precision electronic loads
         elif "1902" in model_upper:
@@ -118,7 +129,28 @@ class EquipmentManager:
         """Disconnect a device."""
         async with self._lock:
             if equipment_id in self.equipment:
-                await self.equipment[equipment_id].disconnect()
+                equipment = self.equipment[equipment_id]
+
+                # Safe state on disconnect - disable outputs
+                from config.settings import settings
+                if settings.safe_state_on_disconnect:
+                    try:
+                        logger.info(f"Putting {equipment_id} into safe state before disconnect")
+
+                        # Try to disable output based on equipment type
+                        if hasattr(equipment, 'set_output'):
+                            # Power supply
+                            await equipment.set_output(False)
+                            logger.info(f"Disabled output for {equipment_id}")
+                        elif hasattr(equipment, 'set_input'):
+                            # Electronic load
+                            await equipment.set_input(False)
+                            logger.info(f"Disabled input for {equipment_id}")
+
+                    except Exception as e:
+                        logger.error(f"Error putting {equipment_id} into safe state: {e}")
+
+                await equipment.disconnect()
                 del self.equipment[equipment_id]
                 logger.info(f"Disconnected device {equipment_id}")
 

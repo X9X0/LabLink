@@ -11,6 +11,7 @@ class Command(BaseModel):
     equipment_id: str = Field(..., description="Target equipment ID")
     action: str = Field(..., description="Action to perform")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Action parameters")
+    session_id: Optional[str] = Field(None, description="Session ID for lock verification")
     timestamp: datetime = Field(default_factory=datetime.now, description="Command timestamp")
 
 

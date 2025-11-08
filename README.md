@@ -23,6 +23,12 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 - [x] Multi-device connection management
 - [x] Configurable data buffering and formats
 - [x] Complete equipment drivers for Rigol and BK Precision devices
+- [x] Comprehensive configuration management (65+ settings)
+- [x] Error handling with auto-reconnect and health monitoring
+- [x] Equipment profile system (save/load configurations)
+- [x] Safety limits and interlocks (voltage/current/power limits, emergency stop)
+- [x] Equipment lock/session management (multi-user access control, exclusive/observer modes)
+- [x] Equipment state management (capture/restore/compare states, versioning)
 
 ### In Development
 
@@ -36,9 +42,13 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 ## Supported Equipment
 
 - Rigol MSO2072A Oscilloscope
+- Rigol DS1104 Oscilloscope
+- Rigol DL3021A DC Electronic Load
 - BK Precision 9206B Multi-Range DC Power Supply
+- BK Precision 9205B Multi-Range DC Power Supply
 - BK Precision 9130 DC Power Supply
 - BK Precision 1902B DC Electronic Load
+- BK Precision 1685B DC Power Supply
 
 ## Technology Stack
 
@@ -82,12 +92,20 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Phase 1 Complete**: Core server functionality implemented
-- REST API operational
-- WebSocket streaming functional
-- All equipment drivers working
+**Current Version**: v0.5.0
 
-**Next Phase**: GUI client development
+**Phase 1 Complete**: Core server functionality & multi-user support
+- ✅ REST API operational
+- ✅ WebSocket streaming functional
+- ✅ All equipment drivers working
+- ✅ Configuration management system
+- ✅ Error handling & recovery
+- ✅ Equipment profiles
+- ✅ Safety limits & interlocks
+- ✅ Equipment lock/session management
+- ✅ Equipment state management
+
+**Next Phase**: Data acquisition system → GUI client development
 
 ## Contributing
 

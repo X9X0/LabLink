@@ -10,6 +10,8 @@ from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 from models.data import PowerSupplyData
 
 from .base import BaseEquipment
+from .safety import SafetyValidator, SafetyLimits, get_default_limits, emergency_stop_manager
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,33 @@ class BKPowerSupplyBase(BaseEquipment):
         self.max_voltage = 60.0
         self.max_current = 5.0
 
+        # Initialize safety validator
+        self.safety_validator = None
+        self._current_voltage = 0.0  # Track current voltage for slew rate limiting
+        self._current_current = 0.0  # Track current current for slew rate limiting
+
+    def _initialize_safety(self, equipment_id: str):
+        """Initialize safety validator with appropriate limits."""
+        if not settings.enable_safety_limits:
+            logger.info(f"Safety limits disabled for {equipment_id}")
+            return
+
+        # Get default limits for power supply
+        default_limits = get_default_limits("power_supply")
+
+        # Override with equipment-specific limits
+        safety_limits = SafetyLimits(
+            max_voltage=self.max_voltage,
+            max_current=self.max_current,
+            max_power=default_limits.max_power,
+            voltage_slew_rate=default_limits.voltage_slew_rate if settings.enforce_slew_rate else None,
+            current_slew_rate=default_limits.current_slew_rate if settings.enforce_slew_rate else None,
+            require_interlock=False
+        )
+
+        self.safety_validator = SafetyValidator(safety_limits, equipment_id)
+        logger.info(f"Safety validator initialized for {equipment_id}")
+
     async def get_info(self) -> EquipmentInfo:
         """Get power supply information."""
         idn = await self._query("*IDN?")
@@ -36,6 +65,9 @@ class BKPowerSupplyBase(BaseEquipment):
         serial = parts[2] if len(parts) > 2 else None
 
         equipment_id = f"ps_{uuid.uuid4().hex[:8]}"
+
+        # Initialize safety validator
+        self._initialize_safety(equipment_id)
 
         return EquipmentInfo(
             id=equipment_id,
@@ -90,20 +122,62 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def set_voltage(self, voltage: float, channel: int = 1):
         """Set output voltage."""
+        # Check emergency stop
+        if emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - operation blocked")
+
+        # Basic range check
         if voltage < 0 or voltage > self.max_voltage:
             raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
 
+        # Safety checks if enabled
+        if self.safety_validator and settings.enable_safety_limits:
+            # Check voltage limits
+            self.safety_validator.check_voltage(voltage)
+
+            # Apply slew rate limiting
+            if settings.enforce_slew_rate:
+                voltage = await self.safety_validator.apply_voltage_slew_limit(
+                    voltage,
+                    self._current_voltage
+                )
+
+        # Set voltage
         await self._write(f"VOLT {voltage}")
+        self._current_voltage = voltage
 
     async def set_current(self, current: float, channel: int = 1):
         """Set current limit."""
+        # Check emergency stop
+        if emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - operation blocked")
+
+        # Basic range check
         if current < 0 or current > self.max_current:
             raise ValueError(f"Current must be between 0 and {self.max_current}A")
 
+        # Safety checks if enabled
+        if self.safety_validator and settings.enable_safety_limits:
+            # Check current limits
+            self.safety_validator.check_current(current)
+
+            # Apply slew rate limiting
+            if settings.enforce_slew_rate:
+                current = await self.safety_validator.apply_current_slew_limit(
+                    current,
+                    self._current_current
+                )
+
+        # Set current
         await self._write(f"CURR {current}")
+        self._current_current = current
 
     async def set_output(self, enabled: bool, channel: int = 1):
         """Enable or disable output."""
+        # Check emergency stop (only when enabling output)
+        if enabled and emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - cannot enable output")
+
         await self._write(f"OUTP {'ON' if enabled else 'OFF'}")
 
     async def get_readings(self, channel: int = 1) -> PowerSupplyData:
@@ -218,3 +292,29 @@ class BK9130B(BKPowerSupplyBase):
 
         # Get readings using base class method
         return await super().get_readings(channel)
+
+
+class BK9205B(BKPowerSupplyBase):
+    """Driver for BK Precision 9205B Multi-Range DC Power Supply."""
+
+    def __init__(self, resource_manager, resource_string: str):
+        """Initialize BK 9205B."""
+        super().__init__(resource_manager, resource_string)
+        self.model = "9205B"
+        self.num_channels = 1
+        # Multi-range: 60V/10A or 120V/5A
+        self.max_voltage = 120.0
+        self.max_current = 10.0
+
+
+class BK1685B(BKPowerSupplyBase):
+    """Driver for BK Precision 1685B DC Power Supply."""
+
+    def __init__(self, resource_manager, resource_string: str):
+        """Initialize BK 1685B."""
+        super().__init__(resource_manager, resource_string)
+        self.model = "1685B"
+        self.num_channels = 1
+        # 1685B specs: 0-18V, 0-5A
+        self.max_voltage = 18.0
+        self.max_current = 5.0
