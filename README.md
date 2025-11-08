@@ -64,13 +64,21 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Diagnostic report generation
   - [x] 11 diagnostics API endpoints
 
+- [x] **Desktop GUI client** (PyQt6-based cross-platform application)
+  - [x] Equipment control and monitoring
+  - [x] Data acquisition interface
+  - [x] Alarm monitoring and acknowledgment
+  - [x] Scheduler management interface
+  - [x] Diagnostics and health monitoring dashboard
+  - [x] Server connection management
+
 ### In Development
 
-- [ ] Desktop GUI client (PyQt6)
-- [ ] Automatic Raspberry Pi network discovery
+- [ ] Real-time data visualization (pyqtgraph integration)
+- [ ] Automatic Raspberry Pi network discovery (mDNS/Bonjour)
 - [ ] SSH-based server deployment wizard
-- [ ] Real-time data visualization
-- [ ] Multi-server management interface
+- [ ] WebSocket streaming integration
+- [ ] Multi-server connection management
 
 ## Supported Equipment
 
@@ -111,12 +119,25 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 3. Access API documentation:
    - Open browser to `http://localhost:8000/docs`
 
-4. Test the server:
+### GUI Client Setup
+
+1. Install dependencies:
    ```bash
-   python ../test_client.py
+   cd client
+   pip install -r requirements.txt
    ```
 
-For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTED.md).
+2. Run the GUI client:
+   ```bash
+   python main.py
+   ```
+
+3. Connect to server:
+   - Click "Connect to Server..." or press Ctrl+N
+   - Use "Localhost" quick connect for local server
+   - Or enter custom hostname/IP and ports
+
+For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTED.md) and [Client README](client/README.md).
 
 ## Documentation
 
@@ -159,7 +180,18 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Equipment diagnostics (health checks, benchmarking, 11 endpoints)
 - ✅ Comprehensive documentation for all systems
 
-**Next Phase**: GUI client development
+**Phase 3 Complete**: GUI Client (PyQt6 desktop application)
+- ✅ Full-featured desktop GUI with tabbed interface
+- ✅ Equipment control panel with SCPI command interface
+- ✅ Data acquisition interface with configuration
+- ✅ Alarm monitoring with color-coded severity
+- ✅ Scheduler management interface
+- ✅ Diagnostics dashboard with health scoring
+- ✅ Server connection management
+- ✅ 40+ API client methods
+- ✅ 2,200+ lines of GUI code
+
+**Next Phase**: Advanced visualization & multi-server support
 
 ## Contributing
 
