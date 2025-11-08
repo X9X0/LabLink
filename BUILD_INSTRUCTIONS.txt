@@ -1,0 +1,95 @@
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                    LabLink Build Instructions                        ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+1. BUILD DOCKER IMAGE (Server)
+   ─────────────────────────────────────────────────────────────────
+   Prerequisites:
+     • Docker installed (https://docs.docker.com/get-docker/)
+
+   Build:
+     $ ./build_docker.sh
+
+     Or manually:
+     $ docker build -t lablink-server:0.10.0 .
+     $ docker tag lablink-server:0.10.0 lablink-server:latest
+
+   Test:
+     $ docker run -p 8000:8000 -p 8001:8001 lablink-server:0.10.0
+     $ curl http://localhost:8000/health
+
+   Save for distribution:
+     $ docker save lablink-server:0.10.0 | gzip > lablink-server-0.10.0.tar.gz
+
+   Size: ~250-350 MB compressed
+
+2. BUILD CLIENT EXECUTABLE (GUI)
+   ─────────────────────────────────────────────────────────────────
+   Prerequisites:
+     • Python 3.11+
+     • PyInstaller: pip install pyinstaller
+     • Client dependencies: cd client && pip install -r requirements.txt
+
+   Build:
+     $ cd client
+     $ ./build_client.sh
+
+     Or manually:
+     $ cd client
+     $ pyinstaller lablink.spec
+
+   Output:
+     Windows:  client/dist/LabLink.exe       (~95 MB)
+     macOS:    client/dist/LabLink.app       (~110 MB)
+     Linux:    client/dist/LabLink           (~88 MB)
+
+   Test:
+     $ ./dist/LabLink  (or LabLink.exe)
+     Click "Connect to Server..."
+     Enter: localhost:8000
+
+3. USING DOCKER-COMPOSE (Recommended)
+   ─────────────────────────────────────────────────────────────────
+   Start server:
+     $ docker-compose up -d
+
+   View logs:
+     $ docker-compose logs -f
+
+   Stop server:
+     $ docker-compose down
+
+   Update:
+     $ docker-compose pull
+     $ docker-compose up -d
+
+4. DISTRIBUTION PACKAGE
+   ─────────────────────────────────────────────────────────────────
+   Create a complete distribution:
+
+   LabLink-v1.0.0/
+   ├── Server/
+   │   ├── lablink-server-0.10.0.tar.gz    (Docker image)
+   │   ├── docker-compose.yml
+   │   └── README.txt
+   ├── Windows/
+   │   ├── LabLink.exe
+   │   └── README.txt
+   ├── macOS/
+   │   ├── LabLink.dmg
+   │   └── README.txt
+   └── Linux/
+       ├── LabLink
+       └── README.txt
+
+5. VERIFICATION
+   ─────────────────────────────────────────────────────────────────
+   After building, test:
+     • Server: curl http://localhost:8000/health
+     • Client: Launch and connect to localhost
+     • API Docs: http://localhost:8000/docs
+
+═══════════════════════════════════════════════════════════════════════
+
+For detailed deployment options, see DEPLOYMENT.md

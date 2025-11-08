@@ -1,0 +1,65 @@
+{
+  "project": "LabLink",
+  "version": "1.0.0",
+  "server_version": "0.10.0",
+  "client_version": "1.0.0",
+  "packages": {
+    "docker_image": {
+      "name": "lablink-server:0.10.0",
+      "type": "Docker Image",
+      "estimated_size": "250-350 MB",
+      "build_command": "docker build -t lablink-server:0.10.0 .",
+      "run_command": "docker run -p 8000:8000 -p 8001:8001 lablink-server:0.10.0",
+      "includes": [
+        "Python 3.12 runtime",
+        "All server dependencies",
+        "Server application code",
+        "Health checks",
+        "Auto-restart configuration"
+      ]
+    },
+    "client_windows": {
+      "name": "LabLink.exe",
+      "type": "Windows Executable",
+      "estimated_size": "95 MB",
+      "build_command": "pyinstaller client/lablink.spec",
+      "includes": [
+        "Python interpreter",
+        "PyQt6 framework",
+        "All dependencies",
+        "GUI application"
+      ]
+    },
+    "client_macos": {
+      "name": "LabLink.app",
+      "type": "macOS Application Bundle",
+      "estimated_size": "110 MB",
+      "build_command": "pyinstaller client/lablink.spec",
+      "includes": [
+        "Python interpreter",
+        "PyQt6 framework",
+        "All dependencies",
+        "GUI application",
+        "macOS bundle structure"
+      ]
+    },
+    "client_linux": {
+      "name": "LabLink",
+      "type": "Linux Executable",
+      "estimated_size": "88 MB",
+      "build_command": "pyinstaller client/lablink.spec",
+      "includes": [
+        "Python interpreter",
+        "PyQt6 framework",
+        "All dependencies",
+        "GUI application"
+      ]
+    }
+  },
+  "source_code": {
+    "server_size": "780.6 KB",
+    "client_size": "71.3 KB",
+    "total_lines": "20,670+",
+    "files": 84
+  }
+}
