@@ -82,38 +82,3 @@ class EquipmentCommand:
     description: str
     parameters: Dict[str, Any]
     category: str = "general"
-
-
-@dataclass
-class AcquisitionSession:
-    """Data acquisition session model."""
-    acquisition_id: str
-    equipment_id: str
-    mode: str
-    status: str
-    sample_count: int
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-
-    @classmethod
-    def from_api_dict(cls, data: Dict[str, Any]) -> 'AcquisitionSession':
-        """Create AcquisitionSession from API response."""
-        start_time = None
-        if data.get("start_time"):
-            start_time = datetime.fromisoformat(data["start_time"].replace('Z', '+00:00'))
-
-        end_time = None
-        if data.get("end_time"):
-            end_time = datetime.fromisoformat(data["end_time"].replace('Z', '+00:00'))
-
-        return cls(
-            acquisition_id=data["acquisition_id"],
-            equipment_id=data["equipment_id"],
-            mode=data.get("mode", "unknown"),
-            status=data.get("status", "unknown"),
-            sample_count=data.get("sample_count", 0),
-            start_time=start_time,
-            end_time=end_time,
-            duration_seconds=data.get("duration_seconds")
-        )

@@ -309,19 +309,22 @@ class LabLinkClient:
 
     # ==================== Data Acquisition API ====================
 
-    def create_acquisition(self, equipment_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    # Session Management
+
+    def create_acquisition_session(self, equipment_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """Create data acquisition session.
 
         Args:
             equipment_id: Equipment ID
-            config: Acquisition configuration
+            config: Acquisition configuration (mode, sample_rate, channels, etc.)
 
         Returns:
-            Acquisition session details
+            Acquisition session details with acquisition_id
         """
+        payload = {"equipment_id": equipment_id, **config}
         response = self._session.post(
-            f"{self.api_base_url}/acquisition/create",
-            json={"equipment_id": equipment_id, **config}
+            f"{self.api_base_url}/acquisition/session/create",
+            json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -333,9 +336,11 @@ class LabLinkClient:
             acquisition_id: Acquisition session ID
 
         Returns:
-            Response dictionary
+            Response with state
         """
-        response = self._session.post(f"{self.api_base_url}/acquisition/{acquisition_id}/start")
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/start"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -346,27 +351,98 @@ class LabLinkClient:
             acquisition_id: Acquisition session ID
 
         Returns:
-            Response dictionary
+            Response with state
         """
-        response = self._session.post(f"{self.api_base_url}/acquisition/{acquisition_id}/stop")
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stop"
+        )
         response.raise_for_status()
         return response.json()
 
-    def get_acquisition_data(self, acquisition_id: str) -> Dict[str, Any]:
-        """Get acquisition data.
+    def pause_acquisition(self, acquisition_id: str) -> Dict[str, Any]:
+        """Pause data acquisition.
 
         Args:
             acquisition_id: Acquisition session ID
 
         Returns:
-            Acquisition data
+            Response with state
         """
-        response = self._session.get(f"{self.api_base_url}/acquisition/{acquisition_id}/data")
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/pause"
+        )
         response.raise_for_status()
         return response.json()
 
-    def list_acquisitions(self, equipment_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List acquisition sessions.
+    def resume_acquisition(self, acquisition_id: str) -> Dict[str, Any]:
+        """Resume paused data acquisition.
+
+        Args:
+            acquisition_id: Acquisition session ID
+
+        Returns:
+            Response with state
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/resume"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_status(self, acquisition_id: str) -> Dict[str, Any]:
+        """Get acquisition session status.
+
+        Args:
+            acquisition_id: Acquisition session ID
+
+        Returns:
+            Session status details
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/status"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_data(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        max_points: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Get acquired data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+            start_time: Optional start time (ISO format)
+            end_time: Optional end time (ISO format)
+            max_points: Optional maximum number of points to return
+
+        Returns:
+            Acquisition data
+        """
+        params = {}
+        if channel:
+            params["channel"] = channel
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        if max_points:
+            params["max_points"] = max_points
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/data",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_acquisition_sessions(self, equipment_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List all acquisition sessions.
 
         Args:
             equipment_id: Optional equipment ID to filter
@@ -375,9 +451,433 @@ class LabLinkClient:
             List of acquisition sessions
         """
         params = {"equipment_id": equipment_id} if equipment_id else {}
-        response = self._session.get(f"{self.api_base_url}/acquisition/sessions", params=params)
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/sessions",
+            params=params
+        )
         response.raise_for_status()
-        return response.json()["sessions"]
+        return response.json().get("sessions", [])
+
+    def export_acquisition_data(
+        self,
+        acquisition_id: str,
+        format: str = "csv",
+        filepath: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Export acquisition data to file.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            format: Export format (csv, hdf5, npy, json)
+            filepath: Optional file path for export
+
+        Returns:
+            Export result with filepath
+        """
+        payload = {
+            "acquisition_id": acquisition_id,
+            "format": format
+        }
+        if filepath:
+            payload["filepath"] = filepath
+
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/export",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def delete_acquisition_session(self, acquisition_id: str) -> Dict[str, Any]:
+        """Delete acquisition session.
+
+        Args:
+            acquisition_id: Acquisition session ID
+
+        Returns:
+            Success response
+        """
+        response = self._session.delete(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    # Statistics
+
+    def get_acquisition_rolling_stats(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None,
+        window_size: int = 100
+    ) -> Dict[str, Any]:
+        """Get rolling statistics for acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+            window_size: Window size for rolling statistics
+
+        Returns:
+            Rolling statistics (mean, std, min, max, rms, p2p)
+        """
+        params = {"window_size": window_size}
+        if channel:
+            params["channel"] = channel
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/rolling",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_fft(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None,
+        window: str = "hann",
+        detrend: bool = True
+    ) -> Dict[str, Any]:
+        """Get FFT analysis of acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+            window: Window function (hann, hamming, blackman, etc.)
+            detrend: Whether to detrend data before FFT
+
+        Returns:
+            FFT results with frequencies, magnitudes, THD, SNR
+        """
+        params = {"window": window, "detrend": str(detrend).lower()}
+        if channel:
+            params["channel"] = channel
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/fft",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_trend(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None,
+        sensitivity: float = 0.1
+    ) -> Dict[str, Any]:
+        """Detect trend in acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+            sensitivity: Trend detection sensitivity (0-1)
+
+        Returns:
+            Trend analysis (rising, falling, stable, noisy)
+        """
+        params = {"sensitivity": sensitivity}
+        if channel:
+            params["channel"] = channel
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/trend",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_quality(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Assess data quality of acquisition.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+
+        Returns:
+            Quality metrics (noise_level, stability_score, outlier_ratio, quality_grade)
+        """
+        params = {}
+        if channel:
+            params["channel"] = channel
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/quality",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_peaks(
+        self,
+        acquisition_id: str,
+        channel: Optional[str] = None,
+        min_height: Optional[float] = None,
+        min_distance: int = 1
+    ) -> Dict[str, Any]:
+        """Detect peaks in acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            channel: Optional channel filter
+            min_height: Minimum peak height
+            min_distance: Minimum distance between peaks
+
+        Returns:
+            Peak information (indices, values, count)
+        """
+        params = {"min_distance": min_distance}
+        if channel:
+            params["channel"] = channel
+        if min_height is not None:
+            params["min_height"] = min_height
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/peaks",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_acquisition_crossings(
+        self,
+        acquisition_id: str,
+        threshold: float,
+        channel: Optional[str] = None,
+        direction: str = "both"
+    ) -> Dict[str, Any]:
+        """Detect threshold crossings in acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            threshold: Threshold value
+            channel: Optional channel filter
+            direction: Crossing direction (rising, falling, both)
+
+        Returns:
+            Crossing information (indices, values, count)
+        """
+        params = {"threshold": threshold, "direction": direction}
+        if channel:
+            params["channel"] = channel
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/crossings",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    # Multi-Instrument Synchronization
+
+    def create_sync_group(
+        self,
+        group_id: str,
+        equipment_ids: List[str],
+        master_equipment_id: Optional[str] = None,
+        sync_tolerance_ms: float = 10.0,
+        wait_for_all: bool = True,
+        auto_align_timestamps: bool = True
+    ) -> Dict[str, Any]:
+        """Create a multi-instrument synchronization group.
+
+        Args:
+            group_id: Sync group ID
+            equipment_ids: List of equipment IDs to synchronize
+            master_equipment_id: Optional master equipment ID
+            sync_tolerance_ms: Synchronization tolerance in milliseconds
+            wait_for_all: Wait for all equipment before starting
+            auto_align_timestamps: Auto-align timestamps
+
+        Returns:
+            Sync group status
+        """
+        payload = {
+            "group_id": group_id,
+            "equipment_ids": equipment_ids,
+            "master_equipment_id": master_equipment_id,
+            "sync_tolerance_ms": sync_tolerance_ms,
+            "wait_for_all": wait_for_all,
+            "auto_align_timestamps": auto_align_timestamps
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/create",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def add_to_sync_group(
+        self,
+        group_id: str,
+        equipment_id: str,
+        acquisition_id: str
+    ) -> Dict[str, Any]:
+        """Add acquisition session to sync group.
+
+        Args:
+            group_id: Sync group ID
+            equipment_id: Equipment ID
+            acquisition_id: Acquisition session ID
+
+        Returns:
+            Sync group status
+        """
+        payload = {
+            "equipment_id": equipment_id,
+            "acquisition_id": acquisition_id
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/add",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def start_sync_group(self, group_id: str) -> Dict[str, Any]:
+        """Start synchronized acquisition for all equipment in group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Start result with sync status
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/start"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def stop_sync_group(self, group_id: str) -> Dict[str, Any]:
+        """Stop synchronized acquisition for all equipment in group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Stop result
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/stop"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def pause_sync_group(self, group_id: str) -> Dict[str, Any]:
+        """Pause synchronized acquisition for all equipment in group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Pause result
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/pause"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def resume_sync_group(self, group_id: str) -> Dict[str, Any]:
+        """Resume synchronized acquisition for all equipment in group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Resume result
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/resume"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_sync_group_status(self, group_id: str) -> Dict[str, Any]:
+        """Get status of sync group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Sync group status
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/status"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_sync_group_data(
+        self,
+        group_id: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get synchronized data from all equipment in group.
+
+        Args:
+            group_id: Sync group ID
+            start_time: Optional start time (ISO format)
+            end_time: Optional end time (ISO format)
+
+        Returns:
+            Synchronized data from all equipment
+        """
+        params = {}
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/data",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_sync_groups(self) -> List[Dict[str, Any]]:
+        """List all sync groups.
+
+        Returns:
+            List of sync groups
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/sync/groups"
+        )
+        response.raise_for_status()
+        return response.json().get("groups", [])
+
+    def delete_sync_group(self, group_id: str) -> Dict[str, Any]:
+        """Delete sync group.
+
+        Args:
+            group_id: Sync group ID
+
+        Returns:
+            Success response
+        """
+        response = self._session.delete(
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    # Legacy compatibility methods (deprecated, use new methods above)
+    def create_acquisition(self, equipment_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Legacy method - use create_acquisition_session instead."""
+        return self.create_acquisition_session(equipment_id, config)
+
+    def list_acquisitions(self, equipment_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Legacy method - use list_acquisition_sessions instead."""
+        return self.list_acquisition_sessions(equipment_id)
 
     # ==================== Alarm API ====================
 
