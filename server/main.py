@@ -2,9 +2,14 @@
 
 import logging
 import sys
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+
+# Add shared directory to Python path
+shared_path = Path(__file__).parent.parent / "shared"
+sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
