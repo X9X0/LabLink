@@ -289,9 +289,9 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
             self.master_combo.addItem("(Auto-select)", None)
 
             for eq in equipment_list:
-                eq_id = eq.get("equipment_id")
-                eq_name = eq.get("name", "Unknown")
-                eq_type = eq.get("equipment_type", "")
+                eq_id = eq.get("id")
+                eq_name = eq.get("model", "Unknown")
+                eq_type = eq.get("type", "")
 
                 # Add to multi-select list
                 item = QListWidgetItem(f"{eq_name} ({eq_type})")

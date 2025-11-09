@@ -426,8 +426,8 @@ Samples Collected: {session.get('sample_count', 0)}
             self.equipment_combo.clear()
             for eq in equipment_list:
                 self.equipment_combo.addItem(
-                    f"{eq.get('name', 'Unknown')} ({eq.get('equipment_type', '')})",
-                    eq.get("equipment_id")
+                    f"{eq.get('model', 'Unknown')} ({eq.get('type', '')})",
+                    eq.get("id")
                 )
         except Exception as e:
             logger.error(f"Error refreshing equipment list: {e}")
