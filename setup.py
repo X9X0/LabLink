@@ -87,6 +87,94 @@ def check_python_version() -> bool:
         return False
 
 
+def check_pip_installed() -> bool:
+    """Check if pip is installed."""
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', '--version'],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def install_pip(auto: bool = False) -> bool:
+    """Install pip using ensurepip or get-pip.py."""
+    print_header("Installing pip")
+
+    print_info("pip is not installed, attempting to install...")
+
+    # Try ensurepip first (built into Python 3.4+)
+    print_info("Trying ensurepip...")
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'ensurepip', '--upgrade'],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode == 0:
+            print_success("pip installed successfully using ensurepip")
+            return True
+        else:
+            print_warning("ensurepip failed, trying get-pip.py...")
+    except Exception as e:
+        print_warning(f"ensurepip failed: {e}")
+        print_info("Trying get-pip.py...")
+
+    # Try get-pip.py as fallback
+    try:
+        import urllib.request
+
+        print_info("Downloading get-pip.py...")
+        url = "https://bootstrap.pypa.io/get-pip.py"
+
+        with urllib.request.urlopen(url) as response:
+            get_pip_script = response.read()
+
+        # Save to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.py', delete=False) as f:
+            f.write(get_pip_script)
+            get_pip_path = f.name
+
+        print_info("Running get-pip.py...")
+        result = subprocess.run(
+            [sys.executable, get_pip_path],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        # Clean up
+        try:
+            os.unlink(get_pip_path)
+        except Exception:
+            pass
+
+        if result.returncode == 0:
+            print_success("pip installed successfully using get-pip.py")
+            return True
+        else:
+            print_error("Failed to install pip using get-pip.py")
+            if result.stderr:
+                print(result.stderr)
+            return False
+
+    except Exception as e:
+        print_error(f"Failed to download/run get-pip.py: {e}")
+        print_error("\nPlease install pip manually:")
+        print_info("  Ubuntu/Debian: sudo apt install python3-pip")
+        print_info("  Fedora/RHEL: sudo dnf install python3-pip")
+        print_info("  macOS: python3 -m ensurepip --upgrade")
+        print_info("  Windows: Download and run get-pip.py from https://bootstrap.pypa.io/get-pip.py")
+        return False
+
+
 def get_os_info() -> dict:
     """Get operating system information."""
     return {
@@ -456,6 +544,20 @@ Examples:
     # Check Python version
     if not check_python_version():
         return 1
+
+    # Check and install pip if needed
+    if not check_pip_installed():
+        print_warning("pip is not installed")
+        if not args.check:
+            if not install_pip(args.auto):
+                print_error("Failed to install pip")
+                print_error("Please install pip manually and run setup again")
+                return 1
+        else:
+            print_error("pip is required but not installed")
+            return 1
+    else:
+        print_success("pip is installed")
 
     # Check system packages
     if not args.skip_system:
