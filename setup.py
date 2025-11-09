@@ -175,6 +175,17 @@ def install_pip(auto: bool = False) -> bool:
         return False
 
 
+def check_externally_managed() -> bool:
+    """Check if this is an externally-managed Python environment (PEP 668)."""
+    # Check for EXTERNALLY-MANAGED file (Debian/Ubuntu)
+    import sysconfig
+    stdlib = sysconfig.get_path('stdlib')
+    if stdlib:
+        marker = os.path.join(stdlib, 'EXTERNALLY-MANAGED')
+        return os.path.exists(marker)
+    return False
+
+
 def get_os_info() -> dict:
     """Get operating system information."""
     return {
@@ -545,9 +556,26 @@ Examples:
     if not check_python_version():
         return 1
 
+    # Check for externally-managed environment (PEP 668)
+    is_externally_managed = check_externally_managed()
+
     # Check and install pip if needed
     if not check_pip_installed():
         print_warning("pip is not installed")
+
+        if is_externally_managed:
+            print_error("\nThis is a Debian/Ubuntu system with PEP 668 protection.")
+            print_error("You have two options:\n")
+            print(f"{Colors.OKGREEN}Option 1 (Recommended): Install pip via apt{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  sudo apt update{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  sudo apt install python3-pip python3-venv{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+            print(f"\n{Colors.OKGREEN}Option 2: Use virtual environment{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  python3 -m venv venv{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  source venv/bin/activate{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+            return 1
+
         if not args.check:
             if not install_pip(args.auto):
                 print_error("Failed to install pip")
