@@ -229,9 +229,9 @@ class LabLinkClient:
         Returns:
             List of equipment dictionaries
         """
-        response = self._session.get(f"{self.api_base_url}/equipment")
+        response = self._session.get(f"{self.api_base_url}/equipment/list")
         response.raise_for_status()
-        return response.json()["equipment"]
+        return response.json()
 
     def get_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Get equipment details.
