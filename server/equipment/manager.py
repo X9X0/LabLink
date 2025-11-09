@@ -14,6 +14,9 @@ from .rigol_scope import RigolMSO2072A, RigolDS1104
 from .rigol_electronic_load import RigolDL3021A
 from .bk_power_supply import BK9206B, BK9205B, BK9130B, BK1685B
 from .bk_electronic_load import BK1902B
+from .mock.mock_oscilloscope import MockOscilloscope
+from .mock.mock_power_supply import MockPowerSupply
+from .mock.mock_electronic_load import MockElectronicLoad
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +97,20 @@ class EquipmentManager:
         self, resource_string: str, equipment_type: EquipmentType, model: str
     ) -> Optional[BaseEquipment]:
         """Create appropriate equipment instance based on model."""
+        model_upper = model.upper()
+
+        # Mock equipment (doesn't require resource_manager)
+        if "MOCK" in model_upper or "MOCK::" in resource_string.upper():
+            if "SCOPE" in model_upper or "OSCILLOSCOPE" in model_upper or equipment_type == EquipmentType.OSCILLOSCOPE:
+                return MockOscilloscope(None, resource_string)
+            elif "PSU" in model_upper or "POWER" in model_upper or equipment_type == EquipmentType.POWER_SUPPLY:
+                return MockPowerSupply(None, resource_string)
+            elif "LOAD" in model_upper or equipment_type == EquipmentType.ELECTRONIC_LOAD:
+                return MockElectronicLoad(None, resource_string)
+
+        # Real equipment requires resource_manager
         if not self.resource_manager:
             return None
-
-        model_upper = model.upper()
 
         # Rigol oscilloscopes
         if "MSO2072A" in model_upper or "MSO2072" in model_upper:

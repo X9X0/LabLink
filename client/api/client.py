@@ -4,10 +4,21 @@ import logging
 import asyncio
 from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import requests
-import websockets
-import json
+
+try:
+    from utils.websocket_manager import WebSocketManager, StreamType, MessageType
+except ImportError:
+    # Fallback if utils not found
+    WebSocketManager = None
+    StreamType = None
+    MessageType = None
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +39,15 @@ class LabLinkClient:
         self.ws_port = ws_port
 
         self.api_base_url = f"http://{host}:{api_port}/api"
-        self.ws_url = f"ws://{host}:{ws_port}/ws"
 
         self._session = requests.Session()
-        self._ws_connection: Optional[websockets.WebSocketClientProtocol] = None
-        self._ws_task: Optional[asyncio.Task] = None
-        self._message_callbacks: List[Callable] = []
+
+        # Initialize WebSocket manager if available
+        if WebSocketManager:
+            self.ws_manager = WebSocketManager(host=host, port=ws_port)
+        else:
+            self.ws_manager = None
+            logger.warning("WebSocket manager not available")
 
         self.connected = False
 
@@ -57,47 +71,155 @@ class LabLinkClient:
 
         return False
 
-    def disconnect(self):
+    async def disconnect(self):
         """Disconnect from server."""
-        if self._ws_connection:
-            asyncio.create_task(self._ws_connection.close())
         self.connected = False
+
+        # Disconnect WebSocket if available
+        if self.ws_manager:
+            await self.ws_manager.disconnect()
+
         logger.info("Disconnected from LabLink server")
 
-    async def connect_websocket(self):
-        """Connect to WebSocket for real-time data streaming."""
-        try:
-            self._ws_connection = await websockets.connect(self.ws_url)
-            logger.info(f"WebSocket connected to {self.ws_url}")
+    # ==================== WebSocket Methods ====================
 
-            # Start message receiving task
-            self._ws_task = asyncio.create_task(self._receive_messages())
-        except Exception as e:
-            logger.error(f"Failed to connect WebSocket: {e}")
-            raise
+    async def connect_websocket(self) -> bool:
+        """Connect to WebSocket for real-time data streaming.
 
-    async def _receive_messages(self):
-        """Receive messages from WebSocket."""
-        try:
-            async for message in self._ws_connection:
-                data = json.loads(message)
+        Returns:
+            True if connection successful
+        """
+        if not self.ws_manager:
+            logger.error("WebSocket manager not available")
+            return False
 
-                # Call all registered callbacks
-                for callback in self._message_callbacks:
-                    try:
-                        callback(data)
-                    except Exception as e:
-                        logger.error(f"Error in message callback: {e}")
-        except Exception as e:
-            logger.error(f"WebSocket error: {e}")
+        return await self.ws_manager.connect()
 
-    def register_message_callback(self, callback: Callable):
-        """Register callback for WebSocket messages.
+    async def start_equipment_stream(
+        self,
+        equipment_id: str,
+        stream_type: str = "readings",
+        interval_ms: int = 100
+    ):
+        """Start streaming data from equipment.
 
         Args:
-            callback: Function to call with received data
+            equipment_id: Equipment ID
+            stream_type: Type of data (readings, waveform, measurements)
+            interval_ms: Update interval in milliseconds
         """
-        self._message_callbacks.append(callback)
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        # Convert string to enum if needed
+        if isinstance(stream_type, str) and StreamType:
+            stream_type = StreamType(stream_type)
+
+        await self.ws_manager.start_equipment_stream(
+            equipment_id=equipment_id,
+            stream_type=stream_type,
+            interval_ms=interval_ms
+        )
+
+    async def stop_equipment_stream(
+        self,
+        equipment_id: str,
+        stream_type: str = "readings"
+    ):
+        """Stop streaming data from equipment.
+
+        Args:
+            equipment_id: Equipment ID
+            stream_type: Type of data stream to stop
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        # Convert string to enum if needed
+        if isinstance(stream_type, str) and StreamType:
+            stream_type = StreamType(stream_type)
+
+        await self.ws_manager.stop_equipment_stream(
+            equipment_id=equipment_id,
+            stream_type=stream_type
+        )
+
+    async def start_acquisition_stream(
+        self,
+        acquisition_id: str,
+        interval_ms: int = 100,
+        num_samples: int = 100
+    ):
+        """Start streaming acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+            interval_ms: Update interval in milliseconds
+            num_samples: Number of samples per update
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        await self.ws_manager.start_acquisition_stream(
+            acquisition_id=acquisition_id,
+            interval_ms=interval_ms,
+            num_samples=num_samples
+        )
+
+    async def stop_acquisition_stream(self, acquisition_id: str):
+        """Stop streaming acquisition data.
+
+        Args:
+            acquisition_id: Acquisition session ID
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        await self.ws_manager.stop_acquisition_stream(acquisition_id)
+
+    def register_stream_data_handler(self, handler: Callable):
+        """Register handler for equipment stream data.
+
+        Args:
+            handler: Callback function
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        self.ws_manager.on_stream_data(handler)
+
+    def register_acquisition_data_handler(self, handler: Callable):
+        """Register handler for acquisition stream data.
+
+        Args:
+            handler: Callback function
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        self.ws_manager.on_acquisition_data(handler)
+
+    def register_message_callback(self, handler: Callable):
+        """Register generic callback for all WebSocket messages.
+
+        Args:
+            handler: Callback function
+        """
+        if not self.ws_manager:
+            raise RuntimeError("WebSocket manager not available")
+
+        self.ws_manager.register_generic_handler(handler)
+
+    def get_websocket_statistics(self) -> Dict[str, Any]:
+        """Get WebSocket statistics.
+
+        Returns:
+            Statistics dictionary
+        """
+        if not self.ws_manager:
+            return {"error": "WebSocket manager not available"}
+
+        return self.ws_manager.get_statistics()
 
     # ==================== Equipment API ====================
 

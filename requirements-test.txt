@@ -1,0 +1,27 @@
+# Test dependencies for LabLink
+
+# Core testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Mocking and fixtures
+pytest-mock>=3.11.0
+
+# HTTP testing
+requests>=2.31.0
+httpx>=0.24.0  # For async HTTP testing
+
+# Coverage reporting
+coverage[toml]>=7.3.0
+
+# Code quality
+flake8>=6.1.0
+pylint>=2.17.0
+mypy>=1.5.0
+
+# Optional: For better test output
+pytest-sugar>=0.9.7
+pytest-html>=3.2.0
