@@ -9,6 +9,7 @@ import uuid
 
 class DiagnosticStatus(str, Enum):
     """Diagnostic test status."""
+    UNKNOWN = "unknown"
     PASS = "pass"
     FAIL = "fail"
     WARNING = "warning"
