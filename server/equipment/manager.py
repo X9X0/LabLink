@@ -10,7 +10,7 @@ sys.path.append("../../shared")
 from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 
 from .base import BaseEquipment
-from .rigol_scope import RigolMSO2072A, RigolDS1104
+from .rigol_scope import RigolMSO2072A, RigolDS1104, RigolDS1102D
 from .rigol_electronic_load import RigolDL3021A
 from .bk_power_supply import BK9206B, BK9205B, BK9130B, BK1685B
 from .bk_electronic_load import BK1902B
@@ -117,6 +117,8 @@ class EquipmentManager:
             return RigolMSO2072A(self.resource_manager, resource_string)
         elif "DS1104" in model_upper or "DS1104Z" in model_upper:
             return RigolDS1104(self.resource_manager, resource_string)
+        elif "DS1102D" in model_upper or "DS1102" in model_upper:
+            return RigolDS1102D(self.resource_manager, resource_string)
 
         # Rigol electronic loads
         elif "DL3021" in model_upper:
