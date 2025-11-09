@@ -565,16 +565,38 @@ Examples:
 
         if is_externally_managed:
             print_error("\nThis is a Debian/Ubuntu system with PEP 668 protection.")
-            print_error("You have two options:\n")
-            print(f"{Colors.OKGREEN}Option 1 (Recommended): Install pip via apt{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  sudo apt update{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  sudo apt install python3-pip python3-venv{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
-            print(f"\n{Colors.OKGREEN}Option 2: Use virtual environment{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  python3 -m venv venv{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  source venv/bin/activate{Colors.ENDC}")
-            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
-            return 1
+            print_info("pip must be installed via apt or you can use a virtual environment.\n")
+
+            print(f"{Colors.OKGREEN}Option 1: Install pip via apt (system-wide){Colors.ENDC}")
+            print(f"  Commands: sudo apt update && sudo apt install python3-pip python3-venv\n")
+
+            print(f"{Colors.OKGREEN}Option 2: Use virtual environment (isolated, recommended for development){Colors.ENDC}")
+            print(f"  This script can create and set up a virtual environment for you.\n")
+
+            if args.auto:
+                print_info("Auto mode: Creating virtual environment...")
+                choice = '2'
+            else:
+                choice = input(f"{Colors.BOLD}Choose an option [1/2]: {Colors.ENDC}").strip()
+
+            if choice == '1':
+                print_info("\nPlease run the following commands to install pip:")
+                print(f"{Colors.OKCYAN}  sudo apt update{Colors.ENDC}")
+                print(f"{Colors.OKCYAN}  sudo apt install python3-pip python3-venv{Colors.ENDC}")
+                print(f"\nThen run this script again:")
+                print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+                return 1
+            elif choice == '2':
+                if not setup_virtual_env(args.auto):
+                    return 1
+                print_error("\nVirtual environment created successfully!")
+                print_info("Please activate it and run setup again:")
+                print(f"{Colors.OKCYAN}  source venv/bin/activate{Colors.ENDC}")
+                print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+                return 0
+            else:
+                print_error("Invalid choice. Exiting.")
+                return 1
 
         if not args.check:
             if not install_pip(args.auto):
