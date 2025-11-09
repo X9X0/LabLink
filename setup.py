@@ -288,7 +288,7 @@ def check_python_packages(packages: List[str], name: str) -> Tuple[List[str], Li
     return installed, missing
 
 
-def install_packages(packages: List[str], name: str, auto: bool = False) -> bool:
+def install_packages(packages: List[str], name: str, auto: bool = False, use_break_system: bool = False) -> bool:
     """Install Python packages."""
     if not packages:
         print_success(f"All {name} dependencies already installed")
@@ -309,7 +309,13 @@ def install_packages(packages: List[str], name: str, auto: bool = False) -> bool
     print(f"\nInstalling {len(packages)} package(s)...")
 
     # Install all packages at once
-    cmd = [sys.executable, '-m', 'pip', 'install'] + packages
+    cmd = [sys.executable, '-m', 'pip', 'install']
+
+    # Add --break-system-packages if needed (for PEP 668 systems)
+    if use_break_system:
+        cmd.append('--break-system-packages')
+
+    cmd.extend(packages)
 
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -624,6 +630,48 @@ Examples:
     install_server = args.server or (not args.client)
     install_client = args.client or (not args.server)
 
+    # Check if we need to handle PEP 668 for package installation
+    use_break_system = False
+    if is_externally_managed and not args.check:
+        print_warning("\nDetected externally-managed environment (PEP 668)")
+        print_info("You have two options for installing Python packages:\n")
+        print(f"{Colors.OKGREEN}Option 1: Use virtual environment (recommended){Colors.ENDC}")
+        print(f"  Keeps packages isolated and doesn't affect system Python")
+        print(f"  Run: python3 setup.py --venv, then activate and run setup again\n")
+        print(f"{Colors.WARNING}Option 2: Install with --break-system-packages{Colors.ENDC}")
+        print(f"  {Colors.FAIL}WARNING: This may break system packages!{Colors.ENDC}")
+        print(f"  Only use if you understand the risks\n")
+
+        if args.auto:
+            print_error("Auto mode cannot proceed with externally-managed environment")
+            print_info("Please create a virtual environment first:")
+            print(f"{Colors.OKCYAN}  python3 -m venv venv{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  source venv/bin/activate{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+            return 1
+
+        choice = input(f"{Colors.BOLD}Choose an option [1/2]: {Colors.ENDC}").strip()
+
+        if choice == '1':
+            print_info("\nCreating virtual environment...")
+            if not setup_virtual_env(False):
+                return 1
+            print_success("\nVirtual environment created successfully!")
+            print_info("Please activate it and run setup again:")
+            print(f"{Colors.OKCYAN}  source venv/bin/activate{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}  python3 setup.py --auto{Colors.ENDC}")
+            return 0
+        elif choice == '2':
+            print_warning("\nProceeding with --break-system-packages")
+            response = input(f"{Colors.FAIL}Are you sure? This may break your system! [y/N]: {Colors.ENDC}").strip().lower()
+            if response not in ['y', 'yes']:
+                print_info("Installation cancelled")
+                return 1
+            use_break_system = True
+        else:
+            print_error("Invalid choice. Exiting.")
+            return 1
+
     all_success = True
 
     # Check and install server dependencies
@@ -631,7 +679,7 @@ Examples:
         installed, missing = check_python_packages(server_reqs, "Server")
 
         if not args.check and missing:
-            success = install_packages(missing, "Server", args.auto)
+            success = install_packages(missing, "Server", args.auto, use_break_system)
             all_success = all_success and success
 
     # Check and install client dependencies
@@ -639,7 +687,7 @@ Examples:
         installed, missing = check_python_packages(client_reqs, "Client")
 
         if not args.check and missing:
-            success = install_packages(missing, "Client", args.auto)
+            success = install_packages(missing, "Client", args.auto, use_break_system)
             all_success = all_success and success
 
     # Create configuration files
