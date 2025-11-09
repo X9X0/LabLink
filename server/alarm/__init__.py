@@ -8,6 +8,7 @@ from .models import (
     AlarmConfig,
     AlarmEvent,
     AlarmAcknowledgment,
+    NotificationConfig,
 )
 from .manager import alarm_manager
 from .notifications import notification_manager
@@ -20,6 +21,7 @@ __all__ = [
     "AlarmConfig",
     "AlarmEvent",
     "AlarmAcknowledgment",
+    "NotificationConfig",
     "alarm_manager",
     "notification_manager",
 ]
