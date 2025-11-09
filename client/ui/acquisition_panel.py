@@ -455,7 +455,7 @@ Samples Collected: {session.get('sample_count', 0)}
                 item_text = f"{name} - {equipment} [{state}] ({mode})"
                 item = QListWidgetItem(item_text)
                 item.setData(Qt.ItemDataRole.UserRole, acquisition_id)
-                self.sessions_list.addWidget(item)
+                self.sessions_list.addItem(item)
 
             if not silent:
                 logger.info(f"Refreshed {len(sessions)} acquisition sessions")
@@ -648,16 +648,29 @@ Samples Collected: {session.get('sample_count', 0)}
                 max_points=self.max_points_spin.value()
             )
 
-            data_points = result.get("data", [])
-            self.data_table.setRowCount(len(data_points))
+            # API returns data in format: {channels: [...], data: {timestamps: [...], values: {CH1: [...]}}}
+            channels = result.get("channels", [])
+            data = result.get("data", {})
+            timestamps = data.get("timestamps", [])
+            values_by_channel = data.get("values", {})
 
-            for row, point in enumerate(data_points):
-                self.data_table.setItem(row, 0, QTableWidgetItem(str(point.get("timestamp", ""))))
-                self.data_table.setItem(row, 1, QTableWidgetItem(str(point.get("channel", ""))))
-                self.data_table.setItem(row, 2, QTableWidgetItem(str(point.get("value", ""))))
-                self.data_table.setItem(row, 3, QTableWidgetItem(str(point.get("unit", ""))))
+            # Calculate total number of rows (timestamps * channels)
+            total_rows = len(timestamps) * len(channels)
+            self.data_table.setRowCount(total_rows)
 
-            logger.info(f"Loaded {len(data_points)} data points")
+            row = 0
+            for i, timestamp in enumerate(timestamps):
+                for channel in channels:
+                    channel_values = values_by_channel.get(channel, [])
+                    value = channel_values[i] if i < len(channel_values) else ""
+
+                    self.data_table.setItem(row, 0, QTableWidgetItem(str(timestamp)))
+                    self.data_table.setItem(row, 1, QTableWidgetItem(str(channel)))
+                    self.data_table.setItem(row, 2, QTableWidgetItem(f"{value:.6f}" if isinstance(value, (int, float)) else str(value)))
+                    self.data_table.setItem(row, 3, QTableWidgetItem("V"))  # Default unit
+                    row += 1
+
+            logger.info(f"Loaded {len(timestamps)} data points across {len(channels)} channels")
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
@@ -670,18 +683,35 @@ Samples Collected: {session.get('sample_count', 0)}
             return
 
         try:
-            result = self.client.get_acquisition_rolling_stats(self.current_acquisition_id)
-            channels = result.get("channels", [])
+            # First get acquisition data to discover channels
+            data_result = self.client.get_acquisition_data(
+                self.current_acquisition_id,
+                max_points=1
+            )
+            channels = data_result.get("channels", [])
+
+            if not channels:
+                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                return
 
             self.stats_table.setRowCount(0)
-            for channel_stats in channels:
-                channel = channel_stats.get("channel", "?")
-                self._add_stat_row(f"{channel} - Mean", channel_stats.get("mean", 0), "")
-                self._add_stat_row(f"{channel} - Std Dev", channel_stats.get("std_dev", 0), "")
-                self._add_stat_row(f"{channel} - Min", channel_stats.get("min", 0), "")
-                self._add_stat_row(f"{channel} - Max", channel_stats.get("max", 0), "")
-                self._add_stat_row(f"{channel} - RMS", channel_stats.get("rms", 0), "")
-                self._add_stat_row(f"{channel} - P2P", channel_stats.get("peak_to_peak", 0), "")
+
+            # Get rolling stats for each channel
+            for channel in channels:
+                try:
+                    result = self.client.get_acquisition_rolling_stats(
+                        self.current_acquisition_id,
+                        channel=channel
+                    )
+                    stats = result.get("stats", {})
+                    self._add_stat_row(f"{channel} - Mean", stats.get("mean", 0), "")
+                    self._add_stat_row(f"{channel} - Std Dev", stats.get("std", 0), "")
+                    self._add_stat_row(f"{channel} - Min", stats.get("min", 0), "")
+                    self._add_stat_row(f"{channel} - Max", stats.get("max", 0), "")
+                    self._add_stat_row(f"{channel} - RMS", stats.get("rms", 0), "")
+                    self._add_stat_row(f"{channel} - P2P", stats.get("peak_to_peak", 0), "")
+                except Exception as channel_error:
+                    logger.error(f"Error getting stats for channel {channel}: {channel_error}")
 
         except Exception as e:
             logger.error(f"Error getting rolling stats: {e}")
@@ -694,15 +724,32 @@ Samples Collected: {session.get('sample_count', 0)}
             return
 
         try:
-            result = self.client.get_acquisition_fft(self.current_acquisition_id)
-            channels = result.get("channels", [])
+            # Get channels from session data
+            data_result = self.client.get_acquisition_data(
+                self.current_acquisition_id,
+                max_points=1
+            )
+            channels = data_result.get("channels", [])
+
+            if not channels:
+                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                return
 
             self.stats_table.setRowCount(0)
-            for channel_fft in channels:
-                channel = channel_fft.get("channel", "?")
-                self._add_stat_row(f"{channel} - Fundamental Freq", channel_fft.get("fundamental_frequency", 0), "Hz")
-                self._add_stat_row(f"{channel} - THD", channel_fft.get("thd", 0), "%")
-                self._add_stat_row(f"{channel} - SNR", channel_fft.get("snr", 0), "dB")
+
+            # Get FFT analysis for each channel
+            for channel in channels:
+                try:
+                    result = self.client.get_acquisition_fft(
+                        self.current_acquisition_id,
+                        channel=channel
+                    )
+                    fft_data = result.get("fft", {})
+                    self._add_stat_row(f"{channel} - Fundamental Freq", fft_data.get("fundamental_frequency", 0), "Hz")
+                    self._add_stat_row(f"{channel} - THD", fft_data.get("thd", 0), "%")
+                    self._add_stat_row(f"{channel} - SNR", fft_data.get("snr", 0), "dB")
+                except Exception as channel_error:
+                    logger.error(f"Error getting FFT for channel {channel}: {channel_error}")
 
         except Exception as e:
             logger.error(f"Error getting FFT analysis: {e}")
@@ -715,15 +762,32 @@ Samples Collected: {session.get('sample_count', 0)}
             return
 
         try:
-            result = self.client.get_acquisition_trend(self.current_acquisition_id)
-            channels = result.get("channels", [])
+            # Get channels from session data
+            data_result = self.client.get_acquisition_data(
+                self.current_acquisition_id,
+                max_points=1
+            )
+            channels = data_result.get("channels", [])
+
+            if not channels:
+                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                return
 
             self.stats_table.setRowCount(0)
-            for channel_trend in channels:
-                channel = channel_trend.get("channel", "?")
-                self._add_stat_row(f"{channel} - Trend", channel_trend.get("trend", "unknown"), "")
-                self._add_stat_row(f"{channel} - Slope", channel_trend.get("slope", 0), "")
-                self._add_stat_row(f"{channel} - Confidence", channel_trend.get("confidence", 0), "")
+
+            # Get trend analysis for each channel
+            for channel in channels:
+                try:
+                    result = self.client.get_acquisition_trend(
+                        self.current_acquisition_id,
+                        channel=channel
+                    )
+                    trend_data = result.get("trend", {})
+                    self._add_stat_row(f"{channel} - Trend", trend_data.get("trend", "unknown"), "")
+                    self._add_stat_row(f"{channel} - Slope", trend_data.get("slope", 0), "")
+                    self._add_stat_row(f"{channel} - Confidence", trend_data.get("confidence", 0), "")
+                except Exception as channel_error:
+                    logger.error(f"Error getting trend for channel {channel}: {channel_error}")
 
         except Exception as e:
             logger.error(f"Error getting trend analysis: {e}")
@@ -736,16 +800,33 @@ Samples Collected: {session.get('sample_count', 0)}
             return
 
         try:
-            result = self.client.get_acquisition_quality(self.current_acquisition_id)
-            channels = result.get("channels", [])
+            # Get channels from session data
+            data_result = self.client.get_acquisition_data(
+                self.current_acquisition_id,
+                max_points=1
+            )
+            channels = data_result.get("channels", [])
+
+            if not channels:
+                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                return
 
             self.stats_table.setRowCount(0)
-            for channel_quality in channels:
-                channel = channel_quality.get("channel", "?")
-                self._add_stat_row(f"{channel} - Quality Grade", channel_quality.get("quality_grade", "unknown"), "")
-                self._add_stat_row(f"{channel} - Noise Level", channel_quality.get("noise_level", 0), "")
-                self._add_stat_row(f"{channel} - Stability", channel_quality.get("stability_score", 0), "")
-                self._add_stat_row(f"{channel} - Outlier Ratio", channel_quality.get("outlier_ratio", 0), "%")
+
+            # Get quality metrics for each channel
+            for channel in channels:
+                try:
+                    result = self.client.get_acquisition_quality(
+                        self.current_acquisition_id,
+                        channel=channel
+                    )
+                    quality_data = result.get("quality", {})
+                    self._add_stat_row(f"{channel} - Quality Grade", quality_data.get("quality_grade", "unknown"), "")
+                    self._add_stat_row(f"{channel} - Noise Level", quality_data.get("noise_level", 0), "")
+                    self._add_stat_row(f"{channel} - Stability", quality_data.get("stability_score", 0), "")
+                    self._add_stat_row(f"{channel} - Outlier Ratio", quality_data.get("outlier_ratio", 0), "%")
+                except Exception as channel_error:
+                    logger.error(f"Error getting quality for channel {channel}: {channel_error}")
 
         except Exception as e:
             logger.error(f"Error getting quality metrics: {e}")

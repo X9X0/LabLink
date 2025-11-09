@@ -57,14 +57,6 @@ class AcquisitionManager:
         """
         acquisition_id = config.acquisition_id
 
-        # Verify equipment ID matches
-        info = await equipment.get_info()
-        if config.equipment_id != info.id:
-            raise ValueError(
-                f"Config equipment_id {config.equipment_id} doesn't match "
-                f"equipment {info.id}"
-            )
-
         # Create session
         session = AcquisitionSession(
             acquisition_id=acquisition_id,

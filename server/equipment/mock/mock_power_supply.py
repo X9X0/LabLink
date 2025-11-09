@@ -155,6 +155,25 @@ class MockPowerSupply:
         self.output_enabled[channel] = enabled
         await asyncio.sleep(0.05)  # Simulate relay switching delay
 
+    async def get_measurement(self, channel: str) -> Dict[str, float]:
+        """Get single measurement value for data acquisition.
+
+        Args:
+            channel: Channel identifier (e.g., 'CH1', 'CH2', or just '1', '2')
+
+        Returns:
+            Dict with 'value' key containing the output voltage reading
+        """
+        # Parse channel number from string (handle 'CH1' or '1' format)
+        channel_num = int(channel.replace('CH', '').replace('ch', ''))
+
+        if channel_num < 1 or channel_num > self.num_channels:
+            raise ValueError(f"Invalid channel: {channel}")
+
+        # Get current voltage output
+        readings = await self.get_readings(channel_num)
+        return {"value": readings.voltage_actual}
+
     async def get_readings(self, channel: int = 1) -> PowerSupplyData:
         """Get current voltage and current readings."""
         if channel < 1 or channel > self.num_channels:

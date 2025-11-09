@@ -4,7 +4,7 @@ import logging
 import uuid
 import asyncio
 import numpy as np
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from datetime import datetime
 
 import sys
@@ -287,6 +287,20 @@ class MockElectronicLoad:
             power = voltage * current
 
         return voltage, current, power
+
+    async def get_measurement(self, channel: str) -> Dict[str, float]:
+        """Get single measurement value for data acquisition.
+
+        Args:
+            channel: Channel identifier (e.g., 'CH1', 'CH2', or just '1', '2')
+
+        Returns:
+            Dict with 'value' key containing the current reading
+        """
+        # Electronic load typically has single channel, ignore channel parameter
+        # Get current reading from load
+        readings = await self.get_readings()
+        return {"value": readings.current}
 
     async def get_readings(self) -> ElectronicLoadData:
         """Get current readings from the load."""

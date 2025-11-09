@@ -278,6 +278,47 @@ class MockOscilloscope:
                 # Set scale to show about 8 divisions of signal
                 self.channel_scale[channel] = amp / 3.0
 
+    async def get_measurement(self, channel: str) -> Dict[str, float]:
+        """Get single measurement value for data acquisition.
+
+        Args:
+            channel: Channel identifier (e.g., 'CH1', 'CH2', or just '1', '2')
+
+        Returns:
+            Dict with 'value' key containing the instantaneous voltage reading
+        """
+        # Parse channel number from string (handle 'CH1' or '1' format)
+        channel_num = int(channel.replace('CH', '').replace('ch', ''))
+
+        if channel_num < 1 or channel_num > self.num_channels:
+            raise ValueError(f"Invalid channel: {channel}")
+
+        # Generate a single sample point for this channel
+        waveform_type = self.waveform_type.get(channel_num, "sine")
+        freq = self.frequency.get(channel_num, 1000.0)
+        amp = self.amplitude.get(channel_num, 1.0)
+        offset = self.channel_offset.get(channel_num, 0.0)
+
+        # Get current time-dependent value
+        t = datetime.now().timestamp()
+
+        if waveform_type == "sine":
+            value = amp * np.sin(2 * np.pi * freq * t)
+        elif waveform_type == "square":
+            value = amp * np.sign(np.sin(2 * np.pi * freq * t))
+        elif waveform_type == "triangle":
+            value = amp * (2 * np.abs(2 * (freq * t - np.floor(freq * t + 0.5))) - 1)
+        elif waveform_type == "noise":
+            value = np.random.normal(0, amp)
+        else:
+            value = 0.0
+
+        # Add noise and offset
+        noise = np.random.normal(0, self.noise_level)
+        value = float(value + noise + offset)
+
+        return {"value": value}
+
     async def get_measurements(self, channel: int = 1) -> Dict[str, float]:
         """Get automated measurements for a channel."""
         if channel < 1 or channel > self.num_channels:
