@@ -357,6 +357,7 @@ def create_requirements_files():
         "zeroconf>=0.119.0",
         "apscheduler>=3.10.0",
         "websockets>=12.0",
+        "psutil>=5.9.0",
     ]
 
     # Client requirements
