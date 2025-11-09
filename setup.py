@@ -350,6 +350,7 @@ def create_requirements_files():
         "pyvisa-py>=0.7.0",
         "python-dotenv>=1.0.0",
         "pydantic>=2.4.0",
+        "pydantic-settings>=2.1.0",
         "numpy>=1.24.0",
         "scipy>=1.11.0",
         "h5py>=3.9.0",
