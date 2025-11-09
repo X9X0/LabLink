@@ -547,8 +547,29 @@ Examples:
     parser.add_argument('--auto', action='store_true', help='Auto-install without prompts')
     parser.add_argument('--venv', action='store_true', help='Setup virtual environment')
     parser.add_argument('--skip-system', action='store_true', help='Skip system package checks')
+    parser.add_argument('--no-venv-check', action='store_true', help='Skip automatic venv detection')
 
     args = parser.parse_args()
+
+    # Auto-activate venv if it exists and we're not already in one
+    if not args.no_venv_check and not args.venv:
+        venv_path = Path("venv")
+        if venv_path.exists() and sys.prefix == sys.base_prefix:
+            # Venv exists but we're not in it - re-execute in venv
+            print_info("Virtual environment detected, re-executing in venv...")
+
+            if platform.system() == "Windows":
+                venv_python = venv_path / "Scripts" / "python.exe"
+            else:
+                venv_python = venv_path / "bin" / "python3"
+
+            if venv_python.exists():
+                # Re-execute this script with venv python
+                import subprocess
+                result = subprocess.run([str(venv_python)] + sys.argv, check=False)
+                sys.exit(result.returncode)
+            else:
+                print_warning("Virtual environment exists but python executable not found")
 
     # Print banner
     print(f"""

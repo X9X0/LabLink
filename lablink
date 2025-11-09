@@ -1,0 +1,91 @@
+#!/bin/bash
+# LabLink Command Wrapper
+# Automatically activates virtual environment and runs commands
+#
+# Usage:
+#   ./lablink setup          - Run setup.py
+#   ./lablink server         - Start server
+#   ./lablink demo           - Run demo
+#   ./lablink <script>       - Run any Python script
+#   ./lablink shell          - Open shell in venv
+
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check if virtual environment exists
+if [ ! -d "venv" ]; then
+    echo -e "${YELLOW}Virtual environment not found.${NC}"
+    echo -e "${CYAN}Creating virtual environment...${NC}"
+    python3 -m venv venv
+    echo -e "${GREEN}Virtual environment created.${NC}"
+    echo -e "${CYAN}Activating and running setup...${NC}"
+    source venv/bin/activate
+    python3 setup.py --auto
+    exit 0
+fi
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Parse command
+if [ $# -eq 0 ]; then
+    echo "LabLink Command Wrapper"
+    echo ""
+    echo "Usage:"
+    echo "  ./lablink setup          - Run setup.py"
+    echo "  ./lablink server         - Start server"
+    echo "  ./lablink demo           - Run demo application"
+    echo "  ./lablink test           - Run tests"
+    echo "  ./lablink shell          - Open interactive shell in venv"
+    echo "  ./lablink <script.py>    - Run any Python script in venv"
+    echo ""
+    echo "Virtual environment: ${GREEN}ACTIVE${NC}"
+    exit 0
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    setup)
+        echo -e "${CYAN}Running setup...${NC}"
+        python3 setup.py "$@"
+        ;;
+    server)
+        echo -e "${CYAN}Starting LabLink server...${NC}"
+        cd server
+        python3 main.py "$@"
+        ;;
+    demo)
+        echo -e "${CYAN}Starting demo application...${NC}"
+        python3 demo_acquisition_full.py "$@"
+        ;;
+    test)
+        echo -e "${CYAN}Running tests...${NC}"
+        pytest "$@"
+        ;;
+    shell)
+        echo -e "${GREEN}Opening shell in virtual environment...${NC}"
+        echo -e "${CYAN}Type 'exit' to leave the shell${NC}"
+        exec $SHELL
+        ;;
+    *.py)
+        echo -e "${CYAN}Running $COMMAND...${NC}"
+        python3 "$COMMAND" "$@"
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $COMMAND${NC}"
+        echo "Run './lablink' without arguments for usage"
+        exit 1
+        ;;
+esac
