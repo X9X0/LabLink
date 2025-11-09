@@ -177,6 +177,16 @@ def install_pip(auto: bool = False) -> bool:
 
 def check_externally_managed() -> bool:
     """Check if this is an externally-managed Python environment (PEP 668)."""
+    # If we're in a virtual environment, we're NOT externally managed
+    # Virtual environments have their own isolated pip
+    if sys.prefix != sys.base_prefix:
+        # Running in a virtual environment
+        return False
+
+    # Also check VIRTUAL_ENV environment variable
+    if os.environ.get('VIRTUAL_ENV'):
+        return False
+
     # Check for EXTERNALLY-MANAGED file (Debian/Ubuntu)
     import sysconfig
     stdlib = sysconfig.get_path('stdlib')
