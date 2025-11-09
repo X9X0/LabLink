@@ -18,7 +18,7 @@ from acquisition import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/acquisition", tags=["Data Acquisition"])
+router = APIRouter(tags=["Data Acquisition"])
 
 
 # ============================================================================
