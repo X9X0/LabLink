@@ -1,15 +1,18 @@
 """Enhanced data acquisition panel for LabLink GUI."""
 
 import logging
-from typing import Optional, Dict, List
+import asyncio
+import time
+from typing import Optional, Dict, List, Set
+from collections import deque
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
     QPushButton, QListWidget, QListWidgetItem, QMessageBox, QComboBox,
     QSpinBox, QDoubleSpinBox, QFormLayout, QCheckBox, QLineEdit,
     QTabWidget, QTextEdit, QSplitter, QTableWidget, QTableWidgetItem,
-    QHeaderView
+    QHeaderView, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QEvent, QObject
 
 from api.client import LabLinkClient
 from models import (
@@ -24,6 +27,100 @@ except ImportError:
     HAS_PLOT_WIDGET = False
 
 logger = logging.getLogger(__name__)
+
+
+class AcquisitionWebSocketSignals(QObject):
+    """Qt signals for WebSocket callbacks (thread-safe)."""
+
+    acquisition_data_received = pyqtSignal(str, dict)  # acquisition_id, data_point
+    stream_started = pyqtSignal(str)  # acquisition_id
+    stream_stopped = pyqtSignal(str)  # acquisition_id
+
+
+class CircularBuffer:
+    """Circular buffer for efficient plot data management.
+
+    Maintains a fixed-size rolling buffer of data points for real-time plotting.
+    Automatically discards oldest data when buffer is full.
+    """
+
+    def __init__(self, max_size: int = 1000):
+        """Initialize circular buffer.
+
+        Args:
+            max_size: Maximum number of data points to store
+        """
+        self.max_size = max_size
+        self.data: Dict[str, deque] = {}  # channel -> deque of values
+        self.timestamps: deque = deque(maxlen=max_size)
+        self._sample_count = 0
+
+    def add_point(self, timestamp: float, values: Dict[str, float]):
+        """Add data point to buffer.
+
+        Args:
+            timestamp: Timestamp of data point
+            values: Dictionary mapping channel names to values
+        """
+        self.timestamps.append(timestamp)
+
+        for channel, value in values.items():
+            if channel not in self.data:
+                # Initialize channel buffer with max size
+                self.data[channel] = deque(maxlen=self.max_size)
+            self.data[channel].append(value)
+
+        self._sample_count += 1
+
+    def get_channel_data(self, channel: str) -> tuple[List[float], List[float]]:
+        """Get timestamps and values for a specific channel.
+
+        Args:
+            channel: Channel name
+
+        Returns:
+            Tuple of (timestamps, values) lists
+        """
+        if channel not in self.data:
+            return [], []
+
+        return list(self.timestamps), list(self.data[channel])
+
+    def get_all_channels(self) -> List[str]:
+        """Get list of all channel names in buffer.
+
+        Returns:
+            List of channel names
+        """
+        return list(self.data.keys())
+
+    def clear(self):
+        """Clear all data from buffer."""
+        self.data.clear()
+        self.timestamps.clear()
+        self._sample_count = 0
+
+    def get_sample_count(self) -> int:
+        """Get total number of samples added (including discarded).
+
+        Returns:
+            Total sample count
+        """
+        return self._sample_count
+
+
+class AutoCloseComboBox(QComboBox):
+    """Custom QComboBox that closes automatically after selection.
+
+    Note: Due to PyQt6/platform limitations, this uses standard QComboBox behavior.
+    The popup will close when you click outside of it.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Use standard QComboBox - the auto-close behavior appears to be
+        # a platform-specific Qt issue that cannot be reliably fixed across
+        # all environments without breaking mouse hover functionality
 
 
 class AcquisitionPanel(QWidget):
@@ -41,12 +138,23 @@ class AcquisitionPanel(QWidget):
         self.active_sessions: Dict[str, Dict] = {}  # acquisition_id -> session info
         self.current_acquisition_id: Optional[str] = None
 
+        # WebSocket streaming state
+        self.ws_signals = AcquisitionWebSocketSignals()
+        self.streaming_acquisitions: Set[str] = set()  # Track acquisitions with active streams
+        self.plot_buffers: Dict[str, CircularBuffer] = {}  # acquisition_id -> CircularBuffer
+
+        # Streaming quality metrics
+        self.stream_start_time: Optional[float] = None
+        self.stream_data_count: int = 0
+        self.last_data_time: Optional[float] = None
+
         # Auto-refresh timer
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self._auto_refresh)
         self.refresh_timer.setInterval(2000)  # 2 seconds
 
         self._setup_ui()
+        self._connect_ws_signals()
 
     def _setup_ui(self):
         """Set up user interface."""
@@ -102,7 +210,7 @@ class AcquisitionPanel(QWidget):
         layout = QFormLayout()
 
         # Equipment selection
-        self.equipment_combo = QComboBox()
+        self.equipment_combo = AutoCloseComboBox()
         layout.addRow("Equipment:", self.equipment_combo)
 
         # Session name
@@ -111,7 +219,7 @@ class AcquisitionPanel(QWidget):
         layout.addRow("Name:", self.name_edit)
 
         # Acquisition mode
-        self.mode_combo = QComboBox()
+        self.mode_combo = AutoCloseComboBox()
         self.mode_combo.addItems([mode.value for mode in AcquisitionMode])
         self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
         layout.addRow("Mode:", self.mode_combo)
@@ -145,7 +253,7 @@ class AcquisitionPanel(QWidget):
         layout.addRow("Channels:", self.channels_edit)
 
         # Trigger type
-        self.trigger_type_combo = QComboBox()
+        self.trigger_type_combo = AutoCloseComboBox()
         self.trigger_type_combo.addItems([t.value for t in TriggerType])
         self.trigger_type_combo.currentTextChanged.connect(self._on_trigger_changed)
         layout.addRow("Trigger Type:", self.trigger_type_combo)
@@ -159,7 +267,7 @@ class AcquisitionPanel(QWidget):
         layout.addRow("Trigger Level:", self.trigger_level_spin)
 
         # Trigger edge
-        self.trigger_edge_combo = QComboBox()
+        self.trigger_edge_combo = AutoCloseComboBox()
         self.trigger_edge_combo.addItems([e.value for e in TriggerEdge])
         self.trigger_edge_combo.setEnabled(False)
         layout.addRow("Trigger Edge:", self.trigger_edge_combo)
@@ -181,7 +289,7 @@ class AcquisitionPanel(QWidget):
         layout.addRow("", self.auto_export_check)
 
         # Export format
-        self.export_format_combo = QComboBox()
+        self.export_format_combo = AutoCloseComboBox()
         self.export_format_combo.addItems([f.value for f in ExportFormat])
         self.export_format_combo.setEnabled(False)
         layout.addRow("Export Format:", self.export_format_combo)
@@ -410,11 +518,174 @@ Samples Collected: {session.get('sample_count', 0)}
     def set_client(self, client: LabLinkClient):
         """Set API client."""
         self.client = client
+        self._register_ws_handlers()
         self.refresh_equipment()
         self.refresh_sessions()
 
         if self.auto_refresh_check.isChecked():
             self.refresh_timer.start()
+
+    def _connect_ws_signals(self):
+        """Connect WebSocket signals to slot handlers."""
+        self.ws_signals.acquisition_data_received.connect(self._on_acquisition_data)
+        self.ws_signals.stream_started.connect(self._on_stream_started)
+        self.ws_signals.stream_stopped.connect(self._on_stream_stopped)
+
+    def _register_ws_handlers(self):
+        """Register WebSocket message handlers with the client."""
+        if not self.client or not self.client.ws_manager:
+            return
+
+        try:
+            self.client.ws_manager.on_acquisition_data(self._ws_acquisition_data_callback)
+            logger.info("Registered WebSocket acquisition handlers for acquisition panel")
+        except Exception as e:
+            logger.warning(f"Could not register WebSocket handlers: {e}")
+
+    def _ws_acquisition_data_callback(self, message: Dict):
+        """WebSocket callback for acquisition data (runs in WebSocket thread).
+
+        This emits a Qt signal for thread-safe GUI updates.
+
+        Args:
+            message: WebSocket message with acquisition data
+        """
+        acquisition_id = message.get("acquisition_id")
+        data = message.get("data", {})
+
+        if acquisition_id:
+            # Emit signal to update GUI thread
+            self.ws_signals.acquisition_data_received.emit(acquisition_id, data)
+
+    def _on_acquisition_data(self, acquisition_id: str, data: Dict):
+        """Handle acquisition data in GUI thread (thread-safe).
+
+        Args:
+            acquisition_id: ID of acquisition sending data
+            data: Data point dictionary with timestamp and channel values
+        """
+        # Update streaming quality metrics
+        current_time = time.time()
+        self.stream_data_count += 1
+        self.last_data_time = current_time
+
+        # Only update if this is the selected acquisition
+        if self.current_acquisition_id and self.current_acquisition_id == acquisition_id:
+            # Initialize buffer if needed
+            if acquisition_id not in self.plot_buffers:
+                self.plot_buffers[acquisition_id] = CircularBuffer(max_size=1000)
+
+            # Add data point to circular buffer
+            timestamp = data.get("timestamp", current_time)
+            values = data.get("values", {})
+
+            self.plot_buffers[acquisition_id].add_point(timestamp, values)
+
+            # Update plot with buffered data
+            self._update_plot(acquisition_id)
+
+    def _on_stream_started(self, acquisition_id: str):
+        """Handle stream started notification.
+
+        Args:
+            acquisition_id: ID of acquisition with started stream
+        """
+        self.streaming_acquisitions.add(acquisition_id)
+        self.stream_start_time = time.time()
+        self.stream_data_count = 0
+        self.last_data_time = None
+        logger.info(f"Stream started for acquisition {acquisition_id}")
+
+    def _on_stream_stopped(self, acquisition_id: str):
+        """Handle stream stopped notification.
+
+        Args:
+            acquisition_id: ID of acquisition with stopped stream
+        """
+        self.streaming_acquisitions.discard(acquisition_id)
+        logger.info(f"Stream stopped for acquisition {acquisition_id}")
+
+    def _update_plot(self, acquisition_id: str):
+        """Update plot with data from circular buffer.
+
+        Args:
+            acquisition_id: ID of acquisition to plot
+        """
+        if not HAS_PLOT_WIDGET:
+            return
+
+        buffer = self.plot_buffers.get(acquisition_id)
+        if not buffer:
+            return
+
+        # Get all channels from buffer
+        channels = buffer.get_all_channels()
+
+        if not channels:
+            return
+
+        # Clear existing plots
+        self.plot_widget.clear()
+
+        # Plot each channel
+        for channel in channels:
+            timestamps, values = buffer.get_channel_data(channel)
+            if timestamps and values:
+                self.plot_widget.addCurve(timestamps, values, label=channel)
+
+        # Update plot labels
+        self.plot_widget.setTitle(f"Acquisition {acquisition_id[:8]}")
+
+        # Update quality indicator
+        if self.stream_start_time:
+            elapsed = time.time() - self.stream_start_time
+            data_rate = self.stream_data_count / elapsed if elapsed > 0 else 0
+            latency = time.time() - self.last_data_time if self.last_data_time else 0
+
+            quality_text = f"Data rate: {data_rate:.1f} Hz | Latency: {latency*1000:.0f} ms | Samples: {buffer.get_sample_count()}"
+            self.plot_widget.setFooter(quality_text)
+
+    async def _start_acquisition_stream(self, acquisition_id: str):
+        """Start WebSocket stream for acquisition (async).
+
+        Args:
+            acquisition_id: ID of acquisition to stream from
+        """
+        if not self.client or not self.client.ws_manager or not self.client.ws_manager.connected:
+            logger.debug("WebSocket not available - using polling fallback")
+            return
+
+        try:
+            logger.info(f"Starting acquisition stream for {acquisition_id}")
+            await self.client.start_acquisition_stream(
+                acquisition_id=acquisition_id,
+                stream_type="data",
+                interval_ms=100  # 10 Hz update rate
+            )
+            self.ws_signals.stream_started.emit(acquisition_id)
+            logger.info(f"Stream started successfully for {acquisition_id}")
+
+        except Exception as e:
+            logger.warning(f"Could not start acquisition stream: {e}")
+            # Fall back to polling - no error shown to user
+
+    async def _stop_acquisition_stream(self, acquisition_id: str):
+        """Stop WebSocket stream for acquisition (async).
+
+        Args:
+            acquisition_id: ID of acquisition to stop streaming
+        """
+        if not self.client or not self.client.ws_manager:
+            return
+
+        try:
+            logger.info(f"Stopping acquisition stream for {acquisition_id}")
+            await self.client.stop_acquisition_stream(acquisition_id)
+            self.ws_signals.stream_stopped.emit(acquisition_id)
+            logger.info(f"Stream stopped for {acquisition_id}")
+
+        except Exception as e:
+            logger.warning(f"Could not stop acquisition stream: {e}")
 
     def refresh_equipment(self):
         """Refresh equipment list."""
@@ -527,6 +798,9 @@ Samples Collected: {session.get('sample_count', 0)}
                 QMessageBox.information(self, "Success", "Acquisition started")
                 self.acquisition_started.emit(self.current_acquisition_id)
                 self.refresh_sessions()
+
+                # Auto-start WebSocket streaming for started acquisition
+                asyncio.create_task(self._start_acquisition_stream(self.current_acquisition_id))
         except Exception as e:
             logger.error(f"Error starting acquisition: {e}")
             QMessageBox.critical(self, "Error", f"Failed to start:\n{str(e)}")
@@ -536,11 +810,17 @@ Samples Collected: {session.get('sample_count', 0)}
         if not self.current_acquisition_id:
             return
 
+        acquisition_id = self.current_acquisition_id
+
         try:
-            result = self.client.stop_acquisition(self.current_acquisition_id)
+            # Stop streaming first
+            if acquisition_id in self.streaming_acquisitions:
+                asyncio.create_task(self._stop_acquisition_stream(acquisition_id))
+
+            result = self.client.stop_acquisition(acquisition_id)
             if result.get("success"):
                 QMessageBox.information(self, "Success", "Acquisition stopped")
-                self.acquisition_stopped.emit(self.current_acquisition_id)
+                self.acquisition_stopped.emit(acquisition_id)
                 self.refresh_sessions()
         except Exception as e:
             logger.error(f"Error stopping acquisition: {e}")

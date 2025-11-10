@@ -1,6 +1,7 @@
 """Main window for LabLink GUI client."""
 
 import logging
+import asyncio
 from typing import Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -9,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
+import qasync
 
 from api.client import LabLinkClient
 from ui.connection_dialog import ConnectionDialog
@@ -17,6 +19,7 @@ from ui.acquisition_panel import AcquisitionPanel
 from ui.alarm_panel import AlarmPanel
 from ui.scheduler_panel import SchedulerPanel
 from ui.diagnostics_panel import DiagnosticsPanel
+from ui.sync_panel import SyncPanel
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,7 @@ class MainWindow(QMainWindow):
 
         self.client: Optional[LabLinkClient] = None
         self.connection_dialog: Optional[ConnectionDialog] = None
+        self.ws_connected = False
 
         self._setup_ui()
         self._setup_menus()
@@ -74,6 +78,10 @@ class MainWindow(QMainWindow):
         # Diagnostics panel
         self.diagnostics_panel = DiagnosticsPanel()
         self.tab_widget.addTab(self.diagnostics_panel, "Diagnostics")
+
+        # Synchronization panel
+        self.sync_panel = SyncPanel()
+        self.tab_widget.addTab(self.sync_panel, "Synchronization")
 
         # Connect signals
         self.connection_changed.connect(self._on_connection_changed)
@@ -188,6 +196,7 @@ class MainWindow(QMainWindow):
                 self.alarm_panel.set_client(self.client)
                 self.scheduler_panel.set_client(self.client)
                 self.diagnostics_panel.set_client(self.client)
+                self.sync_panel.set_client(self.client)
 
                 # Emit signal
                 self.connection_changed.emit(True)
@@ -197,6 +206,9 @@ class MainWindow(QMainWindow):
 
                 # Initial data load
                 self.refresh_all()
+
+                # Attempt WebSocket connection (optional, non-blocking)
+                asyncio.create_task(self._connect_websocket())
 
             else:
                 QMessageBox.warning(
@@ -211,12 +223,43 @@ class MainWindow(QMainWindow):
                 f"Error connecting to server: {str(e)}"
             )
 
+    @qasync.asyncSlot()
+    async def _connect_websocket(self):
+        """Connect WebSocket in background (async).
+
+        This method is called after REST API connection succeeds.
+        WebSocket connection is optional - REST API will continue to work if it fails.
+        """
+        if not self.client or not self.client.ws_manager:
+            logger.warning("Cannot connect WebSocket: client or ws_manager not available")
+            return
+
+        try:
+            logger.info("Attempting WebSocket connection...")
+            success = await self.client.connect_websocket()
+
+            if success:
+                self.ws_connected = True
+                self.status_bar.showMessage("WebSocket connected - real-time updates enabled", 3000)
+                logger.info("WebSocket connected successfully")
+            else:
+                self.ws_connected = False
+                logger.warning("WebSocket connection failed - using polling fallback")
+                self.status_bar.showMessage("WebSocket unavailable - using polling mode", 3000)
+
+        except Exception as e:
+            self.ws_connected = False
+            logger.error(f"WebSocket connection error: {e}")
+            # Don't show error to user - WebSocket is optional
+
     def disconnect_from_server(self):
         """Disconnect from server."""
         if self.client:
             self.client.disconnect()
             self.client = None
 
+        # Reset connection states
+        self.ws_connected = False
         self.connection_label.setText("Not Connected")
         self.server_info_label.setText("")
         self.status_bar.showMessage("Disconnected", 3000)
@@ -250,6 +293,7 @@ class MainWindow(QMainWindow):
             self.alarm_panel.refresh()
             self.scheduler_panel.refresh()
             self.diagnostics_panel.refresh()
+            self.sync_panel.refresh()
 
         except Exception as e:
             logger.error(f"Error refreshing data: {e}")

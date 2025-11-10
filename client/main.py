@@ -3,6 +3,7 @@
 
 import sys
 import logging
+import asyncio
 from pathlib import Path
 
 # Add client directory to path
@@ -12,6 +13,7 @@ sys.path.insert(0, str(client_dir))
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
+import qasync
 
 from ui.main_window import MainWindow
 
@@ -34,7 +36,7 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    logger.info("Starting LabLink GUI Client v0.10.0")
+    logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support")
 
     # Enable high DPI support
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -50,6 +52,10 @@ def main():
     # Set application style (optional)
     app.setStyle("Fusion")
 
+    # Create qasync event loop for asyncio integration
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
+
     # Create and show main window
     window = MainWindow()
     window.show()
@@ -57,8 +63,9 @@ def main():
     # Show connection dialog on startup
     window.show_connection_dialog()
 
-    # Run application
-    sys.exit(app.exec())
+    # Run application with qasync event loop
+    with loop:
+        sys.exit(loop.run_forever())
 
 
 if __name__ == "__main__":

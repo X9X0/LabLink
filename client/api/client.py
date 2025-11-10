@@ -921,6 +921,51 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def get_alarm_history(
+        self,
+        limit: Optional[int] = None,
+        severity: Optional[str] = None,
+        equipment_id: Optional[str] = None,
+        acknowledged: Optional[bool] = None
+    ) -> List[Dict[str, Any]]:
+        """Get alarm event history.
+
+        Args:
+            limit: Maximum number of events to return
+            severity: Filter by severity (critical, error, warning, info)
+            equipment_id: Filter by equipment ID
+            acknowledged: Filter by acknowledged status
+
+        Returns:
+            List of alarm events
+        """
+        params = {}
+        if limit is not None:
+            params["limit"] = limit
+        if severity:
+            params["severity"] = severity
+        if equipment_id:
+            params["equipment_id"] = equipment_id
+        if acknowledged is not None:
+            params["acknowledged"] = acknowledged
+
+        response = self._session.get(
+            f"{self.api_base_url}/alarms/events",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()["events"]
+
+    def get_alarm_statistics(self) -> Dict[str, Any]:
+        """Get alarm statistics.
+
+        Returns:
+            Alarm statistics
+        """
+        response = self._session.get(f"{self.api_base_url}/alarms/statistics")
+        response.raise_for_status()
+        return response.json()["statistics"]
+
     # ==================== Scheduler API ====================
 
     def list_jobs(self, enabled: Optional[bool] = None) -> List[Dict[str, Any]]:
@@ -975,6 +1020,45 @@ class LabLinkClient:
         response = self._session.get(f"{self.api_base_url}/scheduler/statistics")
         response.raise_for_status()
         return response.json()["statistics"]
+
+    def delete_job(self, job_id: str) -> Dict[str, Any]:
+        """Delete scheduled job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Response dictionary
+        """
+        response = self._session.delete(f"{self.api_base_url}/scheduler/jobs/{job_id}")
+        response.raise_for_status()
+        return response.json()
+
+    def pause_job(self, job_id: str) -> Dict[str, Any]:
+        """Pause scheduled job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Response dictionary
+        """
+        response = self._session.post(f"{self.api_base_url}/scheduler/jobs/{job_id}/pause")
+        response.raise_for_status()
+        return response.json()
+
+    def resume_job(self, job_id: str) -> Dict[str, Any]:
+        """Resume paused job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Response dictionary
+        """
+        response = self._session.post(f"{self.api_base_url}/scheduler/jobs/{job_id}/resume")
+        response.raise_for_status()
+        return response.json()
 
     # ==================== Diagnostics API ====================
 

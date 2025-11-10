@@ -1,19 +1,28 @@
 """Equipment control panel for LabLink GUI."""
 
 import logging
-from typing import Optional, List
+import asyncio
+from typing import Optional, List, Dict, Set
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QListWidget, QListWidgetItem, QGroupBox, QLabel,
     QPushButton, QMessageBox, QGridLayout, QLineEdit,
     QTextEdit
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
 
 from api.client import LabLinkClient
 from models.equipment import Equipment, ConnectionStatus
 
 logger = logging.getLogger(__name__)
+
+
+class WebSocketSignals(QObject):
+    """Qt signals for WebSocket callbacks (thread-safe)."""
+
+    stream_data_received = pyqtSignal(str, dict)  # equipment_id, data
+    stream_started = pyqtSignal(str)  # equipment_id
+    stream_stopped = pyqtSignal(str)  # equipment_id
 
 
 class EquipmentPanel(QWidget):
@@ -29,7 +38,12 @@ class EquipmentPanel(QWidget):
         self.equipment_list: List[Equipment] = []
         self.selected_equipment: Optional[Equipment] = None
 
+        # WebSocket streaming state
+        self.ws_signals = WebSocketSignals()
+        self.streaming_equipment: Set[str] = set()  # Track equipment with active streams
+
         self._setup_ui()
+        self._connect_ws_signals()
 
     def _setup_ui(self):
         """Set up user interface."""
@@ -184,6 +198,73 @@ class EquipmentPanel(QWidget):
             client: LabLink API client
         """
         self.client = client
+        self._register_ws_handlers()
+
+    def _connect_ws_signals(self):
+        """Connect WebSocket signals to slot handlers."""
+        self.ws_signals.stream_data_received.connect(self._on_stream_data)
+        self.ws_signals.stream_started.connect(self._on_stream_started)
+        self.ws_signals.stream_stopped.connect(self._on_stream_stopped)
+
+    def _register_ws_handlers(self):
+        """Register WebSocket message handlers with the client."""
+        if not self.client or not self.client.ws_manager:
+            return
+
+        # Register handlers with WebSocket manager
+        try:
+            self.client.ws_manager.on_stream_data(self._ws_stream_data_callback)
+            logger.info("Registered WebSocket stream handlers for equipment panel")
+        except Exception as e:
+            logger.warning(f"Could not register WebSocket handlers: {e}")
+
+    def _ws_stream_data_callback(self, message: Dict):
+        """WebSocket callback for stream data (runs in WebSocket thread).
+
+        This emits a Qt signal for thread-safe GUI updates.
+
+        Args:
+            message: WebSocket message with stream data
+        """
+        equipment_id = message.get("equipment_id")
+        data = message.get("data", {})
+
+        if equipment_id:
+            # Emit signal to update GUI thread
+            self.ws_signals.stream_data_received.emit(equipment_id, data)
+
+    def _on_stream_data(self, equipment_id: str, data: Dict):
+        """Handle stream data in GUI thread (thread-safe).
+
+        Args:
+            equipment_id: ID of equipment sending data
+            data: Stream data dictionary
+        """
+        # Only update if this is the selected equipment
+        if self.selected_equipment and self.selected_equipment.equipment_id == equipment_id:
+            # Update readings display
+            self.readings_display.setPlainText(self._format_readings(data))
+
+            # Update equipment object
+            self.selected_equipment.current_readings = data
+
+    def _on_stream_started(self, equipment_id: str):
+        """Handle stream started notification.
+
+        Args:
+            equipment_id: ID of equipment with started stream
+        """
+        self.streaming_equipment.add(equipment_id)
+        logger.info(f"Stream started for equipment {equipment_id}")
+
+    def _on_stream_stopped(self, equipment_id: str):
+        """Handle stream stopped notification.
+
+        Args:
+            equipment_id: ID of equipment with stopped stream
+        """
+        self.streaming_equipment.discard(equipment_id)
+        logger.info(f"Stream stopped for equipment {equipment_id}")
 
     def refresh(self):
         """Refresh equipment list."""
@@ -268,6 +349,48 @@ class EquipmentPanel(QWidget):
             lines.append(f"{key}: {value}")
         return "\n".join(lines)
 
+    async def _start_equipment_stream(self, equipment_id: str):
+        """Start WebSocket stream for equipment (async).
+
+        Args:
+            equipment_id: ID of equipment to stream from
+        """
+        if not self.client or not self.client.ws_manager or not self.client.ws_manager.connected:
+            logger.debug("WebSocket not available - using polling fallback")
+            return
+
+        try:
+            logger.info(f"Starting equipment stream for {equipment_id}")
+            await self.client.start_equipment_stream(
+                equipment_id=equipment_id,
+                stream_type="readings",
+                interval_ms=500  # 2 Hz update rate
+            )
+            self.ws_signals.stream_started.emit(equipment_id)
+            logger.info(f"Stream started successfully for {equipment_id}")
+
+        except Exception as e:
+            logger.warning(f"Could not start equipment stream: {e}")
+            # Fall back to polling - no error shown to user
+
+    async def _stop_equipment_stream(self, equipment_id: str):
+        """Stop WebSocket stream for equipment (async).
+
+        Args:
+            equipment_id: ID of equipment to stop streaming
+        """
+        if not self.client or not self.client.ws_manager:
+            return
+
+        try:
+            logger.info(f"Stopping equipment stream for {equipment_id}")
+            await self.client.stop_equipment_stream(equipment_id)
+            self.ws_signals.stream_stopped.emit(equipment_id)
+            logger.info(f"Stream stopped for {equipment_id}")
+
+        except Exception as e:
+            logger.warning(f"Could not stop equipment stream: {e}")
+
     def discover_equipment(self):
         """Discover available equipment."""
         if not self.client:
@@ -305,6 +428,10 @@ class EquipmentPanel(QWidget):
                 QMessageBox.information(self, "Success", "Equipment connected successfully")
                 self.refresh()
                 self._on_equipment_selected()  # Refresh details
+
+                # Auto-start WebSocket streaming for connected equipment
+                equipment_id = self.selected_equipment.equipment_id
+                asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
                 QMessageBox.warning(self, "Failed", result.get("message", "Connection failed"))
 
@@ -317,8 +444,14 @@ class EquipmentPanel(QWidget):
         if not self.selected_equipment or not self.client:
             return
 
+        equipment_id = self.selected_equipment.equipment_id
+
         try:
-            result = self.client.disconnect_equipment(self.selected_equipment.equipment_id)
+            # Stop streaming first
+            if equipment_id in self.streaming_equipment:
+                asyncio.create_task(self._stop_equipment_stream(equipment_id))
+
+            result = self.client.disconnect_equipment(equipment_id)
 
             if result.get("success"):
                 QMessageBox.information(self, "Success", "Equipment disconnected successfully")
