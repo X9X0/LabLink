@@ -292,20 +292,6 @@ async def list_active_alarms():
     }
 
 
-@router.get("/alarms/events/{event_id}", summary="Get alarm event")
-async def get_alarm_event(event_id: str):
-    """Get alarm event by ID."""
-    event = alarm_manager.get_event(event_id)
-
-    if event is None:
-        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
-
-    return {
-        "success": True,
-        "event": event.dict()
-    }
-
-
 @router.get("/alarms/events", summary="List alarm events")
 async def list_alarm_events(
     state: Optional[str] = None,
@@ -337,6 +323,20 @@ async def list_alarm_events(
     except Exception as e:
         logger.error(f"Error listing events: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list events: {str(e)}")
+
+
+@router.get("/alarms/events/{event_id}", summary="Get alarm event")
+async def get_alarm_event(event_id: str):
+    """Get alarm event by ID."""
+    event = alarm_manager.get_event(event_id)
+
+    if event is None:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+
+    return {
+        "success": True,
+        "event": event.dict()
+    }
 
 
 @router.post("/alarms/events/acknowledge", summary="Acknowledge alarm")
