@@ -23,6 +23,8 @@ from ui.diagnostics_panel import DiagnosticsPanel
 from ui.sync_panel import SyncPanel
 from ui.ssh_deploy_wizard import SSHDeployWizard
 from ui.server_selector import ServerSelector
+from ui.sd_card_writer import SDCardWriter
+from ui.pi_image_builder import PiImageBuilderWizard
 from utils.token_storage import get_token_storage
 from utils.server_manager import get_server_manager
 
@@ -149,6 +151,14 @@ class MainWindow(QMainWindow):
         deploy_action.triggered.connect(self.show_deploy_wizard)
         tools_menu.addAction(deploy_action)
 
+        build_image_action = QAction("&Build Raspberry Pi Image...", self)
+        build_image_action.triggered.connect(self.show_pi_image_builder)
+        tools_menu.addAction(build_image_action)
+
+        write_sd_action = QAction("Write &Raspberry Pi Image to SD Card...", self)
+        write_sd_action.triggered.connect(self.show_sd_card_writer)
+        tools_menu.addAction(write_sd_action)
+
         tools_menu.addSeparator()
 
         diagnostics_action = QAction("Run &Diagnostics", self)
@@ -208,6 +218,16 @@ class MainWindow(QMainWindow):
                 f"SSH deployment requires additional packages:\n{e}\n\n"
                 "Please install: pip install paramiko scp"
             )
+
+    def show_pi_image_builder(self):
+        """Show Raspberry Pi image builder wizard."""
+        wizard = PiImageBuilderWizard(self)
+        wizard.exec()
+
+    def show_sd_card_writer(self):
+        """Show SD card writer tool."""
+        writer = SDCardWriter(self)
+        writer.exec()
 
     def _on_server_connect_requested(self, server_name: str):
         """Handle server connect request from server selector.

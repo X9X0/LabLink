@@ -1,0 +1,33 @@
+# LabLink Web Dashboard Dockerfile
+# Nginx serving static files + reverse proxy to API
+
+FROM nginx:alpine
+
+LABEL maintainer="LabLink Project"
+LABEL description="LabLink Web Dashboard"
+LABEL version="0.27.0"
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy web dashboard files
+COPY server/web/ /usr/share/nginx/html/
+
+# Copy nginx configuration
+COPY docker/nginx/nginx.conf /etc/nginx/conf.d/lablink.conf
+
+# Create SSL directory
+RUN mkdir -p /etc/nginx/ssl
+
+# Expose ports
+EXPOSE 80 443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
