@@ -96,6 +96,15 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Automatic cleanup of old records (configurable retention period)
   - [x] Database health monitoring and statistics
   - [x] 15+ database API endpoints
+- [x] **Enhanced calibration management** (comprehensive calibration workflows and tracking)
+  - [x] Calibration procedures (step-by-step workflows with validation)
+  - [x] Procedure execution tracking (real-time progress, step completion, results)
+  - [x] Digital calibration certificates (ISO/IEC 17025, traceability, digital signatures)
+  - [x] Calibration corrections (linear, polynomial, lookup table, custom functions)
+  - [x] Automatic correction application to measurements
+  - [x] Reference standards management (calibration tracking, usage recording)
+  - [x] Standards due date monitoring and alerts
+  - [x] 20+ enhanced calibration API endpoints
 
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
@@ -187,7 +196,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v0.18.0
+**Current Version**: v0.19.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)
