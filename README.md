@@ -115,6 +115,17 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Multi-equipment coordination
   - [x] 15+ test automation API endpoints
 
+- [x] **Backup & restore system** (production-grade data protection and disaster recovery)
+  - [x] Automatic scheduled backups (configurable interval)
+  - [x] Multiple backup types (full, config, profiles, data, database, incremental)
+  - [x] Compression support (gzip, zip, tar.gz)
+  - [x] SHA-256 checksum verification
+  - [x] Selective restore (granular control over what to restore)
+  - [x] Pre-restore safety backups
+  - [x] Retention policy (automatic cleanup of old backups)
+  - [x] Backup statistics and monitoring
+  - [x] 10+ backup management API endpoints
+
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
   - [x] Data acquisition interface
@@ -205,7 +216,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v0.20.0
+**Current Version**: v0.21.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)

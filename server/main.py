@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.20.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.21.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -154,6 +154,30 @@ async def lifespan(app: FastAPI):
     test_executor = initialize_test_executor(equipment_manager, db_manager)
     logger.info("Test automation initialized - Sequences, sweeps, validation, templates enabled")
 
+    # Initialize backup manager (v0.21.0)
+    from backup import initialize_backup_manager, BackupConfig, CompressionType
+    logger.info("Initializing backup & restore system...")
+    backup_config = BackupConfig(
+        backup_dir=settings.backup_dir,
+        enable_auto_backup=settings.enable_auto_backup,
+        auto_backup_interval_hours=settings.auto_backup_interval_hours,
+        retention_days=settings.backup_retention_days,
+        max_backup_count=settings.max_backup_count,
+        include_config=settings.backup_include_config,
+        include_profiles=settings.backup_include_profiles,
+        include_states=settings.backup_include_states,
+        include_database=settings.backup_include_database,
+        include_acquisitions=settings.backup_include_acquisitions,
+        include_logs=settings.backup_include_logs,
+        include_calibration=settings.backup_include_calibration,
+        compression=CompressionType(settings.backup_compression),
+        verify_after_backup=settings.backup_verify_after_creation,
+        calculate_checksums=settings.backup_calculate_checksums,
+    )
+    backup_manager = initialize_backup_manager(backup_config)
+    await backup_manager.start_auto_backup()
+    logger.info("Backup system initialized - Auto-backup, verification, retention policy enabled")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -174,6 +198,12 @@ async def lifespan(app: FastAPI):
     from scheduler import scheduler_manager
     await scheduler_manager.shutdown()
 
+    # Stop backup auto-backup task
+    from backup import get_backup_manager
+    backup_manager = get_backup_manager()
+    await backup_manager.stop_auto_backup()
+    logger.info("Backup auto-backup task stopped")
+
     # Stop lock cleanup task
     from equipment.locks import lock_manager
     await lock_manager.stop_cleanup_task()
@@ -192,7 +222,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.20.0",
+    version="0.21.0",
     lifespan=lifespan,
 )
 
@@ -226,6 +256,7 @@ app.include_router(analysis_router, tags=["analysis"])
 app.include_router(database_router, tags=["database"])
 app.include_router(calibration_enhanced_router, tags=["calibration-enhanced"])
 app.include_router(testing_router, tags=["testing"])
+app.include_router(backup_router, tags=["backup"])
 
 
 @app.get("/")
@@ -233,7 +264,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.20.0",
+        "version": "0.21.0",
         "status": "running",
     }
 
