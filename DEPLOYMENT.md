@@ -7,6 +7,7 @@ Complete guide for deploying LabLink Server and Client with maximum simplicity.
 - [Quick Start](#-quick-start)
 - [Server Deployment](#️-server-deployment)
 - [Client Installation](#-client-installation)
+- [Raspberry Pi Imaging](#-raspberry-pi-imaging-gui-based-deployment)
 - [Docker Deployment](#-docker-deployment)
 - [Network Configuration](#-network-configuration)
 - [Production Best Practices](#-production-best-practices)
@@ -171,6 +172,178 @@ curl -fsSL https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.sh
 - ✅ Installs Python dependencies
 - ✅ Creates .desktop file and menu entry
 - ✅ Creates launch script
+
+---
+
+## 🥧 Raspberry Pi Imaging (GUI-Based Deployment)
+
+LabLink provides a complete GUI-based workflow for deploying to Raspberry Pi devices with zero command-line knowledge required.
+
+### Overview
+
+1. **Build Image** - Create a custom Raspberry Pi image with LabLink pre-installed
+2. **Write to SD Card** - Write the image to an SD card
+3. **Boot Raspberry Pi** - Insert SD card and power on
+4. **Auto-Configuration** - LabLink starts automatically on first boot
+
+### Building a Raspberry Pi Image
+
+**From the Client GUI:**
+
+1. Open LabLink Client
+2. Go to **Tools → Build Raspberry Pi Image...**
+3. Configure settings:
+   - **Hostname**: `lablink-pi` (default)
+   - **Admin Password**: Set a secure password (optional, default is `raspberry`)
+   - **Wi-Fi SSID**: Your network name (optional)
+   - **Wi-Fi Password**: Your network password (optional)
+   - **Enable SSH**: ✅ (recommended)
+   - **Auto-expand filesystem**: ✅ (recommended)
+4. Choose output location
+5. Click **Next** and wait for build to complete (10-30 minutes)
+
+**From Command Line (Linux only):**
+
+```bash
+# Run the build script
+./build-pi-image.sh
+
+# Or with custom settings
+OUTPUT_IMAGE=~/lablink-pi.img \
+PI_HOSTNAME=my-lablink \
+WIFI_SSID="MyNetwork" \
+WIFI_PASSWORD="MyPassword" \
+ADMIN_PASSWORD="secure123" \
+./build-pi-image.sh
+```
+
+**What the image includes:**
+- ✅ Raspberry Pi OS Lite (latest)
+- ✅ Docker and Docker Compose
+- ✅ LabLink Server (latest from GitHub)
+- ✅ Automatic first-boot configuration
+- ✅ systemd service for auto-start
+- ✅ Pre-configured networking (if Wi-Fi provided)
+- ✅ SSH enabled (if selected)
+- ✅ Filesystem auto-expansion
+
+### Writing Image to SD Card
+
+**From the Client GUI:**
+
+1. Insert SD card into your computer
+2. Open LabLink Client
+3. Go to **Tools → Write Raspberry Pi Image to SD Card...**
+4. Select the image file you built
+5. Select the target SD card device
+6. ⚠️ **WARNING**: Double-check the device - all data will be erased!
+7. Enable **Verify after writing** (recommended)
+8. Click **Write Image**
+9. Wait for write and verification to complete
+10. Safely eject the SD card
+
+**Platform-Specific Notes:**
+
+- **Linux**: Requires `sudo` privileges for writing to block devices
+- **macOS**: Requires admin password, uses `dd` command
+- **Windows**: Currently provides manual instructions (use [Etcher](https://www.balena.io/etcher/) or [Rufus](https://rufus.ie/))
+
+**Manual Write (Linux/macOS):**
+
+```bash
+# Linux
+sudo dd if=lablink-pi.img of=/dev/sdX bs=4M status=progress
+sudo sync
+
+# macOS
+sudo dd if=lablink-pi.img of=/dev/diskX bs=4m
+sudo diskutil eject /dev/diskX
+```
+
+Replace `/dev/sdX` (Linux) or `/dev/diskX` (macOS) with your actual SD card device.
+
+### First Boot
+
+1. **Insert SD card** into Raspberry Pi
+2. **Power on** Raspberry Pi
+3. **Wait for configuration** (2-5 minutes on first boot)
+   - Filesystem expansion
+   - Network connection (if Wi-Fi configured)
+   - Docker installation
+   - LabLink download and startup
+4. **Connect from Client**:
+   - Find Pi IP address: `sudo nmap -sn 192.168.1.0/24` or check your router
+   - In LabLink Client: **File → Connect to Server**
+   - Enter: `<raspberry-pi-ip>:8000` (API port)
+   - Enter: `<raspberry-pi-ip>:8001` (WebSocket port)
+
+### Accessing the Raspberry Pi
+
+**SSH Access (if enabled):**
+
+```bash
+ssh pi@<raspberry-pi-ip>
+# Default password: raspberry (or your custom password)
+```
+
+**LabLink Service Management:**
+
+```bash
+# View logs
+sudo journalctl -u lablink.service -f
+
+# Restart service
+sudo systemctl restart lablink.service
+
+# Stop service
+sudo systemctl stop lablink.service
+
+# Check status
+sudo systemctl status lablink.service
+```
+
+**Docker Management:**
+
+```bash
+cd /opt/lablink
+docker compose logs -f        # View logs
+docker compose restart        # Restart services
+docker compose down           # Stop services
+docker compose up -d          # Start services
+```
+
+### Updating LabLink on Raspberry Pi
+
+```bash
+ssh pi@<raspberry-pi-ip>
+cd /opt/lablink
+git pull
+docker compose down
+docker compose up -d --build
+```
+
+### Troubleshooting Pi Imaging
+
+**Build Issues:**
+
+- **Script not found**: Ensure `build-pi-image.sh` is in LabLink root directory
+- **Permission denied**: Script may need execute permission: `chmod +x build-pi-image.sh`
+- **Download failed**: Check internet connection
+- **Insufficient space**: Need at least 8 GB free disk space
+
+**Write Issues:**
+
+- **No drives detected**: Try refreshing drive list or use manual method
+- **Permission denied (Linux)**: Run client with sudo or add user to `disk` group
+- **Write failed**: Check SD card isn't write-protected
+- **Verification failed**: Try a different SD card, may be faulty
+
+**Boot Issues:**
+
+- **Pi doesn't boot**: Re-write image, ensure SD card is properly seated
+- **Can't find Pi on network**: Connect monitor and keyboard to check IP address
+- **LabLink not starting**: SSH in and check logs: `sudo journalctl -u lablink.service -f`
+- **Wi-Fi not connecting**: Re-configure with correct credentials or use Ethernet
 
 ---
 

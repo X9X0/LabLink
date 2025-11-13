@@ -354,7 +354,53 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Equipment profile management UI
 - ✅ 3,200+ lines of web interface code
 
-**Next Phase**: Advanced visualization & multi-server support
+**Phase 5 Complete**: One-Click Deployment & Raspberry Pi Imaging
+- ✅ **Real-time data visualization** (pyqtgraph integration)
+  - ✅ Real-time plotting widget with circular buffer
+  - ✅ Multi-channel support with auto-coloring
+  - ✅ Zoom, pan, and measurement tools
+
+- ✅ **SSH deployment wizard** (automated server deployment)
+  - ✅ Multi-step wizard interface
+  - ✅ Automatic file transfer via SCP
+  - ✅ Remote dependency installation
+  - ✅ Systemd service configuration
+  - ✅ Real-time deployment progress
+
+- ✅ **Multi-server connection management**
+  - ✅ Save and manage multiple server profiles
+  - ✅ Quick server switching from toolbar
+  - ✅ Connection history tracking
+  - ✅ Persistent JSON configuration
+
+- ✅ **One-click installation scripts**
+  - ✅ install-server.sh (Linux/macOS/Raspberry Pi)
+  - ✅ install-client.sh (Linux/macOS)
+  - ✅ install-client.ps1 (Windows PowerShell)
+  - ✅ Automatic Docker and dependency installation
+  - ✅ JWT secret generation
+  - ✅ Desktop shortcut creation
+
+- ✅ **Raspberry Pi image builder & SD card writer**
+  - ✅ GUI wizard for building custom Pi images
+  - ✅ Pre-configured images with LabLink pre-installed
+  - ✅ Wi-Fi and SSH configuration
+  - ✅ Auto-expanding filesystem
+  - ✅ First-boot automation script
+  - ✅ Cross-platform SD card writer (Linux/macOS/Windows)
+  - ✅ Image verification after writing
+  - ✅ build-pi-image.sh automation script
+  - ✅ Zero command-line knowledge required
+
+- ✅ **Docker Compose stack** (production-ready deployment)
+  - ✅ Profile-based service activation (default, caching, postgres, monitoring, full)
+  - ✅ Health checks and auto-restart
+  - ✅ Volume persistence
+  - ✅ Resource limits
+  - ✅ nginx reverse proxy
+  - ✅ Optional Redis, PostgreSQL, Grafana, Prometheus
+
+**Next Phase**: Advanced visualization & mobile app
 
 ## Contributing
 
