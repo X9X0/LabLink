@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.10.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.12.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -101,6 +101,19 @@ async def lifespan(app: FastAPI):
     await integrator.start_monitoring()
     logger.info("Equipment-alarm monitoring started")
 
+    # Initialize calibration manager (v0.12.0)
+    from equipment.calibration import initialize_calibration_manager
+    logger.info("Initializing calibration manager...")
+    cal_storage_path = settings.calibration_storage_path if hasattr(settings, 'calibration_storage_path') else "data/calibration"
+    calibration_manager = initialize_calibration_manager(cal_storage_path)
+    logger.info("Calibration manager initialized")
+
+    # Initialize error code database (v0.12.0)
+    from equipment.error_codes import initialize_error_code_db
+    logger.info("Initializing error code database...")
+    error_db = initialize_error_code_db()
+    logger.info("Error code database initialized")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -139,7 +152,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.10.0",
+    version="0.12.0",
     lifespan=lifespan,
 )
 
@@ -166,6 +179,7 @@ app.include_router(acquisition_router, prefix="/api/acquisition", tags=["acquisi
 app.include_router(alarms_router, prefix="/api", tags=["alarms"])
 app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
 app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
+app.include_router(calibration_router, prefix="/api", tags=["calibration"])
 
 
 @app.get("/")
@@ -173,7 +187,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.10.0",
+        "version": "0.12.0",
         "status": "running",
     }
 

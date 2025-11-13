@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 import psutil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -555,6 +555,240 @@ class DiagnosticsManager:
             server_uptime_seconds=uptime,
             equipment_health=equipment_health_status
         )
+
+    # ==================== Enhanced Diagnostics (v0.12.0) ====================
+
+    async def check_temperature(self, equipment_id: str) -> Optional[float]:
+        """
+        Check equipment temperature.
+
+        Args:
+            equipment_id: Equipment identifier
+
+        Returns:
+            Temperature in Celsius, or None if not supported
+        """
+        from equipment.manager import equipment_manager
+
+        equipment = equipment_manager.get_equipment(equipment_id)
+        if not equipment:
+            return None
+
+        try:
+            temperature = await equipment.get_temperature()
+            if temperature is not None:
+                logger.debug(f"Equipment {equipment_id} temperature: {temperature}°C")
+            return temperature
+        except Exception as e:
+            logger.error(f"Error checking temperature for {equipment_id}: {e}")
+            return None
+
+    async def check_error_codes(self, equipment_id: str) -> Dict[str, Any]:
+        """
+        Check equipment error codes and get interpretation.
+
+        Args:
+            equipment_id: Equipment identifier
+
+        Returns:
+            Dictionary with error information
+        """
+        from equipment.manager import equipment_manager
+        from equipment.error_codes import get_error_code_db
+
+        equipment = equipment_manager.get_equipment(equipment_id)
+        if not equipment:
+            return {"error": "Equipment not found"}
+
+        try:
+            error_code = await equipment.get_error_code()
+            error_message = await equipment.get_error_message()
+
+            if error_code is None:
+                return {
+                    "has_error": False,
+                    "error_code": None,
+                    "error_message": None
+                }
+
+            # Get detailed error information from database
+            error_db = get_error_code_db()
+            error_info = {}
+
+            if error_db:
+                # Determine vendor from equipment
+                vendor = "standard"
+                equipment_info = await equipment.get_info()
+                if "rigol" in equipment_info.manufacturer.lower():
+                    vendor = "rigol"
+                elif "bk" in equipment_info.manufacturer.lower():
+                    vendor = "bk_precision"
+
+                error_info = error_db.get_troubleshooting_info(error_code, vendor)
+
+            return {
+                "has_error": True,
+                "error_code": error_code,
+                "error_message": error_message,
+                "error_info": error_info
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking error codes for {equipment_id}: {e}")
+            return {"error": str(e)}
+
+    async def run_self_test(self, equipment_id: str) -> DiagnosticResult:
+        """
+        Run equipment built-in self-test.
+
+        Args:
+            equipment_id: Equipment identifier
+
+        Returns:
+            Diagnostic result
+        """
+        from equipment.manager import equipment_manager
+
+        equipment = equipment_manager.get_equipment(equipment_id)
+        started_at = datetime.now()
+
+        if not equipment:
+            return DiagnosticResult(
+                test_id="self_test",
+                equipment_id=equipment_id,
+                status=DiagnosticStatus.ERROR,
+                started_at=started_at,
+                completed_at=datetime.now(),
+                error="Equipment not found"
+            )
+
+        try:
+            start_time = time.time()
+            result = await equipment.run_self_test()
+            duration = time.time() - start_time
+
+            if result is None:
+                return DiagnosticResult(
+                    test_id="self_test",
+                    equipment_id=equipment_id,
+                    status=DiagnosticStatus.UNKNOWN,
+                    started_at=started_at,
+                    completed_at=datetime.now(),
+                    duration_seconds=duration,
+                    message="Self-test not supported by equipment"
+                )
+
+            passed = result.get("passed", False)
+            status = DiagnosticStatus.PASS if passed else DiagnosticStatus.FAIL
+
+            return DiagnosticResult(
+                test_id="self_test",
+                equipment_id=equipment_id,
+                status=status,
+                started_at=started_at,
+                completed_at=datetime.now(),
+                duration_seconds=duration,
+                message=f"Self-test {'passed' if passed else 'failed'}",
+                details=result
+            )
+
+        except Exception as e:
+            return DiagnosticResult(
+                test_id="self_test",
+                equipment_id=equipment_id,
+                status=DiagnosticStatus.ERROR,
+                started_at=started_at,
+                completed_at=datetime.now(),
+                error=str(e)
+            )
+
+    async def check_calibration_status(self, equipment_id: str) -> Dict[str, Any]:
+        """
+        Check equipment calibration status.
+
+        Args:
+            equipment_id: Equipment identifier
+
+        Returns:
+            Dictionary with calibration status information
+        """
+        from equipment.calibration import get_calibration_manager
+
+        cal_manager = get_calibration_manager()
+
+        if not cal_manager:
+            return {
+                "error": "Calibration manager not initialized",
+                "status": "unknown"
+            }
+
+        try:
+            status = await cal_manager.get_calibration_status(equipment_id)
+            latest_record = await cal_manager.get_latest_calibration(equipment_id)
+            days_until_due = await cal_manager.get_days_until_due(equipment_id)
+            is_current = await cal_manager.is_calibration_current(equipment_id)
+
+            return {
+                "status": status.value,
+                "is_current": is_current,
+                "days_until_due": days_until_due,
+                "last_calibration_date": latest_record.calibration_date if latest_record else None,
+                "next_due_date": latest_record.due_date if latest_record else None,
+                "last_result": latest_record.result.value if latest_record else None
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking calibration status for {equipment_id}: {e}")
+            return {"error": str(e), "status": "error"}
+
+    async def get_equipment_diagnostics(self, equipment_id: str) -> Dict[str, Any]:
+        """
+        Get comprehensive diagnostic information for equipment.
+
+        This includes temperature, error codes, calibration status, and operating hours.
+
+        Args:
+            equipment_id: Equipment identifier
+
+        Returns:
+            Dictionary with all diagnostic information
+        """
+        from equipment.manager import equipment_manager
+
+        equipment = equipment_manager.get_equipment(equipment_id)
+
+        if not equipment:
+            return {"error": "Equipment not found"}
+
+        # Gather all diagnostic data
+        diagnostics = {
+            "equipment_id": equipment_id,
+            "timestamp": datetime.now(),
+            "temperature_celsius": None,
+            "operating_hours": None,
+            "error_info": None,
+            "calibration_status": None
+        }
+
+        try:
+            # Temperature
+            diagnostics["temperature_celsius"] = await self.check_temperature(equipment_id)
+
+            # Operating hours
+            operating_hours = await equipment.get_operating_hours()
+            diagnostics["operating_hours"] = operating_hours
+
+            # Error codes
+            diagnostics["error_info"] = await self.check_error_codes(equipment_id)
+
+            # Calibration status
+            diagnostics["calibration_status"] = await self.check_calibration_status(equipment_id)
+
+        except Exception as e:
+            logger.error(f"Error gathering diagnostics for {equipment_id}: {e}")
+            diagnostics["error"] = str(e)
+
+        return diagnostics
 
     # ==================== Statistics Tracking ====================
 
