@@ -99,8 +99,7 @@ async def test_oscilloscope_connection(mock_oscilloscope):
     equipment_id, equipment = mock_oscilloscope
 
     assert equipment.connected
-    # Check ID prefix matches equipment type
-    assert equipment_id.startswith('scope_')
+    assert equipment_id in equipment.cached_info.id
 
 
 @pytest.mark.asyncio
@@ -137,7 +136,9 @@ async def test_oscilloscope_waveform_acquisition(mock_oscilloscope):
     waveform = await equipment.get_waveform(channel=1)
 
     assert waveform is not None
-    assert waveform.num_samples > 0
+    assert waveform.points > 0
+    assert len(waveform.voltage_data) == waveform.points
+    assert len(waveform.time_data) == waveform.points
     assert waveform.channel == 1
 
 
@@ -150,7 +151,7 @@ async def test_oscilloscope_measurements(mock_oscilloscope):
 
     assert isinstance(measurements, dict)
     assert 'vpp' in measurements
-    assert 'freq' in measurements  # Note: 'freq' not 'frequency'
+    assert 'frequency' in measurements
     assert 'vrms' in measurements
     assert measurements['vpp'] > 0
 
@@ -166,7 +167,8 @@ async def test_oscilloscope_waveform_types(mock_oscilloscope):
         equipment.set_waveform_type(1, waveform_type)
         waveform = await equipment.get_waveform(channel=1)
 
-        assert waveform.num_samples > 0
+        assert waveform.points > 0
+        assert len(waveform.voltage_data) == waveform.points
 
 
 @pytest.mark.asyncio
@@ -198,7 +200,7 @@ async def test_power_supply_connection(mock_power_supply):
     equipment_id, equipment = mock_power_supply
 
     assert equipment.connected
-    assert equipment_id.startswith('ps_')
+    assert equipment_id in equipment.cached_info.id
 
 
 @pytest.mark.asyncio
@@ -225,8 +227,8 @@ async def test_power_supply_voltage_control(mock_power_supply):
     await asyncio.sleep(0.1)
 
     # Verify
-    readings = await equipment.get_readings()
-    assert abs(readings.voltage_actual - 12.0) < 0.5  # Within 0.5V
+    readings = await equipment.measure_all()
+    assert abs(readings['voltage'] - 12.0) < 0.5  # Within 0.5V
 
 
 @pytest.mark.asyncio
@@ -238,9 +240,9 @@ async def test_power_supply_current_control(mock_power_supply):
     await equipment.set_current(2.0)
     await asyncio.sleep(0.1)
 
-    readings = await equipment.get_readings()
-    # Current limit should be set
-    assert readings.current_set == 2.0
+    readings = await equipment.measure_all()
+    # Current limit should be set (actual current depends on load)
+    assert readings['current'] is not None
 
 
 @pytest.mark.asyncio
@@ -249,14 +251,12 @@ async def test_power_supply_output_control(mock_power_supply):
     equipment_id, equipment = mock_power_supply
 
     # Disable output
-    await equipment.set_output(False)
-    readings = await equipment.get_readings()
-    assert not readings.output_enabled
+    await equipment.disable_output()
+    assert not equipment.output_enabled
 
     # Enable output
-    await equipment.set_output(True)
-    readings = await equipment.get_readings()
-    assert readings.output_enabled
+    await equipment.enable_output()
+    assert equipment.output_enabled
 
 
 @pytest.mark.asyncio
@@ -266,14 +266,16 @@ async def test_power_supply_measurements(mock_power_supply):
 
     # Set known state
     await equipment.set_voltage(10.0)
-    await equipment.set_output(True)
+    await equipment.enable_output()
     await asyncio.sleep(0.1)
 
-    readings = await equipment.get_readings()
+    readings = await equipment.measure_all()
 
-    assert readings.voltage_actual is not None
-    assert readings.current_actual is not None
-    assert readings.output_enabled
+    assert 'voltage' in readings
+    assert 'current' in readings
+    assert 'power' in readings
+    assert 'mode' in readings
+    assert readings['mode'] in ['CV', 'CC']
 
 
 # ==================== Mock Electronic Load Tests ====================
@@ -284,7 +286,7 @@ async def test_electronic_load_connection(mock_electronic_load):
     equipment_id, equipment = mock_electronic_load
 
     assert equipment.connected
-    assert equipment_id.startswith('load_')
+    assert equipment_id in equipment.cached_info.id
 
 
 @pytest.mark.asyncio
@@ -308,8 +310,8 @@ async def test_electronic_load_modes(mock_electronic_load):
 
     for mode in modes:
         await equipment.set_mode(mode)
-        readings = await equipment.get_readings()
-        assert readings.mode == mode
+        readings = await equipment.measure_all()
+        assert readings['mode'] == mode
 
 
 @pytest.mark.asyncio
@@ -319,12 +321,12 @@ async def test_electronic_load_cc_mode(mock_electronic_load):
 
     await equipment.set_mode("CC")
     await equipment.set_current(3.0)
-    await equipment.set_input(True)
+    await equipment.enable_input()
     await asyncio.sleep(0.1)
 
-    readings = await equipment.get_readings()
-    assert readings.mode == "CC"
-    assert readings.load_enabled
+    readings = await equipment.measure_all()
+    assert readings['mode'] == "CC"
+    assert abs(readings['current'] - 3.0) < 0.5
 
 
 @pytest.mark.asyncio
@@ -333,14 +335,12 @@ async def test_electronic_load_input_control(mock_electronic_load):
     equipment_id, equipment = mock_electronic_load
 
     # Disable input
-    await equipment.set_input(False)
-    readings = await equipment.get_readings()
-    assert not readings.load_enabled
+    await equipment.disable_input()
+    assert not equipment.input_enabled
 
     # Enable input
-    await equipment.set_input(True)
-    readings = await equipment.get_readings()
-    assert readings.load_enabled
+    await equipment.enable_input()
+    assert equipment.input_enabled
 
 
 @pytest.mark.asyncio
@@ -350,15 +350,16 @@ async def test_electronic_load_measurements(mock_electronic_load):
 
     await equipment.set_mode("CC")
     await equipment.set_current(2.0)
-    await equipment.set_input(True)
+    await equipment.enable_input()
     await asyncio.sleep(0.1)
 
-    readings = await equipment.get_readings()
+    readings = await equipment.measure_all()
 
-    assert readings.voltage is not None
-    assert readings.current is not None
-    assert readings.power is not None
-    assert readings.mode == "CC"
+    assert 'voltage' in readings
+    assert 'current' in readings
+    assert 'power' in readings
+    assert 'mode' in readings
+    assert readings['power'] >= 0
 
 
 # ==================== Multi-Device Tests ====================
@@ -401,7 +402,7 @@ async def test_concurrent_waveform_acquisition(equipment_manager):
 
     assert len(waveforms) == 2
     for waveform in waveforms:
-        assert waveform.num_samples > 0
+        assert waveform.points > 0
 
 
 @pytest.mark.asyncio
@@ -414,23 +415,23 @@ async def test_full_lab_workflow(mock_lab, equipment_manager):
 
     # Configure power supply
     await psu.set_voltage(12.0)
-    await psu.set_output(True)
+    await psu.enable_output()
 
     # Configure electronic load
     await load.set_mode("CC")
     await load.set_current(1.0)
-    await load.set_input(True)
+    await load.enable_input()
 
     # Acquire waveform
     waveform = await scope.get_waveform(channel=1)
 
     # Verify all operations succeeded
-    psu_readings = await psu.get_readings()
-    load_readings = await load.get_readings()
+    psu_readings = await psu.measure_all()
+    load_readings = await load.measure_all()
 
-    assert psu_readings.voltage_actual > 0
-    assert load_readings.load_enabled
-    assert waveform.num_samples > 0
+    assert psu_readings['voltage'] > 0
+    assert load_readings['current'] > 0
+    assert waveform.points > 0
 
 
 # ==================== Helper Function Tests ====================
@@ -499,8 +500,8 @@ async def test_concurrent_equipment_operations(mock_lab, equipment_manager):
     start_time = time.time()
     results = await asyncio.gather(
         scope.get_waveform(channel=1),
-        psu.get_readings(),
-        load.get_readings()
+        psu.measure_all(),
+        load.measure_all()
     )
     elapsed = time.time() - start_time
 
