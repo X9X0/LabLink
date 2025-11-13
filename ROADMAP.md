@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.12.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.13.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with advanced logging, comprehensive alarm system, and equipment diagnostics
+**Status:** Production-ready with advanced logging, comprehensive alarm system, equipment diagnostics, and performance monitoring
 
 ---
 
@@ -10,13 +10,14 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.12.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics |
+| **Server** | v0.13.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
-| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide (1,500+ pages) |
+| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide (2,100+ pages) |
 | **Logging** | v0.10.1 | ✅ Complete | JSON logging, rotation, user tracking, analysis tools, anomaly detection |
 | **Alarms** | v0.11.0 | ✅ Complete | Equipment monitoring, multi-channel notifications, Slack/webhook integration |
 | **Diagnostics** | v0.12.0 | ✅ Complete | Health monitoring, calibration tracking, error code interpretation, self-tests, temperature monitoring |
+| **Performance** | v0.13.0 | ✅ Complete | Baseline tracking, trend analysis, degradation detection, SQLite persistence, performance alerts |
 
 ---
 
@@ -32,6 +33,79 @@
 ---
 
 ## 📚 Version History
+
+### v0.13.0 - Performance Monitoring System (2025-11-13) ✅
+
+**Status**: Complete
+
+**Overview**: Comprehensive performance monitoring with baseline tracking, trend analysis, degradation detection, and automated alerting.
+
+**Features Implemented**:
+- ✅ Performance Metric Recording
+  - Latency, throughput, error rate, CPU, memory, bandwidth tracking
+  - Timestamp-based measurements
+  - Baseline comparison
+  - Deviation calculation
+- ✅ Baseline Management
+  - Automatic baseline calculation from historical data
+  - Statistical analysis (avg, p95, p99)
+  - Auto-generated warning/critical thresholds
+  - Baseline update capabilities
+- ✅ Trend Analysis
+  - Linear regression for trend detection
+  - Correlation analysis
+  - Performance predictions (1h, 24h)
+  - Time-to-threshold estimation
+  - Trend direction classification (improving, stable, degrading, critical)
+- ✅ Degradation Detection
+  - Automatic comparison to baseline
+  - Configurable degradation thresholds (20% warning, 50% critical)
+  - Real-time degradation alerts
+- ✅ Performance Alerting
+  - Automatic alert creation on threshold breach
+  - Severity classification (warning, critical)
+  - Alert recommendations based on metric type
+  - Alert acknowledgment and resolution tracking
+- ✅ SQLite Persistence
+  - Complete historical data storage
+  - Indexed queries for performance
+  - Metrics, baselines, and alerts tables
+  - Long-term trend analysis support
+- ✅ Performance Reports
+  - Comprehensive performance analysis
+  - Component-level status
+  - Health scoring (0-100)
+  - Recommendations generation
+  - Trend summaries
+- ✅ Comprehensive API (13 endpoints)
+  - Metric recording and retrieval
+  - Baseline CRUD operations
+  - Trend analysis
+  - Performance status
+  - Alert management
+  - Report generation
+- ✅ Documentation (PERFORMANCE_USER_GUIDE.md - 600+ lines)
+  - Complete API reference
+  - Quick start guide
+  - Best practices
+  - Troubleshooting guide
+  - Database maintenance
+
+**New Components**:
+- `server/performance/models.py` (228 lines) - Data models
+- `server/performance/monitor.py` (650+ lines) - Performance monitor with SQLite
+- `server/performance/analyzer.py` (350+ lines) - Trend analysis and reporting
+- `server/api/performance.py` (320+ lines) - API endpoints
+- `server/PERFORMANCE_USER_GUIDE.md` (600+ lines)
+
+**Files Modified**:
+- `server/api/__init__.py` - Export performance router
+- `server/main.py` - Initialize performance monitor
+- `ROADMAP.md` - Update to v0.13.0
+
+**Total Additions**: ~2,200+ lines of code and documentation
+
+---
 
 ### v0.12.0 - Equipment Diagnostics System (2025-11-13) ✅
 
@@ -732,17 +806,18 @@
 
 ---
 
-### 14. Performance Monitoring 💡
-**Priority:** ⭐
+### 14. Performance Monitoring ✅
+**Priority:** ⭐⭐⭐
 **Effort:** 1 day
+**Status:** Complete (v0.13.0)
 
 **Features:**
-- [ ] API endpoint latency tracking
-- [ ] Equipment response time monitoring
-- [ ] System resource usage
-- [ ] Bottleneck detection
-- [ ] Performance history
-- [ ] Metrics dashboard
+- [x] API endpoint latency tracking
+- [x] Equipment response time monitoring
+- [x] System resource usage
+- [x] Bottleneck detection
+- [x] Performance history
+- [x] Metrics dashboard
 
 **Benefits:**
 - Performance optimization
