@@ -16,6 +16,7 @@ from config.validator import validate_config
 from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router, discovery_router, security_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
+from web.routes import register_web_routes
 
 # Setup advanced logging system
 setup_logging()
@@ -335,7 +336,10 @@ app.add_middleware(
 # Add logging middleware
 app.add_middleware(LoggingMiddleware)
 
-# Include routers
+# Register web routes (static files and HTML templates)
+register_web_routes(app)
+
+# Include API routers
 app.include_router(equipment_router, prefix="/api/equipment", tags=["equipment"])
 app.include_router(data_router, prefix="/api/data", tags=["data"])
 app.include_router(profiles_router, prefix="/api/profiles", tags=["profiles"])
@@ -358,12 +362,12 @@ app.include_router(discovery_router, tags=["discovery"])
 app.include_router(security_router, tags=["security"])
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
+@app.get("/api")
+async def api_root():
+    """API root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.22.0",
+        "version": "0.24.0",
         "status": "running",
     }
 
