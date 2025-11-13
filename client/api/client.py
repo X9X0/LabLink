@@ -42,6 +42,12 @@ class LabLinkClient:
 
         self._session = requests.Session()
 
+        # Authentication state
+        self.access_token = None
+        self.refresh_token = None
+        self.user_data = None
+        self.authenticated = False
+
         # Initialize WebSocket manager if available
         if WebSocketManager:
             self.ws_manager = WebSocketManager(host=host, port=ws_port)
@@ -80,6 +86,168 @@ class LabLinkClient:
             await self.ws_manager.disconnect()
 
         logger.info("Disconnected from LabLink server")
+
+    # ==================== Authentication Methods ====================
+
+    def login(self, username: str, password: str) -> Optional[Dict[str, Any]]:
+        """Login to LabLink server with username and password.
+
+        Args:
+            username: Username or email
+            password: Password
+
+        Returns:
+            Login response with tokens and user data
+
+        Raises:
+            Exception: If login fails
+        """
+        try:
+            response = self._session.post(
+                f"{self.api_base_url}/security/login",
+                json={"username": username, "password": password},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Store tokens
+                self.access_token = data.get("access_token")
+                self.refresh_token = data.get("refresh_token")
+                self.user_data = data.get("user", {})
+                self.authenticated = True
+
+                # Update session headers with Bearer token
+                self._update_auth_header()
+
+                logger.info(f"Logged in as {self.user_data.get('username', 'unknown')}")
+                return data
+            else:
+                error_detail = response.json().get("detail", "Login failed")
+                raise Exception(f"Login failed: {error_detail}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Login request failed: {e}")
+            raise Exception(f"Login request failed: {e}")
+
+    def logout(self) -> bool:
+        """Logout from LabLink server.
+
+        Returns:
+            True if logout successful
+        """
+        try:
+            if self.authenticated and self.access_token:
+                # Call logout endpoint
+                response = self._session.post(
+                    f"{self.api_base_url}/security/logout",
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    logger.info("Logged out successfully")
+
+            # Clear authentication state
+            self._clear_auth()
+            return True
+
+        except Exception as e:
+            logger.error(f"Logout failed: {e}")
+            # Clear auth anyway
+            self._clear_auth()
+            return False
+
+    def refresh_access_token(self) -> bool:
+        """Refresh access token using refresh token.
+
+        Returns:
+            True if refresh successful
+        """
+        if not self.refresh_token:
+            logger.error("No refresh token available")
+            return False
+
+        try:
+            response = self._session.post(
+                f"{self.api_base_url}/security/refresh",
+                json={"refresh_token": self.refresh_token},
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                self.access_token = data.get("access_token")
+                self.refresh_token = data.get("refresh_token", self.refresh_token)
+
+                # Update session headers
+                self._update_auth_header()
+
+                logger.info("Access token refreshed successfully")
+                return True
+            else:
+                logger.error("Token refresh failed")
+                self._clear_auth()
+                return False
+
+        except Exception as e:
+            logger.error(f"Token refresh failed: {e}")
+            self._clear_auth()
+            return False
+
+    def _update_auth_header(self):
+        """Update session headers with current access token."""
+        if self.access_token:
+            self._session.headers.update({
+                "Authorization": f"Bearer {self.access_token}"
+            })
+
+    def _clear_auth(self):
+        """Clear authentication state."""
+        self.access_token = None
+        self.refresh_token = None
+        self.user_data = None
+        self.authenticated = False
+
+        # Remove Authorization header
+        if "Authorization" in self._session.headers:
+            del self._session.headers["Authorization"]
+
+    def is_authenticated(self) -> bool:
+        """Check if client is authenticated.
+
+        Returns:
+            True if authenticated
+        """
+        return self.authenticated and self.access_token is not None
+
+    def get_current_user(self) -> Optional[Dict[str, Any]]:
+        """Get current authenticated user data.
+
+        Returns:
+            User data dictionary or None
+        """
+        return self.user_data
+
+    def has_role(self, role_name: str) -> bool:
+        """Check if current user has a specific role.
+
+        Args:
+            role_name: Role name to check (admin, operator, viewer)
+
+        Returns:
+            True if user has the role
+        """
+        if not self.user_data:
+            return False
+
+        # Check if superuser
+        if self.user_data.get("is_superuser"):
+            return True
+
+        # Check roles
+        user_roles = self.user_data.get("roles", [])
+        return any(role.get("name") == role_name for role in user_roles)
 
     # ==================== WebSocket Methods ====================
 

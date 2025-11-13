@@ -14,12 +14,14 @@ import qasync
 
 from api.client import LabLinkClient
 from ui.connection_dialog import ConnectionDialog
+from ui.login_dialog import LoginDialog
 from ui.equipment_panel import EquipmentPanel
 from ui.acquisition_panel import AcquisitionPanel
 from ui.alarm_panel import AlarmPanel
 from ui.scheduler_panel import SchedulerPanel
 from ui.diagnostics_panel import DiagnosticsPanel
 from ui.sync_panel import SyncPanel
+from utils.token_storage import get_token_storage
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,9 @@ class MainWindow(QMainWindow):
 
         self.client: Optional[LabLinkClient] = None
         self.connection_dialog: Optional[ConnectionDialog] = None
+        self.login_dialog: Optional[LoginDialog] = None
         self.ws_connected = False
+        self.token_storage = get_token_storage()
 
         self._setup_ui()
         self._setup_menus()
@@ -101,6 +105,10 @@ class MainWindow(QMainWindow):
         disconnect_action = QAction("&Disconnect", self)
         disconnect_action.triggered.connect(self.disconnect_from_server)
         file_menu.addAction(disconnect_action)
+
+        logout_action = QAction("&Logout", self)
+        logout_action.triggered.connect(self.logout)
+        file_menu.addAction(logout_action)
 
         file_menu.addSeparator()
 
@@ -190,25 +198,48 @@ class MainWindow(QMainWindow):
                     f"{server_info.get('name', 'LabLink')} v{server_info.get('version', '')}"
                 )
 
-                # Set client for all panels
-                self.equipment_panel.set_client(self.client)
-                self.acquisition_panel.set_client(self.client)
-                self.alarm_panel.set_client(self.client)
-                self.scheduler_panel.set_client(self.client)
-                self.diagnostics_panel.set_client(self.client)
-                self.sync_panel.set_client(self.client)
+                # Try to restore session from stored tokens
+                if self.token_storage.has_tokens():
+                    access_token, refresh_token = self.token_storage.load_tokens()
+                    self.client.access_token = access_token
+                    self.client.refresh_token = refresh_token
+                    self.client._update_auth_header()
 
-                # Emit signal
-                self.connection_changed.emit(True)
+                    # Try to refresh token to verify it's still valid
+                    if self.client.refresh_access_token():
+                        self.client.authenticated = True
+                        user_data = self.token_storage.load_user_data()
+                        self.client.user_data = user_data
+                        logger.info("Session restored from stored tokens")
+                        self._complete_connection()
+                        return
+                    else:
+                        # Token refresh failed, clear and require login
+                        logger.info("Stored tokens invalid, requiring login")
+                        self.token_storage.clear_all()
 
-                # Start periodic refresh
-                self.refresh_timer.start()
+                # Show login dialog
+                if self.login_dialog is None:
+                    self.login_dialog = LoginDialog(self.client, self)
 
-                # Initial data load
-                self.refresh_all()
+                if self.login_dialog.exec():
+                    # Login successful
+                    user_data = self.login_dialog.get_user_data()
 
-                # Attempt WebSocket connection (optional, non-blocking)
-                asyncio.create_task(self._connect_websocket())
+                    # Save tokens if login successful
+                    if self.client.access_token and self.client.refresh_token:
+                        self.token_storage.save_tokens(
+                            self.client.access_token,
+                            self.client.refresh_token
+                        )
+                        self.token_storage.save_user_data(user_data)
+
+                    self._complete_connection()
+                else:
+                    # Login cancelled, disconnect
+                    self.status_bar.showMessage("Login cancelled", 3000)
+                    self.connection_label.setText("Not Connected")
+                    self.client = None
 
             else:
                 QMessageBox.warning(
@@ -222,6 +253,37 @@ class MainWindow(QMainWindow):
                 self, "Connection Error",
                 f"Error connecting to server: {str(e)}"
             )
+
+    def _complete_connection(self):
+        """Complete connection setup after authentication."""
+        if not self.client or not self.client.is_authenticated():
+            logger.error("Cannot complete connection: not authenticated")
+            return
+
+        # Set client for all panels
+        self.equipment_panel.set_client(self.client)
+        self.acquisition_panel.set_client(self.client)
+        self.alarm_panel.set_client(self.client)
+        self.scheduler_panel.set_client(self.client)
+        self.diagnostics_panel.set_client(self.client)
+        self.sync_panel.set_client(self.client)
+
+        # Emit signal
+        self.connection_changed.emit(True)
+
+        # Start periodic refresh
+        self.refresh_timer.start()
+
+        # Initial data load
+        self.refresh_all()
+
+        # Attempt WebSocket connection (optional, non-blocking)
+        asyncio.create_task(self._connect_websocket())
+
+        # Update UI with user info
+        if self.client.user_data:
+            username = self.client.user_data.get("username", "User")
+            self.status_bar.showMessage(f"Logged in as {username}", 5000)
 
     @qasync.asyncSlot()
     async def _connect_websocket(self):
@@ -269,6 +331,43 @@ class MainWindow(QMainWindow):
 
         # Emit signal
         self.connection_changed.emit(False)
+
+    def logout(self):
+        """Logout and clear authentication."""
+        if self.client and self.client.is_authenticated():
+            # Call logout API
+            self.client.logout()
+
+            # Clear stored tokens
+            self.token_storage.clear_all()
+
+            self.status_bar.showMessage("Logged out successfully", 3000)
+
+            # Show login dialog again to re-authenticate
+            if self.client and self.client.connected:
+                # Still connected to server, just need to re-authenticate
+                self.login_dialog = LoginDialog(self.client, self)
+
+                if self.login_dialog.exec():
+                    # Login successful
+                    user_data = self.login_dialog.get_user_data()
+
+                    # Save tokens
+                    if self.client.access_token and self.client.refresh_token:
+                        self.token_storage.save_tokens(
+                            self.client.access_token,
+                            self.client.refresh_token
+                        )
+                        self.token_storage.save_user_data(user_data)
+
+                    self.status_bar.showMessage(
+                        f"Re-authenticated as {user_data.get('username', 'User')}", 3000
+                    )
+                else:
+                    # Login cancelled, disconnect fully
+                    self.disconnect_from_server()
+        else:
+            self.status_bar.showMessage("Not logged in", 3000)
 
     def _on_connection_changed(self, connected: bool):
         """Handle connection state change.
