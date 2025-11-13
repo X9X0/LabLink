@@ -94,6 +94,13 @@ async def lifespan(app: FastAPI):
     from scheduler import scheduler_manager
     await scheduler_manager.start()
 
+    # Initialize equipment-alarm integrator
+    from alarm import alarm_manager, initialize_integrator
+    logger.info("Initializing equipment-alarm integrator...")
+    integrator = initialize_integrator(equipment_manager, alarm_manager)
+    await integrator.start_monitoring()
+    logger.info("Equipment-alarm monitoring started")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -102,6 +109,13 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("LabLink Server shutting down...")
+
+    # Stop equipment-alarm integrator
+    from alarm import get_integrator
+    integrator = get_integrator()
+    if integrator:
+        await integrator.stop_monitoring()
+        logger.info("Equipment-alarm monitoring stopped")
 
     # Stop scheduler
     from scheduler import scheduler_manager

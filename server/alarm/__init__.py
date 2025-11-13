@@ -12,6 +12,11 @@ from .models import (
 )
 from .manager import alarm_manager
 from .notifications import notification_manager
+from .equipment_monitor import (
+    EquipmentAlarmIntegrator,
+    initialize_integrator,
+    get_integrator,
+)
 
 __all__ = [
     "AlarmSeverity",
@@ -24,4 +29,7 @@ __all__ = [
     "NotificationConfig",
     "alarm_manager",
     "notification_manager",
+    "EquipmentAlarmIntegrator",
+    "initialize_integrator",
+    "get_integrator",
 ]

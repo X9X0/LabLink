@@ -162,6 +162,15 @@ class NotificationConfig(BaseModel):
     # WebSocket settings
     websocket_enabled: bool = Field(default=True)
 
+    # Slack settings
+    slack_enabled: bool = Field(default=False)
+    slack_webhook_url: Optional[str] = Field(None, description="Slack incoming webhook URL")
+
+    # Generic webhook settings
+    webhook_enabled: bool = Field(default=False)
+    webhook_url: Optional[str] = Field(None, description="Webhook endpoint URL")
+    webhook_auth_token: Optional[str] = Field(None, description="Optional Bearer token for webhook authentication")
+
     # Notification throttling
     throttle_minutes: int = Field(default=5, description="Minimum minutes between notifications for same alarm")
     max_notifications_per_hour: int = Field(default=10)
