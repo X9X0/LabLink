@@ -6,7 +6,7 @@ from typing import Optional, Callable, Any
 from datetime import datetime, timedelta
 from enum import Enum
 
-from config.settings import settings
+from server.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

@@ -4,14 +4,12 @@ import logging
 import uuid
 from typing import Any, Dict
 
-import sys
-sys.path.append("../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
-from models.data import PowerSupplyData
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+from shared.models.data import PowerSupplyData
 
 from .base import BaseEquipment
 from .safety import SafetyValidator, SafetyLimits, get_default_limits, emergency_stop_manager
-from config.settings import settings
+from server.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

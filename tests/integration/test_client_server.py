@@ -143,39 +143,36 @@ class TestMockEquipmentIntegration:
     async def test_mock_scope_basic_operations(self, mock_scope_driver):
         """Test basic mock oscilloscope operations."""
         # Connect
-        assert mock_scope_driver.connect() is True
+        await mock_scope_driver.connect()
         assert mock_scope_driver.connected is True
 
-        # Get identification
-        idn = mock_scope_driver.get_identification()
-        assert idn is not None
-        assert "MOCK" in idn
-
-        # Configure channel
-        mock_scope_driver.set_channel_enabled(1, True)
-        mock_scope_driver.set_channel_scale(1, 1.0)
+        # Get info
+        info = await mock_scope_driver.get_info()
+        assert info is not None
+        assert "Mock" in info.manufacturer
 
         # Get waveform
         waveform = await mock_scope_driver.get_waveform(1)
         assert waveform is not None
-        assert len(waveform) > 0
+        assert waveform.num_samples > 0
 
         # Disconnect
-        mock_scope_driver.disconnect()
+        await mock_scope_driver.disconnect()
         assert mock_scope_driver.connected is False
 
     @pytest.mark.asyncio
     async def test_mock_psu_basic_operations(self, mock_psu_driver):
         """Test basic mock power supply operations."""
         # Connect
-        assert mock_psu_driver.connect() is True
+        await mock_psu_driver.connect()
+        assert mock_psu_driver.connected is True
 
         # Set voltage and current
-        mock_psu_driver.set_voltage(12.0, channel=1)
-        mock_psu_driver.set_current(2.0, channel=1)
+        await mock_psu_driver.set_voltage(12.0, channel=1)
+        await mock_psu_driver.set_current(2.0, channel=1)
 
         # Enable output
-        mock_psu_driver.set_output(True, channel=1)
+        await mock_psu_driver.set_output(True, channel=1)
 
         # Get readings
         data = await mock_psu_driver.get_readings(channel=1)
@@ -184,23 +181,24 @@ class TestMockEquipmentIntegration:
         assert hasattr(data, 'current_actual')
 
         # Disable output
-        mock_psu_driver.set_output(False, channel=1)
+        await mock_psu_driver.set_output(False, channel=1)
 
         # Disconnect
-        mock_psu_driver.disconnect()
+        await mock_psu_driver.disconnect()
 
     @pytest.mark.asyncio
     async def test_mock_load_basic_operations(self, mock_load_driver):
         """Test basic mock electronic load operations."""
         # Connect
-        assert mock_load_driver.connect() is True
+        await mock_load_driver.connect()
+        assert mock_load_driver.connected is True
 
         # Set mode to CC
-        mock_load_driver.set_mode("CC")
-        mock_load_driver.set_current(5.0)
+        await mock_load_driver.set_mode("CC")
+        await mock_load_driver.set_current(5.0)
 
         # Enable input
-        mock_load_driver.set_input(True)
+        await mock_load_driver.set_input(True)
 
         # Get readings
         data = await mock_load_driver.get_readings()
@@ -210,15 +208,15 @@ class TestMockEquipmentIntegration:
         assert hasattr(data, 'mode')
 
         # Disable input
-        mock_load_driver.set_input(False)
+        await mock_load_driver.set_input(False)
 
         # Disconnect
-        mock_load_driver.disconnect()
+        await mock_load_driver.disconnect()
 
     @pytest.mark.asyncio
     async def test_mock_scope_streaming(self, mock_scope_driver):
         """Test mock oscilloscope data streaming."""
-        mock_scope_driver.connect()
+        await mock_scope_driver.connect()
 
         # Collect some waveforms
         waveforms = []
@@ -230,29 +228,29 @@ class TestMockEquipmentIntegration:
         # Verify we got data
         assert len(waveforms) == 5
         for waveform in waveforms:
-            assert len(waveform) > 0
+            assert waveform.num_samples > 0
 
-        mock_scope_driver.disconnect()
+        await mock_scope_driver.disconnect()
 
     @pytest.mark.asyncio
     async def test_mock_psu_mode_switching(self, mock_psu_driver):
         """Test power supply CV/CC mode switching."""
-        mock_psu_driver.connect()
+        await mock_psu_driver.connect()
 
-        # Set voltage higher than load can draw
-        mock_psu_driver.set_voltage(12.0, channel=1)
-        mock_psu_driver.set_current(2.0, channel=1)
+        # Set voltage and current
+        await mock_psu_driver.set_voltage(12.0, channel=1)
+        await mock_psu_driver.set_current(2.0, channel=1)
 
         # Set high load resistance (low current draw)
         mock_psu_driver.load_resistance[1] = 50.0  # Ohms
 
-        mock_psu_driver.set_output(True, channel=1)
+        await mock_psu_driver.set_output(True, channel=1)
 
         data = await mock_psu_driver.get_readings(channel=1)
 
         # Should be in CV mode (current < limit)
         assert data.in_cv_mode is True
-        assert data.voltage_actual pytest.approx(12.0, rel=0.01)
+        assert data.voltage_actual == pytest.approx(12.0, rel=0.01)
 
         # Now set low resistance (high current draw)
         mock_psu_driver.load_resistance[1] = 1.0  # Ohms
@@ -263,32 +261,32 @@ class TestMockEquipmentIntegration:
         assert data.in_cc_mode is True
         assert data.current_actual == pytest.approx(2.0, rel=0.01)
 
-        mock_psu_driver.disconnect()
+        await mock_psu_driver.disconnect()
 
     @pytest.mark.asyncio
     async def test_mock_load_mode_changes(self, mock_load_driver):
         """Test electronic load mode changes."""
-        mock_load_driver.connect()
+        await mock_load_driver.connect()
 
         modes = ["CC", "CV", "CR", "CP"]
 
         for mode in modes:
-            mock_load_driver.set_mode(mode)
+            await mock_load_driver.set_mode(mode)
 
             if mode == "CC":
-                mock_load_driver.set_current(5.0)
+                await mock_load_driver.set_current(5.0)
             elif mode == "CV":
-                mock_load_driver.set_voltage(12.0)
+                await mock_load_driver.set_voltage(12.0)
             elif mode == "CR":
-                mock_load_driver.set_resistance(10.0)
+                await mock_load_driver.set_resistance(10.0)
             elif mode == "CP":
-                mock_load_driver.set_power(100.0)
+                await mock_load_driver.set_power(100.0)
 
-            mock_load_driver.set_input(True)
+            await mock_load_driver.set_input(True)
 
             data = await mock_load_driver.get_readings()
             assert data.mode == mode
 
-            mock_load_driver.set_input(False)
+            await mock_load_driver.set_input(False)
 
-        mock_load_driver.disconnect()
+        await mock_load_driver.disconnect()

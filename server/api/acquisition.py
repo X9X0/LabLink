@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from equipment.manager import equipment_manager
+from server.equipment.manager import equipment_manager
 from acquisition import (
     acquisition_manager,
     AcquisitionConfig,

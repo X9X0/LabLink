@@ -51,6 +51,21 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing equipment manager...")
     await equipment_manager.initialize()
 
+    # Auto-register mock equipment if enabled
+    if settings.enable_mock_equipment:
+        logger.info("Mock equipment enabled - registering mock devices...")
+        from equipment.mock_helper import MockEquipmentHelper
+        try:
+            equipment_ids = await MockEquipmentHelper.register_default_mock_equipment(equipment_manager)
+            logger.info(f"Registered {len(equipment_ids)} mock equipment devices")
+            for equipment_id in equipment_ids:
+                equipment = equipment_manager.equipment.get(equipment_id)
+                if equipment:
+                    info = await equipment.get_info()
+                    logger.info(f"  - {info.model} ({info.type.value}): {equipment_id}")
+        except Exception as e:
+            logger.error(f"Failed to register mock equipment: {e}")
+
     # Start health monitoring
     from equipment.error_handler import health_monitor
     await health_monitor.start(equipment_manager)

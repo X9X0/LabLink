@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pydantic import BaseModel, Field
 
-from config.settings import settings
+from server.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

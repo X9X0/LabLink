@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from equipment.profiles import profile_manager, EquipmentProfile
+from server.equipment.profiles import profile_manager, EquipmentProfile
 
 logger = logging.getLogger(__name__)
 
