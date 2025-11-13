@@ -30,6 +30,8 @@ class Settings(BaseSettings):
 
     # ==================== Equipment Configuration ====================
     auto_discover_devices: bool = Field(default=True, description="Auto-discover devices on startup")
+    enable_mock_equipment: bool = Field(default=False, description="Auto-register mock equipment on startup")
+    mock_equipment_types: str = Field(default="oscilloscope,power_supply,electronic_load", description="Comma-separated list of mock equipment types to register")
     visa_backend: str = Field(default="@py", description="PyVISA backend (@py, @ni, @sim)")
     connection_timeout_ms: int = Field(default=10000, ge=1000, description="Equipment connection timeout (ms)")
     command_timeout_ms: int = Field(default=5000, ge=100, description="Command execution timeout (ms)")
