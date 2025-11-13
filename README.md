@@ -161,12 +161,46 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Diagnostics and health monitoring dashboard
   - [x] Server connection management
 
+- [x] **MVP Web Dashboard** (responsive browser-based interface)
+  - [x] JWT-based authentication with login page
+  - [x] Real-time equipment status display with auto-refresh
+  - [x] Quick equipment control (connect/disconnect/send commands)
+  - [x] SCPI command interface with history
+  - [x] Dark mode with system detection
+  - [x] Responsive design (mobile/tablet/desktop)
+  - [x] 11 new files (~2,000+ lines)
+
+- [x] **OAuth2 authentication** (social login integration)
+  - [x] Google OAuth2 provider
+  - [x] GitHub OAuth2 provider
+  - [x] Microsoft OAuth2 provider
+  - [x] Automatic user provisioning
+  - [x] Account linking for existing users
+  - [x] OAuth2 configuration management
+  - [x] 8 OAuth2 API endpoints
+
+- [x] **Enhanced Web Dashboard** (real-time monitoring and visualization)
+  - [x] WebSocket real-time updates with exponential backoff reconnection
+  - [x] Chart.js live data visualization (4 real-time charts with 50-point rolling buffer)
+  - [x] Equipment profile management UI (CRUD operations, JSON validation)
+  - [x] Alarm notifications panel with severity levels
+  - [x] User settings page (profile editing, password change, MFA setup)
+  - [x] Dark mode support for all new components
+  - [x] 6 new files and significant updates (~1,200+ lines)
+
+- [x] **Multi-Factor Authentication (MFA/2FA)** (enhanced security)
+  - [x] TOTP-based two-factor authentication (RFC 6238 compliant)
+  - [x] QR code generation for authenticator apps
+  - [x] 10 one-time backup codes (bcrypt-hashed)
+  - [x] MFA setup wizard in user settings
+  - [x] Enhanced login flow with MFA verification
+  - [x] 5 MFA API endpoints
+  - [x] Complete frontend integration
+
 ### In Development
 
-- [ ] Real-time data visualization (pyqtgraph integration)
-- [ ] Automatic Raspberry Pi network discovery (mDNS/Bonjour)
+- [ ] Real-time data visualization (pyqtgraph integration in desktop client)
 - [ ] SSH-based server deployment wizard
-- [ ] WebSocket streaming integration
 - [ ] Multi-server connection management
 
 ## Supported Equipment
@@ -243,7 +277,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v0.22.0
+**Current Version**: v0.27.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)
@@ -281,6 +315,16 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ Server connection management
 - ✅ 40+ API client methods
 - ✅ 2,200+ lines of GUI code
+
+**Phase 4 Complete**: Web Dashboard & Authentication
+- ✅ MVP Web Dashboard with responsive design (v0.24.0)
+- ✅ OAuth2 authentication with 3 providers (v0.25.0)
+- ✅ Enhanced Web Dashboard with real-time features (v0.26.0)
+- ✅ Multi-Factor Authentication (TOTP-based 2FA) (v0.27.0)
+- ✅ WebSocket real-time updates
+- ✅ Chart.js live data visualization
+- ✅ Equipment profile management UI
+- ✅ 3,200+ lines of web interface code
 
 **Next Phase**: Advanced visualization & multi-server support
 
