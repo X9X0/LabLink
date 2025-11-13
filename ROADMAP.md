@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.15.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.16.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with advanced logging, alarms, diagnostics, performance monitoring, scheduled operations, and enhanced WebSocket features
+**Status:** Production-ready with waveform capture & analysis, advanced measurements, math channels, persistence mode
 
 ---
 
@@ -10,16 +10,17 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.15.0 | ✅ Complete | Data acquisition, Enhanced WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.16.0 | ✅ Complete | Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
-| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide, scheduler guide, WebSocket guide (3,300+ pages) |
+| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, waveform guide (4,000+ pages) |
 | **Logging** | v0.10.1 | ✅ Complete | JSON logging, rotation, user tracking, analysis tools, anomaly detection |
 | **Alarms** | v0.11.0 | ✅ Complete | Equipment monitoring, multi-channel notifications, Slack/webhook integration |
 | **Diagnostics** | v0.12.0 | ✅ Complete | Health monitoring, calibration tracking, error code interpretation, self-tests, temperature monitoring |
 | **Performance** | v0.13.0 | ✅ Complete | Baseline tracking, trend analysis, degradation detection, SQLite persistence, performance alerts |
 | **Scheduler** | v0.14.0 | ✅ Complete | Cron-like scheduling, SQLite persistence, conflict detection, alarm/profile integration, execution tracking |
 | **WebSocket** | v0.15.0 | ✅ Complete | Stream recording, compression (gzip/zlib), priority channels, backpressure handling |
+| **Waveform** | v0.16.0 | ✅ Complete | 30+ measurements, 15 math operations, FFT, cursors, persistence, histogram, XY mode |
 
 ---
 
@@ -35,6 +36,205 @@
 ---
 
 ## 📚 Version History
+
+### v0.16.0 - Waveform Capture & Analysis (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive waveform capture and analysis system providing professional-grade oscilloscope functionality with advanced measurements, math operations, and visualization capabilities.
+
+**New Components:**
+
+1. **Waveform Models** (`server/waveform/models.py` - 360 lines)
+   - ExtendedWaveformData with full voltage/time arrays
+   - CursorData for horizontal/vertical cursors
+   - MathChannelConfig with 15 operations
+   - PersistenceConfig with 3 modes
+   - HistogramData with statistical analysis
+   - XYPlotData for channel-vs-channel plots
+   - EnhancedMeasurements with 30+ types
+   - MathChannelResult with FFT support
+
+2. **Waveform Analyzer** (`server/waveform/analyzer.py` - 800+ lines)
+   - Enhanced automatic measurements (30+ types)
+   - Cursor measurements (horizontal/vertical)
+   - Math operations (15 types including FFT)
+   - Histogram generation
+   - Statistical analysis
+   - Signal quality measurements (SNR, THD)
+
+3. **Waveform Manager** (`server/waveform/manager.py` - 600+ lines)
+   - High-speed waveform acquisition
+   - Waveform caching and buffering
+   - Persistence mode (infinite, envelope, variable)
+   - Continuous acquisition
+   - XY plot generation
+   - Waveform averaging and decimation
+   - Smoothing filters
+
+4. **Waveform API** (`server/api/waveform.py` - 450+ lines)
+   - 25+ REST API endpoints
+   - Waveform capture with advanced options
+   - Enhanced measurements endpoint
+   - Cursor measurements
+   - Math channel operations
+   - Persistence mode control
+   - Histogram generation
+   - XY plot creation
+   - Continuous acquisition management
+
+5. **Configuration Settings** (18+ new settings)
+   - Waveform analysis enable/disable
+   - Cache size limits
+   - Default averaging count
+   - Persistence settings
+   - Histogram bin count
+   - Math channel defaults
+   - Continuous acquisition limits
+
+6. **Comprehensive Documentation** (`server/WAVEFORM_USER_GUIDE.md` - 700+ lines)
+   - Complete feature overview
+   - Quick start guide
+   - API reference with examples
+   - 5 complete usage examples
+   - Best practices
+   - Troubleshooting guide
+   - Configuration reference
+
+**Key Features:**
+
+- **30+ Enhanced Measurements**:
+  - Voltage: Vpp, Vmax, Vmin, Vamp, Vtop, Vbase, Vmid, Vavg, Vrms, Vac_rms
+  - Time: Period, frequency, rise/fall time, pulse widths, duty cycle, phase, delay
+  - Overshoot/preshoot percentages
+  - Edge counts and pulse rate
+  - Area measurements (total and cycle)
+  - Slew rate (rising/falling edges)
+  - Signal quality: SNR, THD, SINAD, ENOB
+  - Statistical: Std dev, variance, skewness, kurtosis
+
+- **15 Math Operations**:
+  - Binary: add, subtract, multiply, divide
+  - Unary: invert, abs, sqrt, square, log, exp
+  - Transform: FFT (magnitude/phase/real/imag modes)
+  - Calculus: integrate, differentiate
+  - Processing: average, envelope
+
+- **Cursor Measurements**:
+  - Horizontal cursors (time measurements with frequency calculation)
+  - Vertical cursors (voltage measurements with time-to-cross)
+  - Delta calculations
+  - Value readouts at cursor positions
+
+- **Persistence Modes**:
+  - INFINITE: Accumulate all waveforms
+  - ENVELOPE: Show min/max envelope for jitter analysis
+  - VARIABLE: Exponential decay for stability visualization
+
+- **Histogram Analysis**:
+  - Voltage or time distributions
+  - Configurable bin count (10-1000)
+  - Statistical measures (mean, std dev, median, mode)
+  - Distribution shape metrics (skewness, kurtosis)
+
+- **XY Mode**:
+  - Plot channel vs channel
+  - Correlation analysis
+  - Lissajous patterns
+  - Phase relationships
+
+- **High-Speed Acquisition**:
+  - Waveform averaging (1-100 averages)
+  - High-resolution mode
+  - Decimation with anti-aliasing
+  - Smoothing filters
+  - Single-shot capture
+  - Continuous acquisition (up to 100 Hz)
+
+**API Endpoints (25 new endpoints):**
+- `POST /api/waveform/capture` - Capture waveform with options
+- `GET /api/waveform/cached/{equipment_id}/{channel}` - Get cached waveform
+- `DELETE /api/waveform/cache/{equipment_id}` - Clear cache
+- `POST /api/waveform/measurements` - Get enhanced measurements
+- `GET /api/waveform/measurements/{equipment_id}/{channel}` - Quick measurements
+- `POST /api/waveform/cursor` - Calculate cursor measurements
+- `POST /api/waveform/math` - Apply math operation
+- `POST /api/waveform/persistence/enable` - Enable persistence
+- `POST /api/waveform/persistence/disable` - Disable persistence
+- `GET /api/waveform/persistence/{equipment_id}/{channel}` - Get persistence data
+- `POST /api/waveform/histogram` - Calculate histogram
+- `POST /api/waveform/xy-plot` - Create XY plot
+- `POST /api/waveform/continuous/start` - Start continuous acquisition
+- `POST /api/waveform/continuous/stop` - Stop continuous acquisition
+- `GET /api/waveform/continuous/list` - List active acquisitions
+- `GET /api/waveform/info` - Get system info
+
+**Configuration (18 new settings):**
+```bash
+# Enable waveform analysis
+LABLINK_ENABLE_WAVEFORM_ANALYSIS=true
+LABLINK_WAVEFORM_CACHE_SIZE=100
+LABLINK_WAVEFORM_EXPORT_DIR=./data/waveforms
+
+# Acquisition defaults
+LABLINK_DEFAULT_NUM_AVERAGES=1
+LABLINK_ENABLE_HIGH_RESOLUTION=false
+LABLINK_DEFAULT_DECIMATION_POINTS=1000
+
+# Persistence
+LABLINK_ENABLE_PERSISTENCE=true
+LABLINK_PERSISTENCE_MAX_WAVEFORMS=100
+LABLINK_PERSISTENCE_DECAY_TIME=1.0
+
+# Histogram
+LABLINK_HISTOGRAM_DEFAULT_BINS=100
+
+# Math channels
+LABLINK_ENABLE_MATH_CHANNELS=true
+LABLINK_FFT_DEFAULT_WINDOW=hann
+LABLINK_MATH_AVERAGE_COUNT=10
+
+# Continuous acquisition
+LABLINK_MAX_CONTINUOUS_RATE_HZ=100.0
+LABLINK_CONTINUOUS_BUFFER_SIZE=1000
+```
+
+**Files Created:**
+- `server/waveform/__init__.py` (module exports)
+- `server/waveform/models.py` (360 lines)
+- `server/waveform/analyzer.py` (800+ lines)
+- `server/waveform/manager.py` (600+ lines)
+- `server/api/waveform.py` (450+ lines)
+- `server/WAVEFORM_USER_GUIDE.md` (700+ lines)
+
+**Files Modified:**
+- `server/config/settings.py` - Added 18 waveform configuration settings
+- `server/main.py` - Initialize waveform manager, updated to v0.16.0
+- `server/api/__init__.py` - Export waveform router
+- `ROADMAP.md` - Update to v0.16.0
+
+**Total Additions**: ~3,000+ lines of code and documentation
+
+**Use Cases:**
+- **Signal Characterization**: Complete signal analysis with 30+ measurements
+- **Frequency Domain Analysis**: FFT with multiple window functions and output modes
+- **Jitter Analysis**: Persistence envelope mode for visualizing timing variations
+- **Multi-Channel Analysis**: XY plots and cross-channel operations
+- **Automated Testing**: Programmatic signal quality verification
+- **Research & Development**: Advanced math operations and statistical analysis
+
+**Benefits:**
+- ✅ Professional oscilloscope functionality
+- ✅ 30+ automatic measurements
+- ✅ Advanced math operations (FFT, integration, differentiation)
+- ✅ Flexible analysis tools (cursors, histograms, XY plots)
+- ✅ High-speed continuous acquisition
+- ✅ Signal quality metrics (SNR, THD)
+- ✅ Production-ready with comprehensive documentation
+
+This completes the Waveform Capture & Analysis feature, providing LabLink with professional-grade oscilloscope capabilities.
+
+---
 
 ### v0.15.0 - Enhanced WebSocket Features (2025-11-13) ✅
 

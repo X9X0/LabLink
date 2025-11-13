@@ -63,6 +63,16 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] System-wide diagnostics and resource monitoring
   - [x] Diagnostic report generation
   - [x] 11 diagnostics API endpoints
+- [x] **Waveform capture & analysis** (professional oscilloscope functionality)
+  - [x] High-speed waveform acquisition with averaging and decimation
+  - [x] 30+ enhanced automatic measurements (voltage, time, signal quality, statistical)
+  - [x] Cursor measurements (horizontal/vertical with delta calculations)
+  - [x] 15 math operations (add, subtract, FFT, integrate, differentiate, etc.)
+  - [x] Persistence mode (infinite, envelope, variable decay)
+  - [x] Histogram analysis (voltage/time distributions with statistics)
+  - [x] XY mode (channel vs channel plots)
+  - [x] Continuous acquisition (up to 100 Hz)
+  - [x] 25+ waveform API endpoints
 
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
@@ -148,11 +158,12 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Alarm & Notification System](server/ALARM_SYSTEM.md) - Alarm configuration and notification setup
 - [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
 - [Equipment Diagnostics](server/DIAGNOSTICS_SYSTEM.md) - Health monitoring and performance diagnostics
+- [Waveform Capture & Analysis](server/WAVEFORM_USER_GUIDE.md) - Advanced oscilloscope functionality
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.10.0
+**Current Version**: v0.16.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)

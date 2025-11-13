@@ -137,12 +137,39 @@ class Settings(BaseSettings):
     max_acquisition_duration: int = Field(default=3600, ge=1, description="Maximum acquisition duration (seconds)")
     auto_export_on_stop: bool = Field(default=False, description="Automatically export data when acquisition stops")
 
+    # ==================== Waveform Capture & Analysis (v0.16.0) ====================
+    enable_waveform_analysis: bool = Field(default=True, description="Enable advanced waveform analysis")
+    waveform_cache_size: int = Field(default=100, ge=10, description="Maximum cached waveforms per equipment")
+    waveform_export_dir: str = Field(default="./data/waveforms", description="Waveform export directory")
+
+    # Acquisition settings
+    default_num_averages: int = Field(default=1, ge=1, le=100, description="Default number of waveforms to average")
+    enable_high_resolution: bool = Field(default=False, description="Enable high-resolution mode by default")
+    default_decimation_points: int = Field(default=1000, ge=100, description="Default decimation target points")
+
+    # Persistence settings
+    enable_persistence: bool = Field(default=True, description="Enable persistence mode")
+    persistence_max_waveforms: int = Field(default=100, ge=10, description="Maximum waveforms in persistence buffer")
+    persistence_decay_time: float = Field(default=1.0, gt=0, description="Variable persistence decay time (seconds)")
+
+    # Histogram settings
+    histogram_default_bins: int = Field(default=100, ge=10, le=1000, description="Default histogram bin count")
+
+    # Math channel settings
+    enable_math_channels: bool = Field(default=True, description="Enable math channel operations")
+    fft_default_window: str = Field(default="hann", description="Default FFT window function")
+    math_average_count: int = Field(default=10, ge=2, le=100, description="Default averaging count for math operations")
+
+    # Continuous acquisition
+    max_continuous_rate_hz: float = Field(default=100.0, gt=0, description="Maximum continuous acquisition rate (Hz)")
+    continuous_buffer_size: int = Field(default=1000, ge=100, description="Continuous acquisition buffer size")
+
     class Config:
         env_file = ".env"
         env_prefix = "LABLINK_"
         case_sensitive = False
 
-    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir", "ws_recording_dir")
+    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir", "ws_recording_dir", "waveform_export_dir")
     def create_directories(cls, v):
         """Ensure directories exist."""
         path = Path(v)
