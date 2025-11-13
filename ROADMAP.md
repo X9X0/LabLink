@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.24.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.27.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with MVP web dashboard, advanced security, equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
+**Status:** Production-ready with enhanced web dashboard (real-time updates, live charts, profiles, alarms, settings), multi-factor authentication (TOTP-based 2FA), OAuth2 authentication, advanced security, equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.24.0 | ✅ Complete | MVP web dashboard, Advanced security, Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.27.0 | ✅ Complete | Enhanced web dashboard with real-time features, Multi-factor authentication (2FA), OAuth2 providers, Advanced security, Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
 | **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide, security guide (6,000+ pages) |
@@ -28,7 +28,7 @@
 | **Testing** | v0.20.0 | ✅ Complete | Test sequences, parameter sweeps, validation, templates, multi-equipment coordination, 15+ endpoints |
 | **Backup** | v0.21.0 | ✅ Complete | Auto-backup, compression, verification, retention, selective restore, 10+ endpoints |
 | **Discovery** | v0.22.0 | ✅ Complete | mDNS/VISA scanning, smart recommendations, history tracking, aliases, 15+ endpoints |
-| **Web Dashboard** | v0.24.0 | ✅ MVP Complete | Login/auth, equipment status, control modal, discovery, dark mode, responsive design, auto-refresh |
+| **Web Dashboard** | v0.26.0 | ✅ Complete | Real-time WebSocket updates, Chart.js live visualization, Equipment profiles, Alarm notifications, User settings, MFA setup, Dark mode, Responsive design |
 
 ---
 
@@ -44,6 +44,139 @@
 ---
 
 ## 📚 Version History
+
+### v0.27.0 - Multi-Factor Authentication (2025-11-13) ✅
+
+**Status**: Complete
+
+Enterprise-grade two-factor authentication (2FA) using TOTP (Time-based One-Time Password) with backup codes for enhanced account security.
+
+**Key Features:**
+- **TOTP-based 2FA**: Compatible with Google Authenticator, Authy, Microsoft Authenticator, etc.
+- **QR Code Setup**: Automatic QR code generation for easy authenticator app configuration
+- **Backup Codes**: 10 one-time-use backup codes for account recovery
+- **Seamless Login**: MFA token required only when enabled
+- **User Control**: Enable/disable 2FA in settings with password confirmation
+- **Code Regeneration**: Regenerate backup codes anytime
+
+**Components Created:**
+- `server/security/mfa.py` - MFA helper module with TOTP, QR code generation, backup codes (330 lines)
+- Updated `server/security/models.py` - Added MFA fields to User model and 8 new MFA API models
+- Updated `server/security/manager.py` - Added 4 MFA methods (enable, disable, regenerate, remove)
+- Updated `server/security/auth.py` - Updated user_to_response to include mfa_enabled
+- Updated `server/api/security.py` - Added 5 MFA endpoints and updated login flow (200+ lines)
+- Updated `server/web/templates/settings.html` - Added MFA UI section and setup modal
+- Updated `server/web/templates/login.html` - Added MFA token input field
+- Updated `server/web/static/js/settings.js` - Added MFA management logic (100+ lines)
+- Updated `server/web/static/js/login.js` - Updated login flow for MFA
+- Updated `server/web/static/js/api.js` - Added 5 MFA API methods
+- Updated `server/web/static/js/auth.js` - Updated login function to accept mfaToken
+
+**MFA API Endpoints (5 new):**
+- `POST /api/security/mfa/setup` - Set up MFA (returns QR code, secret, backup codes)
+- `POST /api/security/mfa/verify` - Verify TOTP token during setup
+- `POST /api/security/mfa/disable` - Disable MFA (requires password + optional token)
+- `GET /api/security/mfa/status` - Get MFA status and backup codes remaining
+- `POST /api/security/mfa/backup-codes/regenerate` - Regenerate backup codes
+
+**Security Features:**
+- TOTP standard: 6 digits, 30-second interval, ±30 second tolerance
+- Backup codes: 8 alphanumeric characters, XXXX-XXXX format, bcrypt hashed
+- One-time use: Backup codes removed after successful authentication
+- Password confirmation: Required to disable MFA
+- Failed attempts tracking: MFA failures count toward account lockout
+- Audit logging: All MFA operations logged
+
+**User Experience:**
+1. Enable 2FA in Settings → Security
+2. Scan QR code with authenticator app
+3. Save 10 backup codes
+4. Verify with 6-digit code
+5. Login requires password + 2FA token
+6. Use backup code if authenticator unavailable
+
+**Dependencies Added:**
+- pyotp>=2.9.0 - TOTP implementation
+- qrcode[pil]>=8.2 - QR code generation
+- pillow>=12.0.0 - Image processing
+
+**Total Additions**: ~1,000 lines of code
+
+---
+
+### v0.26.0 - Enhanced Web Dashboard with Real-Time Features (2025-11-13) ✅
+
+**Status**: Complete
+
+Major enhancement to the web dashboard adding real-time WebSocket updates, live data visualization with Chart.js, equipment profile management, alarm notifications, and comprehensive user settings.
+
+**Key Features:**
+- **WebSocket Real-Time Updates**: Native WebSocket with automatic reconnection, exponential backoff
+- **Chart.js Live Visualization**: 4 real-time charts (Voltage, Current, Temperature, Power)
+- **Equipment Profile Management**: Complete CRUD interface for equipment configurations
+- **Alarm Notifications**: Real-time alarm display with severity levels and acknowledgment
+- **User Settings**: Profile editing, password change, dark mode preferences, MFA setup
+
+**Components Created:**
+- `server/web/static/js/charts.js` - Chart.js management (360 lines)
+- `server/web/static/js/profiles.js` - Profile management logic (430 lines)
+- `server/web/static/js/settings.js` - Settings page logic (280+ lines)
+- `server/web/templates/profiles.html` - Profiles management UI (185 lines)
+- `server/web/templates/settings.html` - User settings UI (210+ lines)
+
+**Dashboard Enhancements:**
+- WebSocket connection with exponential backoff reconnection (max 5 attempts)
+- Real-time equipment status updates via WebSocket
+- 4 live charts with 50-point rolling buffer
+- Equipment profile save/load/apply interface
+- Alarm notifications panel with severity colors
+- User settings with profile and password management
+- Cross-page navigation (Dashboard ↔ Profiles ↔ Settings)
+
+**WebSocket Features:**
+- Automatic reconnection with exponential backoff
+- Graceful fallback to HTTP polling if WebSocket fails
+- Real-time equipment updates on status changes
+- Real-time alarm notifications
+- Live data streaming for charts
+
+**Chart.js Features:**
+- 4 real-time charts: Voltage, Current, Temperature, Power
+- 50-point rolling buffer for smooth visualization
+- Equipment selector for multi-device monitoring
+- Dark mode support with automatic color updates
+- Responsive grid layout
+
+**Profile Management:**
+- Create/edit/delete equipment profiles
+- JSON configuration editor with validation
+- Apply profiles to connected equipment
+- Equipment type filtering
+- Default profile designation
+- Configuration preview in cards
+
+**Alarm System:**
+- Real-time alarm display
+- Severity levels: Critical, Error, Warning, Info
+- Color-coded alarm cards
+- Alarm acknowledgment
+- Automatic updates via WebSocket
+
+**User Settings:**
+- Profile management (email, full name)
+- Password change with validation
+- Dark mode preference toggle
+- MFA setup interface (added in v0.27.0)
+
+**API Integration:**
+- WebSocket endpoint: /ws
+- Profile API: 6 endpoints (list, get, create, update, delete, apply)
+- Alarm API: 2 endpoints (list, acknowledge)
+- User settings API: 2 endpoints (update user, change password)
+
+**Total Additions**: ~1,500 lines of code
+
+---
 
 ### v0.24.0 - MVP Web Dashboard (2025-11-13) ✅
 

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Equipment Profiles - LabLink</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>LabLink</h1>
+                <span class="navbar-subtitle">Equipment Profiles</span>
+            </div>
+
+            <div class="navbar-actions">
+                <a href="/" class="btn btn-secondary btn-sm">← Dashboard</a>
+                <a href="/settings.html" class="btn btn-secondary btn-sm">Settings</a>
+
+                <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon" style="display: none;">🌙</span>
+                </button>
+
+                <div class="user-menu">
+                    <span class="user-name" id="userName">User</span>
+                    <button class="btn btn-secondary btn-sm" id="logoutButton">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Alert for notifications -->
+        <div class="alert alert-info" id="alert" style="display: none;"></div>
+
+        <!-- Profiles Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Equipment Profiles</h2>
+                <button class="btn btn-primary" id="createProfileButton">
+                    + Create Profile
+                </button>
+            </div>
+
+            <div id="profilesList" class="profiles-grid">
+                <!-- Profile cards will be dynamically inserted here -->
+            </div>
+
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <p>No profiles found</p>
+                <p class="text-muted">Create a profile to save equipment configurations</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Profile Modal -->
+    <div id="profileModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="modalTitle">Create Profile</h3>
+                <button class="btn btn-icon btn-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modalAlert" class="alert alert-info" style="display: none;"></div>
+
+                <form id="profileForm">
+                    <div class="form-grid">
+                        <!-- Basic Information -->
+                        <div class="form-section">
+                            <h4>Basic Information</h4>
+
+                            <div class="form-group">
+                                <label for="profileName">Profile Name *</label>
+                                <input type="text" id="profileName" required
+                                       placeholder="e.g., PowerSupply_Default">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="profileDescription">Description</label>
+                                <textarea id="profileDescription" rows="3"
+                                          placeholder="Profile description..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="equipmentType">Equipment Type *</label>
+                                <input type="text" id="equipmentType" required
+                                       placeholder="e.g., power_supply, oscilloscope">
+                            </div>
+                        </div>
+
+                        <!-- Configuration -->
+                        <div class="form-section">
+                            <h4>Configuration</h4>
+
+                            <div class="form-group">
+                                <label for="profileConfig">Configuration (JSON) *</label>
+                                <textarea id="profileConfig" rows="12" required
+                                          placeholder='{\n  "voltage": 5.0,\n  "current_limit": 1.0,\n  "enabled": true\n}'></textarea>
+                                <small class="text-muted">Enter configuration as JSON object</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="isDefault">
+                                    Set as default profile for this equipment type
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelButton">Cancel</button>
+                <button class="btn btn-primary" id="saveProfileButton">
+                    <span class="btn-text">Save Profile</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Delete Profile</h3>
+                <button class="btn btn-icon btn-close" id="closeDeleteModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the profile <strong id="deleteProfileName"></strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelDeleteButton">Cancel</button>
+                <button class="btn btn-error" id="confirmDeleteButton">
+                    <span class="btn-text">Delete</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apply Profile Modal -->
+    <div id="applyModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Apply Profile</h3>
+                <button class="btn btn-icon btn-close" id="closeApplyModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="applyModalAlert" class="alert alert-info" style="display: none;"></div>
+
+                <p>Select equipment to apply profile <strong id="applyProfileName"></strong>:</p>
+
+                <div class="form-group">
+                    <label for="applyEquipmentSelect">Equipment</label>
+                    <select id="applyEquipmentSelect" class="form-control">
+                        <option value="">Select equipment...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelApplyButton">Cancel</button>
+                <button class="btn btn-primary" id="confirmApplyButton">
+                    <span class="btn-text">Apply</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/profiles.js"></script>
+</body>
+</html>

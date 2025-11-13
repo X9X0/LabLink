@@ -26,11 +26,12 @@ function initAuth() {
  * @param {string} username - Username
  * @param {string} password - Password
  * @param {boolean} rememberMe - Remember login
+ * @param {string} mfaToken - Optional MFA token
  * @returns {Promise<Object>} Login response
  */
-async function login(username, password, rememberMe = false) {
+async function login(username, password, rememberMe = false, mfaToken = null) {
     try {
-        const response = await api.login(username, password);
+        const response = await api.login(username, password, mfaToken);
 
         // Store tokens
         localStorage.setItem('access_token', response.access_token);

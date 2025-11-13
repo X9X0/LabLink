@@ -199,6 +199,25 @@ class SecurityManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type)")
 
+        # Add MFA columns if they don't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN DEFAULT 0")
+            logger.info("Added mfa_enabled column to users table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT")
+            logger.info("Added mfa_secret column to users table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN backup_codes TEXT")  # JSON array
+            logger.info("Added backup_codes column to users table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         conn.commit()
         conn.close()
 
@@ -502,7 +521,138 @@ class SecurityManager:
             created_at=datetime.fromisoformat(row[16]),
             updated_at=datetime.fromisoformat(row[17]),
             created_by=row[18],
+            # MFA fields (indices 19, 20, 21) - handle gracefully if columns don't exist yet
+            mfa_enabled=bool(row[19]) if len(row) > 19 and row[19] is not None else False,
+            mfa_secret=row[20] if len(row) > 20 else None,
+            backup_codes=json.loads(row[21]) if len(row) > 21 and row[21] else [],
         )
+
+    # ========================================================================
+    # Multi-Factor Authentication
+    # ========================================================================
+
+    async def enable_mfa(self, user_id: str, secret: str, backup_codes: List[str]) -> bool:
+        """
+        Enable MFA for a user.
+
+        Args:
+            user_id: User ID
+            secret: Base32 encoded TOTP secret
+            backup_codes: List of hashed backup codes
+
+        Returns:
+            True if successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET mfa_enabled = 1, mfa_secret = ?, backup_codes = ?, updated_at = ?
+                WHERE user_id = ?
+            """, (secret, json.dumps(backup_codes), datetime.utcnow(), user_id))
+
+            conn.commit()
+            logger.info(f"MFA enabled for user: {user_id}")
+            return cursor.rowcount > 0
+
+        finally:
+            conn.close()
+
+    async def disable_mfa(self, user_id: str) -> bool:
+        """
+        Disable MFA for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            True if successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET mfa_enabled = 0, mfa_secret = NULL, backup_codes = NULL, updated_at = ?
+                WHERE user_id = ?
+            """, (datetime.utcnow(), user_id))
+
+            conn.commit()
+            logger.info(f"MFA disabled for user: {user_id}")
+            return cursor.rowcount > 0
+
+        finally:
+            conn.close()
+
+    async def regenerate_backup_codes(self, user_id: str, new_codes: List[str]) -> bool:
+        """
+        Regenerate backup codes for a user.
+
+        Args:
+            user_id: User ID
+            new_codes: List of new hashed backup codes
+
+        Returns:
+            True if successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET backup_codes = ?, updated_at = ?
+                WHERE user_id = ? AND mfa_enabled = 1
+            """, (json.dumps(new_codes), datetime.utcnow(), user_id))
+
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"Backup codes regenerated for user: {user_id}")
+                return True
+            else:
+                logger.warning(f"Failed to regenerate backup codes for user: {user_id} (MFA not enabled)")
+                return False
+
+        finally:
+            conn.close()
+
+    async def remove_backup_code(self, user_id: str, used_code_hash: str) -> bool:
+        """
+        Remove a used backup code from a user's list.
+
+        Args:
+            user_id: User ID
+            used_code_hash: Hash of the used backup code
+
+        Returns:
+            True if successful
+        """
+        user = await self.get_user(user_id)
+        if not user or not user.mfa_enabled:
+            return False
+
+        # Remove the used code
+        remaining_codes = [code for code in user.backup_codes if code != used_code_hash]
+
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET backup_codes = ?, updated_at = ?
+                WHERE user_id = ?
+            """, (json.dumps(remaining_codes), datetime.utcnow(), user_id))
+
+            conn.commit()
+            logger.info(f"Backup code removed for user: {user_id}. Remaining: {len(remaining_codes)}")
+            return True
+
+        finally:
+            conn.close()
 
     # ========================================================================
     # Role Management

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Settings - LabLink</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>LabLink</h1>
+                <span class="navbar-subtitle">User Settings</span>
+            </div>
+
+            <div class="navbar-actions">
+                <a href="/" class="btn btn-secondary btn-sm">← Dashboard</a>
+                <a href="/profiles.html" class="btn btn-secondary btn-sm">Profiles</a>
+
+                <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon" style="display: none;">🌙</span>
+                </button>
+
+                <div class="user-menu">
+                    <span class="user-name" id="userName">User</span>
+                    <button class="btn btn-secondary btn-sm" id="logoutButton">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Alert for notifications -->
+        <div class="alert alert-info" id="alert" style="display: none;"></div>
+
+        <!-- User Profile Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>User Profile</h2>
+            </div>
+
+            <div class="settings-card">
+                <form id="profileForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" disabled>
+                        <small class="text-muted">Username cannot be changed</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fullName">Full Name</label>
+                        <input type="text" id="fullName">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="saveProfileButton">
+                            <span class="btn-text">Save Changes</span>
+                            <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Change Password Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Change Password</h2>
+            </div>
+
+            <div class="settings-card">
+                <form id="passwordForm">
+                    <div class="form-group">
+                        <label for="currentPassword">Current Password</label>
+                        <input type="password" id="currentPassword" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" required>
+                        <small class="text-muted">Minimum 8 characters</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm New Password</label>
+                        <input type="password" id="confirmPassword" required>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="changePasswordButton">
+                            <span class="btn-text">Change Password</span>
+                            <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Security Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Security</h2>
+            </div>
+
+            <div class="settings-card">
+                <h3>Two-Factor Authentication (2FA)</h3>
+                <p class="text-muted">Add an extra layer of security to your account with TOTP-based authentication.</p>
+
+                <div id="mfaStatus" style="display: none;">
+                    <div class="alert alert-success">
+                        <strong>✓ Enabled</strong> - Your account is protected with 2FA
+                    </div>
+                    <p class="text-muted">Backup codes remaining: <strong id="backupCodesCount">0</strong></p>
+                    <div class="form-actions" style="gap: 0.5rem;">
+                        <button type="button" class="btn btn-secondary" id="regenerateCodesButton">Regenerate Backup Codes</button>
+                        <button type="button" class="btn btn-error" id="disableMFAButton">Disable 2FA</button>
+                    </div>
+                </div>
+
+                <div id="mfaDisabled" style="display: none;">
+                    <div class="alert alert-warning">
+                        <strong>⚠ Not Enabled</strong> - Your account is not using 2FA
+                    </div>
+                    <button type="button" class="btn btn-primary" id="enableMFAButton">Enable 2FA</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preferences Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Preferences</h2>
+            </div>
+
+            <div class="settings-card">
+                <div class="preference-item">
+                    <div class="preference-content">
+                        <strong>Dark Mode</strong>
+                        <p class="text-muted">Use dark theme for the dashboard</p>
+                    </div>
+                    <div class="preference-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="darkModePreference">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="preference-item">
+                    <div class="preference-content">
+                        <strong>Real-time Updates</strong>
+                        <p class="text-muted">Enable WebSocket for instant notifications</p>
+                    </div>
+                    <div class="preference-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="realtimePreference" checked disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MFA Setup Modal -->
+    <div id="mfaSetupModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Enable Two-Factor Authentication</h3>
+                <button class="btn btn-icon btn-close" id="closeMFAModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="mfaSetupStep1" style="display: none;">
+                    <p>Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.):</p>
+                    <div style="text-align: center; margin: 1.5rem 0;">
+                        <img id="mfaQRCode" src="" alt="QR Code" style="max-width: 300px;">
+                    </div>
+                    <p class="text-muted">Or enter this secret manually: <strong id="mfaSecret"></strong></p>
+
+                    <h4 style="margin-top: 2rem;">Backup Codes</h4>
+                    <p class="text-muted">Save these codes in a safe place. Each code can be used once if you lose access to your authenticator:</p>
+                    <pre id="backupCodes" style="background: var(--bg-secondary); padding: 1rem; border-radius: 4px;"></pre>
+
+                    <button type="button" class="btn btn-primary" id="continueToVerify">Continue to Verification</button>
+                </div>
+
+                <div id="mfaSetupStep2" style="display: none;">
+                    <p>Enter the 6-digit code from your authenticator app to verify:</p>
+                    <div class="form-group">
+                        <label for="mfaVerifyToken">Verification Code</label>
+                        <input type="text" id="mfaVerifyToken" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="verifyMFAButton">Verify and Enable</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

@@ -132,10 +132,15 @@ class LabLinkAPI {
 
     // ==================== Authentication Endpoints ====================
 
-    async login(username, password) {
+    async login(username, password, mfaToken = null) {
+        const body = { username, password };
+        if (mfaToken) {
+            body.mfa_token = mfaToken;
+        }
+
         const data = await this.request('/api/security/login', {
             method: 'POST',
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify(body),
         });
 
         this.setTokens(data.access_token, data.refresh_token);
@@ -252,6 +257,90 @@ class LabLinkAPI {
 
     async getRecommendations() {
         return await this.request('/api/discovery/recommendations');
+    }
+
+    // ==================== Profile Endpoints ====================
+
+    async listProfiles() {
+        return await this.request('/api/profiles/list');
+    }
+
+    async getProfile(profileName) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`);
+    }
+
+    async createProfile(profileData) {
+        return await this.request('/api/profiles/create', {
+            method: 'POST',
+            body: JSON.stringify(profileData),
+        });
+    }
+
+    async updateProfile(profileName, profileData) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`, {
+            method: 'PUT',
+            body: JSON.stringify(profileData),
+        });
+    }
+
+    async deleteProfile(profileName) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`, {
+            method: 'DELETE',
+        });
+    }
+
+    async applyProfile(profileName, equipmentId) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}/apply/${equipmentId}`, {
+            method: 'POST',
+        });
+    }
+
+    // ==================== User Settings Endpoints ====================
+
+    async updateUser(userId, userData) {
+        return await this.request(`/api/security/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(userData),
+        });
+    }
+
+    async changePassword(userId, passwordData) {
+        return await this.request(`/api/security/users/${userId}/password`, {
+            method: 'POST',
+            body: JSON.stringify(passwordData),
+        });
+    }
+
+    // ==================== MFA Endpoints ====================
+
+    async setupMFA() {
+        return await this.request('/api/security/mfa/setup', {
+            method: 'POST',
+        });
+    }
+
+    async verifyMFA(token) {
+        return await this.request('/api/security/mfa/verify', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+        });
+    }
+
+    async disableMFA(password, mfaToken = null) {
+        return await this.request('/api/security/mfa/disable', {
+            method: 'POST',
+            body: JSON.stringify({ password, mfa_token: mfaToken }),
+        });
+    }
+
+    async getMFAStatus() {
+        return await this.request('/api/security/mfa/status');
+    }
+
+    async regenerateBackupCodes() {
+        return await this.request('/api/security/mfa/backup-codes/regenerate', {
+            method: 'POST',
+        });
     }
 }
 

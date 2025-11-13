@@ -40,6 +40,13 @@ from security import (
     SecurityStatus,
     SessionInfo,
     AuditEventType,
+    # MFA Models
+    MFASetupResponse,
+    MFAVerifyRequest,
+    MFALoginRequest,
+    MFADisableRequest,
+    BackupCodesResponse,
+    MFAStatusResponse,
 
     # Manager
     get_security_manager,
@@ -187,6 +194,53 @@ async def login(request: Request, login_request: LoginRequest):
             detail="Account is disabled",
         )
 
+    # Check MFA
+    if user.mfa_enabled:
+        # MFA is enabled - require token
+        mfa_token = getattr(login_request, 'mfa_token', None)
+
+        if not mfa_token:
+            # MFA required but no token provided
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="MFA token required",
+                headers={"X-MFA-Required": "true"},
+            )
+
+        # Verify MFA token
+        from security.mfa import verify_mfa_token
+        is_valid, used_backup_code = verify_mfa_token(
+            user.mfa_secret,
+            mfa_token,
+            user.backup_codes
+        )
+
+        if not is_valid:
+            # Record failed attempt
+            attempts = security_manager.attempt_tracker.record_failed_attempt(login_request.username)
+            await security_manager.audit_log(AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                user_id=user.user_id,
+                username=user.username,
+                ip_address=ip_address,
+                success=False,
+                error_message="Invalid MFA token",
+            ))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA token",
+            )
+
+        # If backup code was used, remove it
+        if used_backup_code:
+            # Find and remove the used backup code
+            for code_hash in user.backup_codes:
+                from security.mfa import verify_backup_code
+                if verify_backup_code(mfa_token, code_hash):
+                    await security_manager.remove_backup_code(user.user_id, code_hash)
+                    logger.info(f"Backup code used for user: {user.username}")
+                    break
+
     # Clear failed attempts
     security_manager.attempt_tracker.clear_attempts(login_request.username)
 
@@ -294,6 +348,160 @@ async def refresh_token(refresh_request: RefreshTokenRequest):
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user information."""
     return user_to_response(current_user)
+
+
+# ============================================================================
+# Multi-Factor Authentication Endpoints
+# ============================================================================
+
+@router.post("/mfa/setup", response_model=MFASetupResponse, tags=["mfa"])
+async def setup_mfa(current_user: User = Depends(get_current_user)):
+    """
+    Set up MFA for the current user.
+
+    Returns QR code, secret, and backup codes.
+    """
+    if current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is already enabled",
+        )
+
+    from security.mfa import setup_mfa as mfa_setup, hash_backup_codes
+
+    # Generate MFA setup data
+    secret, qr_code, backup_codes, provisioning_uri = mfa_setup(current_user.username)
+
+    # Store in user record (but don't enable yet - requires verification)
+    security_manager = get_security_manager()
+    hashed_codes = hash_backup_codes(backup_codes)
+
+    # Temporarily store for verification
+    # Note: MFA is not enabled until verified via /mfa/enable
+    await security_manager.enable_mfa(current_user.user_id, secret, hashed_codes)
+
+    logger.info(f"MFA setup initiated for user: {current_user.username}")
+
+    return MFASetupResponse(
+        secret=secret,
+        qr_code=qr_code,
+        backup_codes=backup_codes,
+        provisioning_uri=provisioning_uri,
+    )
+
+
+@router.post("/mfa/verify", tags=["mfa"])
+async def verify_mfa_setup(
+    verify_request: MFAVerifyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Verify MFA setup by providing a TOTP token.
+
+    This confirms the user has successfully scanned the QR code.
+    """
+    security_manager = get_security_manager()
+
+    # Get fresh user data
+    user = await security_manager.get_user(current_user.user_id)
+    if not user or not user.mfa_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA setup not initiated",
+        )
+
+    # Verify the token
+    from security.mfa import verify_totp_token
+    if not verify_totp_token(user.mfa_secret, verify_request.token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA token",
+        )
+
+    logger.info(f"MFA verified and enabled for user: {current_user.username}")
+
+    return {"message": "MFA successfully enabled"}
+
+
+@router.post("/mfa/disable", tags=["mfa"])
+async def disable_mfa(
+    disable_request: MFADisableRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Disable MFA for the current user.
+
+    Requires password confirmation and optional MFA token.
+    """
+    from security.auth import verify_password
+
+    # Verify password
+    if not verify_password(disable_request.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password",
+        )
+
+    # If MFA is enabled, require MFA token
+    if current_user.mfa_enabled and disable_request.mfa_token:
+        from security.mfa import verify_mfa_token
+        is_valid, _ = verify_mfa_token(
+            current_user.mfa_secret,
+            disable_request.mfa_token,
+            current_user.backup_codes
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA token",
+            )
+
+    # Disable MFA
+    security_manager = get_security_manager()
+    await security_manager.disable_mfa(current_user.user_id)
+
+    logger.info(f"MFA disabled for user: {current_user.username}")
+
+    return {"message": "MFA disabled successfully"}
+
+
+@router.get("/mfa/status", response_model=MFAStatusResponse, tags=["mfa"])
+async def get_mfa_status(current_user: User = Depends(get_current_user)):
+    """Get MFA status for the current user."""
+    backup_codes_remaining = len(current_user.backup_codes) if current_user.backup_codes else 0
+
+    return MFAStatusResponse(
+        mfa_enabled=current_user.mfa_enabled,
+        backup_codes_remaining=backup_codes_remaining,
+    )
+
+
+@router.post("/mfa/backup-codes/regenerate", response_model=BackupCodesResponse, tags=["mfa"])
+async def regenerate_backup_codes(current_user: User = Depends(get_current_user)):
+    """
+    Regenerate backup codes for the current user.
+
+    Requires MFA to be enabled.
+    """
+    if not current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA is not enabled",
+        )
+
+    from security.mfa import generate_backup_codes, hash_backup_codes
+
+    # Generate new codes
+    new_codes = generate_backup_codes()
+    hashed_codes = hash_backup_codes(new_codes)
+
+    # Update in database
+    security_manager = get_security_manager()
+    await security_manager.regenerate_backup_codes(current_user.user_id, hashed_codes)
+
+    logger.info(f"Backup codes regenerated for user: {current_user.username}")
+
+    return BackupCodesResponse(backup_codes=new_codes)
 
 
 # ============================================================================
