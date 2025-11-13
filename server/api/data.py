@@ -4,11 +4,9 @@ import logging
 from typing import Any
 from fastapi import APIRouter, HTTPException
 
-import sys
-sys.path.append("../../shared")
-from models.commands import DataStreamConfig
+from shared.models.commands import DataStreamConfig
 
-from equipment.manager import equipment_manager
+from server.equipment.manager import equipment_manager
 
 logger = logging.getLogger(__name__)
 

@@ -6,13 +6,13 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from equipment.locks import (
+from server.equipment.locks import (
     LockManager,
     LockMode,
     LockViolation,
     lock_manager,
 )
-from equipment.sessions import (
+from server.equipment.sessions import (
     SessionManager,
     SessionInfo,
     session_manager,

@@ -5,8 +5,8 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from equipment.safety import emergency_stop_manager, SafetyEvent
-from equipment.manager import equipment_manager
+from server.equipment.safety import emergency_stop_manager, SafetyEvent
+from server.equipment.manager import equipment_manager
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from config.settings import settings
+from server.config.settings import settings
 from .handlers import (
     get_rotating_file_handler,
     get_console_handler,

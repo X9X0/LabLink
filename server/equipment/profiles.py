@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from config.settings import settings
+from server.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

@@ -5,14 +5,12 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import sys
-sys.path.append("../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, EquipmentCommand
-from models.commands import Command, CommandResponse
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, EquipmentCommand
+from shared.models.commands import Command, CommandResponse
 
-from equipment.manager import equipment_manager
-from equipment.locks import lock_manager
-from config.settings import settings
+from server.equipment.manager import equipment_manager
+from server.equipment.locks import lock_manager
+from server.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
