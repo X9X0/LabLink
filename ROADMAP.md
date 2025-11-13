@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.18.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.20.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
+**Status:** Production-ready with automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.18.0 | ✅ Complete | Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.20.0 | ✅ Complete | Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
 | **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide (5,000+ pages) |
@@ -23,6 +23,8 @@
 | **Waveform** | v0.16.0 | ✅ Complete | 30+ measurements, 15 math operations, FFT, cursors, persistence, histogram, XY mode |
 | **Analysis** | v0.17.0 | ✅ Complete | Signal filtering, curve fitting, SPC, reports, batch processing, 30+ endpoints |
 | **Database** | v0.18.0 | ✅ Complete | Command logging, measurement archival, usage tracking, query API, 15+ endpoints |
+| **Calibration Enhanced** | v0.19.0 | ✅ Complete | Procedures, certificates, corrections, standards tracking, 20+ endpoints |
+| **Testing** | v0.20.0 | ✅ Complete | Test sequences, parameter sweeps, validation, templates, multi-equipment coordination, 15+ endpoints |
 
 ---
 
@@ -38,6 +40,62 @@
 ---
 
 ## 📚 Version History
+
+### v0.20.0 - Automated Test Sequences (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive automated test sequence system with execution engine, parameter sweeping, pass/fail validation, template library, and multi-equipment coordination capabilities.
+
+**Key Features:**
+- Test sequence creation and management with 9 step types
+- Automated execution engine with real-time progress tracking
+- Parameter sweeping for device characterization (linear/log scales)
+- Pass/fail validation with 6 comparison operators and tolerance support
+- Test result archival and trending with database integration
+- Template library for common test patterns (voltage accuracy, frequency response)
+- Multi-equipment coordination for complex test setups
+- Comprehensive execution history and statistics
+
+**API Endpoints (15+ new):**
+- `/api/testing/sequences` - Create and manage test sequences
+- `/api/testing/sequences/{id}` - Get/update/delete sequences
+- `/api/testing/execute` - Execute test sequence
+- `/api/testing/executions` - Query execution history
+- `/api/testing/templates` - Access template library
+- `/api/testing/sweeps` - Parameter sweep configuration
+
+**Total Additions**: ~950 lines of code
+
+---
+
+### v0.19.0 - Enhanced Calibration Management (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive calibration management system with procedures, digital certificates, calibration corrections, and reference standards tracking for professional laboratory operation.
+
+**Key Features:**
+- Calibration procedures with step-by-step workflows and validation
+- Procedure execution tracking with real-time progress and results
+- Digital calibration certificates (ISO/IEC 17025 compliant)
+- Certificate generation with traceability and digital signatures
+- Calibration corrections (linear, polynomial, lookup table, custom functions)
+- Automatic correction application to measurements
+- Reference standards management with calibration tracking
+- Standards due date monitoring and alert system
+- Usage recording and traceability chains
+
+**API Endpoints (20+ new):**
+- `/api/calibration-enhanced/procedures` - Manage calibration procedures
+- `/api/calibration-enhanced/execute` - Execute calibration procedure
+- `/api/calibration-enhanced/certificates` - Digital certificate management
+- `/api/calibration-enhanced/corrections` - Calibration corrections
+- `/api/calibration-enhanced/standards` - Reference standards tracking
+
+**Total Additions**: ~1,000 lines of code
+
+---
 
 ### v0.18.0 - Database Integration (2025-11-13) ✅
 
@@ -1516,26 +1574,28 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 
 ---
 
-### 9. Calibration Management 📋
+### 9. Enhanced Calibration Management ✅
 **Priority:** ⭐⭐
 **Effort:** 2-3 days
+**Status:** Complete (v0.19.0)
 
 **Features:**
-- [ ] Calibration scheduling
-- [ ] Calibration procedures
-- [ ] Certificate management
-- [ ] Out-of-calibration alerts
-- [ ] Calibration history
-- [ ] Apply calibration corrections
-- [ ] Reference standards tracking
+- [x] Calibration procedures with step-by-step workflows
+- [x] Procedure execution tracking
+- [x] Digital certificate management (ISO/IEC 17025)
+- [x] Certificate generation with digital signatures
+- [x] Calibration corrections (linear, polynomial, lookup table, custom)
+- [x] Automatic correction application
+- [x] Reference standards tracking with due dates
+- [x] Standards usage recording and alerts
 
 **Benefits:**
-- Accurate measurements
-- Compliance tracking
-- Professional operation
-- Quality assurance
+- ✅ Professional calibration workflows
+- ✅ ISO/IEC 17025 compliance support
+- ✅ Automated correction application
+- ✅ Traceability and audit trail
 
-**Dependencies:** Database Integration (recommended)
+**Dependencies:** None (complete and standalone)
 
 ---
 
@@ -1609,26 +1669,27 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 
 ---
 
-### 13. Automated Test Sequences 💡
-**Priority:** ⭐
+### 13. Automated Test Sequences ✅
+**Priority:** ⭐⭐⭐
 **Effort:** 1 week
+**Status:** Complete (v0.20.0)
 
 **Features:**
-- [ ] Test sequence editor
-- [ ] Parameter sweeping
-- [ ] Pass/fail criteria
-- [ ] Test reporting
-- [ ] Sequence templates
-- [ ] Equipment coordination
-- [ ] Python scripting support
+- [x] Test sequence editor
+- [x] Parameter sweeping (linear/log scales)
+- [x] Pass/fail criteria (6 operators, tolerance support)
+- [x] Test reporting and result archival
+- [x] Sequence templates (voltage accuracy, frequency response)
+- [x] Equipment coordination
+- [x] Database integration for trending
 
 **Benefits:**
-- Reproducible testing
-- Automated validation
-- Time savings
-- Professional testing
+- ✅ Reproducible testing
+- ✅ Automated validation
+- ✅ Time savings
+- ✅ Professional testing
 
-**Dependencies:** Scheduled Operations (recommended)
+**Dependencies:** None (complete and integrated)
 
 ---
 
