@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from server.equipment.manager import equipment_manager
-from acquisition import (
+from server.acquisition import (
     acquisition_manager,
     AcquisitionConfig,
     AcquisitionMode,

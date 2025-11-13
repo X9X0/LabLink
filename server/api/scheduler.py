@@ -5,7 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from scheduler import (
+from server.scheduler import (
     scheduler_manager,
     ScheduleConfig,
     ScheduleType,
