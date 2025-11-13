@@ -218,8 +218,9 @@ async def test_power_supply_voltage_control(mock_power_supply):
     """Test power supply voltage control."""
     equipment_id, equipment = mock_power_supply
 
-    # Set voltage
+    # Set voltage and enable output
     await equipment.set_voltage(12.0)
+    await equipment.set_output(True)  # Must enable output to measure actual voltage
 
     # Allow settling
     await asyncio.sleep(0.1)
