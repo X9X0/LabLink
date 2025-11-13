@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router, discovery_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.21.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.22.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -178,6 +178,33 @@ async def lifespan(app: FastAPI):
     await backup_manager.start_auto_backup()
     logger.info("Backup system initialized - Auto-backup, verification, retention policy enabled")
 
+    # Initialize discovery manager (v0.22.0)
+    if settings.enable_discovery:
+        from discovery import initialize_discovery_manager, DiscoveryConfig
+        logger.info("Initializing equipment discovery system...")
+        discovery_config = DiscoveryConfig(
+            enable_mdns=settings.enable_mdns_discovery,
+            enable_visa_scan=settings.enable_visa_discovery,
+            enable_usb_scan=settings.enable_usb_discovery,
+            enable_auto_discovery=settings.enable_auto_discovery,
+            mdns_scan_interval_sec=settings.mdns_scan_interval_sec,
+            visa_scan_interval_sec=settings.visa_scan_interval_sec,
+            scan_tcpip=settings.discovery_scan_tcpip,
+            scan_usb=settings.discovery_scan_usb,
+            scan_gpib=settings.discovery_scan_gpib,
+            scan_serial=settings.discovery_scan_serial,
+            test_connections=settings.discovery_test_connections,
+            query_idn=settings.discovery_query_idn,
+            enable_history=settings.discovery_enable_history,
+            history_retention_days=settings.discovery_history_retention_days,
+            enable_recommendations=settings.discovery_enable_recommendations,
+            cache_discovered_devices=settings.discovery_cache_devices,
+            cache_ttl_sec=settings.discovery_cache_ttl_sec,
+        )
+        discovery_manager = initialize_discovery_manager(discovery_config, settings.visa_backend)
+        await discovery_manager.start_auto_discovery()
+        logger.info("Discovery system initialized - Auto-discovery, mDNS, VISA scanning, smart recommendations enabled")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -204,6 +231,13 @@ async def lifespan(app: FastAPI):
     await backup_manager.stop_auto_backup()
     logger.info("Backup auto-backup task stopped")
 
+    # Stop discovery auto-discovery task
+    if settings.enable_discovery:
+        from discovery import get_discovery_manager
+        discovery_manager = get_discovery_manager()
+        await discovery_manager.stop_auto_discovery()
+        logger.info("Discovery auto-discovery task stopped")
+
     # Stop lock cleanup task
     from equipment.locks import lock_manager
     await lock_manager.stop_cleanup_task()
@@ -222,7 +256,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.21.0",
+    version="0.22.0",
     lifespan=lifespan,
 )
 
@@ -257,6 +291,7 @@ app.include_router(database_router, tags=["database"])
 app.include_router(calibration_enhanced_router, tags=["calibration-enhanced"])
 app.include_router(testing_router, tags=["testing"])
 app.include_router(backup_router, tags=["backup"])
+app.include_router(discovery_router, tags=["discovery"])
 
 
 @app.get("/")
@@ -264,7 +299,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.21.0",
+        "version": "0.22.0",
         "status": "running",
     }
 

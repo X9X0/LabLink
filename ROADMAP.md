@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.20.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.22.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
+**Status:** Production-ready with equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.20.0 | ✅ Complete | Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.22.0 | ✅ Complete | Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
 | **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide (5,000+ pages) |
@@ -25,6 +25,8 @@
 | **Database** | v0.18.0 | ✅ Complete | Command logging, measurement archival, usage tracking, query API, 15+ endpoints |
 | **Calibration Enhanced** | v0.19.0 | ✅ Complete | Procedures, certificates, corrections, standards tracking, 20+ endpoints |
 | **Testing** | v0.20.0 | ✅ Complete | Test sequences, parameter sweeps, validation, templates, multi-equipment coordination, 15+ endpoints |
+| **Backup** | v0.21.0 | ✅ Complete | Auto-backup, compression, verification, retention, selective restore, 10+ endpoints |
+| **Discovery** | v0.22.0 | ✅ Complete | mDNS/VISA scanning, smart recommendations, history tracking, aliases, 15+ endpoints |
 
 ---
 
@@ -40,6 +42,62 @@
 ---
 
 ## 📚 Version History
+
+### v0.22.0 - Equipment Discovery System (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive equipment discovery system with automatic device detection, smart connection recommendations, and connection history tracking.
+
+**Key Features:**
+- Automatic device discovery via mDNS/Bonjour and VISA resource scanning
+- TCPIP, USB, GPIB, and Serial resource scanning
+- Automatic device identification (*IDN? query and parsing)
+- Connection history tracking with comprehensive statistics
+- Smart connection recommendations based on success rates and confidence scores
+- Device aliases and friendly names for easy identification
+- Last-known-good configuration tracking
+- Auto-discovery with configurable scan intervals
+- Device caching for fast access
+- Connection testing and quality metrics
+
+**API Endpoints (15+ new):**
+- `/api/discovery/scan` - Perform discovery scan
+- `/api/discovery/devices` - List discovered devices
+- `/api/discovery/recommendations` - Get smart recommendations
+- `/api/discovery/history` - Connection history
+- `/api/discovery/devices/{id}/alias` - Set device alias
+- `/api/discovery/status` - Discovery system status
+
+**Total Additions**: ~3,200 lines of code
+
+---
+
+### v0.21.0 - Backup & Restore System (2025-11-13) ✅
+
+**Status**: Complete
+
+Production-grade backup and restore system with automatic backups, verification, and retention policies.
+
+**Key Features:**
+- Automatic scheduled backups (configurable interval)
+- Multiple backup types (full, config, profiles, data, database, incremental)
+- Compression support (gzip, zip, tar.gz)
+- SHA-256 checksum verification
+- Selective restore with granular control
+- Pre-restore safety backups
+- Retention policy with automatic cleanup
+- Backup statistics and monitoring
+
+**API Endpoints (10+ new):**
+- `/api/backup/create` - Create backup
+- `/api/backup/restore` - Restore from backup
+- `/api/backup/verify` - Verify backup integrity
+- `/api/backup/cleanup` - Clean up old backups
+
+**Total Additions**: ~1,800 lines of code
+
+---
 
 ### v0.20.0 - Automated Test Sequences (2025-11-13) ✅
 

@@ -187,6 +187,35 @@ class Settings(BaseSettings):
     backup_verify_after_creation: bool = Field(default=True, description="Verify backups after creation")
     backup_calculate_checksums: bool = Field(default=True, description="Calculate SHA-256 checksums for backups")
 
+    # ==================== Equipment Discovery Configuration (v0.22.0) ====================
+    # Discovery methods
+    enable_discovery: bool = Field(default=True, description="Enable equipment discovery system")
+    enable_mdns_discovery: bool = Field(default=True, description="Enable mDNS/Bonjour discovery")
+    enable_visa_discovery: bool = Field(default=True, description="Enable VISA resource scanning")
+    enable_usb_discovery: bool = Field(default=True, description="Enable USB device scanning")
+    enable_auto_discovery: bool = Field(default=True, description="Enable automatic discovery on startup")
+
+    # Discovery intervals
+    mdns_scan_interval_sec: int = Field(default=60, ge=10, description="mDNS scan interval (seconds)")
+    visa_scan_interval_sec: int = Field(default=30, ge=10, description="VISA scan interval (seconds)")
+
+    # Discovery scope
+    discovery_scan_tcpip: bool = Field(default=True, description="Scan TCPIP resources")
+    discovery_scan_usb: bool = Field(default=True, description="Scan USB resources")
+    discovery_scan_gpib: bool = Field(default=False, description="Scan GPIB resources")
+    discovery_scan_serial: bool = Field(default=False, description="Scan serial resources")
+
+    # Connection testing
+    discovery_test_connections: bool = Field(default=True, description="Test discovered devices")
+    discovery_query_idn: bool = Field(default=True, description="Query *IDN? for device identification")
+
+    # History and caching
+    discovery_enable_history: bool = Field(default=True, description="Track connection history")
+    discovery_history_retention_days: int = Field(default=90, ge=1, description="Days to keep history")
+    discovery_enable_recommendations: bool = Field(default=True, description="Enable smart recommendations")
+    discovery_cache_devices: bool = Field(default=True, description="Cache discovered devices")
+    discovery_cache_ttl_sec: int = Field(default=300, ge=60, description="Cache TTL (seconds)")
+
     class Config:
         env_file = ".env"
         env_prefix = "LABLINK_"

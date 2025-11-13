@@ -126,6 +126,18 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Backup statistics and monitoring
   - [x] 10+ backup management API endpoints
 
+- [x] **Equipment discovery system** (automatic device discovery and smart connection management)
+  - [x] mDNS/Bonjour discovery (automatic network device discovery)
+  - [x] VISA resource scanning (TCPIP, USB, GPIB, Serial)
+  - [x] Automatic device identification (*IDN? query)
+  - [x] Connection history tracking with statistics
+  - [x] Smart connection recommendations based on success rates
+  - [x] Device aliases and friendly names
+  - [x] Last-known-good configuration tracking
+  - [x] Auto-discovery with configurable intervals
+  - [x] Device caching for fast access
+  - [x] 15+ discovery API endpoints
+
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
   - [x] Data acquisition interface
@@ -216,7 +228,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v0.21.0
+**Current Version**: v0.22.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)
