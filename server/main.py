@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.19.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.20.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -148,6 +148,12 @@ async def lifespan(app: FastAPI):
     enhanced_cal_manager = initialize_enhanced_calibration_manager(enhanced_cal_path)
     logger.info("Enhanced calibration initialized - Procedures, certificates, corrections, standards tracking enabled")
 
+    # Initialize test executor (v0.20.0)
+    from testing import initialize_test_executor
+    logger.info("Initializing automated test sequences...")
+    test_executor = initialize_test_executor(equipment_manager, db_manager)
+    logger.info("Test automation initialized - Sequences, sweeps, validation, templates enabled")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -186,7 +192,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.19.0",
+    version="0.20.0",
     lifespan=lifespan,
 )
 
@@ -219,6 +225,7 @@ app.include_router(waveform_router, tags=["waveform"])
 app.include_router(analysis_router, tags=["analysis"])
 app.include_router(database_router, tags=["database"])
 app.include_router(calibration_enhanced_router, tags=["calibration-enhanced"])
+app.include_router(testing_router, tags=["testing"])
 
 
 @app.get("/")
@@ -226,7 +233,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.19.0",
+        "version": "0.20.0",
         "status": "running",
     }
 
