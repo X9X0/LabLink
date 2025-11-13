@@ -252,7 +252,7 @@ class TestMockEquipmentIntegration:
 
         # Should be in CV mode (current < limit)
         assert data.in_cv_mode is True
-        assert data.voltage_actual pytest.approx(12.0, rel=0.01)
+        assert data.voltage_actual == pytest.approx(12.0, rel=0.01)
 
         # Now set low resistance (high current draw)
         mock_psu_driver.load_resistance[1] = 1.0  # Ohms
