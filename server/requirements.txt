@@ -13,7 +13,7 @@ pyusb==1.2.1
 
 # Data Handling
 numpy==1.26.3
-pandas==2.2.0
+pandas==2.3.3
 h5py==3.10.0
 
 # Configuration
