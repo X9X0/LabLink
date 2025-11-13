@@ -6,7 +6,7 @@ import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from typing import Callable
+from typing import Callable, Optional, Dict, Any
 
 # Create loggers
 access_logger = logging.getLogger("lablink.access")
@@ -15,6 +15,70 @@ audit_logger = logging.getLogger("lablink.audit")
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log all HTTP requests and responses."""
+
+    def _extract_user_info(self, request: Request) -> Dict[str, Any]:
+        """
+        Extract user identification from request.
+
+        Supports multiple authentication schemes:
+        - JWT tokens (Authorization header)
+        - API keys (X-API-Key header)
+        - Session-based auth (request.user)
+        - Custom headers (X-User-ID, X-User-Name)
+        """
+        user_info = {
+            "user_id": None,
+            "user_name": None,
+            "user_email": None,
+            "user_role": None,
+            "auth_method": None
+        }
+
+        # 1. Check for user in request state (set by auth middleware)
+        if hasattr(request.state, "user"):
+            user = request.state.user
+            if user:
+                user_info["user_id"] = getattr(user, "id", None) or getattr(user, "user_id", None)
+                user_info["user_name"] = getattr(user, "name", None) or getattr(user, "username", None)
+                user_info["user_email"] = getattr(user, "email", None)
+                user_info["user_role"] = getattr(user, "role", None)
+                user_info["auth_method"] = "session"
+                return user_info
+
+        # 2. Check for custom user headers
+        if request.headers.get("X-User-ID"):
+            user_info["user_id"] = request.headers.get("X-User-ID")
+            user_info["user_name"] = request.headers.get("X-User-Name")
+            user_info["user_email"] = request.headers.get("X-User-Email")
+            user_info["user_role"] = request.headers.get("X-User-Role")
+            user_info["auth_method"] = "custom_header"
+            return user_info
+
+        # 3. Check for API key
+        api_key = request.headers.get("X-API-Key")
+        if api_key:
+            # In production, look up user by API key
+            user_info["user_id"] = f"api_key_{api_key[:8]}"
+            user_info["auth_method"] = "api_key"
+            return user_info
+
+        # 4. Check for JWT token
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            # In production, decode and validate JWT
+            # For now, just indicate JWT was used
+            user_info["auth_method"] = "jwt"
+            # You would decode the JWT here and extract user info
+            # token = auth_header.split(" ")[1]
+            # decoded = jwt.decode(token, ...)
+            # user_info["user_id"] = decoded.get("sub")
+            # user_info["user_name"] = decoded.get("name")
+            return user_info
+
+        # 5. Anonymous user
+        user_info["user_id"] = "anonymous"
+        user_info["auth_method"] = "none"
+        return user_info
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and log details."""
@@ -27,6 +91,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         method = request.method
         url = str(request.url)
         path = request.url.path
+
+        # Extract user information
+        user_info = self._extract_user_info(request)
 
         # Start timer
         start_time = time.time()
@@ -56,7 +123,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     "path": path,
                     "status_code": status_code,
                     "duration_ms": round(duration_ms, 2),
-                    "error": error
+                    "error": error,
+                    # User identification
+                    "user_id": user_info["user_id"],
+                    "user_name": user_info["user_name"],
+                    "user_role": user_info["user_role"],
+                    "auth_method": user_info["auth_method"]
                 }
             )
 
@@ -70,7 +142,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                         "method": method,
                         "path": path,
                         "status_code": status_code,
-                        "action": self._extract_action(method, path)
+                        "action": self._extract_action(method, path),
+                        # User identification
+                        "user_id": user_info["user_id"],
+                        "user_name": user_info["user_name"],
+                        "user_email": user_info["user_email"],
+                        "user_role": user_info["user_role"],
+                        "auth_method": user_info["auth_method"]
                     }
                 )
 
@@ -156,78 +234,120 @@ class EquipmentEventLogger:
         """Initialize equipment event logger."""
         self.logger = logging.getLogger("lablink.equipment")
 
-    def log_connection(self, equipment_id: str, address: str, success: bool, error: str = None):
+    def log_connection(self, equipment_id: str, address: str, success: bool, error: str = None,
+                      user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment connection event."""
+        extra = {
+            "equipment_id": equipment_id,
+            "address": address,
+            "event": "connection",
+            "success": success,
+            "error": error
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.info(
             f"Equipment connection: {equipment_id}",
-            extra={
-                "equipment_id": equipment_id,
-                "address": address,
-                "event": "connection",
-                "success": success,
-                "error": error
-            }
+            extra=extra
         )
 
-    def log_disconnection(self, equipment_id: str, reason: str = None):
+    def log_disconnection(self, equipment_id: str, reason: str = None,
+                         user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment disconnection event."""
+        extra = {
+            "equipment_id": equipment_id,
+            "event": "disconnection",
+            "reason": reason
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.info(
             f"Equipment disconnection: {equipment_id}",
-            extra={
-                "equipment_id": equipment_id,
-                "event": "disconnection",
-                "reason": reason
-            }
+            extra=extra
         )
 
-    def log_command(self, equipment_id: str, command: str, success: bool, duration_ms: float, error: str = None):
+    def log_command(self, equipment_id: str, command: str, success: bool, duration_ms: float,
+                   error: str = None, user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment command execution."""
+        extra = {
+            "equipment_id": equipment_id,
+            "event": "command",
+            "command": command,
+            "success": success,
+            "duration_ms": round(duration_ms, 2),
+            "error": error
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.info(
             f"Equipment command: {equipment_id} - {command}",
-            extra={
-                "equipment_id": equipment_id,
-                "event": "command",
-                "command": command,
-                "success": success,
-                "duration_ms": round(duration_ms, 2),
-                "error": error
-            }
+            extra=extra
         )
 
-    def log_error(self, equipment_id: str, error_type: str, error_message: str):
+    def log_error(self, equipment_id: str, error_type: str, error_message: str,
+                 user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment error."""
+        extra = {
+            "equipment_id": equipment_id,
+            "event": "error",
+            "error_type": error_type,
+            "error_message": error_message
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.error(
             f"Equipment error: {equipment_id} - {error_type}",
-            extra={
-                "equipment_id": equipment_id,
-                "event": "error",
-                "error_type": error_type,
-                "error_message": error_message
-            }
+            extra=extra
         )
 
-    def log_state_change(self, equipment_id: str, old_state: str, new_state: str):
+    def log_state_change(self, equipment_id: str, old_state: str, new_state: str,
+                        user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment state change."""
+        extra = {
+            "equipment_id": equipment_id,
+            "event": "state_change",
+            "old_state": old_state,
+            "new_state": new_state
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.info(
             f"Equipment state change: {equipment_id} ({old_state} -> {new_state})",
-            extra={
-                "equipment_id": equipment_id,
-                "event": "state_change",
-                "old_state": old_state,
-                "new_state": new_state
-            }
+            extra=extra
         )
 
-    def log_health_check(self, equipment_id: str, is_healthy: bool, metrics: dict):
+    def log_health_check(self, equipment_id: str, is_healthy: bool, metrics: dict,
+                        user_id: Optional[str] = None, user_name: Optional[str] = None):
         """Log equipment health check result."""
+        extra = {
+            "equipment_id": equipment_id,
+            "event": "health_check",
+            "is_healthy": is_healthy,
+            **metrics
+        }
+        if user_id:
+            extra["user_id"] = user_id
+        if user_name:
+            extra["user_name"] = user_name
+
         self.logger.info(
             f"Equipment health check: {equipment_id}",
-            extra={
-                "equipment_id": equipment_id,
-                "event": "health_check",
-                "is_healthy": is_healthy,
-                **metrics
-            }
+            extra=extra
         )
 
 
