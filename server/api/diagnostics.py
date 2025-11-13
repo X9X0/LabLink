@@ -4,7 +4,7 @@ import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 
-from diagnostics import (
+from server.diagnostics import (
     diagnostics_manager,
     DiagnosticCategory,
 )

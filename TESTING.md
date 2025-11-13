@@ -1,379 +1,836 @@
 # LabLink Testing Guide
 
-This guide helps you test and verify the LabLink system.
+Complete guide for testing LabLink, including automated tests, mock equipment, and manual verification.
 
-## Quick Verification
+## Table of Contents
 
-Run the demo test to verify all files are in place:
+1. [Quick Start](#quick-start)
+2. [Running Tests](#running-tests)
+3. [Mock Equipment Testing](#mock-equipment-testing)
+4. [Test Organization](#test-organization)
+5. [Writing Tests](#writing-tests)
+6. [CI/CD Integration](#cicd-integration)
+7. [Manual Testing](#manual-testing)
+8. [Troubleshooting](#troubleshooting)
 
-```bash
-python3 demo_test.py
-```
+---
 
-This will check:
-- ✓ All API files present (111 endpoints across 10 files)
-- ✓ All client UI components
-- ✓ Model definitions
-- ✓ API client methods (19+ methods)
-- ✓ Code statistics (20,670+ lines)
-
-## Full System Test
+## Quick Start
 
 ### Prerequisites
 
-1. **Install Server Dependencies:**
-   ```bash
-   cd server
-   pip install -r requirements.txt
-   ```
+```bash
+# Install test dependencies
+pip install -r requirements.txt
+pip install pytest pytest-asyncio pytest-timeout pytest-cov
 
-2. **Install Client Dependencies:**
-   ```bash
-   cd client
-   pip install -r requirements.txt
-   ```
+# Verify installation
+pytest --version
+```
 
-### Testing the Server
-
-1. **Start the server:**
-   ```bash
-   cd server
-   python3 main.py
-   ```
-
-2. **Verify server is running:**
-   - Open browser to `http://localhost:8000`
-   - Should see: `{"name": "LabLink Server", "version": "0.10.0", "status": "running"}`
-
-3. **Test API documentation:**
-   - Open browser to `http://localhost:8000/docs`
-   - Interactive API documentation should load
-
-4. **Test health endpoint:**
-   ```bash
-   curl http://localhost:8000/health
-   ```
-   - Should return: `{"status": "healthy", "connected_devices": 0}`
-
-### Testing the Client
-
-**Note:** The GUI client requires a display. In WSL, you'll need:
-- WSLg (Windows 11) or
-- X Server (VcXsrv, Xming) for Windows 10
-
-1. **Set up display (if needed):**
-   ```bash
-   export DISPLAY=:0
-   ```
-
-2. **Start the client:**
-   ```bash
-   cd client
-   python3 main.py
-   ```
-
-3. **Test connection:**
-   - Connection dialog should appear
-   - Click "Localhost" button
-   - Click "Connect"
-   - Status bar should show "Connected: localhost:8000"
-
-4. **Test Equipment Panel:**
-   - Click "Equipment" tab
-   - Click "Refresh" button
-   - Equipment list should update (may be empty without hardware)
-   - Click "Discover" to scan for equipment
-
-5. **Test Acquisition Panel:**
-   - Click "Data Acquisition" tab
-   - Select equipment from dropdown (if available)
-   - Configure acquisition settings
-   - Click "Start Acquisition"
-
-6. **Test Alarms Panel:**
-   - Click "Alarms" tab
-   - Should show active alarms table
-   - Click "Refresh" to update
-
-7. **Test Scheduler Panel:**
-   - Click "Scheduler" tab
-   - Should show scheduled jobs table
-   - Click "Refresh" to update
-
-8. **Test Diagnostics Panel:**
-   - Click "Diagnostics" tab
-   - Click "Refresh" to see equipment health
-   - Click "Run Full Diagnostics" for comprehensive report
-
-## API Testing with curl
-
-### Equipment Endpoints
+### Run All Tests
 
 ```bash
-# List all equipment
+# Run complete test suite
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=client --cov=server --cov-report=html
+
+# Run specific test categories
+pytest tests/ -v -m unit          # Unit tests only
+pytest tests/ -v -m integration   # Integration tests only
+pytest tests/ -v -m "not slow"    # Skip slow tests
+```
+
+---
+
+## Running Tests
+
+### Test Structure
+
+```
+tests/
+├── unit/              # Unit tests for individual components
+├── integration/       # Integration tests for component interaction
+├── gui/              # GUI-specific tests (require display)
+├── hardware/         # Hardware driver tests (require equipment)
+└── conftest.py       # Shared fixtures and configuration
+```
+
+### Common Test Commands
+
+```bash
+# Run specific test directory
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/gui/ -v
+
+# Run specific test file
+pytest tests/unit/test_mock_equipment.py -v
+
+# Run specific test function
+pytest tests/unit/test_mock_equipment.py::test_mock_oscilloscope_basic -v
+
+# Run tests matching pattern
+pytest tests/ -v -k "oscilloscope"
+pytest tests/ -v -k "websocket"
+
+# Stop at first failure
+pytest tests/ -v -x
+
+# Run last failed tests
+pytest tests/ -v --lf
+
+# Show test output (print statements)
+pytest tests/ -v -s
+
+# Parallel execution (requires pytest-xdist)
+pytest tests/ -v -n auto
+```
+
+### Test Markers
+
+Use markers to categorize and filter tests:
+
+```python
+@pytest.mark.unit
+@pytest.mark.integration
+@pytest.mark.e2e
+@pytest.mark.slow
+@pytest.mark.requires_hardware
+@pytest.mark.requires_gui
+@pytest.mark.asyncio
+```
+
+Run tests by marker:
+
+```bash
+pytest tests/ -v -m "unit and not slow"
+pytest tests/ -v -m "requires_hardware"
+pytest tests/ -v -m "not requires_gui"
+```
+
+---
+
+## Mock Equipment Testing
+
+### Overview
+
+LabLink provides comprehensive mock equipment drivers for testing without physical hardware. Mock drivers simulate realistic behavior including:
+
+- Configuration persistence
+- State management
+- Error conditions
+- Measurement simulation
+- Channel operations
+- Safety limits
+
+### Available Mock Equipment
+
+#### 1. Mock Oscilloscope (Rigol DS1054Z)
+
+```python
+from server.equipment.mock.oscilloscope import MockRigolDS1054Z
+
+# Create mock oscilloscope
+scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+
+# Configure channels
+scope.set_channel_enabled(1, True)
+scope.set_channel_scale(1, 1.0)  # 1V/div
+scope.set_timebase_scale(0.001)  # 1ms/div
+
+# Acquire data
+waveform = scope.get_waveform(1)
+measurements = scope.measure_all(1)
+```
+
+#### 2. Mock Power Supply (Keysight E36312A)
+
+```python
+from server.equipment.mock.power_supply import MockKeysightE36312A
+
+# Create mock power supply
+psu = MockKeysightE36312A("MOCK::PSU::001")
+
+# Configure channel
+psu.set_voltage(1, 5.0)
+psu.set_current_limit(1, 1.0)
+psu.set_output_enabled(1, True)
+
+# Read measurements
+voltage = psu.measure_voltage(1)
+current = psu.measure_current(1)
+power = psu.measure_power(1)
+```
+
+#### 3. Mock Electronic Load (BK Precision 8500)
+
+```python
+from server.equipment.mock.electronic_load import MockBKPrecision8500
+
+# Create mock load
+load = MockBKPrecision8500("MOCK::LOAD::001")
+
+# Set mode and value
+load.set_mode("CC")  # Constant current
+load.set_current(2.0)  # 2A
+load.set_input_enabled(True)
+
+# Read measurements
+voltage = load.measure_voltage()
+current = load.measure_current()
+power = load.measure_power()
+```
+
+### Mock Equipment Features
+
+#### Realistic Behavior
+
+Mock equipment simulates real device behavior:
+
+```python
+# Timebase affects waveform resolution
+scope.set_timebase_scale(0.001)  # 1ms/div → 1000 points
+scope.set_timebase_scale(0.0001)  # 100μs/div → 10000 points
+
+# Output voltage/current affects measurements
+psu.set_voltage(1, 5.0)
+psu.set_current_limit(1, 1.0)
+psu.measure_voltage(1)  # Returns ~5.0V ±1%
+psu.measure_current(1)  # Returns realistic current draw
+```
+
+#### Error Simulation
+
+Test error handling with simulated errors:
+
+```python
+# Channel out of range
+scope.set_channel_enabled(5, True)  # Raises ValueError
+
+# Invalid parameter
+psu.set_voltage(1, -10.0)  # Raises ValueError
+
+# Safety limits
+psu.set_voltage(1, 50.0)  # Raises ValueError (exceeds max)
+```
+
+#### State Persistence
+
+Mock equipment maintains state across operations:
+
+```python
+# Configuration persists
+scope.set_channel_scale(1, 2.0)
+scope.set_trigger_level(1.5)
+# State is maintained for subsequent operations
+
+# Measurements reflect current state
+psu.set_output_enabled(1, False)
+psu.measure_current(1)  # Returns 0.0 (output disabled)
+```
+
+---
+
+## Test Organization
+
+### Pytest Configuration
+
+Configuration is defined in `pytest.ini`:
+
+```ini
+[pytest]
+testpaths = tests
+python_files = test_*.py *_test.py
+python_classes = Test*
+python_functions = test_*
+asyncio_mode = auto
+timeout = 300
+```
+
+### Global Fixtures
+
+Shared fixtures are defined in `tests/conftest.py`:
+
+```python
+import pytest
+from pathlib import Path
+
+@pytest.fixture(scope="session")
+def project_root():
+    """Get project root directory."""
+    return Path(__file__).parent.parent
+
+@pytest.fixture
+def sample_equipment_info():
+    """Sample equipment info for testing."""
+    return {
+        "id": "test_scope_001",
+        "type": "oscilloscope",
+        "model": "Rigol DS1054Z",
+        # ... additional fields
+    }
+```
+
+### Test Examples
+
+#### Unit Test Example
+
+```python
+import pytest
+from server.equipment.mock.oscilloscope import MockRigolDS1054Z
+
+@pytest.mark.unit
+def test_mock_oscilloscope_basic():
+    """Test basic oscilloscope operations."""
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+
+    # Test channel configuration
+    scope.set_channel_enabled(1, True)
+    assert scope.get_channel_enabled(1) is True
+
+    # Test timebase
+    scope.set_timebase_scale(0.001)
+    assert scope.get_timebase_scale() == 0.001
+
+    # Test waveform acquisition
+    waveform = scope.get_waveform(1)
+    assert len(waveform) > 0
+    assert all(isinstance(x, float) for x in waveform)
+```
+
+#### Integration Test Example
+
+```python
+import pytest
+import asyncio
+from client.websocket_client import WebSocketClient
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_websocket_streaming():
+    """Test WebSocket data streaming."""
+    client = WebSocketClient("ws://localhost:8000/ws")
+
+    try:
+        await client.connect()
+
+        # Subscribe to equipment data
+        await client.subscribe("oscilloscope", "test_scope_001")
+
+        # Receive data
+        data = await asyncio.wait_for(client.receive(), timeout=5.0)
+        assert data is not None
+        assert "waveform" in data
+
+    finally:
+        await client.disconnect()
+```
+
+#### GUI Test Example
+
+```python
+import pytest
+from PyQt6.QtWidgets import QApplication
+from client.panels.oscilloscope_panel import OscilloscopePanel
+
+@pytest.mark.gui
+@pytest.mark.requires_gui
+def test_oscilloscope_panel(qtbot, sample_equipment_info):
+    """Test oscilloscope panel with mock equipment."""
+    panel = OscilloscopePanel(sample_equipment_info)
+    qtbot.addWidget(panel)
+
+    # Test UI elements exist
+    assert panel.channel1_checkbox is not None
+    assert panel.timebase_combo is not None
+
+    # Test interaction
+    qtbot.mouseClick(panel.channel1_checkbox, Qt.MouseButton.LeftButton)
+    assert panel.channel1_checkbox.isChecked()
+```
+
+---
+
+## Writing Tests
+
+### Best Practices
+
+1. **Use Descriptive Names**
+
+```python
+# Good
+def test_oscilloscope_waveform_acquisition_returns_valid_data():
+    pass
+
+# Bad
+def test_scope():
+    pass
+```
+
+2. **Follow AAA Pattern** (Arrange, Act, Assert)
+
+```python
+def test_power_supply_voltage_setting():
+    # Arrange
+    psu = MockKeysightE36312A("MOCK::PSU::001")
+    expected_voltage = 5.0
+
+    # Act
+    psu.set_voltage(1, expected_voltage)
+    actual_voltage = psu.get_voltage(1)
+
+    # Assert
+    assert actual_voltage == expected_voltage
+```
+
+3. **Test One Thing at a Time**
+
+```python
+# Good - focused test
+def test_channel_enable():
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+    scope.set_channel_enabled(1, True)
+    assert scope.get_channel_enabled(1) is True
+
+# Bad - testing too much
+def test_everything():
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+    scope.set_channel_enabled(1, True)
+    scope.set_timebase_scale(0.001)
+    waveform = scope.get_waveform(1)
+    # ... many more assertions
+```
+
+4. **Use Fixtures for Common Setup**
+
+```python
+@pytest.fixture
+def configured_oscilloscope():
+    """Oscilloscope with standard test configuration."""
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+    scope.set_channel_enabled(1, True)
+    scope.set_channel_scale(1, 1.0)
+    scope.set_timebase_scale(0.001)
+    return scope
+
+def test_with_fixture(configured_oscilloscope):
+    """Test using pre-configured oscilloscope."""
+    waveform = configured_oscilloscope.get_waveform(1)
+    assert len(waveform) == 1000
+```
+
+5. **Test Error Conditions**
+
+```python
+def test_invalid_channel_raises_error():
+    """Test that invalid channel number raises ValueError."""
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+
+    with pytest.raises(ValueError, match="Channel must be between 1 and 4"):
+        scope.set_channel_enabled(5, True)
+```
+
+6. **Use Parametrize for Multiple Cases**
+
+```python
+@pytest.mark.parametrize("channel,scale", [
+    (1, 0.5),
+    (2, 1.0),
+    (3, 2.0),
+    (4, 5.0),
+])
+def test_channel_scales(channel, scale):
+    """Test different channel scales."""
+    scope = MockRigolDS1054Z("MOCK::SCOPE::001")
+    scope.set_channel_scale(channel, scale)
+    assert scope.get_channel_scale(channel) == scale
+```
+
+---
+
+## CI/CD Integration
+
+### GitHub Actions
+
+LabLink uses GitHub Actions for continuous testing. The workflow is defined in `.github/workflows/test.yml`:
+
+```yaml
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-timeout pytest-cov
+
+    - name: Run tests
+      run: |
+        pytest tests/ -v --tb=short \
+          -m "not requires_hardware and not requires_gui" \
+          --cov=client --cov=server \
+          --cov-report=xml \
+          --cov-report=term-missing
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+```
+
+### Test Coverage Goals
+
+- **Overall**: ≥80% coverage
+- **Core modules**: ≥90% coverage
+- **Mock equipment**: 100% coverage
+- **API endpoints**: ≥85% coverage
+
+### Running CI Tests Locally
+
+```bash
+# Run the same tests as CI
+pytest tests/ -v --tb=short \
+  -m "not requires_hardware and not requires_gui" \
+  --cov=client --cov=server \
+  --cov-report=html \
+  --cov-report=term-missing
+
+# View coverage report
+open htmlcov/index.html
+```
+
+---
+
+## Manual Testing
+
+### Server API Testing
+
+#### 1. Start the Server
+
+```bash
+# Development mode
+cd server
+python main.py --dev
+
+# Production mode
+python main.py
+```
+
+#### 2. Test Endpoints with curl
+
+**Health Check**:
+```bash
+curl http://localhost:8000/health
+```
+
+**List Equipment**:
+```bash
 curl http://localhost:8000/api/equipment
-
-# Get specific equipment
-curl http://localhost:8000/api/equipment/{equipment_id}
-
-# Connect to equipment
-curl -X POST http://localhost:8000/api/equipment/{equipment_id}/connect
 ```
 
-### Data Acquisition Endpoints
-
+**Connect to Equipment**:
 ```bash
-# Create acquisition session
-curl -X POST http://localhost:8000/api/acquisition/create \
+curl -X POST http://localhost:8000/api/equipment/connect \
   -H "Content-Type: application/json" \
-  -d '{"equipment_id": "eq_123", "mode": "continuous", "sample_rate_hz": 1000}'
-
-# Start acquisition
-curl -X POST http://localhost:8000/api/acquisition/{acquisition_id}/start
-
-# Stop acquisition
-curl -X POST http://localhost:8000/api/acquisition/{acquisition_id}/stop
+  -d '{"equipment_id": "test_scope_001"}'
 ```
 
-### Alarm Endpoints
-
+**Oscilloscope Control**:
 ```bash
-# List alarms
-curl http://localhost:8000/api/alarms
-
-# Get active alarm events
-curl http://localhost:8000/api/alarms/events/active
-
-# Acknowledge alarm
-curl -X POST http://localhost:8000/api/alarms/events/acknowledge \
-  -H "Content-Type: application/json" \
-  -d '{"event_id": "event_123"}'
-```
-
-### Scheduler Endpoints
-
-```bash
-# List scheduled jobs
-curl http://localhost:8000/api/scheduler/jobs
-
-# Create job
-curl -X POST http://localhost:8000/api/scheduler/jobs/create \
+# Configure channel
+curl -X POST http://localhost:8000/api/equipment/oscilloscope/test_scope_001/channel/1/config \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Test Job",
-    "schedule_type": "acquisition",
-    "trigger_type": "interval",
-    "interval_seconds": 60,
-    "equipment_id": "eq_123"
+    "enabled": true,
+    "scale": 1.0,
+    "offset": 0.0,
+    "coupling": "DC"
   }'
 
-# Run job now
-curl -X POST http://localhost:8000/api/scheduler/jobs/{job_id}/run
+# Get waveform
+curl http://localhost:8000/api/equipment/oscilloscope/test_scope_001/waveform/1
 ```
 
-### Diagnostics Endpoints
+**Power Supply Control**:
+```bash
+# Set voltage
+curl -X POST http://localhost:8000/api/equipment/power_supply/test_psu_001/channel/1/voltage \
+  -H "Content-Type: application/json" \
+  -d '{"voltage": 5.0}'
+
+# Enable output
+curl -X POST http://localhost:8000/api/equipment/power_supply/test_psu_001/channel/1/output \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+
+# Read measurements
+curl http://localhost:8000/api/equipment/power_supply/test_psu_001/channel/1/measurements
+```
+
+**Electronic Load Control**:
+```bash
+# Set mode and current
+curl -X POST http://localhost:8000/api/equipment/electronic_load/test_load_001/mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "CC"}'
+
+curl -X POST http://localhost:8000/api/equipment/electronic_load/test_load_001/current \
+  -H "Content-Type: application/json" \
+  -d '{"current": 2.0}'
+
+# Enable input
+curl -X POST http://localhost:8000/api/equipment/electronic_load/test_load_001/input \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+### WebSocket Testing
+
+Using `websocat` (install: `cargo install websocat`):
 
 ```bash
-# Get equipment health
-curl http://localhost:8000/api/diagnostics/health/{equipment_id}
+# Connect to WebSocket
+websocat ws://localhost:8000/ws
 
-# Get all equipment health
-curl http://localhost:8000/api/diagnostics/health
+# Subscribe to equipment data
+{"type": "subscribe", "equipment_type": "oscilloscope", "equipment_id": "test_scope_001"}
 
-# Run benchmark
-curl -X POST http://localhost:8000/api/diagnostics/benchmark/{equipment_id}
-
-# Generate diagnostic report
-curl -X POST http://localhost:8000/api/diagnostics/report
+# Unsubscribe
+{"type": "unsubscribe", "equipment_type": "oscilloscope", "equipment_id": "test_scope_001"}
 ```
 
-## Verification Scripts
-
-### Test Server Startup
-
-```python
-import requests
-
-try:
-    response = requests.get("http://localhost:8000/health", timeout=5)
-    if response.status_code == 200:
-        print("✓ Server is running")
-        print(f"  Response: {response.json()}")
-    else:
-        print(f"✗ Server returned status {response.status_code}")
-except requests.exceptions.ConnectionError:
-    print("✗ Cannot connect to server")
-except Exception as e:
-    print(f"✗ Error: {e}")
-```
-
-### Test Client API
-
-```python
-import sys
-sys.path.insert(0, "client")
-
-from api.client import LabLinkClient
-
-client = LabLinkClient("localhost", 8000, 8001)
-
-if client.connect():
-    print("✓ Connected to server")
-
-    # Get server info
-    info = client.get_server_info()
-    print(f"  Server: {info['name']} v{info['version']}")
-
-    # Test health check
-    health = client.health_check()
-    print(f"  Health: {health['status']}")
-
-    # List equipment
-    equipment = client.list_equipment()
-    print(f"  Equipment count: {len(equipment)}")
-else:
-    print("✗ Failed to connect")
-```
-
-## Known Issues
-
-### WSL Display Issues
-
-If GUI doesn't display in WSL:
-
-1. **Windows 11 with WSLg:**
-   - Should work out of the box
-   - Run: `python3 client/main.py`
-
-2. **Windows 10:**
-   - Install X Server (VcXsrv or Xming)
-   - Set DISPLAY: `export DISPLAY=:0`
-   - May have font/rendering issues
-
-### Missing Dependencies
-
-If you see import errors:
+### Client GUI Testing
 
 ```bash
-# Server dependencies
-cd server && pip install -r requirements.txt
+# Start client
+cd client
+python main.py
 
-# Client dependencies
-cd client && pip install -r requirements.txt
+# Or run with mock equipment
+python main.py --mock
 ```
 
-### Hardware Not Found
+**Manual Test Checklist**:
 
-Without actual laboratory equipment:
-- Server will run but show no devices
-- Use API simulation mode (if implemented)
-- Test with mock equipment drivers
+- [ ] Equipment discovery shows available devices
+- [ ] Connect to oscilloscope displays panel
+- [ ] Channel enable/disable works
+- [ ] Timebase changes update waveform
+- [ ] Trigger level adjustment works
+- [ ] Waveform display updates in real-time
+- [ ] Power supply channel controls work
+- [ ] Voltage/current settings apply correctly
+- [ ] Output enable/disable works
+- [ ] Electronic load mode switching works
+- [ ] Load value settings apply correctly
+- [ ] Measurements update correctly
+- [ ] WebSocket connection indicator shows status
+- [ ] Error messages display properly
 
-## Performance Testing
-
-### API Response Times
-
-```bash
-# Test multiple requests
-for i in {1..10}; do
-  time curl -s http://localhost:8000/health > /dev/null
-done
-```
-
-### Load Testing
-
-Use tools like `ab` (Apache Bench) or `wrk`:
-
-```bash
-# Install ab
-sudo apt install apache2-utils
-
-# Test health endpoint
-ab -n 1000 -c 10 http://localhost:8000/health
-```
-
-## Continuous Testing
-
-### Automated Test Suite
-
-Create a test suite that:
-1. Starts server
-2. Waits for startup
-3. Runs API tests
-4. Checks responses
-5. Shuts down server
-
-Example script:
-
-```bash
-#!/bin/bash
-
-# Start server in background
-cd server
-python3 main.py &
-SERVER_PID=$!
-
-# Wait for server to start
-sleep 5
-
-# Run tests
-python3 ../test_api.py
-
-# Stop server
-kill $SERVER_PID
-```
+---
 
 ## Troubleshooting
 
-### Server won't start
+### Common Issues
 
-- Check if port 8000 is already in use:
-  ```bash
-  lsof -i :8000
-  ```
-- Kill existing process:
-  ```bash
-  kill $(lsof -t -i:8000)
-  ```
+#### 1. Tests Fail to Import Modules
 
-### Client won't connect
+**Error**:
+```
+ModuleNotFoundError: No module named 'server'
+```
 
-- Verify server is running: `curl http://localhost:8000/health`
-- Check firewall settings
-- Try 127.0.0.1 instead of localhost
+**Solution**:
+```bash
+# Verify Python path in tests/conftest.py
+# Should include:
+sys.path.insert(0, str(project_root / "client"))
+sys.path.insert(0, str(project_root / "server"))
+sys.path.insert(0, str(project_root / "shared"))
+```
 
-### Import errors
+#### 2. Async Tests Timeout
 
-- Verify Python version: `python3 --version` (need 3.11+)
-- Reinstall dependencies: `pip install -r requirements.txt --force-reinstall`
+**Error**:
+```
+asyncio.TimeoutError: Task took too long
+```
 
-## Success Criteria
+**Solution**:
+```python
+# Increase timeout
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)  # 60 second timeout
+async def test_long_operation():
+    pass
+```
 
-A successful test should show:
+#### 3. GUI Tests Fail on Headless Systems
 
-- ✓ Server starts without errors
-- ✓ Server responds to health checks
-- ✓ API documentation accessible
-- ✓ Client GUI launches (if display available)
-- ✓ Client connects to server
-- ✓ All panels load without errors
-- ✓ API endpoints return expected responses
-- ✓ No Python exceptions in logs
+**Error**:
+```
+QXcbConnection: Could not connect to display
+```
 
-## Next Steps
+**Solution**:
+```bash
+# Use virtual display (Linux)
+sudo apt-get install xvfb
+xvfb-run pytest tests/gui/ -v
 
-After successful testing:
+# Or skip GUI tests
+pytest tests/ -v -m "not requires_gui"
+```
 
-1. Connect real laboratory equipment
-2. Configure equipment drivers
-3. Test data acquisition with real devices
-4. Set up alarms for your specific needs
-5. Create scheduled jobs
-6. Monitor equipment health
+#### 4. WebSocket Connection Refused
 
-## Support
+**Error**:
+```
+ConnectionRefusedError: [Errno 111] Connection refused
+```
 
-For issues:
-- Check logs: `server/lablink_server.log` and `client/lablink_client.log`
-- Review documentation in `docs/` directory
-- Check GitHub issues
+**Solution**:
+```bash
+# Ensure server is running
+cd server
+python main.py &
+
+# Wait for server to start
+sleep 2
+
+# Run tests
+pytest tests/integration/test_websocket_streaming.py -v
+```
+
+#### 5. Port Already in Use
+
+**Error**:
+```
+OSError: [Errno 48] Address already in use
+```
+
+**Solution**:
+```bash
+# Find and kill process using port 8000
+lsof -ti:8000 | xargs kill -9
+
+# Or use different port
+export LABLINK_PORT=8001
+python server/main.py
+```
+
+### Debug Mode
+
+Enable verbose logging for debugging:
+
+```bash
+# Server debug mode
+python server/main.py --debug
+
+# Pytest verbose output
+pytest tests/ -v -s --log-cli-level=DEBUG
+```
+
+### Getting Help
+
+1. **Check logs**: Server logs are in `server/logs/`
+2. **Review test output**: Use `-v` and `--tb=long` for detailed tracebacks
+3. **Enable debug logging**: Set `log_cli = true` in `pytest.ini`
+4. **Run single test**: Isolate failing test with `-k pattern`
+5. **Check CI logs**: Review GitHub Actions workflow logs
+
+---
+
+## Test Statistics
+
+Current test coverage (as of v0.10.0):
+
+- **Total tests**: 34+
+- **Unit tests**: 28+ (mock equipment, utilities)
+- **Integration tests**: 6+ (WebSocket, API)
+- **GUI tests**: Available but require display
+- **Hardware tests**: Available but require equipment
+- **Coverage**: ~85% (client/server combined)
+
+---
+
+## Quick Reference
+
+### Essential Commands
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific category
+pytest tests/unit/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=client --cov=server
+
+# Run CI tests locally
+pytest tests/ -v -m "not requires_hardware and not requires_gui"
+
+# Debug failing test
+pytest tests/unit/test_mock_equipment.py::test_specific_function -v -s
+
+# Update snapshots (if using pytest-snapshot)
+pytest tests/ --snapshot-update
+```
+
+### Test Markers
+
+```bash
+-m unit              # Unit tests only
+-m integration       # Integration tests
+-m "not slow"        # Exclude slow tests
+-m "not requires_hardware"  # Skip hardware tests
+-m "not requires_gui"       # Skip GUI tests
+```
+
+### Coverage Commands
+
+```bash
+# Generate HTML report
+pytest tests/ --cov=client --cov=server --cov-report=html
+
+# Show missing lines
+pytest tests/ --cov=client --cov=server --cov-report=term-missing
+
+# Set minimum coverage (fail if below threshold)
+pytest tests/ --cov=client --cov=server --cov-fail-under=80
+```
+
+---
+
+## Additional Resources
+
+- **pytest documentation**: https://docs.pytest.org/
+- **pytest-asyncio**: https://github.com/pytest-dev/pytest-asyncio
+- **pytest-qt**: https://pytest-qt.readthedocs.io/
+- **Coverage.py**: https://coverage.readthedocs.io/
+
+For more information, see:
+- `tests/README.md` - Test organization details
+- `.github/workflows/test.yml` - CI/CD configuration
+- `pytest.ini` - Pytest configuration
+- `tests/conftest.py` - Global fixtures

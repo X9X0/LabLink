@@ -1,189 +1,253 @@
 # LabLink Development Roadmap
 
-This document tracks all enhancement recommendations and their implementation status.
-
-## Legend
-- ⭐⭐⭐ = Critical/High Priority
-- ⭐⭐ = Very Useful/Medium Priority
-- ⭐ = Nice to Have/Lower Priority
-- ✅ = Completed
-- 🚧 = In Progress
-- 📋 = Planned
-- 💡 = Idea/Future
+**Current Version:** v0.10.0 (Server) / v1.0.0 (Client)
+**Last Updated:** 2025-11-13
+**Status:** Production-ready with WebSocket integration complete
 
 ---
 
-## Current Status (v0.5.0)
+## 📊 Quick Status
 
-### Completed ✅
-1. ✅ Equipment Drivers (Rigol MSO2072A, DS1104, DL3021A, BK 9206B, 9205B, 9130B, 1685B, 1902B)
-2. ✅ Configuration Management System (65+ settings, validation)
-3. ✅ Error Handling & Recovery (auto-reconnect, health monitoring, retry logic)
-4. ✅ Equipment Profile System (save/load configurations, REST API)
-5. ✅ Safety Limits & Interlocks (voltage/current limits, slew rate, emergency stop)
-6. ✅ Equipment Lock/Session Management (exclusive/observer locks, session tracking, queue system)
-7. ✅ Equipment State Management (capture/restore states, comparison, versioning)
+| Component | Version | Status | Features |
+|-----------|---------|--------|----------|
+| **Server** | v0.10.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management |
+| **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
+| **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
+| **Documentation** | - | ✅ Good | API docs, user guides, system docs |
+
+---
+
+## 📖 Table of Contents
+
+1. [Version History](#version-history)
+2. [Completed Features](#completed-features)
+3. [Planned Enhancements](#planned-enhancements)
+4. [Development Priorities](#development-priorities)
+5. [Implementation Phases](#implementation-phases)
+6. [Development Principles](#development-principles)
+
+---
+
+## 📚 Version History
+
+### v0.10.0 - WebSocket Integration & Testing Infrastructure (2025-11-13) ✅
+
+**Status**: Complete
+
+**Overview**: Full client-side WebSocket integration with comprehensive testing infrastructure and mock equipment support.
+
+**Features Implemented**:
+- ✅ WebSocket integration across all GUI panels (Equipment, Acquisition, Alarm, Scheduler)
+- ✅ Real-time data streaming and event notifications
+- ✅ qasync integration for async/await support in PyQt6
+- ✅ Mock equipment utilities (oscilloscope, power supply, electronic load)
+- ✅ Comprehensive test suite (28 mock equipment tests, 6 integration tests)
+- ✅ CI/CD pipeline with GitHub Actions
+- ✅ Equipment auto-registration and demo lab setup
+- ✅ Mock equipment helper functions and configuration
+
+**API/Integration**:
+- 4 GUI panels enhanced with WebSocket support
+- ~370 lines of WebSocket integration code
+- 15+ async WebSocket methods in client
+- Real-time status updates and streaming
+
+**Testing**:
+- 34+ automated tests (mock equipment, integration, unit)
+- Hardware test suite for BK and Rigol equipment
+- CI/CD with pytest, coverage reporting, and lint checks
+- Demo scripts and interactive testing tools
+
+**Files Modified/Created**:
+- `client/ui/*.py` (4 panels updated for WebSocket)
+- `client/api/client.py` (WebSocket methods)
+- `server/equipment/mock_helper.py` (utilities)
+- `tests/test_mock_equipment.py` (comprehensive suite)
+- `.github/workflows/test-with-mock-equipment.yml`
+- `demo_mock_equipment.py`
+
+---
+
+### v0.6.0 - Data Acquisition & Logging System (2025-01-08) ✅
+
+**Status**: Complete
+
+**Overview**: Comprehensive data acquisition system with multiple acquisition modes, advanced statistics, and multi-instrument synchronization.
+
+**Features Implemented**:
+- ✅ Acquisition modes (continuous, single-shot, triggered)
+- ✅ Trigger types (immediate, level, edge, time, external)
+- ✅ Circular buffer for efficient data storage
+- ✅ Advanced statistics (FFT, THD, SNR, trend detection, peak detection)
+- ✅ Multi-instrument synchronization
+- ✅ Real-time WebSocket streaming
+- ✅ Multiple export formats (CSV, NumPy, JSON, HDF5)
+- ✅ 26 REST API endpoints
+
+**API Endpoints Added**: 26
+- 10 basic acquisition endpoints
+- 6 statistics endpoints
+- 10 synchronization endpoints
+
+**Files**:
+- `acquisition/` module (2,135+ lines across 4 files)
+- `api/acquisition.py` (1,090+ lines)
+- Documentation and verification scripts
+
+---
+
+### v0.5.0 - Equipment State Management (2025-01-07) ✅
+
+**Features**:
+- ✅ Capture/restore equipment states
+- ✅ State comparison (diff generation)
+- ✅ State versioning and metadata
+- ✅ 8 REST API endpoints
+
+---
+
+### v0.4.0 - Equipment Lock & Session Management (2025-01-06) ✅
+
+**Features**:
+- ✅ Exclusive/observer lock modes
+- ✅ Session timeout and auto-release
+- ✅ Lock queue system
+- ✅ 9 REST API endpoints
+
+---
+
+### v0.3.0 - Safety Limits & Interlocks (2025-01-05) ✅
+
+**Features**:
+- ✅ Voltage/current/power limits
+- ✅ Slew rate limiting
+- ✅ Emergency stop functionality
+- ✅ 7 REST API endpoints
+
+---
+
+### v0.2.0 - Configuration & Profiles (2025-01-04) ✅
+
+**Features**:
+- ✅ 65+ configuration settings
+- ✅ Equipment profiles (save/load)
+- ✅ Auto-reconnect and health monitoring
+
+---
+
+### v0.1.0 - Core Server & Equipment Drivers (2025-01-03) ✅
+
+**Features**:
+- ✅ FastAPI REST API server
+- ✅ WebSocket support
+- ✅ VISA-based equipment drivers
+- ✅ 8 equipment models supported
+
+---
+
+## ✅ Completed Features
+
+### Core System
+- ✅ FastAPI REST API server with 80+ endpoints
+- ✅ WebSocket server for real-time data streaming
+- ✅ Configuration management (65+ settings)
+- ✅ Error handling and recovery
+- ✅ Health monitoring and diagnostics
+- ✅ Comprehensive logging system
+
+### Equipment Management
+- ✅ Equipment drivers (Rigol MSO2072A, DS1104, DL3021A, BK 9206B, 9205B, 9130B, 1685B, 1902B)
+- ✅ Mock equipment drivers (oscilloscope, power supply, electronic load)
+- ✅ Equipment discovery and connection
+- ✅ Profile system (save/load configurations)
+- ✅ State management (capture/restore/compare)
+
+### Safety & Control
+- ✅ Safety limits and interlocks
+- ✅ Emergency stop system
+- ✅ Equipment lock/session management
+- ✅ Exclusive and observer modes
+- ✅ Auto-release and timeouts
+
+### Data Acquisition
+- ✅ Multiple acquisition modes
+- ✅ Advanced triggering
+- ✅ Circular buffering
+- ✅ Multi-instrument synchronization
+- ✅ Statistics and analysis (FFT, THD, SNR, trends)
+- ✅ Multiple export formats
+
+### Client Application
+- ✅ PyQt6 desktop GUI
+- ✅ Real-time data visualization (pyqtgraph)
+- ✅ WebSocket integration across all panels
+- ✅ Equipment control interfaces
+- ✅ Acquisition panel with live plotting
+- ✅ Alarm and scheduler management
+- ✅ Configuration persistence
+
+### Testing & CI/CD
+- ✅ Comprehensive test suite (34+ tests)
+- ✅ Mock equipment testing
+- ✅ Integration tests
+- ✅ Hardware-specific tests
+- ✅ GitHub Actions CI/CD pipeline
+- ✅ Code coverage reporting
+
+---
+
+## 🎯 Planned Enhancements
+
+### Legend
+- ⭐⭐⭐ = Critical/High Priority
+- ⭐⭐ = Very Useful/Medium Priority
+- ⭐ = Nice to Have/Lower Priority
+- 📋 = Planned for next version
+- 💡 = Future consideration
 
 ---
 
 ## High Priority Enhancements ⭐⭐⭐
 
-### 1. Data Acquisition & Logging System 📋
-**Priority:** ⭐⭐⭐ (Critical)
-**Difficulty:** Hard (Big Project - Several days)
-**Status:** Planned
+### 1. Advanced Logging System 📋
+**Priority:** ⭐⭐⭐
+**Effort:** 0.5-1 day
+**Status:** Partially complete (basic logging exists)
 
 **Features:**
-- [ ] Continuous data acquisition with configurable sample rates
-- [ ] Timestamped measurements with precise timing
-- [ ] Circular buffers for high-speed streaming
-- [ ] Triggered acquisition (start/stop on conditions)
-- [ ] Multi-channel synchronization
-- [ ] Data decimation/compression for long-term storage
-- [ ] Export to multiple formats with metadata (CSV, HDF5, MATLAB)
-- [ ] Configurable acquisition modes (single-shot, continuous, triggered)
-- [ ] Data buffering and overflow handling
-- [ ] Timestamp synchronization across instruments
+- [ ] Structured JSON logging
+- [ ] Log rotation and archival
+- [ ] Performance metrics logging
+- [ ] Equipment event logging (partially complete)
+- [ ] User action logging
+- [ ] API call logging with timing
+- [ ] Log analysis utilities
+- [ ] Centralized log aggregation
 
 **Benefits:**
-- Essential for actual lab work
-- Enables trend analysis and debugging
-- Professional data management
-- Long-term experiment support
+- Professional audit trail
+- Better troubleshooting
+- Performance monitoring
+- Compliance support
 
-**Estimated Time:** 3-5 days
 **Dependencies:** None
 
 ---
 
-### 2. Equipment Lock/Session Management ✅
-**Priority:** ⭐⭐⭐ (Critical for multi-user)
-**Difficulty:** Easy (Quick Win - 5 hours)
-**Status:** **COMPLETED** (v0.4.0)
+### 2. Alarm & Notification System 📋
+**Priority:** ⭐⭐⭐
+**Effort:** 1-2 days
+**Status:** Basic infrastructure exists
 
 **Features:**
-- [x] Exclusive locks (one client controls equipment at a time)
-- [x] Session management (track who's connected)
-- [x] Lock timeout (auto-release after inactivity)
-- [x] Force unlock (admin only)
-- [x] Lock queue (wait in line for equipment)
-- [x] Observer mode (view data without controlling)
-- [x] Lock status API endpoints
-- [x] Event history tracking
-- [x] Automatic cleanup of expired locks/sessions
-- [x] Permission checking for control vs observer access
-- [x] Integration with equipment API
-
-**Benefits:**
-- Prevents equipment conflicts ✅
-- Multi-user safety ✅
-- Clear ownership visibility ✅
-- Professional lab environment support ✅
-
-**Actual Time:** 5 hours
-**Dependencies:** None
-
-**Documentation:** See equipment/locks.py, equipment/sessions.py, api/locks.py
-
----
-
-### 3. Safety Limits & Interlocks ✅
-**Priority:** ⭐⭐⭐ (Critical for equipment protection)
-**Difficulty:** Easy (Quick Win - 4 hours)
-**Status:** **COMPLETED** (v0.3.0)
-
-**Features:**
-- [x] Voltage/current limits per equipment
-- [x] Power limits (don't exceed equipment rating)
-- [x] Slew rate limiting (gradual voltage changes)
-- [x] Emergency stop endpoint
-- [x] Interlock checking before enabling outputs
-- [x] Limit violation alerts
-- [x] Safe state on disconnect (auto-disable outputs)
-- [x] Configurable safety profiles (via SafetyLimits class)
-- [x] Safety event logging
-
-**Benefits:**
-- Protects expensive equipment ✅
-- Prevents accidents ✅
-- Critical for safety compliance ✅
-- Reduces operator errors ✅
-
-**Actual Time:** 4 hours
-**Dependencies:** None
-
-**Documentation:** See SAFETY_SYSTEM.md
-
----
-
-## Medium Priority Enhancements ⭐⭐
-
-### 4. Measurement Statistics & Analysis 📋
-**Priority:** ⭐⭐
-**Difficulty:** Medium (Moderate - 1-2 days)
-**Status:** Planned
-
-**Features:**
-- [ ] Rolling statistics (mean, std dev, min, max over time window)
-- [ ] Threshold detection (alert when crossing limits)
-- [ ] Data quality metrics (noise level, stability)
-- [ ] Automatic range detection
-- [ ] Peak detection
-- [ ] FFT/frequency analysis for waveforms
-- [ ] Trend analysis (rising, falling, stable)
-- [ ] Statistical summaries in API responses
-
-**Benefits:**
-- Advanced testing capabilities
-- Quick quality checks
-- Automation support
-- Better insights
-
-**Estimated Time:** 1-2 days
-**Dependencies:** Data Acquisition System (recommended)
-
----
-
-### 5. Command Scheduler/Automation Engine 📋
-**Priority:** ⭐⭐
-**Difficulty:** Hard (Big Project - Several days)
-**Status:** Planned
-
-**Features:**
-- [ ] Command sequences (queue multiple commands)
-- [ ] Scheduled execution (run at specific times)
-- [ ] Conditional logic (if/then/else based on measurements)
-- [ ] Loops and delays
-- [ ] Test scripts (Python or JSON-based)
-- [ ] Progress tracking
-- [ ] Pause/resume/abort
-- [ ] Script library/templates
-- [ ] Script validation
-
-**Benefits:**
-- Automated testing
-- Repeatability
-- Overnight/long-term runs
-- Reduces manual effort
-
-**Estimated Time:** 3-4 days
-**Dependencies:** Data Acquisition (recommended)
-
----
-
-### 6. Event & Notification System 📋
-**Priority:** ⭐⭐
-**Difficulty:** Medium (1-2 days)
-**Status:** Planned
-
-**Features:**
-- [ ] Webhooks for equipment events
-- [ ] Email/SMS alerts for errors
-- [ ] Event log with filtering
-- [ ] Customizable alert rules
-- [ ] Alert acknowledgment
-- [ ] Event severity levels
+- [ ] Enhanced alarm monitoring
+- [ ] Threshold-based alerts
+- [ ] Email/SMS notifications
+- [ ] Alert escalation policies
+- [ ] Alarm history and acknowledgment
+- [ ] Configurable alarm rules
 - [ ] Alert templates
+- [ ] Multi-channel notifications
 
 **Benefits:**
 - Proactive monitoring
@@ -191,69 +255,109 @@ This document tracks all enhancement recommendations and their implementation st
 - Quick issue detection
 - Professional alerting
 
-**Estimated Time:** 1-2 days
-**Dependencies:** None
+**Dependencies:** Advanced Logging (recommended)
 
 ---
 
-### 7. Enhanced WebSocket Features 📋
-**Priority:** ⭐⭐
-**Difficulty:** Medium (1-2 days)
-**Status:** Planned
+### 3. Scheduled Operations 📋
+**Priority:** ⭐⭐⭐
+**Effort:** 1-2 days
 
 **Features:**
-- [ ] Binary data streaming (faster than JSON)
-- [ ] Selective subscriptions (only certain equipment/channels)
-- [ ] Client bandwidth throttling
-- [ ] Historical data replay
-- [ ] Stream recording
-- [ ] Compression options
-- [ ] Priority channels
+- [ ] Scheduled acquisitions
+- [ ] Periodic state captures
+- [ ] Automated equipment tests
+- [ ] Recurring measurements
+- [ ] Cron-like scheduling
+- [ ] Schedule persistence
+- [ ] Job history and status
+- [ ] Conflict resolution
 
 **Benefits:**
-- Better performance
-- Lower bandwidth usage
-- More control
-- Advanced features
+- Automated testing
+- Long-term data collection
+- Unattended operation
+- Repeatability
 
-**Estimated Time:** 1-2 days
 **Dependencies:** None
 
 ---
 
-### 8. Equipment State Management ✅
+## Medium Priority Enhancements ⭐⭐
+
+### 4. Waveform Capture & Analysis 📋
 **Priority:** ⭐⭐
-**Difficulty:** Easy (Quick Win - 4 hours)
-**Status:** **COMPLETED** (v0.5.0)
+**Effort:** 3-4 days
 
 **Features:**
-- [x] Save complete equipment state as snapshot
-- [x] Compare states (diff view)
-- [x] Restore to previous state
-- [x] State versioning
-- [x] Named state presets
-- [x] State export/import
-- [x] Tag-based organization
-- [x] Automatic state persistence
-- [x] REST API endpoints
+- [ ] High-speed waveform acquisition
+- [ ] Enhanced automatic measurements
+- [ ] Cursor measurements
+- [ ] Math channels (add, subtract, FFT)
+- [ ] Waveform export improvements
+- [ ] Persistence mode
+- [ ] Histogram display
+- [ ] XY mode
 
 **Benefits:**
-- Quick setup changes ✅
-- Easy comparison ✅
-- Troubleshooting aid ✅
-- Experiment reproducibility ✅
+- Enhanced oscilloscope functionality
+- Better signal analysis
+- Professional measurement tools
+- Advanced debugging
 
-**Actual Time:** 4 hours
 **Dependencies:** None
-
-**Documentation:** See equipment/state.py, api/state.py
 
 ---
 
-### 9. Database Integration 📋
+### 5. Equipment Diagnostics 📋
 **Priority:** ⭐⭐
-**Difficulty:** Medium (2-3 days)
-**Status:** Planned
+**Effort:** 1-2 days
+
+**Features:**
+- [ ] Built-in self-test (BIST)
+- [ ] Calibration status checking
+- [ ] Temperature monitoring
+- [ ] Error code database
+- [ ] Diagnostic reports
+- [ ] Health scoring
+- [ ] Predictive maintenance alerts
+
+**Benefits:**
+- Equipment health monitoring
+- Preventive maintenance
+- Reduced downtime
+- Better asset management
+
+**Dependencies:** Advanced Logging
+
+---
+
+### 6. Data Analysis Pipeline 📋
+**Priority:** ⭐⭐
+**Effort:** 3-4 days
+
+**Features:**
+- [ ] Signal filtering (low-pass, high-pass, band-pass)
+- [ ] Data decimation and resampling
+- [ ] Curve fitting and regression
+- [ ] Statistical process control (SPC)
+- [ ] Automated report generation
+- [ ] Batch processing
+- [ ] Custom analysis scripts
+
+**Benefits:**
+- Advanced data processing
+- Quality control
+- Automated reporting
+- Research support
+
+**Dependencies:** None
+
+---
+
+### 7. Database Integration 📋
+**Priority:** ⭐⭐
+**Effort:** 2-3 days
 
 **Features:**
 - [ ] SQLite for local storage
@@ -271,24 +375,46 @@ This document tracks all enhancement recommendations and their implementation st
 - Usage tracking
 - Better data management
 
-**Estimated Time:** 2-3 days
 **Dependencies:** None
 
 ---
 
-### 10. Calibration Management 📋
+### 8. Enhanced WebSocket Features 📋
 **Priority:** ⭐⭐
-**Difficulty:** Medium (1-2 days)
-**Status:** Planned
+**Effort:** 1-2 days
 
 **Features:**
-- [ ] Store calibration coefficients per equipment
-- [ ] Apply calibration corrections to measurements
-- [ ] Calibration expiry tracking
-- [ ] Calibration history
-- [ ] Reference standards tracking
-- [ ] Calibration certificates
+- [ ] Binary data streaming (faster than JSON)
+- [ ] Selective subscriptions (specific equipment/channels)
+- [ ] Client bandwidth throttling
+- [ ] Historical data replay
+- [ ] Stream recording
+- [ ] Compression options
+- [ ] Priority channels
+- [ ] Backpressure handling
+
+**Benefits:**
+- Better performance
+- Lower bandwidth usage
+- More control
+- Advanced features
+
+**Dependencies:** None
+
+---
+
+### 9. Calibration Management 📋
+**Priority:** ⭐⭐
+**Effort:** 2-3 days
+
+**Features:**
 - [ ] Calibration scheduling
+- [ ] Calibration procedures
+- [ ] Certificate management
+- [ ] Out-of-calibration alerts
+- [ ] Calibration history
+- [ ] Apply calibration corrections
+- [ ] Reference standards tracking
 
 **Benefits:**
 - Accurate measurements
@@ -296,17 +422,37 @@ This document tracks all enhancement recommendations and their implementation st
 - Professional operation
 - Quality assurance
 
-**Estimated Time:** 1-2 days
 **Dependencies:** Database Integration (recommended)
 
 ---
 
 ## Lower Priority Enhancements ⭐
 
+### 10. Equipment Discovery Enhancements 💡
+**Priority:** ⭐
+**Effort:** 1-2 days
+
+**Features:**
+- [ ] mDNS/Bonjour for network equipment
+- [ ] Auto-detection of equipment changes
+- [ ] Smart connection recommendations
+- [ ] Equipment aliases/friendly names
+- [ ] Last-known-good connection info
+- [ ] Connection history
+
+**Benefits:**
+- Easier setup
+- Automatic discovery
+- Better UX
+- Reduced configuration
+
+**Dependencies:** None
+
+---
+
 ### 11. Simple Web Dashboard 💡
 **Priority:** ⭐
-**Difficulty:** Hard (1-2 weeks)
-**Status:** Idea
+**Effort:** 1-2 weeks
 
 **Features:**
 - [ ] Real-time status display
@@ -317,69 +463,19 @@ This document tracks all enhancement recommendations and their implementation st
 - [ ] Responsive design
 - [ ] Dark mode
 
-**Estimated Time:** 1-2 weeks
+**Benefits:**
+- Remote monitoring
+- Quick access
+- Multi-platform support
+- Easy administration
+
 **Dependencies:** None
 
 ---
 
-### 12. Equipment Discovery Enhancements 💡
+### 12. Advanced Security 💡
 **Priority:** ⭐
-**Difficulty:** Medium (1-2 days)
-**Status:** Idea
-
-**Features:**
-- [ ] mDNS/Bonjour for network equipment
-- [ ] Auto-detection of equipment changes
-- [ ] Smart connection recommendations
-- [ ] Equipment aliases/friendly names
-- [ ] Last-known-good connection info
-- [ ] Connection history
-
-**Estimated Time:** 1-2 days
-**Dependencies:** None
-
----
-
-### 13. Performance Monitoring 💡
-**Priority:** ⭐
-**Difficulty:** Medium (1 day)
-**Status:** Idea
-
-**Features:**
-- [ ] API endpoint latency tracking
-- [ ] Equipment response time monitoring
-- [ ] System resource usage
-- [ ] Bottleneck detection
-- [ ] Performance history
-- [ ] Metrics dashboard
-
-**Estimated Time:** 1 day
-**Dependencies:** None
-
----
-
-### 14. Backup & Restore 💡
-**Priority:** ⭐
-**Difficulty:** Easy (Few hours)
-**Status:** Idea
-
-**Features:**
-- [ ] Automatic config backups
-- [ ] Profile backup/restore
-- [ ] Data export scheduling
-- [ ] Cloud backup integration
-- [ ] Disaster recovery
-- [ ] Backup verification
-
-**Estimated Time:** 4-6 hours
-**Dependencies:** None
-
----
-
-### 15. Advanced Security 💡
-**Priority:** ⭐
-**Difficulty:** Hard (2-3 days)
-**Status:** Idea
+**Effort:** 2-3 days
 
 **Features:**
 - [ ] Role-based access control (admin, operator, viewer)
@@ -390,92 +486,243 @@ This document tracks all enhancement recommendations and their implementation st
 - [ ] JWT authentication
 - [ ] OAuth2 support
 
-**Estimated Time:** 2-3 days
+**Benefits:**
+- Enterprise security
+- Fine-grained access control
+- Compliance support
+- Multi-user safety
+
 **Dependencies:** Database Integration (recommended)
 
 ---
 
-## Implementation Phases
+### 13. Automated Test Sequences 💡
+**Priority:** ⭐
+**Effort:** 1 week
 
-### Phase 1: Core Safety & Stability ✅ **COMPLETED**
-1. ✅ Safety Limits & Interlocks
-2. ✅ Equipment Lock/Session Management
-3. 📋 Equipment State Management (Optional enhancement)
+**Features:**
+- [ ] Test sequence editor
+- [ ] Parameter sweeping
+- [ ] Pass/fail criteria
+- [ ] Test reporting
+- [ ] Sequence templates
+- [ ] Equipment coordination
+- [ ] Python scripting support
 
-**Goal:** Safe, reliable multi-user operation ✅
+**Benefits:**
+- Reproducible testing
+- Automated validation
+- Time savings
+- Professional testing
 
----
-
-### Phase 2: Data & Analysis
-1. 📋 Data Acquisition & Logging System
-2. 📋 Measurement Statistics & Analysis
-3. 📋 Enhanced WebSocket Features
-
-**Goal:** Professional data acquisition and analysis
-
----
-
-### Phase 3: Automation & Intelligence
-1. 📋 Command Scheduler/Automation Engine
-2. 📋 Event & Notification System
-3. 📋 Calibration Management
-
-**Goal:** Automated testing and smart operation
+**Dependencies:** Scheduled Operations (recommended)
 
 ---
 
-### Phase 4: Advanced Features
-1. 📋 Database Integration
-2. 💡 Simple Web Dashboard
-3. 💡 Advanced Security
+### 14. Performance Monitoring 💡
+**Priority:** ⭐
+**Effort:** 1 day
 
-**Goal:** Enterprise-grade features
+**Features:**
+- [ ] API endpoint latency tracking
+- [ ] Equipment response time monitoring
+- [ ] System resource usage
+- [ ] Bottleneck detection
+- [ ] Performance history
+- [ ] Metrics dashboard
+
+**Benefits:**
+- Performance optimization
+- Issue detection
+- Capacity planning
+- Better reliability
+
+**Dependencies:** Advanced Logging
 
 ---
 
-### Phase 5: Polish & Optimization
-1. 💡 Equipment Discovery Enhancements
-2. 💡 Performance Monitoring
-3. 💡 Backup & Restore
+### 15. Backup & Restore 💡
+**Priority:** ⭐
+**Effort:** 4-6 hours
 
-**Goal:** Production-ready polish
+**Features:**
+- [ ] Automatic config backups
+- [ ] Profile backup/restore
+- [ ] Data export scheduling
+- [ ] Cloud backup integration
+- [ ] Disaster recovery
+- [ ] Backup verification
+
+**Benefits:**
+- Data protection
+- Easy recovery
+- Configuration migration
+- Peace of mind
+
+**Dependencies:** None
 
 ---
 
-## Effort Summary
+## 🗓️ Development Priorities
 
-**Quick Wins (Easy, High Value):**
-- Equipment Lock/Session Management (4-6 hours)
-- Safety Limits & Interlocks (4-6 hours)
-- Equipment State Management (4-6 hours)
-- Backup & Restore (4-6 hours)
+### **Priority 1: Stability & Monitoring** (1-2 weeks)
+*Improve production reliability*
 
-**Medium Projects (Moderate, High Value):**
-- Measurement Statistics (1-2 days)
-- Event & Notification System (1-2 days)
+1. Advanced Logging System
+2. Enhanced Alarm System
+3. Equipment Diagnostics
+4. Performance Monitoring
+
+**Goal:** Production-grade monitoring and alerting
+
+---
+
+### **Priority 2: Automation** (2-3 weeks)
+*Enable automated testing and data collection*
+
+1. Scheduled Operations
+2. Automated Test Sequences
+3. Enhanced WebSocket Features
+4. Database Integration
+
+**Goal:** Hands-off operation and automation
+
+---
+
+### **Priority 3: Advanced Analysis** (2-3 weeks)
+*Better data analysis and visualization*
+
+1. Waveform Capture & Analysis
+2. Data Analysis Pipeline
+3. Calibration Management
+4. Enhanced Statistics
+
+**Goal:** Professional analysis capabilities
+
+---
+
+### **Priority 4: Polish & Features** (Ongoing)
+*Nice-to-haves and enhancements*
+
+1. Equipment Discovery
+2. Web Dashboard
+3. Advanced Security
+4. Backup & Restore
+
+**Goal:** Enterprise-ready features
+
+---
+
+## 📋 Implementation Phases
+
+### Phase 1: Monitoring & Stability ✅ **NEXT**
+- 📋 Advanced Logging System
+- 📋 Enhanced Alarm System
+- 📋 Equipment Diagnostics
+
+**Goal:** Rock-solid production system
+
+---
+
+### Phase 2: Automation & Intelligence
+- 📋 Scheduled Operations
+- 📋 Database Integration
+- 💡 Automated Test Sequences
+
+**Goal:** Intelligent automation
+
+---
+
+### Phase 3: Advanced Features
+- 📋 Data Analysis Pipeline
+- 📋 Calibration Management
+- 📋 Waveform Analysis
+
+**Goal:** Professional-grade analysis
+
+---
+
+### Phase 4: Enterprise Features
+- 💡 Web Dashboard
+- 💡 Advanced Security
+- 💡 Equipment Discovery
+
+**Goal:** Enterprise deployment ready
+
+---
+
+## 💪 Development Principles
+
+1. **Backwards Compatibility**: Maintain API compatibility across minor versions
+2. **Documentation First**: Document features before implementation
+3. **Testing**: Comprehensive testing for all features (target: 80%+ coverage)
+4. **Security**: Follow security best practices
+5. **Performance**: Optimize for low latency and high throughput
+6. **Modularity**: Keep components loosely coupled
+7. **Configurability**: Make features configurable via settings
+8. **User Experience**: Prioritize ease of use and clear feedback
+
+---
+
+## 🎯 Version Planning
+
+- **v0.10.0** ✅ - WebSocket Integration & Testing (Current)
+- **v0.11.0** 📋 - Advanced Logging & Monitoring
+- **v0.12.0** 📋 - Automation & Scheduling
+- **v0.13.0** 📋 - Database & Analysis Pipeline
+- **v1.0.0** 💡 - Production Release
+- **v1.1.0+** 💡 - Enterprise Features
+
+---
+
+## 📊 Effort Summary
+
+**Quick Wins (< 1 day):**
+- Advanced Logging System (0.5-1 day)
+- Scheduled Operations (1 day)
+- Equipment Diagnostics (1 day)
+- Performance Monitoring (1 day)
+- Backup & Restore (0.5 day)
+
+**Medium Projects (1-3 days):**
+- Alarm & Notification System (1-2 days)
 - Enhanced WebSocket (1-2 days)
-- Calibration Management (1-2 days)
-
-**Big Projects (Hard, High Value):**
-- Data Acquisition & Logging (3-5 days)
-- Command Scheduler/Automation (3-4 days)
-- Database Integration (2-3 days)
+- Equipment Discovery (1-2 days)
+- Calibration Management (2-3 days)
 - Advanced Security (2-3 days)
+- Database Integration (2-3 days)
+
+**Large Projects (1+ weeks):**
+- Data Analysis Pipeline (3-4 days)
+- Waveform Analysis (3-4 days)
+- Automated Test Sequences (1 week)
 - Simple Web Dashboard (1-2 weeks)
 
 ---
 
-## Version Planning
+## 🤝 Community Feedback
 
-- **v0.3.0** ✅ - Safety Limits & Interlocks (Phase 1a)
-- **v0.4.0** ✅ - Equipment Lock/Session Management (Phase 1b)
-- **v0.5.0** ✅ - Equipment State Management (Phase 1c) - **CURRENT**
-- **v0.6.0** - Data Acquisition System (Phase 2)
-- **v0.7.0** - Automation Engine (Phase 3)
-- **v0.8.0** - Database & Dashboard (Phase 4)
-- **v1.0.0** - Production Release (Phase 5)
+We welcome feedback on prioritization and feature requests. Please open an issue on GitHub with:
+- Feature description
+- Use case
+- Priority (critical/high/medium/low)
+- Estimated effort (if known)
 
 ---
 
-**Last Updated:** 2025-11-08
-**Current Version:** v0.5.0
+## 📜 Version Numbering
+
+We follow Semantic Versioning (semver):
+- **Major version** (x.0.0): Breaking API changes
+- **Minor version** (0.x.0): New features, backwards compatible
+- **Patch version** (0.0.x): Bug fixes
+
+---
+
+**Repository:** https://github.com/X9X0/LabLink
+**Documentation:** See docs/ directory
+**Contributing:** See CONTRIBUTING.md
+
+---
+
+*This roadmap is a living document and will be updated as features are completed and priorities change.*
