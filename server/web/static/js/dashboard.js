@@ -5,6 +5,10 @@ let equipmentData = [];
 let discoveryInProgress = false;
 let currentEquipmentId = null;
 let refreshInterval = null;
+let websocket = null;
+let wsReconnectAttempts = 0;
+let wsMaxReconnectAttempts = 5;
+let useWebSocket = true;
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', async () => {
@@ -26,8 +30,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up event listeners
     setupEventListeners();
 
-    // Start auto-refresh (every 5 seconds)
-    startAutoRefresh();
+    // Initialize charts
+    initializeCharts();
+
+    // Try WebSocket first, fallback to polling
+    if (!await connectWebSocket()) {
+        console.log('WebSocket unavailable, using polling mode');
+        startAutoRefresh();
+    }
 });
 
 // Load user information
@@ -44,6 +54,7 @@ function setupEventListeners() {
     document.getElementById('darkModeToggle').addEventListener('click', () => {
         toggleDarkMode();
         updateDarkModeButton();
+        updateChartColors();
     });
 
     // Logout
@@ -79,6 +90,22 @@ function setupEventListeners() {
             closeControlModal();
         }
     });
+
+    // Chart equipment select
+    document.getElementById('chartEquipmentSelect').addEventListener('change', async (e) => {
+        const equipmentId = e.target.value;
+        if (equipmentId) {
+            await startChartMonitoring(equipmentId);
+        } else {
+            stopChartMonitoring();
+        }
+    });
+
+    // Toggle charts button
+    document.getElementById('toggleChartsButton').addEventListener('click', () => {
+        stopChartMonitoring();
+        document.getElementById('chartEquipmentSelect').value = '';
+    });
 }
 
 // Update dark mode button icon
@@ -103,6 +130,9 @@ async function loadEquipment() {
         equipmentData = equipment;
         renderEquipment();
         updateStats();
+
+        // Update chart equipment dropdown
+        populateChartEquipmentSelect(equipment);
     } catch (error) {
         console.error('Failed to load equipment:', error);
         showAlert('Failed to load equipment: ' + error.message, 'error', 'alert');
@@ -366,7 +396,147 @@ async function addDiscoveredDevice(deviceId) {
     }
 }
 
-// Auto-refresh equipment status
+// WebSocket connection and real-time updates
+async function connectWebSocket() {
+    if (!useWebSocket) {
+        return false;
+    }
+
+    try {
+        // Get WebSocket URL (ws:// or wss:// based on current protocol)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/ws`;
+
+        console.log('Connecting to WebSocket:', wsUrl);
+
+        websocket = new WebSocket(wsUrl);
+
+        websocket.onopen = () => {
+            console.log('WebSocket connected');
+            wsReconnectAttempts = 0;
+            showAlert('Real-time updates enabled', 'success', 'alert');
+
+            // Subscribe to equipment updates
+            subscribeToEquipmentUpdates();
+        };
+
+        websocket.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        };
+
+        websocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        websocket.onclose = () => {
+            console.log('WebSocket disconnected');
+            websocket = null;
+
+            // Try to reconnect
+            if (wsReconnectAttempts < wsMaxReconnectAttempts) {
+                wsReconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
+                console.log(`Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${wsMaxReconnectAttempts})`);
+
+                setTimeout(() => {
+                    connectWebSocket();
+                }, delay);
+            } else {
+                // Max reconnect attempts reached, fallback to polling
+                console.log('Max WebSocket reconnect attempts reached, falling back to polling');
+                showAlert('Real-time updates unavailable, using polling mode', 'warning', 'alert');
+                startAutoRefresh();
+            }
+        };
+
+        return true;
+
+    } catch (error) {
+        console.error('Failed to create WebSocket:', error);
+        return false;
+    }
+}
+
+function subscribeToEquipmentUpdates() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        // Subscribe to equipment status updates
+        websocket.send(JSON.stringify({
+            type: 'subscribe',
+            channel: 'equipment_status'
+        }));
+    }
+}
+
+function handleWebSocketMessage(message) {
+    console.log('WebSocket message:', message);
+
+    switch (message.type) {
+        case 'equipment_status':
+            // Update equipment status in real-time
+            updateEquipmentStatus(message.data);
+            break;
+
+        case 'equipment_readings':
+            // Update charts with real-time readings
+            if (message.data && message.data.equipment_id === selectedChartEquipment) {
+                updateChartData(message.data.readings);
+            }
+            break;
+
+        case 'equipment_connected':
+        case 'equipment_disconnected':
+        case 'equipment_error':
+            // Reload equipment list on connection changes
+            loadEquipment();
+            break;
+
+        case 'alarm':
+            // Show alarm notification
+            showAlarmNotification(message.data);
+            break;
+
+        case 'discovery_update':
+            // Update discovery status
+            if (message.data.devices) {
+                displayDiscoveredDevices(message.data.devices);
+            }
+            break;
+
+        default:
+            console.log('Unknown WebSocket message type:', message.type);
+    }
+}
+
+function updateEquipmentStatus(statusData) {
+    // Update equipment data in state
+    const equipment = equipmentData.find(e => e.id === statusData.equipment_id);
+    if (equipment) {
+        equipment.status = statusData.status;
+
+        // Re-render equipment list to show updated status
+        renderEquipment();
+        updateStats();
+    }
+}
+
+function showAlarmNotification(alarmData) {
+    // Show alarm notification at top of page
+    const message = `⚠️ Alarm: ${alarmData.message} (${alarmData.equipment_name})`;
+    showAlert(message, 'error', 'alert');
+
+    // Auto-hide after 10 seconds
+    setTimeout(() => {
+        hideAlert('alert');
+    }, 10000);
+}
+
+// Auto-refresh equipment status (fallback when WebSocket unavailable)
 function startAutoRefresh() {
     // Refresh every 5 seconds
     refreshInterval = setInterval(async () => {

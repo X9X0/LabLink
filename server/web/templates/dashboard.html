@@ -6,6 +6,8 @@
     <title>LabLink Dashboard</title>
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Chart.js for live data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Navigation Header -->
@@ -75,6 +77,45 @@
             </div>
         </div>
 
+        <!-- Live Charts Section -->
+        <div class="section" id="chartsSection" style="display: none;">
+            <div class="section-header">
+                <h2>Live Data</h2>
+                <div class="chart-controls">
+                    <select id="chartEquipmentSelect" class="chart-select">
+                        <option value="">Select equipment...</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" id="toggleChartsButton">Hide Charts</button>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <!-- Voltage Chart -->
+                <div class="chart-container">
+                    <h3 class="chart-title">Voltage (V)</h3>
+                    <canvas id="voltageChart"></canvas>
+                </div>
+
+                <!-- Current Chart -->
+                <div class="chart-container">
+                    <h3 class="chart-title">Current (A)</h3>
+                    <canvas id="currentChart"></canvas>
+                </div>
+
+                <!-- Temperature Chart -->
+                <div class="chart-container">
+                    <h3 class="chart-title">Temperature (°C)</h3>
+                    <canvas id="temperatureChart"></canvas>
+                </div>
+
+                <!-- Power Chart -->
+                <div class="chart-container">
+                    <h3 class="chart-title">Power (W)</h3>
+                    <canvas id="powerChart"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Discovery Section -->
         <div class="section">
             <div class="section-header">
@@ -132,6 +173,7 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/api.js"></script>
     <script src="/static/js/auth.js"></script>
+    <script src="/static/js/charts.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
