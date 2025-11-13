@@ -180,6 +180,10 @@ class User(BaseModel):
     last_login: Optional[datetime] = None
     last_login_ip: Optional[str] = None
     oauth2_providers: Dict[str, str] = Field(default_factory=dict)  # provider -> external_id
+    # Multi-Factor Authentication
+    mfa_enabled: bool = False  # Whether MFA is enabled for this user
+    mfa_secret: Optional[str] = None  # TOTP secret (encrypted)
+    backup_codes: List[str] = Field(default_factory=list)  # Hashed backup codes
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -239,6 +243,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_superuser: bool
     must_change_password: bool
+    mfa_enabled: bool = False  # Whether MFA is enabled
     last_login: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -303,6 +308,53 @@ class TokenPayload(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Request to refresh access token."""
     refresh_token: str
+
+
+# ============================================================================
+# Multi-Factor Authentication Models
+# ============================================================================
+
+class MFASetupRequest(BaseModel):
+    """Request to set up MFA for a user."""
+    user_id: str
+
+
+class MFASetupResponse(BaseModel):
+    """Response containing MFA setup information."""
+    secret: str  # Base32 encoded TOTP secret
+    qr_code: str  # Data URI for QR code image
+    backup_codes: List[str]  # Plain text backup codes (show only once)
+    provisioning_uri: str  # otpauth:// URI
+
+
+class MFAVerifyRequest(BaseModel):
+    """Request to verify TOTP token."""
+    token: str  # 6-digit TOTP code
+    backup_code: Optional[str] = None  # Alternative: backup code
+
+
+class MFALoginRequest(BaseModel):
+    """Login request with MFA token."""
+    username: str
+    password: str
+    mfa_token: Optional[str] = None  # 6-digit TOTP code or backup code
+
+
+class MFADisableRequest(BaseModel):
+    """Request to disable MFA."""
+    password: str  # Require password confirmation
+    mfa_token: Optional[str] = None  # TOTP token or backup code
+
+
+class BackupCodesResponse(BaseModel):
+    """Response containing new backup codes."""
+    backup_codes: List[str]  # Plain text backup codes
+
+
+class MFAStatusResponse(BaseModel):
+    """MFA status for a user."""
+    mfa_enabled: bool
+    backup_codes_remaining: int
 
 
 # ============================================================================
