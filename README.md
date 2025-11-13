@@ -197,16 +197,44 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] 5 MFA API endpoints
   - [x] Complete frontend integration
 
+- [x] **Real-time data visualization** (pyqtgraph integration)
+  - [x] Real-time plotting widget with circular buffer
+  - [x] Multi-channel support with auto-coloring
+  - [x] Pause/resume and clear controls
+  - [x] Statistics display (points plotted, update rate)
+  - [x] Auto-ranging and manual range control
+  - [x] Integrated into acquisition panel and equipment panels
+
+- [x] **SSH deployment wizard** (automated server deployment)
+  - [x] Multi-step wizard interface
+  - [x] SSH connection testing
+  - [x] Password and SSH key authentication
+  - [x] Automatic file transfer via SCP
+  - [x] Remote dependency installation
+  - [x] Systemd service setup for auto-start
+  - [x] Progress tracking and logging
+  - [x] Integrated into Tools menu
+
+- [x] **Multi-server connection management**
+  - [x] Server configuration storage (JSON)
+  - [x] Add/remove/update server profiles
+  - [x] Server selector widget in main toolbar
+  - [x] Connection status indicators
+  - [x] Quick server switching
+  - [x] Remember last connected server
+  - [x] Per-server connection history
+
 ### In Development
 
-- [ ] Real-time data visualization (pyqtgraph integration in desktop client)
-- [ ] SSH-based server deployment wizard
-- [ ] Multi-server connection management
+- [ ] Advanced waveform analysis tools
+- [ ] Automated test sequence builder
+- [ ] Remote firmware update capability
 
 ## Supported Equipment
 
 - Rigol MSO2072A Oscilloscope
 - Rigol DS1104 Oscilloscope
+- Rigol DS1102D Oscilloscope (100 MHz, 1 GSa/s, 2 channels)
 - Rigol DL3021A DC Electronic Load
 - BK Precision 9206B Multi-Range DC Power Supply
 - BK Precision 9205B Multi-Range DC Power Supply
