@@ -205,6 +205,93 @@ async def get_system_diagnostics():
         raise HTTPException(status_code=500, detail=f"Failed to get system diagnostics: {str(e)}")
 
 
+# ==================== Enhanced Diagnostics (v0.12.0) ====================
+
+
+@router.get("/diagnostics/temperature/{equipment_id}", summary="Check equipment temperature")
+async def check_equipment_temperature(equipment_id: str):
+    """Check equipment temperature."""
+    try:
+        temperature = await diagnostics_manager.check_temperature(equipment_id)
+
+        return {
+            "success": True,
+            "equipment_id": equipment_id,
+            "temperature_celsius": temperature,
+            "supported": temperature is not None
+        }
+
+    except Exception as e:
+        logger.error(f"Error checking temperature: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check temperature: {str(e)}")
+
+
+@router.get("/diagnostics/errors/{equipment_id}", summary="Check equipment error codes")
+async def check_equipment_errors(equipment_id: str):
+    """Check equipment error codes and get interpretation."""
+    try:
+        error_info = await diagnostics_manager.check_error_codes(equipment_id)
+
+        return {
+            "success": True,
+            "equipment_id": equipment_id,
+            **error_info
+        }
+
+    except Exception as e:
+        logger.error(f"Error checking error codes: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check error codes: {str(e)}")
+
+
+@router.post("/diagnostics/self-test/{equipment_id}", summary="Run self-test")
+async def run_equipment_self_test(equipment_id: str):
+    """Run equipment built-in self-test (BIST)."""
+    try:
+        result = await diagnostics_manager.run_self_test(equipment_id)
+
+        return {
+            "success": True,
+            "test_result": result.dict()
+        }
+
+    except Exception as e:
+        logger.error(f"Error running self-test: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run self-test: {str(e)}")
+
+
+@router.get("/diagnostics/calibration/{equipment_id}", summary="Check calibration status")
+async def check_calibration_status(equipment_id: str):
+    """Check equipment calibration status."""
+    try:
+        cal_status = await diagnostics_manager.check_calibration_status(equipment_id)
+
+        return {
+            "success": True,
+            "equipment_id": equipment_id,
+            **cal_status
+        }
+
+    except Exception as e:
+        logger.error(f"Error checking calibration status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check calibration: {str(e)}")
+
+
+@router.get("/diagnostics/comprehensive/{equipment_id}", summary="Get comprehensive diagnostics")
+async def get_comprehensive_diagnostics(equipment_id: str):
+    """Get all diagnostic information for equipment (temperature, errors, calibration, etc.)."""
+    try:
+        diagnostics = await diagnostics_manager.get_equipment_diagnostics(equipment_id)
+
+        return {
+            "success": True,
+            **diagnostics
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting comprehensive diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get diagnostics: {str(e)}")
+
+
 # ==================== Statistics Recording ====================
 
 

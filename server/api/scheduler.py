@@ -37,6 +37,10 @@ class CreateJobRequest(BaseModel):
     parameters: dict = {}
     enabled: bool = True
     tags: List[str] = []
+    # v0.14.0: Integration fields
+    profile_id: Optional[str] = None
+    on_failure_alarm: bool = False
+    conflict_policy: str = "skip"
 
 
 # ==================== Job Management Endpoints ====================
@@ -60,7 +64,10 @@ async def create_job(request: CreateJobRequest):
             day_of_week=request.day_of_week,
             parameters=request.parameters,
             enabled=request.enabled,
-            tags=request.tags
+            tags=request.tags,
+            profile_id=request.profile_id,
+            on_failure_alarm=request.on_failure_alarm,
+            conflict_policy=request.conflict_policy
         )
 
         result = await scheduler_manager.create_job(config)
@@ -251,3 +258,20 @@ async def get_statistics():
     except Exception as e:
         logger.error(f"Error getting statistics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+
+
+@router.get("/scheduler/running", summary="Get running jobs")
+async def get_running_jobs():
+    """Get list of currently running jobs."""
+    try:
+        running_jobs = scheduler_manager.get_running_jobs()
+
+        return {
+            "success": True,
+            "count": len(running_jobs),
+            "running_jobs": running_jobs
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting running jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get running jobs: {str(e)}")

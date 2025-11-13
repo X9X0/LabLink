@@ -114,6 +114,116 @@ class BaseEquipment(ABC):
         """Execute a command on the equipment."""
         pass
 
+    # ==================== Optional Diagnostic Methods (v0.12.0) ====================
+    # Subclasses can override these methods to provide equipment-specific diagnostics
+
+    async def get_temperature(self) -> Optional[float]:
+        """
+        Get equipment internal temperature (if supported).
+
+        Returns:
+            Temperature in Celsius, or None if not supported
+        """
+        return None
+
+    async def get_operating_hours(self) -> Optional[float]:
+        """
+        Get cumulative operating hours (if supported).
+
+        Returns:
+            Operating hours, or None if not supported
+        """
+        return None
+
+    async def get_error_code(self) -> Optional[int]:
+        """
+        Get last error code (if supported).
+
+        Returns:
+            Error code number, or None if no error or not supported
+        """
+        try:
+            # Try standard SCPI error query
+            response = await self._query("SYST:ERR?")
+            # Parse response format: "code,message"
+            if response and ',' in response:
+                code_str = response.split(',')[0].strip()
+                return int(code_str)
+        except Exception:
+            pass
+        return None
+
+    async def get_error_message(self) -> Optional[str]:
+        """
+        Get last error message (if supported).
+
+        Returns:
+            Error message, or None if no error or not supported
+        """
+        try:
+            # Try standard SCPI error query
+            response = await self._query("SYST:ERR?")
+            # Parse response format: "code,message"
+            if response and ',' in response:
+                message = response.split(',', 1)[1].strip().strip('"')
+                return message
+        except Exception:
+            pass
+        return None
+
+    async def clear_errors(self) -> bool:
+        """
+        Clear equipment error queue (if supported).
+
+        Returns:
+            True if errors cleared, False if not supported
+        """
+        try:
+            await self._write("*CLS")
+            return True
+        except Exception:
+            return False
+
+    async def run_self_test(self) -> Optional[dict]:
+        """
+        Run equipment built-in self-test (BIST) if supported.
+
+        Returns:
+            Dictionary with self-test results, or None if not supported
+            Format: {
+                "passed": bool,
+                "tests": List[{"name": str, "passed": bool, "details": str}],
+                "timestamp": datetime
+            }
+        """
+        return None
+
+    async def get_calibration_info(self) -> Optional[dict]:
+        """
+        Get calibration information from equipment (if stored in firmware).
+
+        Returns:
+            Dictionary with calibration info, or None if not supported
+            Format: {
+                "last_cal_date": datetime,
+                "next_cal_date": datetime,
+                "cal_count": int
+            }
+        """
+        return None
+
+    async def run_diagnostic_test(self, test_name: str) -> Optional[dict]:
+        """
+        Run equipment-specific diagnostic test.
+
+        Args:
+            test_name: Name of diagnostic test to run
+
+        Returns:
+            Test results dictionary, or None if not supported
+        """
+        return None
+
     def _determine_connection_type(self) -> ConnectionType:
         """Determine connection type from resource string."""
         resource_upper = self.resource_string.upper()

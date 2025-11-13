@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.10.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.14.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -90,9 +90,40 @@ async def lifespan(app: FastAPI):
     acq_export_dir = settings.acquisition_export_dir if hasattr(settings, 'acquisition_export_dir') else "./data/acquisitions"
     acquisition_manager.set_export_directory(acq_export_dir)
 
-    # Start scheduler
-    from scheduler import scheduler_manager
+    # Start scheduler with persistence (v0.14.0)
+    from scheduler import initialize_scheduler_manager
+    logger.info("Initializing scheduler with persistence...")
+    sched_db_path = settings.scheduler_db_path if hasattr(settings, 'scheduler_db_path') else "data/scheduler.db"
+    scheduler_manager = initialize_scheduler_manager(sched_db_path)
     await scheduler_manager.start()
+    logger.info("Scheduler started with SQLite persistence")
+
+    # Initialize equipment-alarm integrator
+    from alarm import alarm_manager, initialize_integrator
+    logger.info("Initializing equipment-alarm integrator...")
+    integrator = initialize_integrator(equipment_manager, alarm_manager)
+    await integrator.start_monitoring()
+    logger.info("Equipment-alarm monitoring started")
+
+    # Initialize calibration manager (v0.12.0)
+    from equipment.calibration import initialize_calibration_manager
+    logger.info("Initializing calibration manager...")
+    cal_storage_path = settings.calibration_storage_path if hasattr(settings, 'calibration_storage_path') else "data/calibration"
+    calibration_manager = initialize_calibration_manager(cal_storage_path)
+    logger.info("Calibration manager initialized")
+
+    # Initialize error code database (v0.12.0)
+    from equipment.error_codes import initialize_error_code_db
+    logger.info("Initializing error code database...")
+    error_db = initialize_error_code_db()
+    logger.info("Error code database initialized")
+
+    # Initialize performance monitor (v0.13.0)
+    from performance import initialize_performance_monitor
+    logger.info("Initializing performance monitoring system...")
+    perf_db_path = settings.performance_db_path if hasattr(settings, 'performance_db_path') else "data/performance.db"
+    perf_monitor = initialize_performance_monitor(perf_db_path)
+    logger.info("Performance monitoring system initialized")
 
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
@@ -102,6 +133,13 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("LabLink Server shutting down...")
+
+    # Stop equipment-alarm integrator
+    from alarm import get_integrator
+    integrator = get_integrator()
+    if integrator:
+        await integrator.stop_monitoring()
+        logger.info("Equipment-alarm monitoring stopped")
 
     # Stop scheduler
     from scheduler import scheduler_manager
@@ -125,7 +163,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.10.0",
+    version="0.14.0",
     lifespan=lifespan,
 )
 
@@ -152,6 +190,8 @@ app.include_router(acquisition_router, prefix="/api/acquisition", tags=["acquisi
 app.include_router(alarms_router, prefix="/api", tags=["alarms"])
 app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
 app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
+app.include_router(calibration_router, prefix="/api", tags=["calibration"])
+app.include_router(performance_router, prefix="/api", tags=["performance"])
 
 
 @app.get("/")
@@ -159,7 +199,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.10.0",
+        "version": "0.14.0",
         "status": "running",
     }
 

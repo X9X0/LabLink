@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.10.1 (Server) / v1.0.0 (Client)
+**Current Version:** v0.14.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with advanced logging and analysis system complete
+**Status:** Production-ready with advanced logging, alarms, diagnostics, performance monitoring, and scheduled operations
 
 ---
 
@@ -10,11 +10,15 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.10.1 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging |
+| **Server** | v0.14.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
-| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, 80+ page log analysis guide |
+| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide, scheduler guide (2,700+ pages) |
 | **Logging** | v0.10.1 | ✅ Complete | JSON logging, rotation, user tracking, analysis tools, anomaly detection |
+| **Alarms** | v0.11.0 | ✅ Complete | Equipment monitoring, multi-channel notifications, Slack/webhook integration |
+| **Diagnostics** | v0.12.0 | ✅ Complete | Health monitoring, calibration tracking, error code interpretation, self-tests, temperature monitoring |
+| **Performance** | v0.13.0 | ✅ Complete | Baseline tracking, trend analysis, degradation detection, SQLite persistence, performance alerts |
+| **Scheduler** | v0.14.0 | ✅ Complete | Cron-like scheduling, SQLite persistence, conflict detection, alarm/profile integration, execution tracking |
 
 ---
 
@@ -30,6 +34,349 @@
 ---
 
 ## 📚 Version History
+
+### v0.14.0 - Scheduled Operations with Full Integration (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive scheduled operations system with SQLite persistence, conflict detection, and full integration with alarms and equipment profiles.
+
+**New Components:**
+
+1. **SQLite Persistence Layer** (`server/scheduler/storage.py` - 550 lines)
+   - Persistent job storage with automatic restoration on server restart
+   - Execution history tracking with 30-day retention
+   - Execution count tracking per job
+   - Automatic cleanup of old records
+   - Three database tables: jobs, executions, execution_counts
+   - Indexed queries for performance
+
+2. **Enhanced Scheduler Manager** (`server/scheduler/manager.py` - 700+ lines)
+   - SQLite integration for job persistence
+   - Conflict detection with three policies: skip, queue, replace
+   - Equipment profile application before job execution
+   - Automatic alarm creation on job failures
+   - Running job tracking for conflict detection
+   - Periodic cleanup task (daily, 30-day retention)
+   - Support for 6 job types: acquisition, state_capture, measurement, command, equipment_test, script
+
+3. **Integration Features**:
+   - **Alarm Integration**: Automatic alarms on job failures with full context
+   - **Profile Integration**: Apply equipment profiles before job execution
+   - **Conflict Policies**: Skip, queue, or replace for overlapping jobs
+   - **Failure Tracking**: Comprehensive execution history with error details
+
+4. **API Enhancements** (`server/api/scheduler.py`):
+   - Added `profile_id` field for profile integration
+   - Added `on_failure_alarm` field for automatic alarm creation
+   - Added `conflict_policy` field for conflict handling
+   - New endpoint: `GET /scheduler/running` - Get currently running jobs
+
+5. **Scheduler User Guide** (`server/SCHEDULER_USER_GUIDE.md` - 600+ lines)
+   - Quick start examples
+   - All job types documented with examples
+   - All trigger types (cron, interval, daily, weekly, monthly, date)
+   - Advanced features: conflict detection, profile integration, alarms
+   - API reference
+   - Best practices and troubleshooting
+   - Real-world examples
+
+**Key Features:**
+
+- **Persistent Scheduling**: Jobs survive server restarts
+- **Cron-like Flexibility**: Support for cron expressions, intervals, daily, weekly, monthly schedules
+- **Conflict Detection**: Three policies for handling overlapping executions
+- **Alarm Integration**: Automatic alerts on job failures with detailed context
+- **Profile Integration**: Apply equipment profiles before execution
+- **Comprehensive History**: Track all executions with statistics
+- **Automatic Cleanup**: Old execution records cleaned up after 30 days
+- **Running Job Tracking**: View currently executing jobs
+
+**Configuration:**
+- Database path configurable via `settings.scheduler_db_path`
+- Default: `data/scheduler.db`
+- All jobs restored on server startup
+
+**Integration Points:**
+- Alarm system: Automatic failure alarms with job context
+- Profile system: Pre-execution profile application
+- Acquisition system: Schedule automated data collection
+- State management: Schedule periodic state captures
+- Diagnostics system: Schedule equipment tests
+
+**Database Schema:**
+```sql
+scheduled_jobs table:
+  - job_id, name, description
+  - schedule_type, equipment_id
+  - trigger configuration
+  - integration fields (profile_id, on_failure_alarm, conflict_policy)
+  - execution limits and metadata
+
+job_executions table:
+  - execution_id, job_id
+  - status, timestamps, duration
+  - result, error, output
+  - scheduled vs actual time
+
+job_execution_counts table:
+  - job_id, execution_count
+  - last_updated
+```
+
+**Conflict Policies:**
+- **skip**: Skip execution if job already running (default)
+- **queue**: Wait for current execution to finish, then run
+- **replace**: Allow concurrent executions (respects max_instances)
+
+**Job Types Supported:**
+- **ACQUISITION**: Start data acquisition sessions
+- **STATE_CAPTURE**: Capture equipment states
+- **EQUIPMENT_TEST**: Run diagnostic tests
+- **MEASUREMENT**: Take single measurements
+- **COMMAND**: Execute equipment commands
+- **SCRIPT**: Run custom scripts
+
+**API Endpoints:**
+- `POST /api/scheduler/jobs/create` - Create scheduled job
+- `GET /api/scheduler/jobs` - List all jobs
+- `GET /api/scheduler/jobs/{id}` - Get job details
+- `DELETE /api/scheduler/jobs/{id}` - Delete job
+- `POST /api/scheduler/jobs/{id}/pause` - Pause job
+- `POST /api/scheduler/jobs/{id}/resume` - Resume job
+- `POST /api/scheduler/jobs/{id}/run` - Run job immediately
+- `GET /api/scheduler/executions` - List executions
+- `GET /api/scheduler/jobs/{id}/history` - Get job history
+- `GET /api/scheduler/statistics` - Get scheduler statistics
+- `GET /api/scheduler/running` - Get running jobs
+
+**Usage Example:**
+```python
+# Schedule nightly diagnostics with alarm on failure
+{
+  "name": "Nightly Equipment Health Check",
+  "schedule_type": "equipment_test",
+  "equipment_id": "oscilloscope_1",
+  "trigger_type": "daily",
+  "time_of_day": "03:00:00",
+  "profile_id": "test_profile",
+  "on_failure_alarm": true,
+  "conflict_policy": "skip"
+}
+```
+
+**Files Modified:**
+- `server/main.py`: Initialize scheduler with persistence
+- `server/scheduler/models.py`: Added integration fields
+- `server/scheduler/__init__.py`: Export new functions
+- `server/api/scheduler.py`: Enhanced with new fields
+
+**Files Created:**
+- `server/scheduler/storage.py` (550 lines)
+- `server/SCHEDULER_USER_GUIDE.md` (600+ lines)
+
+**Documentation:**
+- Comprehensive user guide with examples
+- API reference
+- Best practices
+- Troubleshooting guide
+
+This completes the Scheduled Operations feature with full persistence, conflict detection, and system integrations.
+
+---
+
+### v0.13.0 - Performance Monitoring System (2025-11-13) ✅
+
+**Status**: Complete
+
+**Overview**: Comprehensive performance monitoring with baseline tracking, trend analysis, degradation detection, and automated alerting.
+
+**Features Implemented**:
+- ✅ Performance Metric Recording
+  - Latency, throughput, error rate, CPU, memory, bandwidth tracking
+  - Timestamp-based measurements
+  - Baseline comparison
+  - Deviation calculation
+- ✅ Baseline Management
+  - Automatic baseline calculation from historical data
+  - Statistical analysis (avg, p95, p99)
+  - Auto-generated warning/critical thresholds
+  - Baseline update capabilities
+- ✅ Trend Analysis
+  - Linear regression for trend detection
+  - Correlation analysis
+  - Performance predictions (1h, 24h)
+  - Time-to-threshold estimation
+  - Trend direction classification (improving, stable, degrading, critical)
+- ✅ Degradation Detection
+  - Automatic comparison to baseline
+  - Configurable degradation thresholds (20% warning, 50% critical)
+  - Real-time degradation alerts
+- ✅ Performance Alerting
+  - Automatic alert creation on threshold breach
+  - Severity classification (warning, critical)
+  - Alert recommendations based on metric type
+  - Alert acknowledgment and resolution tracking
+- ✅ SQLite Persistence
+  - Complete historical data storage
+  - Indexed queries for performance
+  - Metrics, baselines, and alerts tables
+  - Long-term trend analysis support
+- ✅ Performance Reports
+  - Comprehensive performance analysis
+  - Component-level status
+  - Health scoring (0-100)
+  - Recommendations generation
+  - Trend summaries
+- ✅ Comprehensive API (13 endpoints)
+  - Metric recording and retrieval
+  - Baseline CRUD operations
+  - Trend analysis
+  - Performance status
+  - Alert management
+  - Report generation
+- ✅ Documentation (PERFORMANCE_USER_GUIDE.md - 600+ lines)
+  - Complete API reference
+  - Quick start guide
+  - Best practices
+  - Troubleshooting guide
+  - Database maintenance
+
+**New Components**:
+- `server/performance/models.py` (228 lines) - Data models
+- `server/performance/monitor.py` (650+ lines) - Performance monitor with SQLite
+- `server/performance/analyzer.py` (350+ lines) - Trend analysis and reporting
+- `server/api/performance.py` (320+ lines) - API endpoints
+- `server/PERFORMANCE_USER_GUIDE.md` (600+ lines)
+
+**Files Modified**:
+- `server/api/__init__.py` - Export performance router
+- `server/main.py` - Initialize performance monitor
+- `ROADMAP.md` - Update to v0.13.0
+
+**Total Additions**: ~2,200+ lines of code and documentation
+
+---
+
+### v0.12.0 - Equipment Diagnostics System (2025-11-13) ✅
+
+**Status**: Complete
+
+**Overview**: Comprehensive equipment diagnostics with health monitoring, calibration tracking, error code interpretation, and self-test capabilities.
+
+**Features Implemented**:
+- ✅ Enhanced Equipment Status Model
+  - Temperature monitoring (Celsius)
+  - Operating hours tracking
+  - Error code and message capture
+  - Calibration status tracking
+  - Self-test status
+  - Health score (0-100)
+- ✅ Calibration Management System
+  - Complete calibration record tracking
+  - Calibration scheduling (interval-based)
+  - Due date tracking and warnings
+  - Calibration history and reporting
+  - Standards traceability
+  - Pre/post calibration measurements
+  - Environmental condition recording
+- ✅ Error Code Database
+  - Standard SCPI error codes (IEEE 488.2)
+  - Vendor-specific codes (Rigol, BK Precision)
+  - Detailed troubleshooting information
+  - Severity and category classification
+  - Recovery recommendations
+- ✅ Enhanced Diagnostics Manager
+  - Temperature checking
+  - Error code interpretation
+  - Self-test execution
+  - Calibration status checking
+  - Comprehensive diagnostics collection
+- ✅ Built-In Self-Test (BIST) Support
+  - Execute equipment self-tests
+  - Track test results and history
+  - Pass/fail status reporting
+- ✅ Optional Diagnostic Methods for Equipment
+  - get_temperature()
+  - get_operating_hours()
+  - get_error_code()
+  - get_error_message()
+  - run_self_test()
+  - get_calibration_info()
+- ✅ Comprehensive API Endpoints
+  - 20+ diagnostic endpoints
+  - 10+ calibration endpoints
+  - Full CRUD operations
+  - Report generation
+- ✅ Documentation (DIAGNOSTICS_USER_GUIDE.md - 800+ lines)
+  - Complete feature overview
+  - API reference with examples
+  - Best practices
+  - Regulatory compliance guidance (ISO 17025, FDA, GLP)
+  - Troubleshooting guide
+
+**New Components**:
+- `server/equipment/calibration.py` (600+ lines) - Calibration tracking system
+- `server/equipment/error_codes.py` (500+ lines) - Error code database
+- `server/api/calibration.py` (400+ lines) - Calibration API endpoints
+- `server/DIAGNOSTICS_USER_GUIDE.md` (800+ lines)
+
+**Files Modified**:
+- `shared/models/equipment.py` - Extended EquipmentStatus with diagnostic fields
+- `server/equipment/base.py` - Added optional diagnostic methods
+- `server/diagnostics/manager.py` - Enhanced with new capabilities
+- `server/api/diagnostics.py` - Added new diagnostic endpoints
+- `server/main.py` - Initialize calibration and error code managers
+- `server/api/__init__.py` - Export calibration router
+
+**Total Additions**: ~3,000+ lines of code and documentation
+
+---
+
+### v0.11.0 - Enhanced Alarm & Notification System (2025-11-13) ✅
+
+**Status**: Complete
+
+**Overview**: Comprehensive alarm and notification system with automatic equipment monitoring and multi-channel alerting capabilities.
+
+**Features Implemented**:
+- ✅ Equipment monitoring integration (EquipmentAlarmIntegrator)
+  - Automatic alarm triggering based on equipment readings
+  - 1-second monitoring interval
+  - Auto-start/stop with equipment connections
+  - Parameter extraction (voltage, current, power, temperature, custom)
+- ✅ Enhanced notification channels:
+  - Slack integration with rich formatted messages
+  - Generic webhook support with authentication
+  - Email (HTML/text with severity colors)
+  - SMS via Twilio
+  - WebSocket for real-time GUI updates
+- ✅ Alarm lifecycle management
+  - Create, update, delete, enable, disable alarms
+  - Acknowledge and clear events
+  - Alarm history tracking
+  - Notification throttling and rate limiting
+- ✅ Comprehensive documentation (ALARM_USER_GUIDE.md - 400+ lines)
+  - Complete API reference
+  - Configuration guides for all channels
+  - 50+ code examples
+  - Best practices and troubleshooting
+
+**New Components**:
+- `server/alarm/equipment_monitor.py` (300+ lines)
+- `server/ALARM_USER_GUIDE.md` (400+ lines)
+- Slack notification implementation
+- Webhook notification implementation
+
+**Files Modified**:
+- `server/alarm/__init__.py` - Export new components
+- `server/alarm/models.py` - Add Slack/webhook config fields
+- `server/alarm/notifications.py` - Implement Slack/webhook methods
+- `server/main.py` - Initialize and manage integrator
+
+**Total Additions**: ~1,000+ lines of code and documentation
+
+---
 
 ### v0.10.1 - Advanced Logging System & Log Analysis (2025-11-13) ✅
 
@@ -306,52 +653,80 @@
 
 ---
 
-### 2. Alarm & Notification System 📋
+### 2. Alarm & Notification System ✅
 **Priority:** ⭐⭐⭐
 **Effort:** 1-2 days
-**Status:** Basic infrastructure exists
+**Status:** Complete (v0.11.0)
 
-**Features:**
-- [ ] Enhanced alarm monitoring
-- [ ] Threshold-based alerts
-- [ ] Email/SMS notifications
-- [ ] Alert escalation policies
-- [ ] Alarm history and acknowledgment
-- [ ] Configurable alarm rules
-- [ ] Alert templates
-- [ ] Multi-channel notifications
+**Features Implemented:**
+- ✅ **Equipment Monitoring Integration** - Automatic alarm triggering based on equipment readings
+- ✅ **Threshold-based Alerts** - Multiple condition types (>, <, in_range, out_of_range, etc.)
+- ✅ **Multi-channel Notifications**:
+  - Email (HTML/text with severity colors)
+  - SMS (via Twilio)
+  - Slack (rich formatted messages with emojis)
+  - Generic Webhook (PagerDuty, custom integrations)
+  - WebSocket (real-time GUI updates)
+- ✅ **Alarm History and Acknowledgment** - Full lifecycle management
+- ✅ **Configurable Alarm Rules** - Flexible conditions and parameters
+- ✅ **Notification Throttling** - Prevent alert fatigue
+- ✅ **Comprehensive Documentation** - 400+ line user guide with examples
+
+**New Components:**
+- `EquipmentAlarmIntegrator` - Bridges equipment manager and alarm system
+- Slack notification support with rich formatting
+- Generic webhook support with authentication
+- Equipment connection/disconnection handlers
+- Automatic parameter extraction (voltage, current, power, temp)
 
 **Benefits:**
-- Proactive monitoring
-- Off-hours awareness
-- Quick issue detection
-- Professional alerting
+- ✅ Proactive monitoring with automatic triggers
+- ✅ Off-hours awareness via multiple channels
+- ✅ Quick issue detection (1-second monitoring interval)
+- ✅ Professional alerting with Slack/webhook integration
 
-**Dependencies:** Advanced Logging (recommended)
+**Future Enhancements (Optional):** 💡
+- [ ] Alert escalation policies
+- [ ] Alert templates and presets
+- [ ] Data persistence (SQLite/database)
+- [ ] Advanced filtering and grouping
+- [ ] Predictive alerting with ML
+
+**Dependencies:** None (complete and standalone)
 
 ---
 
-### 3. Scheduled Operations 📋
+### 3. Scheduled Operations ✅
 **Priority:** ⭐⭐⭐
 **Effort:** 1-2 days
+**Status:** Complete (v0.14.0)
 
 **Features:**
-- [ ] Scheduled acquisitions
-- [ ] Periodic state captures
-- [ ] Automated equipment tests
-- [ ] Recurring measurements
-- [ ] Cron-like scheduling
-- [ ] Schedule persistence
-- [ ] Job history and status
-- [ ] Conflict resolution
+- [x] Scheduled acquisitions
+- [x] Periodic state captures
+- [x] Automated equipment tests
+- [x] Recurring measurements
+- [x] Cron-like scheduling
+- [x] Schedule persistence (SQLite)
+- [x] Job history and status
+- [x] Conflict resolution (skip, queue, replace policies)
+
+**Additional Features (v0.14.0):**
+- [x] Alarm integration on failures
+- [x] Equipment profile integration
+- [x] Running job tracking
+- [x] Automatic cleanup (30-day retention)
+- [x] Comprehensive execution history
 
 **Benefits:**
-- Automated testing
-- Long-term data collection
-- Unattended operation
-- Repeatability
+- ✅ Automated testing
+- ✅ Long-term data collection
+- ✅ Unattended operation
+- ✅ Repeatability
+- ✅ Persistent scheduling across server restarts
+- ✅ Conflict detection and resolution
 
-**Dependencies:** None
+**Dependencies:** None (complete and integrated)
 
 ---
 
@@ -381,18 +756,19 @@
 
 ---
 
-### 5. Equipment Diagnostics 📋
+### 5. Equipment Diagnostics ✅
 **Priority:** ⭐⭐
 **Effort:** 1-2 days
+**Status:** Complete - v0.12.0
 
 **Features:**
-- [ ] Built-in self-test (BIST)
-- [ ] Calibration status checking
-- [ ] Temperature monitoring
-- [ ] Error code database
-- [ ] Diagnostic reports
-- [ ] Health scoring
-- [ ] Predictive maintenance alerts
+- [x] Built-in self-test (BIST)
+- [x] Calibration status checking
+- [x] Temperature monitoring
+- [x] Error code database
+- [x] Diagnostic reports
+- [x] Health scoring
+- [x] Predictive maintenance alerts (via calibration due dates)
 
 **Benefits:**
 - Equipment health monitoring
@@ -591,17 +967,18 @@
 
 ---
 
-### 14. Performance Monitoring 💡
-**Priority:** ⭐
+### 14. Performance Monitoring ✅
+**Priority:** ⭐⭐⭐
 **Effort:** 1 day
+**Status:** Complete (v0.13.0)
 
 **Features:**
-- [ ] API endpoint latency tracking
-- [ ] Equipment response time monitoring
-- [ ] System resource usage
-- [ ] Bottleneck detection
-- [ ] Performance history
-- [ ] Metrics dashboard
+- [x] API endpoint latency tracking
+- [x] Equipment response time monitoring
+- [x] System resource usage
+- [x] Bottleneck detection
+- [x] Performance history
+- [x] Metrics dashboard
 
 **Benefits:**
 - Performance optimization
@@ -640,13 +1017,13 @@
 ### **Priority 1: Stability & Monitoring** (1-2 weeks)
 *Improve production reliability*
 
-1. ✅ Advanced Logging System (Complete)
-2. Enhanced Alarm System
-3. Equipment Diagnostics
+1. ✅ Advanced Logging System (Complete - v0.10.1)
+2. ✅ Enhanced Alarm System (Complete - v0.11.0)
+3. ✅ Equipment Diagnostics (Complete - v0.12.0)
 4. Performance Monitoring
 
 **Goal:** Production-grade monitoring and alerting
-**Progress:** 25% complete (1/4 features done)
+**Progress:** 75% complete (3/4 features done)
 
 ---
 
@@ -688,13 +1065,13 @@
 
 ## 📋 Implementation Phases
 
-### Phase 1: Monitoring & Stability ⚡ **IN PROGRESS**
-- ✅ Advanced Logging System (Complete)
-- 📋 Enhanced Alarm System (Next)
-- 📋 Equipment Diagnostics
+### Phase 1: Monitoring & Stability ⚡ **COMPLETE**
+- ✅ Advanced Logging System (Complete - v0.10.1)
+- ✅ Enhanced Alarm System (Complete - v0.11.0)
+- ✅ Equipment Diagnostics (Complete - v0.12.0)
 
 **Goal:** Rock-solid production system
-**Progress:** 33% complete
+**Progress:** 100% complete (3/3 features done)
 
 ---
 
@@ -741,10 +1118,11 @@
 ## 🎯 Version Planning
 
 - **v0.10.0** ✅ - WebSocket Integration & Testing
-- **v0.10.1** ✅ - Advanced Logging & Analysis (Current)
-- **v0.11.0** 📋 - Enhanced Alarms & Notifications
-- **v0.12.0** 📋 - Automation & Scheduling
-- **v0.13.0** 📋 - Database & Analysis Pipeline
+- **v0.10.1** ✅ - Advanced Logging & Analysis
+- **v0.11.0** ✅ - Enhanced Alarms & Notifications
+- **v0.12.0** ✅ - Equipment Diagnostics (Current)
+- **v0.13.0** 📋 - Automation & Scheduling
+- **v0.14.0** 📋 - Database & Analysis Pipeline
 - **v1.0.0** 💡 - Production Release
 - **v1.1.0+** 💡 - Enterprise Features (Optional: Web Dashboard, ML Anomaly Detection, Multi-server Aggregation)
 
@@ -752,8 +1130,9 @@
 
 ## 📊 Effort Summary
 
-**Completed Quick Wins:**
+**Completed Projects:**
 - ✅ Advanced Logging System (1 day) - v0.10.1
+- ✅ Enhanced Alarm & Notification System (1-2 days) - v0.11.0
 
 **Quick Wins (< 1 day):**
 - Scheduled Operations (1 day)
@@ -762,7 +1141,6 @@
 - Backup & Restore (0.5 day)
 
 **Medium Projects (1-3 days):**
-- Alarm & Notification System (1-2 days)
 - Enhanced WebSocket (1-2 days)
 - Equipment Discovery (1-2 days)
 - Calibration Management (2-3 days)
