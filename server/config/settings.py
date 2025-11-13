@@ -62,8 +62,28 @@ class Settings(BaseSettings):
     # ==================== WebSocket Configuration ====================
     ws_max_connections: int = Field(default=10, ge=1, description="Maximum WebSocket connections")
     ws_heartbeat_interval_sec: int = Field(default=30, ge=5, description="WebSocket heartbeat interval")
-    ws_message_queue_size: int = Field(default=100, ge=10, description="WebSocket message queue size")
+    ws_message_queue_size: int = Field(default=1000, ge=10, description="WebSocket message queue size")
     ws_compression_enabled: bool = Field(default=True, description="Enable WebSocket compression")
+
+    # ==================== Enhanced WebSocket Features (v0.15.0) ====================
+    # Stream Recording
+    ws_recording_enabled: bool = Field(default=False, description="Enable WebSocket stream recording")
+    ws_recording_format: Literal["json", "jsonl", "csv", "binary"] = Field(
+        default="jsonl", description="Recording format (json, jsonl, csv, binary)"
+    )
+    ws_recording_dir: str = Field(default="./data/ws_recordings", description="Recording output directory")
+    ws_recording_max_size_mb: int = Field(default=100, ge=1, description="Maximum recording file size (MB)")
+    ws_recording_timestamps: bool = Field(default=True, description="Include timestamps in recordings")
+    ws_recording_metadata: bool = Field(default=True, description="Include metadata in recordings")
+    ws_recording_compress: bool = Field(default=True, description="Compress recording files (gzip)")
+
+    # Backpressure & Flow Control
+    ws_backpressure_enabled: bool = Field(default=True, description="Enable backpressure handling")
+    ws_queue_warning_threshold: int = Field(default=750, ge=1, description="Queue warning threshold (messages)")
+    ws_drop_low_priority: bool = Field(default=True, description="Drop low priority messages when queue is full")
+    ws_rate_limit_enabled: bool = Field(default=True, description="Enable per-connection rate limiting")
+    ws_max_messages_per_second: int = Field(default=100, ge=1, description="Maximum messages per second per connection")
+    ws_burst_size: int = Field(default=50, ge=1, description="Burst size for rate limiter")
 
     # ==================== API Configuration ====================
     enable_cors: bool = Field(default=True, description="Enable CORS")
@@ -122,7 +142,7 @@ class Settings(BaseSettings):
         env_prefix = "LABLINK_"
         case_sensitive = False
 
-    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir")
+    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir", "ws_recording_dir")
     def create_directories(cls, v):
         """Ensure directories exist."""
         path = Path(v)
