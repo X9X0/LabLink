@@ -4,7 +4,7 @@ uvicorn[standard]==0.27.0
 websockets==12.0
 
 # Equipment Communication
-pyvisa==1.14.1
+pyvisa==1.15.0
 pyvisa-py==0.7.1
 pyserial==3.5
 
