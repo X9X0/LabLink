@@ -33,6 +33,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_gui: Tests that require GUI/display"
     )
+    config.addinivalue_line(
+        "markers", "api: API endpoint tests"
+    )
 
 
 @pytest.fixture(scope="session")
