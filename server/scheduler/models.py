@@ -84,6 +84,11 @@ class ScheduleConfig(BaseModel):
     created_by: Optional[str] = Field(None, description="User who created job")
     tags: List[str] = Field(default_factory=list, description="Tags for categorization")
 
+    # Integration settings (v0.14.0)
+    profile_id: Optional[str] = Field(None, description="Equipment profile to apply before execution")
+    on_failure_alarm: bool = Field(default=False, description="Create alarm on job failure")
+    conflict_policy: str = Field(default="skip", description="Policy when job conflicts occur (skip, queue, replace)")
+
 
 class JobExecution(BaseModel):
     """A job execution instance."""

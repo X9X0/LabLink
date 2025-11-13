@@ -8,7 +8,8 @@ from .models import (
     JobExecution,
     JobHistory,
 )
-from .manager import scheduler_manager
+from .manager import scheduler_manager, initialize_scheduler_manager
+from .storage import SchedulerStorage
 
 __all__ = [
     "ScheduleType",
@@ -18,4 +19,6 @@ __all__ = [
     "JobExecution",
     "JobHistory",
     "scheduler_manager",
+    "initialize_scheduler_manager",
+    "SchedulerStorage",
 ]

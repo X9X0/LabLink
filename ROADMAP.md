@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.13.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.14.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with advanced logging, comprehensive alarm system, equipment diagnostics, and performance monitoring
+**Status:** Production-ready with advanced logging, alarms, diagnostics, performance monitoring, and scheduled operations
 
 ---
 
@@ -10,14 +10,15 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.13.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance |
+| **Server** | v0.14.0 | ✅ Complete | Data acquisition, WebSocket, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
-| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide (2,100+ pages) |
+| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, log & alarm guides, diagnostics guide, scheduler guide (2,700+ pages) |
 | **Logging** | v0.10.1 | ✅ Complete | JSON logging, rotation, user tracking, analysis tools, anomaly detection |
 | **Alarms** | v0.11.0 | ✅ Complete | Equipment monitoring, multi-channel notifications, Slack/webhook integration |
 | **Diagnostics** | v0.12.0 | ✅ Complete | Health monitoring, calibration tracking, error code interpretation, self-tests, temperature monitoring |
 | **Performance** | v0.13.0 | ✅ Complete | Baseline tracking, trend analysis, degradation detection, SQLite persistence, performance alerts |
+| **Scheduler** | v0.14.0 | ✅ Complete | Cron-like scheduling, SQLite persistence, conflict detection, alarm/profile integration, execution tracking |
 
 ---
 
@@ -33,6 +34,156 @@
 ---
 
 ## 📚 Version History
+
+### v0.14.0 - Scheduled Operations with Full Integration (2025-11-13) ✅
+
+**Status**: Complete
+
+Comprehensive scheduled operations system with SQLite persistence, conflict detection, and full integration with alarms and equipment profiles.
+
+**New Components:**
+
+1. **SQLite Persistence Layer** (`server/scheduler/storage.py` - 550 lines)
+   - Persistent job storage with automatic restoration on server restart
+   - Execution history tracking with 30-day retention
+   - Execution count tracking per job
+   - Automatic cleanup of old records
+   - Three database tables: jobs, executions, execution_counts
+   - Indexed queries for performance
+
+2. **Enhanced Scheduler Manager** (`server/scheduler/manager.py` - 700+ lines)
+   - SQLite integration for job persistence
+   - Conflict detection with three policies: skip, queue, replace
+   - Equipment profile application before job execution
+   - Automatic alarm creation on job failures
+   - Running job tracking for conflict detection
+   - Periodic cleanup task (daily, 30-day retention)
+   - Support for 6 job types: acquisition, state_capture, measurement, command, equipment_test, script
+
+3. **Integration Features**:
+   - **Alarm Integration**: Automatic alarms on job failures with full context
+   - **Profile Integration**: Apply equipment profiles before job execution
+   - **Conflict Policies**: Skip, queue, or replace for overlapping jobs
+   - **Failure Tracking**: Comprehensive execution history with error details
+
+4. **API Enhancements** (`server/api/scheduler.py`):
+   - Added `profile_id` field for profile integration
+   - Added `on_failure_alarm` field for automatic alarm creation
+   - Added `conflict_policy` field for conflict handling
+   - New endpoint: `GET /scheduler/running` - Get currently running jobs
+
+5. **Scheduler User Guide** (`server/SCHEDULER_USER_GUIDE.md` - 600+ lines)
+   - Quick start examples
+   - All job types documented with examples
+   - All trigger types (cron, interval, daily, weekly, monthly, date)
+   - Advanced features: conflict detection, profile integration, alarms
+   - API reference
+   - Best practices and troubleshooting
+   - Real-world examples
+
+**Key Features:**
+
+- **Persistent Scheduling**: Jobs survive server restarts
+- **Cron-like Flexibility**: Support for cron expressions, intervals, daily, weekly, monthly schedules
+- **Conflict Detection**: Three policies for handling overlapping executions
+- **Alarm Integration**: Automatic alerts on job failures with detailed context
+- **Profile Integration**: Apply equipment profiles before execution
+- **Comprehensive History**: Track all executions with statistics
+- **Automatic Cleanup**: Old execution records cleaned up after 30 days
+- **Running Job Tracking**: View currently executing jobs
+
+**Configuration:**
+- Database path configurable via `settings.scheduler_db_path`
+- Default: `data/scheduler.db`
+- All jobs restored on server startup
+
+**Integration Points:**
+- Alarm system: Automatic failure alarms with job context
+- Profile system: Pre-execution profile application
+- Acquisition system: Schedule automated data collection
+- State management: Schedule periodic state captures
+- Diagnostics system: Schedule equipment tests
+
+**Database Schema:**
+```sql
+scheduled_jobs table:
+  - job_id, name, description
+  - schedule_type, equipment_id
+  - trigger configuration
+  - integration fields (profile_id, on_failure_alarm, conflict_policy)
+  - execution limits and metadata
+
+job_executions table:
+  - execution_id, job_id
+  - status, timestamps, duration
+  - result, error, output
+  - scheduled vs actual time
+
+job_execution_counts table:
+  - job_id, execution_count
+  - last_updated
+```
+
+**Conflict Policies:**
+- **skip**: Skip execution if job already running (default)
+- **queue**: Wait for current execution to finish, then run
+- **replace**: Allow concurrent executions (respects max_instances)
+
+**Job Types Supported:**
+- **ACQUISITION**: Start data acquisition sessions
+- **STATE_CAPTURE**: Capture equipment states
+- **EQUIPMENT_TEST**: Run diagnostic tests
+- **MEASUREMENT**: Take single measurements
+- **COMMAND**: Execute equipment commands
+- **SCRIPT**: Run custom scripts
+
+**API Endpoints:**
+- `POST /api/scheduler/jobs/create` - Create scheduled job
+- `GET /api/scheduler/jobs` - List all jobs
+- `GET /api/scheduler/jobs/{id}` - Get job details
+- `DELETE /api/scheduler/jobs/{id}` - Delete job
+- `POST /api/scheduler/jobs/{id}/pause` - Pause job
+- `POST /api/scheduler/jobs/{id}/resume` - Resume job
+- `POST /api/scheduler/jobs/{id}/run` - Run job immediately
+- `GET /api/scheduler/executions` - List executions
+- `GET /api/scheduler/jobs/{id}/history` - Get job history
+- `GET /api/scheduler/statistics` - Get scheduler statistics
+- `GET /api/scheduler/running` - Get running jobs
+
+**Usage Example:**
+```python
+# Schedule nightly diagnostics with alarm on failure
+{
+  "name": "Nightly Equipment Health Check",
+  "schedule_type": "equipment_test",
+  "equipment_id": "oscilloscope_1",
+  "trigger_type": "daily",
+  "time_of_day": "03:00:00",
+  "profile_id": "test_profile",
+  "on_failure_alarm": true,
+  "conflict_policy": "skip"
+}
+```
+
+**Files Modified:**
+- `server/main.py`: Initialize scheduler with persistence
+- `server/scheduler/models.py`: Added integration fields
+- `server/scheduler/__init__.py`: Export new functions
+- `server/api/scheduler.py`: Enhanced with new fields
+
+**Files Created:**
+- `server/scheduler/storage.py` (550 lines)
+- `server/SCHEDULER_USER_GUIDE.md` (600+ lines)
+
+**Documentation:**
+- Comprehensive user guide with examples
+- API reference
+- Best practices
+- Troubleshooting guide
+
+This completes the Scheduled Operations feature with full persistence, conflict detection, and system integrations.
+
+---
 
 ### v0.13.0 - Performance Monitoring System (2025-11-13) ✅
 
@@ -545,27 +696,37 @@
 
 ---
 
-### 3. Scheduled Operations 📋
+### 3. Scheduled Operations ✅
 **Priority:** ⭐⭐⭐
 **Effort:** 1-2 days
+**Status:** Complete (v0.14.0)
 
 **Features:**
-- [ ] Scheduled acquisitions
-- [ ] Periodic state captures
-- [ ] Automated equipment tests
-- [ ] Recurring measurements
-- [ ] Cron-like scheduling
-- [ ] Schedule persistence
-- [ ] Job history and status
-- [ ] Conflict resolution
+- [x] Scheduled acquisitions
+- [x] Periodic state captures
+- [x] Automated equipment tests
+- [x] Recurring measurements
+- [x] Cron-like scheduling
+- [x] Schedule persistence (SQLite)
+- [x] Job history and status
+- [x] Conflict resolution (skip, queue, replace policies)
+
+**Additional Features (v0.14.0):**
+- [x] Alarm integration on failures
+- [x] Equipment profile integration
+- [x] Running job tracking
+- [x] Automatic cleanup (30-day retention)
+- [x] Comprehensive execution history
 
 **Benefits:**
-- Automated testing
-- Long-term data collection
-- Unattended operation
-- Repeatability
+- ✅ Automated testing
+- ✅ Long-term data collection
+- ✅ Unattended operation
+- ✅ Repeatability
+- ✅ Persistent scheduling across server restarts
+- ✅ Conflict detection and resolution
 
-**Dependencies:** None
+**Dependencies:** None (complete and integrated)
 
 ---
 

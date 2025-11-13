@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.13.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.14.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -90,9 +90,13 @@ async def lifespan(app: FastAPI):
     acq_export_dir = settings.acquisition_export_dir if hasattr(settings, 'acquisition_export_dir') else "./data/acquisitions"
     acquisition_manager.set_export_directory(acq_export_dir)
 
-    # Start scheduler
-    from scheduler import scheduler_manager
+    # Start scheduler with persistence (v0.14.0)
+    from scheduler import initialize_scheduler_manager
+    logger.info("Initializing scheduler with persistence...")
+    sched_db_path = settings.scheduler_db_path if hasattr(settings, 'scheduler_db_path') else "data/scheduler.db"
+    scheduler_manager = initialize_scheduler_manager(sched_db_path)
     await scheduler_manager.start()
+    logger.info("Scheduler started with SQLite persistence")
 
     # Initialize equipment-alarm integrator
     from alarm import alarm_manager, initialize_integrator
@@ -159,7 +163,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.13.0",
+    version="0.14.0",
     lifespan=lifespan,
 )
 
@@ -195,7 +199,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.13.0",
+        "version": "0.14.0",
         "status": "running",
     }
 
