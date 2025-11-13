@@ -92,12 +92,60 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=100, ge=1, description="Rate limit: requests per window")
     rate_limit_window_sec: int = Field(default=60, ge=1, description="Rate limit window (seconds)")
 
-    # ==================== Security ====================
-    api_key: Optional[str] = Field(default=None, description="API authentication key")
+    # ==================== Basic Security ====================
+    api_key: Optional[str] = Field(default=None, description="API authentication key (legacy, use advanced security instead)")
     enable_tls: bool = Field(default=False, description="Enable TLS/HTTPS")
     cert_file: Optional[str] = Field(default=None, description="TLS certificate file path")
     key_file: Optional[str] = Field(default=None, description="TLS private key file path")
     require_authentication: bool = Field(default=False, description="Require API authentication")
+
+    # ==================== Advanced Security System (v0.23.0) ====================
+    # Security Enable/Disable
+    enable_advanced_security: bool = Field(default=False, description="Enable advanced security system (JWT, RBAC, etc.)")
+    security_db_path: str = Field(default="./data/security.db", description="Security database path")
+
+    # JWT Authentication
+    jwt_secret_key: Optional[str] = Field(default=None, description="JWT signing secret key (auto-generated if not set)")
+    jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    jwt_access_token_expire_minutes: int = Field(default=30, ge=1, le=1440, description="JWT access token expiration (minutes)")
+    jwt_refresh_token_expire_days: int = Field(default=7, ge=1, le=365, description="JWT refresh token expiration (days)")
+
+    # Password Requirements
+    password_min_length: int = Field(default=8, ge=6, le=128, description="Minimum password length")
+    password_require_uppercase: bool = Field(default=True, description="Require uppercase letter in password")
+    password_require_lowercase: bool = Field(default=True, description="Require lowercase letter in password")
+    password_require_digit: bool = Field(default=True, description="Require digit in password")
+    password_require_special: bool = Field(default=False, description="Require special character in password")
+    password_expiration_days: int = Field(default=90, ge=0, description="Password expiration period (0=no expiration)")
+
+    # Account Lockout
+    enable_account_lockout: bool = Field(default=True, description="Enable account lockout after failed attempts")
+    max_failed_login_attempts: int = Field(default=5, ge=3, le=20, description="Maximum failed login attempts before lockout")
+    account_lockout_duration_minutes: int = Field(default=30, ge=1, le=1440, description="Account lockout duration (minutes)")
+
+    # IP Whitelisting
+    enable_ip_whitelist: bool = Field(default=False, description="Enable IP whitelisting")
+    ip_whitelist_enforce: bool = Field(default=False, description="Enforce IP whitelist (deny non-whitelisted IPs)")
+
+    # Session Management
+    session_timeout_minutes: int = Field(default=60, ge=5, le=1440, description="Session timeout (minutes)")
+    max_sessions_per_user: int = Field(default=5, ge=1, le=50, description="Maximum concurrent sessions per user")
+
+    # API Key Management
+    api_key_max_age_days: int = Field(default=365, ge=1, le=3650, description="Maximum API key age (days)")
+    api_key_rotation_warning_days: int = Field(default=30, ge=1, le=365, description="Warn before API key expiration (days)")
+
+    # Security Audit Logging
+    enable_security_audit_log: bool = Field(default=True, description="Enable security audit logging")
+    security_log_retention_days: int = Field(default=90, ge=1, le=3650, description="Security audit log retention (days)")
+    security_log_failed_logins: bool = Field(default=True, description="Log failed login attempts")
+    security_log_permission_denials: bool = Field(default=True, description="Log permission denials")
+
+    # Default Admin Account (created on first startup)
+    create_default_admin: bool = Field(default=True, description="Create default admin account on first startup")
+    default_admin_username: str = Field(default="admin", description="Default admin username")
+    default_admin_password: str = Field(default="LabLink@2025", description="Default admin password (change immediately!)")
+    default_admin_email: str = Field(default="admin@lablink.local", description="Default admin email")
 
     # ==================== Equipment Profiles ====================
     enable_profiles: bool = Field(default=True, description="Enable equipment profiles")

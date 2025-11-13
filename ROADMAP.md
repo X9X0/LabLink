@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.22.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.23.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
+**Status:** Production-ready with advanced security, equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,10 +10,11 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.22.0 | ✅ Complete | Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.23.0 | ✅ Complete | Advanced security, Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
-| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide (5,000+ pages) |
+| **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide, security guide (6,000+ pages) |
+| **Security** | v0.23.0 | ✅ Complete | JWT auth, RBAC, user management, API keys, IP whitelisting, audit logging, 25+ endpoints |
 | **Logging** | v0.10.1 | ✅ Complete | JSON logging, rotation, user tracking, analysis tools, anomaly detection |
 | **Alarms** | v0.11.0 | ✅ Complete | Equipment monitoring, multi-channel notifications, Slack/webhook integration |
 | **Diagnostics** | v0.12.0 | ✅ Complete | Health monitoring, calibration tracking, error code interpretation, self-tests, temperature monitoring |
@@ -42,6 +43,77 @@
 ---
 
 ## 📚 Version History
+
+### v0.23.0 - Advanced Security System (2025-11-13) ✅
+
+**Status**: Complete
+
+Enterprise-grade security system with JWT authentication, role-based access control, API key management, IP whitelisting, and comprehensive security audit logging for multi-user laboratory environments.
+
+**Key Features:**
+- JWT authentication with access and refresh tokens
+- Role-based access control (RBAC) with granular permissions
+- User lifecycle management with password policies
+- API key management with scoped permissions
+- IP whitelisting and blacklisting
+- Security audit logging with compliance support
+- Session management and tracking
+- Account lockout protection against brute-force attacks
+- Password policies (complexity, expiration, forced changes)
+- Three default roles (admin, operator, viewer) + custom roles
+- 30+ security configuration settings
+
+**Components Created:**
+- `server/security/models.py` - Security data models (600+ lines)
+- `server/security/auth.py` - JWT authentication and password hashing (450+ lines)
+- `server/security/rbac.py` - Role-based access control (570+ lines)
+- `server/security/manager.py` - Security manager with SQLite persistence (1,000+ lines)
+- `server/api/security.py` - Security REST API (720+ lines)
+- `server/SECURITY_USER_GUIDE.md` - Comprehensive security documentation (850+ lines)
+
+**API Endpoints (25+ new):**
+- `/api/security/login` - Login with credentials
+- `/api/security/logout` - Logout and invalidate session
+- `/api/security/refresh` - Refresh access token
+- `/api/security/me` - Get current user info
+- `/api/security/users` - User management (CRUD)
+- `/api/security/users/change-password` - Change password
+- `/api/security/users/reset-password` - Reset password (admin)
+- `/api/security/roles` - Role management
+- `/api/security/api-keys` - API key management (CRUD)
+- `/api/security/ip-whitelist` - IP whitelist management
+- `/api/security/audit-log/query` - Query security audit log
+- `/api/security/status` - Security system status
+- `/api/security/sessions` - Session management
+
+**Security Features:**
+- **Authentication**: JWT tokens (30-min access, 7-day refresh), bcrypt password hashing
+- **Authorization**: Resource-level permissions with RBAC
+- **Audit Trail**: Complete security event logging (login, logout, password changes, access denials)
+- **Compliance**: NIST CSF, ISO 27001, FDA 21 CFR Part 11, GDPR support
+- **Network Security**: IP whitelisting/blacklisting with CIDR support
+- **Session Security**: Configurable timeouts, concurrent session limits
+- **Password Security**: Complexity requirements, expiration, change enforcement
+- **Account Protection**: Lockout after failed attempts (default: 5 attempts, 30-min lockout)
+
+**Default Roles:**
+- **Admin**: Full system access, user/role management, all equipment control
+- **Operator**: Equipment control, measurement/test execution, profile management
+- **Viewer**: Read-only access to equipment status and data
+
+**Configuration:**
+Added 30+ security settings including JWT configuration, password policies, account lockout, IP whitelisting, session management, and audit logging options.
+
+**Documentation:**
+- Complete security user guide with quick start, API reference, best practices
+- Migration guide from basic to advanced security
+- Compliance information (NIST, ISO, FDA, GDPR)
+- Troubleshooting guide
+- Client examples (Python, JavaScript/TypeScript)
+
+**Total Additions**: ~4,500 lines of code and documentation
+
+---
 
 ### v0.22.0 - Equipment Discovery System (2025-11-13) ✅
 
