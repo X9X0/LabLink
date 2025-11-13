@@ -7,10 +7,8 @@ import numpy as np
 from typing import Any, Dict, Optional
 from datetime import datetime
 
-import sys
-sys.path.append("../../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
-from models.data import PowerSupplyData
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+from shared.models.data import PowerSupplyData
 
 logger = logging.getLogger(__name__)
 

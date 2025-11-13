@@ -7,9 +7,7 @@ import asyncio
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
 
-import sys
-sys.path.append("../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
 
 logger = logging.getLogger(__name__)
 

@@ -5,10 +5,8 @@ import uuid
 import numpy as np
 from typing import Any, Dict, Optional
 
-import sys
-sys.path.append("../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
-from models.data import WaveformData
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+from shared.models.data import WaveformData
 
 from .base import BaseEquipment
 

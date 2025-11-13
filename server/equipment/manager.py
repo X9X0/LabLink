@@ -5,9 +5,7 @@ from typing import Dict, List, Optional
 import asyncio
 from pyvisa import ResourceManager
 
-import sys
-sys.path.append("../../shared")
-from models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 
 from .base import BaseEquipment
 from .rigol_scope import RigolMSO2072A, RigolDS1104, RigolDS1102D
