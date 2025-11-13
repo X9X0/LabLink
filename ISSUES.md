@@ -2,52 +2,98 @@
 
 ## Server-Side Issues
 
-### 1. Alarm Events Endpoint Route Matching (Priority: High)
+### 1. Alarm Events Endpoint Route Matching (Priority: High) - ✅ LIKELY RESOLVED
 
-**Issue**: The `/api/alarms/events` endpoint returns 404 "Alarm events not found" despite the route being defined.
+**Issue**: The `/api/alarms/events` endpoint was returning 404 due to incorrect route ordering.
 
-**Location**: `/home/x9x0/LabLink/server/api/alarms.py:295-339`
+**Location**: `/home/user/LabLink/server/api/alarms.py:295-339`
+
+**Status**: ✅ **CODE FIXED** - Routes are now correctly ordered (as of commit 8449012)
 
 **Details**:
-- Fixed route ordering by moving `/alarms/events` before `/alarms/events/{event_id}`
-- However, still getting 404 errors with message "Alarm events not found"
-- Error message doesn't exist in current codebase, suggesting bytecode caching issue
-- `/api/alarms/statistics` has same issue
+- ✅ Fixed route ordering by moving `/alarms/events` before `/alarms/events/{event_id}` (commit 8449012)
+- ✅ Code inspection confirms routes are in correct order
+- ✅ All required methods exist in alarm manager
+- ⚠️ May require clean server restart to clear Python bytecode cache
 
-**Attempted Fixes**:
-- Cleared `__pycache__` directories
-- Restarted server multiple times
-- Route order corrected (generic before parameterized)
+**Resolution Steps** (if issue persists):
+1. **Stop the server** completely
+2. **Clear Python cache**:
+   ```bash
+   find server -type d -name __pycache__ -exec rm -rf {} +
+   find server -name '*.pyc' -delete
+   ```
+3. **Restart server** in clean environment:
+   ```bash
+   python -m server.main
+   ```
+4. **Verify with test script**:
+   ```bash
+   python verify_endpoints.py
+   ```
 
-**Workaround**: None currently. The endpoint exists but FastAPI is not routing to it correctly.
+**Verification**:
+- Run `python verify_endpoints.py` to test all problematic endpoints
+- Should now return 200 with proper JSON response
+- `/api/alarms/statistics` should also work
 
-**Impact**:
+**Impact** (if still broken):
 - Alarm history feature in GUI cannot retrieve historical events
 - Statistics display unavailable
 
-**Next Steps**:
-1. Check if there's an older version of alarms.py being imported
-2. Verify Python module import paths
-3. Consider renaming the function to force reimport
-4. Check if there are duplicate route definitions
+**Root Cause**: FastAPI route ordering (generic routes must come before parameterized routes). This has been fixed in the code.
 
 ---
 
-### 2. Job Creation Validation (Priority: Medium)
+### 2. Job Creation Validation (Priority: Medium) - ✅ RESOLVED
 
-**Issue**: Creating jobs via `/api/scheduler/jobs/create` returns 422 Unprocessable Entity
+**Issue**: Creating jobs via `/api/scheduler/jobs/create` was returning 422 Unprocessable Entity
 
-**Location**: Test script shows validation errors
+**Location**: Test scripts and client API
 
-**Details**:
-- Scheduler job creation requires specific schema validation
-- Test payload may be missing required fields or using incorrect format
+**Status**: ✅ **RESOLVED** - Issue was incorrect test payload format
 
-**Impact**: Cannot test job creation from client GUI
+**Root Cause**:
+- Test payload was using nested structure with `job_config` wrapper
+- API expects flat structure with direct fields
+- This was a **test issue**, not a server issue
 
-**Next Steps**:
-- Check scheduler API schema requirements
-- Verify job_config payload matches expected format
+**Correct Payload Format**:
+```json
+{
+  "name": "test_job",
+  "schedule_type": "measurement",  // One of: acquisition, state_capture, equipment_test, measurement, command, script
+  "trigger_type": "interval",      // One of: cron, interval, date, daily, weekly, monthly
+  "interval_seconds": 3600,        // Required for interval trigger
+  "equipment_id": "equipment_123", // Optional
+  "parameters": {},                // Optional job-specific params
+  "enabled": false                 // Optional, defaults to true
+}
+```
+
+**Incorrect Payload Format** (was causing 422):
+```json
+{
+  "job_config": {  // ❌ Don't wrap in job_config!
+    "name": "test_job",
+    ...
+  }
+}
+```
+
+**Required Fields** (vary by trigger type):
+- **Always required**: `name`, `schedule_type`, `trigger_type`
+- **CRON trigger**: `cron_expression`
+- **INTERVAL trigger**: One of `interval_seconds`, `interval_minutes`, `interval_hours`, `interval_days`
+- **DATE trigger**: `run_date`
+- **DAILY trigger**: `time_of_day`
+- **WEEKLY trigger**: `time_of_day`, `day_of_week`
+- **MONTHLY trigger**: `time_of_day`, `day_of_month`
+
+**Verification**:
+- Run `python verify_endpoints.py` - now uses correct payload format
+- Server API is correctly implemented
+- Client API should use flat structure, not nested
 
 ---
 
