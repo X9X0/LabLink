@@ -164,12 +164,35 @@ class Settings(BaseSettings):
     max_continuous_rate_hz: float = Field(default=100.0, gt=0, description="Maximum continuous acquisition rate (Hz)")
     continuous_buffer_size: int = Field(default=1000, ge=100, description="Continuous acquisition buffer size")
 
+    # ==================== Backup & Restore Configuration (v0.21.0) ====================
+    backup_dir: str = Field(default="./data/backups", description="Directory to store backups")
+    enable_auto_backup: bool = Field(default=True, description="Enable automatic scheduled backups")
+    auto_backup_interval_hours: int = Field(default=24, ge=1, le=168, description="Interval between auto backups (hours)")
+    backup_retention_days: int = Field(default=30, ge=1, le=365, description="Days to keep backups")
+    max_backup_count: int = Field(default=10, ge=1, le=100, description="Maximum number of backups to keep")
+
+    # Backup content
+    backup_include_config: bool = Field(default=True, description="Include configuration in backups")
+    backup_include_profiles: bool = Field(default=True, description="Include equipment profiles in backups")
+    backup_include_states: bool = Field(default=True, description="Include equipment states in backups")
+    backup_include_database: bool = Field(default=True, description="Include database files in backups")
+    backup_include_acquisitions: bool = Field(default=False, description="Include acquisition data in backups")
+    backup_include_logs: bool = Field(default=False, description="Include log files in backups")
+    backup_include_calibration: bool = Field(default=True, description="Include calibration data in backups")
+
+    # Backup options
+    backup_compression: Literal["none", "gzip", "zip", "tar.gz"] = Field(
+        default="tar.gz", description="Backup compression method"
+    )
+    backup_verify_after_creation: bool = Field(default=True, description="Verify backups after creation")
+    backup_calculate_checksums: bool = Field(default=True, description="Calculate SHA-256 checksums for backups")
+
     class Config:
         env_file = ".env"
         env_prefix = "LABLINK_"
         case_sensitive = False
 
-    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir", "ws_recording_dir", "waveform_export_dir")
+    @validator("log_dir", "data_dir", "profile_dir", "state_dir", "acquisition_export_dir", "ws_recording_dir", "waveform_export_dir", "backup_dir")
     def create_directories(cls, v):
         """Ensure directories exist."""
         path = Path(v)
