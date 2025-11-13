@@ -32,6 +32,12 @@ async def dashboard_page():
     return FileResponse(TEMPLATES_DIR / "dashboard.html")
 
 
+@router.get("/profiles.html", response_class=HTMLResponse)
+async def profiles_page():
+    """Serve the profiles management page."""
+    return FileResponse(TEMPLATES_DIR / "profiles.html")
+
+
 def register_web_routes(app):
     """Register web routes and static files with the FastAPI app."""
     # Mount static files

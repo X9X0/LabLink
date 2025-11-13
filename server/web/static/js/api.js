@@ -253,6 +253,42 @@ class LabLinkAPI {
     async getRecommendations() {
         return await this.request('/api/discovery/recommendations');
     }
+
+    // ==================== Profile Endpoints ====================
+
+    async listProfiles() {
+        return await this.request('/api/profiles/list');
+    }
+
+    async getProfile(profileName) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`);
+    }
+
+    async createProfile(profileData) {
+        return await this.request('/api/profiles/create', {
+            method: 'POST',
+            body: JSON.stringify(profileData),
+        });
+    }
+
+    async updateProfile(profileName, profileData) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`, {
+            method: 'PUT',
+            body: JSON.stringify(profileData),
+        });
+    }
+
+    async deleteProfile(profileName) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}`, {
+            method: 'DELETE',
+        });
+    }
+
+    async applyProfile(profileName, equipmentId) {
+        return await this.request(`/api/profiles/${encodeURIComponent(profileName)}/apply/${equipmentId}`, {
+            method: 'POST',
+        });
+    }
 }
 
 // Create global API instance
