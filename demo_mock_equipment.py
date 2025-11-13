@@ -17,11 +17,9 @@ import logging
 import sys
 from pathlib import Path
 
-# Add server path to imports
-sys.path.insert(0, str(Path(__file__).parent / "server"))
-
-from equipment.manager import EquipmentManager
-from equipment.mock_helper import MockEquipmentHelper, setup_demo_lab
+# Import from server and shared packages
+from server.equipment.manager import EquipmentManager
+from server.equipment.mock_helper import MockEquipmentHelper, setup_demo_lab
 from shared.models.equipment import EquipmentType
 
 # Configure logging
