@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.17.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.18.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with data analysis pipeline, waveform capture, signal processing, SPC, and comprehensive data analysis
+**Status:** Production-ready with database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.17.0 | ✅ Complete | Data analysis pipeline, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.18.0 | ✅ Complete | Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
 | **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide (5,000+ pages) |
@@ -22,6 +22,7 @@
 | **WebSocket** | v0.15.0 | ✅ Complete | Stream recording, compression (gzip/zlib), priority channels, backpressure handling |
 | **Waveform** | v0.16.0 | ✅ Complete | 30+ measurements, 15 math operations, FFT, cursors, persistence, histogram, XY mode |
 | **Analysis** | v0.17.0 | ✅ Complete | Signal filtering, curve fitting, SPC, reports, batch processing, 30+ endpoints |
+| **Database** | v0.18.0 | ✅ Complete | Command logging, measurement archival, usage tracking, query API, 15+ endpoints |
 
 ---
 
@@ -37,6 +38,39 @@
 ---
 
 ## 📚 Version History
+
+### v0.18.0 - Database Integration (2025-11-13) ✅
+
+**Status**: Complete
+
+Centralized SQLite database for historical data storage, command history logging, measurement archival, equipment usage tracking, and comprehensive query API.
+
+**Key Features:**
+- Command history logging: Track all SCPI commands with execution time, status, errors
+- Measurement archival: Archive all measurements with metadata and session tracking
+- Equipment usage statistics: Session duration, command/measurement/error counts
+- Data session tracking: Complete acquisition session lifecycle
+- Historical data queries: Filtering, pagination, aggregation, trend analysis
+- Automatic cleanup: Configurable retention period (default 90 days)
+- Database health monitoring
+
+**API Endpoints (15 new):**
+- `/api/database/commands` - Query command history
+- `/api/database/commands/recent` - Recent commands
+- `/api/database/commands/failed` - Failed commands
+- `/api/database/measurements` - Query measurements
+- `/api/database/measurements/recent` - Recent measurements
+- `/api/database/measurements/trend` - Measurement trends
+- `/api/database/usage/statistics` - Equipment usage stats
+- `/api/database/usage/summary` - Usage summary
+- `/api/database/statistics` - Database statistics
+- `/api/database/cleanup` - Cleanup old records
+- `/api/database/health` - Database health
+- `/api/database/info` - System info
+
+**Total Additions**: ~1,500 lines of code
+
+---
 
 ### v0.17.0 - Data Analysis Pipeline (2025-11-13) ✅
 

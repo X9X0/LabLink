@@ -87,6 +87,15 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Automated report generation (HTML, Markdown, JSON, PDF formats)
   - [x] Batch processing engine (parallel/sequential file processing)
   - [x] 30+ analysis API endpoints
+- [x] **Database integration** (centralized SQLite storage for historical data)
+  - [x] Command history logging (all SCPI commands with timestamps, execution time, status)
+  - [x] Measurement archival (all measurements with metadata and session tracking)
+  - [x] Equipment usage statistics (session duration, command/measurement counts, errors)
+  - [x] Data acquisition session tracking (complete session lifecycle and statistics)
+  - [x] Historical data query API (filtering, pagination, aggregation, trend analysis)
+  - [x] Automatic cleanup of old records (configurable retention period)
+  - [x] Database health monitoring and statistics
+  - [x] 15+ database API endpoints
 
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
@@ -178,7 +187,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v0.17.0
+**Current Version**: v0.18.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)

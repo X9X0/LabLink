@@ -14,5 +14,6 @@ from .calibration import router as calibration_router
 from .performance import router as performance_router
 from .waveform import router as waveform_router
 from .analysis import router as analysis_router
+from .database import router as database_router
 
-__all__ = ["equipment_router", "data_router", "profiles_router", "safety_router", "locks_router", "state_router", "acquisition_router", "alarms_router", "scheduler_router", "diagnostics_router", "calibration_router", "performance_router", "waveform_router", "analysis_router"]
+__all__ = ["equipment_router", "data_router", "profiles_router", "safety_router", "locks_router", "state_router", "acquisition_router", "alarms_router", "scheduler_router", "diagnostics_router", "calibration_router", "performance_router", "waveform_router", "analysis_router", "database_router"]
