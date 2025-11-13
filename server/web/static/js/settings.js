@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load user info and settings
     loadUserSettings();
 
+    // Load MFA status
+    loadMFAStatus();
+
     // Set up event listeners
     setupEventListeners();
 });
@@ -75,6 +78,17 @@ function setupEventListeners() {
         e.preventDefault();
         await changePassword();
     });
+
+    // MFA buttons
+    document.getElementById('enableMFAButton').addEventListener('click', startMFASetup);
+    document.getElementById('disableMFAButton').addEventListener('click', disableMFA);
+    document.getElementById('regenerateCodesButton').addEventListener('click', regenerateBackupCodes);
+    document.getElementById('closeMFAModal').addEventListener('click', closeMFAModal);
+    document.getElementById('continueToVerify').addEventListener('click', () => {
+        document.getElementById('mfaSetupStep1').style.display = 'none';
+        document.getElementById('mfaSetupStep2').style.display = 'block';
+    });
+    document.getElementById('verifyMFAButton').addEventListener('click', verifyMFA);
 }
 
 // Update dark mode button icon
@@ -169,4 +183,101 @@ async function changePassword() {
     } finally {
         setButtonLoading(changeButton, false);
     }
+}
+
+// Load MFA status
+async function loadMFAStatus() {
+    try {
+        const status = await api.getMFAStatus();
+        if (status.mfa_enabled) {
+            document.getElementById('mfaStatus').style.display = 'block';
+            document.getElementById('mfaDisabled').style.display = 'none';
+            document.getElementById('backupCodesCount').textContent = status.backup_codes_remaining;
+        } else {
+            document.getElementById('mfaStatus').style.display = 'none';
+            document.getElementById('mfaDisabled').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Failed to load MFA status:', error);
+    }
+}
+
+// Start MFA setup
+async function startMFASetup() {
+    try {
+        const data = await api.setupMFA();
+
+        // Show modal
+        document.getElementById('mfaSetupModal').style.display = 'flex';
+        document.getElementById('mfaSetupStep1').style.display = 'block';
+        document.getElementById('mfaSetupStep2').style.display = 'none';
+
+        // Display QR code and secret
+        document.getElementById('mfaQRCode').src = data.qr_code;
+        document.getElementById('mfaSecret').textContent = data.secret;
+
+        // Display backup codes
+        const codesText = data.backup_codes.map((code, i) => `${i + 1}. ${code}`).join('\n');
+        document.getElementById('backupCodes').textContent = codesText;
+
+    } catch (error) {
+        console.error('Failed to setup MFA:', error);
+        showAlert('Failed to setup MFA: ' + error.message, 'error', 'alert');
+    }
+}
+
+// Verify MFA
+async function verifyMFA() {
+    const token = document.getElementById('mfaVerifyToken').value.trim();
+
+    if (!token || token.length !== 6) {
+        showAlert('Please enter a 6-digit code', 'error', 'alert');
+        return;
+    }
+
+    try {
+        await api.verifyMFA(token);
+        showAlert('Two-factor authentication enabled successfully!', 'success', 'alert');
+        closeMFAModal();
+        await loadMFAStatus();
+    } catch (error) {
+        console.error('Failed to verify MFA:', error);
+        showAlert('Invalid code. Please try again.', 'error', 'alert');
+    }
+}
+
+// Disable MFA
+async function disableMFA() {
+    const password = prompt('Enter your password to disable 2FA:');
+    if (!password) return;
+
+    try {
+        await api.disableMFA(password);
+        showAlert('Two-factor authentication disabled', 'success', 'alert');
+        await loadMFAStatus();
+    } catch (error) {
+        console.error('Failed to disable MFA:', error);
+        showAlert('Failed to disable 2FA: ' + error.message, 'error', 'alert');
+    }
+}
+
+// Regenerate backup codes
+async function regenerateBackupCodes() {
+    if (!confirm('This will invalidate your old backup codes. Continue?')) return;
+
+    try {
+        const data = await api.regenerateBackupCodes();
+        const codesText = data.backup_codes.map((code, i) => `${i + 1}. ${code}`).join('\n');
+        alert('New Backup Codes:\n\n' + codesText + '\n\nSave these codes in a safe place!');
+        await loadMFAStatus();
+    } catch (error) {
+        console.error('Failed to regenerate backup codes:', error);
+        showAlert('Failed to regenerate backup codes: ' + error.message, 'error', 'alert');
+    }
+}
+
+// Close MFA modal
+function closeMFAModal() {
+    document.getElementById('mfaSetupModal').style.display = 'none';
+    document.getElementById('mfaVerifyToken').value = '';
 }

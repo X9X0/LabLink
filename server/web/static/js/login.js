@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
+        const mfaToken = document.getElementById('mfaToken').value.trim();
         const rememberMe = rememberMeInput.checked;
 
         if (!username || !password) {
@@ -32,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideAlert('errorAlert');
 
         try {
-            await login(username, password, rememberMe);
+            await login(username, password, rememberMe, mfaToken);
 
             // Show success message briefly
             showAlert('Login successful! Redirecting...', 'success', 'errorAlert');
@@ -43,11 +44,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 500);
         } catch (error) {
             console.error('Login error:', error);
-            showAlert(
-                error.message || 'Login failed. Please check your credentials and try again.',
-                'error',
-                'errorAlert'
-            );
+
+            // Check if MFA is required
+            if (error.message.includes('MFA token required') || error.message.includes('MFA')) {
+                document.getElementById('mfaTokenGroup').style.display = 'block';
+                document.getElementById('mfaToken').focus();
+                showAlert('Please enter your two-factor authentication code', 'info', 'errorAlert');
+            } else {
+                showAlert(
+                    error.message || 'Login failed. Please check your credentials and try again.',
+                    'error',
+                    'errorAlert'
+                );
+            }
         } finally {
             setButtonLoading(loginButton, false);
         }

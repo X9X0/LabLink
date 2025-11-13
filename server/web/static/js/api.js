@@ -132,10 +132,15 @@ class LabLinkAPI {
 
     // ==================== Authentication Endpoints ====================
 
-    async login(username, password) {
+    async login(username, password, mfaToken = null) {
+        const body = { username, password };
+        if (mfaToken) {
+            body.mfa_token = mfaToken;
+        }
+
         const data = await this.request('/api/security/login', {
             method: 'POST',
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify(body),
         });
 
         this.setTokens(data.access_token, data.refresh_token);
@@ -303,6 +308,38 @@ class LabLinkAPI {
         return await this.request(`/api/security/users/${userId}/password`, {
             method: 'POST',
             body: JSON.stringify(passwordData),
+        });
+    }
+
+    // ==================== MFA Endpoints ====================
+
+    async setupMFA() {
+        return await this.request('/api/security/mfa/setup', {
+            method: 'POST',
+        });
+    }
+
+    async verifyMFA(token) {
+        return await this.request('/api/security/mfa/verify', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+        });
+    }
+
+    async disableMFA(password, mfaToken = null) {
+        return await this.request('/api/security/mfa/disable', {
+            method: 'POST',
+            body: JSON.stringify({ password, mfa_token: mfaToken }),
+        });
+    }
+
+    async getMFAStatus() {
+        return await this.request('/api/security/mfa/status');
+    }
+
+    async regenerateBackupCodes() {
+        return await this.request('/api/security/mfa/backup-codes/regenerate', {
+            method: 'POST',
         });
     }
 }
