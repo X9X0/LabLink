@@ -444,6 +444,112 @@
     }
 }
 
+/* Alarms Section */
+.alarms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.alarm-item {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-left: 4px solid;
+    border-radius: 4px;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+    transition: box-shadow 0.2s;
+}
+
+.alarm-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.alarm-item.alarm-critical {
+    border-left-color: #dc2626;
+}
+
+.alarm-item.alarm-error {
+    border-left-color: #ef4444;
+}
+
+.alarm-item.alarm-warning {
+    border-left-color: #f59e0b;
+}
+
+.alarm-item.alarm-info {
+    border-left-color: #3b82f6;
+}
+
+.alarm-content {
+    flex: 1;
+}
+
+.alarm-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.alarm-severity {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.alarm-severity.critical {
+    background-color: #dc2626;
+    color: white;
+}
+
+.alarm-severity.error {
+    background-color: #ef4444;
+    color: white;
+}
+
+.alarm-severity.warning {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.alarm-severity.info {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.alarm-equipment {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.alarm-message {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.alarm-timestamp {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.alarm-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.alarm-item.acknowledged {
+    opacity: 0.6;
+    background-color: var(--bg-secondary);
+}
+
 /* Profiles Page Styles */
 .profiles-grid {
     display: grid;
@@ -607,5 +713,133 @@
 @media (max-width: 480px) {
     .profile-actions {
         flex-direction: column;
+    }
+}
+
+/* Settings Page Styles */
+.settings-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.settings-card h3 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.125rem;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+
+.settings-info {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.settings-info .info-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.settings-info .info-value {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.preference-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+}
+
+.preference-item:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+}
+
+.preference-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.preference-content strong {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.preference-content p {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.75rem;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.toggle-switch input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border);
+    transition: 0.3s;
+    border-radius: 26px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider {
+    background-color: var(--primary);
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.toggle-switch input[type="checkbox"]:focus + .toggle-slider {
+    box-shadow: 0 0 1px var(--primary);
+}
+
+/* Responsive for settings */
+@media (max-width: 768px) {
+    .settings-card {
+        padding: 1.5rem;
+    }
+
+    .preference-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
     }
 }

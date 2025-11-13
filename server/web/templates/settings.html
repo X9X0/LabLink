@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Settings - LabLink</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>LabLink</h1>
+                <span class="navbar-subtitle">User Settings</span>
+            </div>
+
+            <div class="navbar-actions">
+                <a href="/" class="btn btn-secondary btn-sm">← Dashboard</a>
+                <a href="/profiles.html" class="btn btn-secondary btn-sm">Profiles</a>
+
+                <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon" style="display: none;">🌙</span>
+                </button>
+
+                <div class="user-menu">
+                    <span class="user-name" id="userName">User</span>
+                    <button class="btn btn-secondary btn-sm" id="logoutButton">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Alert for notifications -->
+        <div class="alert alert-info" id="alert" style="display: none;"></div>
+
+        <!-- User Profile Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>User Profile</h2>
+            </div>
+
+            <div class="settings-card">
+                <form id="profileForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" disabled>
+                        <small class="text-muted">Username cannot be changed</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fullName">Full Name</label>
+                        <input type="text" id="fullName">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="saveProfileButton">
+                            <span class="btn-text">Save Changes</span>
+                            <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Change Password Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Change Password</h2>
+            </div>
+
+            <div class="settings-card">
+                <form id="passwordForm">
+                    <div class="form-group">
+                        <label for="currentPassword">Current Password</label>
+                        <input type="password" id="currentPassword" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" required>
+                        <small class="text-muted">Minimum 8 characters</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm New Password</label>
+                        <input type="password" id="confirmPassword" required>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="changePasswordButton">
+                            <span class="btn-text">Change Password</span>
+                            <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Preferences Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Preferences</h2>
+            </div>
+
+            <div class="settings-card">
+                <div class="preference-item">
+                    <div class="preference-content">
+                        <strong>Dark Mode</strong>
+                        <p class="text-muted">Use dark theme for the dashboard</p>
+                    </div>
+                    <div class="preference-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="darkModePreference">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="preference-item">
+                    <div class="preference-content">
+                        <strong>Real-time Updates</strong>
+                        <p class="text-muted">Enable WebSocket for instant notifications</p>
+                    </div>
+                    <div class="preference-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="realtimePreference" checked disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

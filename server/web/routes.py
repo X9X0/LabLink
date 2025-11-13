@@ -38,6 +38,12 @@ async def profiles_page():
     return FileResponse(TEMPLATES_DIR / "profiles.html")
 
 
+@router.get("/settings.html", response_class=HTMLResponse)
+async def settings_page():
+    """Serve the user settings page."""
+    return FileResponse(TEMPLATES_DIR / "settings.html")
+
+
 def register_web_routes(app):
     """Register web routes and static files with the FastAPI app."""
     # Mount static files

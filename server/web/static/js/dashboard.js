@@ -25,7 +25,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadUserInfo();
 
     // Load initial data
-    await loadEquipment();
+    await Promise.all([
+        loadEquipment(),
+        loadAlarms()
+    ]);
 
     // Set up event listeners
     setupEventListeners();
@@ -105,6 +108,14 @@ function setupEventListeners() {
     document.getElementById('toggleChartsButton').addEventListener('click', () => {
         stopChartMonitoring();
         document.getElementById('chartEquipmentSelect').value = '';
+    });
+
+    // Refresh alarms button
+    const refreshAlarmsButton = document.getElementById('refreshAlarmsButton');
+    refreshAlarmsButton.addEventListener('click', async () => {
+        setButtonLoading(refreshAlarmsButton, true);
+        await loadAlarms();
+        setButtonLoading(refreshAlarmsButton, false);
     });
 }
 
@@ -303,6 +314,66 @@ async function sendEquipmentCommand() {
         showAlert('Failed to send command: ' + error.message, 'error', 'modalAlert');
     } finally {
         setButtonLoading(sendButton, false);
+    }
+}
+
+// Load alarms
+async function loadAlarms() {
+    try {
+        const alarms = await api.listAlarms();
+        renderAlarms(alarms || []);
+    } catch (error) {
+        console.error('Failed to load alarms:', error);
+        showAlert('Failed to load alarms: ' + error.message, 'error', 'alert');
+    }
+}
+
+// Render alarms
+function renderAlarms(alarms) {
+    const container = document.getElementById('alarmsList');
+    const emptyState = document.getElementById('noAlarmsState');
+
+    // Filter out acknowledged alarms or show all
+    const activeAlarms = alarms.filter(a => !a.acknowledged);
+
+    if (activeAlarms.length === 0) {
+        container.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+
+    container.innerHTML = activeAlarms.map(alarm => `
+        <div class="alarm-item alarm-${alarm.severity || 'info'} ${alarm.acknowledged ? 'acknowledged' : ''}">
+            <div class="alarm-content">
+                <div class="alarm-header">
+                    <span class="alarm-severity ${alarm.severity || 'info'}">${alarm.severity || 'INFO'}</span>
+                    ${alarm.equipment_name ? `<span class="alarm-equipment">${escapeHtml(alarm.equipment_name)}</span>` : ''}
+                </div>
+                <div class="alarm-message">${escapeHtml(alarm.message || 'No message')}</div>
+                <div class="alarm-timestamp">${formatRelativeTime(new Date(alarm.timestamp))}</div>
+            </div>
+            <div class="alarm-actions">
+                ${!alarm.acknowledged ? `
+                    <button class="btn btn-secondary btn-sm" onclick="acknowledgeAlarm('${alarm.id}')">
+                        Acknowledge
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+// Acknowledge alarm
+async function acknowledgeAlarm(alarmId) {
+    try {
+        await api.acknowledgeAlarm(alarmId);
+        showAlert('Alarm acknowledged', 'success', 'alert');
+        await loadAlarms();
+    } catch (error) {
+        console.error('Failed to acknowledge alarm:', error);
+        showAlert('Failed to acknowledge alarm: ' + error.message, 'error', 'alert');
     }
 }
 
@@ -573,3 +644,4 @@ window.connectEquipment = connectEquipment;
 window.disconnectEquipment = disconnectEquipment;
 window.openControlModal = openControlModal;
 window.addDiscoveredDevice = addDiscoveredDevice;
+window.acknowledgeAlarm = acknowledgeAlarm;

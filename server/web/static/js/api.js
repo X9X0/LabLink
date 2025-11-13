@@ -289,6 +289,22 @@ class LabLinkAPI {
             method: 'POST',
         });
     }
+
+    // ==================== User Settings Endpoints ====================
+
+    async updateUser(userId, userData) {
+        return await this.request(`/api/security/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(userData),
+        });
+    }
+
+    async changePassword(userId, passwordData) {
+        return await this.request(`/api/security/users/${userId}/password`, {
+            method: 'POST',
+            body: JSON.stringify(passwordData),
+        });
+    }
 }
 
 // Create global API instance

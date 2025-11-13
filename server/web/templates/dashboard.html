@@ -20,6 +20,7 @@
 
             <div class="navbar-actions">
                 <a href="/profiles.html" class="btn btn-secondary btn-sm">Profiles</a>
+                <a href="/settings.html" class="btn btn-secondary btn-sm">Settings</a>
 
                 <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
                     <span class="icon-sun">☀️</span>
@@ -115,6 +116,26 @@
                     <h3 class="chart-title">Power (W)</h3>
                     <canvas id="powerChart"></canvas>
                 </div>
+            </div>
+        </div>
+
+        <!-- Alarms & Notifications Section -->
+        <div class="section" id="alarmsSection">
+            <div class="section-header">
+                <h2>Alarms & Notifications</h2>
+                <button class="btn btn-secondary btn-sm" id="refreshAlarmsButton">
+                    <span class="btn-text">Refresh</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+
+            <div id="alarmsList" class="alarms-list">
+                <!-- Alarm items will be dynamically inserted here -->
+            </div>
+
+            <div id="noAlarmsState" class="empty-state" style="display: none;">
+                <p>No active alarms</p>
+                <p class="text-muted">All systems operating normally</p>
             </div>
         </div>
 
