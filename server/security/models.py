@@ -283,6 +283,7 @@ class LoginRequest(BaseModel):
     """Login request."""
     username: str
     password: str
+    mfa_token: Optional[str] = None  # TOTP token or backup code for MFA
 
 
 class TokenResponse(BaseModel):
