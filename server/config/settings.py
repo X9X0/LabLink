@@ -147,6 +147,24 @@ class Settings(BaseSettings):
     default_admin_password: str = Field(default="LabLink@2025", description="Default admin password (change immediately!)")
     default_admin_email: str = Field(default="admin@lablink.local", description="Default admin email")
 
+    # OAuth2 Authentication (v0.25.0)
+    enable_oauth2: bool = Field(default=False, description="Enable OAuth2 authentication providers")
+
+    # Google OAuth2
+    oauth2_google_enabled: bool = Field(default=False, description="Enable Google OAuth2")
+    oauth2_google_client_id: Optional[str] = Field(default=None, description="Google OAuth2 client ID")
+    oauth2_google_client_secret: Optional[str] = Field(default=None, description="Google OAuth2 client secret")
+
+    # GitHub OAuth2
+    oauth2_github_enabled: bool = Field(default=False, description="Enable GitHub OAuth2")
+    oauth2_github_client_id: Optional[str] = Field(default=None, description="GitHub OAuth2 client ID")
+    oauth2_github_client_secret: Optional[str] = Field(default=None, description="GitHub OAuth2 client secret")
+
+    # Microsoft OAuth2
+    oauth2_microsoft_enabled: bool = Field(default=False, description="Enable Microsoft OAuth2")
+    oauth2_microsoft_client_id: Optional[str] = Field(default=None, description="Microsoft OAuth2 client ID")
+    oauth2_microsoft_client_secret: Optional[str] = Field(default=None, description="Microsoft OAuth2 client secret")
+
     # ==================== Equipment Profiles ====================
     enable_profiles: bool = Field(default=True, description="Enable equipment profiles")
     auto_load_profiles: bool = Field(default=True, description="Auto-load profiles on connection")

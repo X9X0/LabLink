@@ -266,6 +266,65 @@ async def lifespan(app: FastAPI):
                 logger.error(f"Failed to create default admin user: {e}")
 
         logger.info("Advanced security initialized - JWT auth, RBAC, API keys, IP whitelisting, audit logging enabled")
+
+        # Initialize OAuth2 providers if enabled (v0.25.0)
+        if settings.enable_oauth2:
+            from security import init_oauth2_manager, OAuth2Config, OAuth2Provider, OAUTH2_DEFAULTS
+            logger.info("Initializing OAuth2 authentication providers...")
+
+            oauth2_configs = []
+
+            # Google OAuth2
+            if settings.oauth2_google_enabled and settings.oauth2_google_client_id and settings.oauth2_google_client_secret:
+                google_defaults = OAUTH2_DEFAULTS[OAuth2Provider.GOOGLE]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.GOOGLE,
+                    client_id=settings.oauth2_google_client_id,
+                    client_secret=settings.oauth2_google_client_secret,
+                    authorization_url=google_defaults["authorization_url"],
+                    token_url=google_defaults["token_url"],
+                    user_info_url=google_defaults["user_info_url"],
+                    scopes=google_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - Google OAuth2 enabled")
+
+            # GitHub OAuth2
+            if settings.oauth2_github_enabled and settings.oauth2_github_client_id and settings.oauth2_github_client_secret:
+                github_defaults = OAUTH2_DEFAULTS[OAuth2Provider.GITHUB]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.GITHUB,
+                    client_id=settings.oauth2_github_client_id,
+                    client_secret=settings.oauth2_github_client_secret,
+                    authorization_url=github_defaults["authorization_url"],
+                    token_url=github_defaults["token_url"],
+                    user_info_url=github_defaults["user_info_url"],
+                    scopes=github_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - GitHub OAuth2 enabled")
+
+            # Microsoft OAuth2
+            if settings.oauth2_microsoft_enabled and settings.oauth2_microsoft_client_id and settings.oauth2_microsoft_client_secret:
+                microsoft_defaults = OAUTH2_DEFAULTS[OAuth2Provider.MICROSOFT]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.MICROSOFT,
+                    client_id=settings.oauth2_microsoft_client_id,
+                    client_secret=settings.oauth2_microsoft_client_secret,
+                    authorization_url=microsoft_defaults["authorization_url"],
+                    token_url=microsoft_defaults["token_url"],
+                    user_info_url=microsoft_defaults["user_info_url"],
+                    scopes=microsoft_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - Microsoft OAuth2 enabled")
+
+            if oauth2_configs:
+                oauth2_manager = init_oauth2_manager(oauth2_configs)
+                logger.info(f"OAuth2 initialized with {len(oauth2_configs)} provider(s)")
+            else:
+                logger.warning("OAuth2 enabled but no providers configured")
+
     else:
         logger.info("Advanced security disabled")
 
