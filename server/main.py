@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.16.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.17.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.16.0",
+    version="0.17.0",
     lifespan=lifespan,
 )
 
@@ -202,6 +202,7 @@ app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
 app.include_router(calibration_router, prefix="/api", tags=["calibration"])
 app.include_router(performance_router, prefix="/api", tags=["performance"])
 app.include_router(waveform_router, tags=["waveform"])
+app.include_router(analysis_router, tags=["analysis"])
 
 
 @app.get("/")
@@ -209,7 +210,7 @@ async def root():
     """Root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.16.0",
+        "version": "0.17.0",
         "status": "running",
     }
 

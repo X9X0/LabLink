@@ -73,6 +73,20 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] XY mode (channel vs channel plots)
   - [x] Continuous acquisition (up to 100 Hz)
   - [x] 25+ waveform API endpoints
+- [x] **Data analysis pipeline** (comprehensive signal processing and quality control)
+  - [x] Signal filtering (Butterworth, Chebyshev, Bessel, Elliptic, FIR filters)
+  - [x] Filter types: lowpass, highpass, bandpass, bandstop/notch
+  - [x] Specialized filters: Moving Average, Savitzky-Golay, Median
+  - [x] Data resampling and interpolation (linear, cubic, spline, Fourier methods)
+  - [x] Anti-aliasing for downsampling, missing data interpolation
+  - [x] Curve fitting (8 fit types: linear, polynomial, exponential, logarithmic, power, sinusoidal, Gaussian, custom)
+  - [x] Comprehensive fit statistics (R², RMSE, residuals)
+  - [x] Statistical Process Control (6 chart types: X-bar/R, X-bar/S, Individuals, P, C, U)
+  - [x] Western Electric rules detection for out-of-control points
+  - [x] Process capability analysis (Cp, Cpk, Pp, Ppk, Cpm indices)
+  - [x] Automated report generation (HTML, Markdown, JSON, PDF formats)
+  - [x] Batch processing engine (parallel/sequential file processing)
+  - [x] 30+ analysis API endpoints
 
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
@@ -159,11 +173,12 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
 - [Equipment Diagnostics](server/DIAGNOSTICS_SYSTEM.md) - Health monitoring and performance diagnostics
 - [Waveform Capture & Analysis](server/WAVEFORM_USER_GUIDE.md) - Advanced oscilloscope functionality
+- [Data Analysis Pipeline](server/ANALYSIS_USER_GUIDE.md) - Signal processing, curve fitting, SPC, and reporting
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
-**Current Version**: v0.16.0
+**Current Version**: v0.17.0
 
 **Phase 1 Complete**: Core server functionality & multi-user support
 - ✅ REST API operational (90+ endpoints)
