@@ -1,113 +1,299 @@
 version: '3.8'
 
 services:
-  # LabLink Server
+  # LabLink Server (FastAPI backend)
   lablink-server:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile.server
     container_name: lablink-server
-    image: lablink-server:0.10.0
+    image: lablink-server:${LABLINK_VERSION:-latest}
+    restart: unless-stopped
 
     ports:
-      - "8000:8000"  # REST API
-      - "8001:8001"  # WebSocket
+      - "${LABLINK_API_PORT:-8000}:8000"  # REST API
+      - "${LABLINK_WS_PORT:-8001}:8001"   # WebSocket
 
     volumes:
       # Persistent data
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./states:/app/states
+      - lablink-data:/app/data
+      - lablink-logs:/app/logs
+      - lablink-backups:/app/backups
+      - lablink-states:/app/states
 
-      # Configuration (optional)
-      - ./server/config:/app/config
+      # Configuration (optional - mount your own config)
+      - ./config:/app/config:ro
 
     environment:
       # Server configuration
-      - LABLINK_SERVER_NAME=LabLink Production
-      - LABLINK_LOG_LEVEL=INFO
       - LABLINK_HOST=0.0.0.0
       - LABLINK_API_PORT=8000
       - LABLINK_WS_PORT=8001
+      - LABLINK_DEBUG=${LABLINK_DEBUG:-false}
+      - LABLINK_LOG_LEVEL=${LABLINK_LOG_LEVEL:-INFO}
 
-      # Feature flags
+      # Database
+      - LABLINK_DATABASE_PATH=/app/data/lablink.db
+
+      # Security
+      - LABLINK_JWT_SECRET_KEY=${LABLINK_JWT_SECRET_KEY}
+      - LABLINK_JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${LABLINK_JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - LABLINK_ENABLE_CORS=${LABLINK_ENABLE_CORS:-true}
+
+      # OAuth2 (optional)
+      - LABLINK_OAUTH_GOOGLE_CLIENT_ID=${LABLINK_OAUTH_GOOGLE_CLIENT_ID:-}
+      - LABLINK_OAUTH_GOOGLE_CLIENT_SECRET=${LABLINK_OAUTH_GOOGLE_CLIENT_SECRET:-}
+      - LABLINK_OAUTH_GITHUB_CLIENT_ID=${LABLINK_OAUTH_GITHUB_CLIENT_ID:-}
+      - LABLINK_OAUTH_GITHUB_CLIENT_SECRET=${LABLINK_OAUTH_GITHUB_CLIENT_SECRET:-}
+
+      # Equipment
+      - LABLINK_VISA_BACKEND=${LABLINK_VISA_BACKEND:-@py}
       - LABLINK_ENABLE_AUTO_RECONNECT=true
       - LABLINK_ENABLE_HEALTH_MONITORING=true
+
+      # Feature flags
       - LABLINK_ENABLE_PROFILES=true
       - LABLINK_ENABLE_SAFETY_LIMITS=true
       - LABLINK_SAFE_STATE_ON_DISCONNECT=true
       - LABLINK_ENABLE_EQUIPMENT_LOCKS=true
 
-      # Timeouts
-      - LABLINK_LOCK_TIMEOUT_SEC=300
-      - LABLINK_SESSION_TIMEOUT_SEC=3600
-
-    # USB device access (for equipment)
     devices:
+      # USB device access for equipment
       - /dev/bus/usb:/dev/bus/usb
 
-    # Privileged mode for USB access
-    # Remove if not needed
-    privileged: false
+    # Privileged mode for USB/Serial access
+    privileged: ${LABLINK_PRIVILEGED:-true}
 
-    # Restart policy
-    restart: unless-stopped
+    networks:
+      - lablink-network
 
-    # Health check
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 40s
 
-    # Resource limits
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1G
+          cpus: '${LABLINK_CPU_LIMIT:-2}'
+          memory: ${LABLINK_MEM_LIMIT:-1G}
         reservations:
           cpus: '0.5'
           memory: 256M
 
-    # Logging
+  # Web Dashboard (nginx serving static files + reverse proxy)
+  lablink-web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: lablink-web
+    image: lablink-web:${LABLINK_VERSION:-latest}
+    restart: unless-stopped
+
+    ports:
+      - "${LABLINK_WEB_PORT:-80}:80"
+      - "${LABLINK_WEB_SSL_PORT:-443}:443"
+
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - lablink-ssl-certs:/etc/nginx/ssl:ro
+
+    networks:
+      - lablink-network
+
+    depends_on:
+      lablink-server:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # Redis (optional - for caching, rate limiting, and pub/sub)
+  redis:
+    image: redis:7-alpine
+    container_name: lablink-redis
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:6379:6379"
+
+    volumes:
+      - lablink-redis-data:/data
+
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+    networks:
+      - lablink-network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+    profiles:
+      - full
+      - caching
+
+  # PostgreSQL (optional - for production database instead of SQLite)
+  postgres:
+    image: postgres:15-alpine
+    container_name: lablink-postgres
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:5432:5432"
+
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-lablink}
+      - POSTGRES_USER=${POSTGRES_USER:-lablink}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
+
+    volumes:
+      - lablink-postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+
+    networks:
+      - lablink-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lablink}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-    # Network
+    profiles:
+      - full
+      - postgres
+
+  # Grafana (optional - for monitoring and metrics visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lablink-grafana
+    restart: unless-stopped
+
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+      - GF_INSTALL_PLUGINS=redis-datasource
+
+    volumes:
+      - lablink-grafana-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+
     networks:
       - lablink-network
 
-  # Optional: PostgreSQL database
-  # Uncomment if you want to add database support
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: lablink-postgres
-  #   environment:
-  #     POSTGRES_DB: lablink
-  #     POSTGRES_USER: lablink
-  #     POSTGRES_PASSWORD: changeme
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #   networks:
-  #     - lablink-network
-  #   restart: unless-stopped
+    depends_on:
+      - lablink-server
 
-  # Optional: Redis for caching/pub-sub
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: lablink-redis
-  #   networks:
-  #     - lablink-network
-  #   restart: unless-stopped
+    profiles:
+      - monitoring
+      - full
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # Prometheus (optional - for metrics collection)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lablink-prometheus
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9090:9090"
+
+    volumes:
+      - lablink-prometheus-data:/prometheus
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+
+    networks:
+      - lablink-network
+
+    depends_on:
+      - lablink-server
+
+    profiles:
+      - monitoring
+      - full
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
 
 networks:
   lablink-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
-  postgres-data:
+  # Server data
+  lablink-data:
+    driver: local
+  lablink-logs:
+    driver: local
+  lablink-backups:
+    driver: local
+  lablink-states:
+    driver: local
+  lablink-ssl-certs:
+    driver: local
+
+  # Optional services
+  lablink-redis-data:
+    driver: local
+  lablink-postgres-data:
+    driver: local
+  lablink-grafana-data:
+    driver: local
+  lablink-prometheus-data:
+    driver: local
