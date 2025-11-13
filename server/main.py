@@ -13,7 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from config.settings import settings
 from config.validator import validate_config
-from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router, discovery_router
+from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router, discovery_router, security_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.22.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.23.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -205,6 +205,69 @@ async def lifespan(app: FastAPI):
         await discovery_manager.start_auto_discovery()
         logger.info("Discovery system initialized - Auto-discovery, mDNS, VISA scanning, smart recommendations enabled")
 
+    # Initialize security system (v0.23.0)
+    if settings.enable_advanced_security:
+        from security import init_security_manager, AuthConfig, generate_secure_secret_key
+        logger.info("Initializing advanced security system...")
+
+        # Generate or use configured JWT secret
+        jwt_secret = settings.jwt_secret_key or generate_secure_secret_key()
+
+        auth_config = AuthConfig(
+            secret_key=jwt_secret,
+            algorithm=settings.jwt_algorithm,
+            access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+            refresh_token_expire_days=settings.jwt_refresh_token_expire_days,
+            max_failed_login_attempts=settings.max_failed_login_attempts,
+            account_lockout_duration_minutes=settings.account_lockout_duration_minutes,
+            require_password_change_days=settings.password_expiration_days,
+        )
+
+        security_manager = init_security_manager(settings.security_db_path, auth_config)
+
+        # Create default admin user if enabled
+        if settings.create_default_admin:
+            from security import UserCreate
+            try:
+                admin_user = await security_manager.get_user_by_username(settings.default_admin_username)
+                if not admin_user:
+                    # Get admin role
+                    admin_role = security_manager.get_role_by_name("admin")
+                    admin_user = await security_manager.create_user(
+                        UserCreate(
+                            username=settings.default_admin_username,
+                            email=settings.default_admin_email,
+                            password=settings.default_admin_password,
+                            full_name="Default Administrator",
+                            roles=[admin_role.role_id] if admin_role else [],
+                            must_change_password=True,
+                        ),
+                        created_by=None,
+                    )
+                    admin_user.is_superuser = True
+
+                    # Update superuser flag in database
+                    from sqlite3 import connect
+                    from datetime import datetime
+                    conn = connect(str(security_manager.db_path))
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE users SET is_superuser = 1, updated_at = ? WHERE user_id = ?
+                    """, (datetime.utcnow(), admin_user.user_id))
+                    conn.commit()
+                    conn.close()
+
+                    logger.warning(f"⚠️  DEFAULT ADMIN CREATED - Username: {settings.default_admin_username}, Password: {settings.default_admin_password}")
+                    logger.warning("⚠️  CHANGE THE DEFAULT PASSWORD IMMEDIATELY!")
+                else:
+                    logger.info(f"Default admin user already exists: {settings.default_admin_username}")
+            except Exception as e:
+                logger.error(f"Failed to create default admin user: {e}")
+
+        logger.info("Advanced security initialized - JWT auth, RBAC, API keys, IP whitelisting, audit logging enabled")
+    else:
+        logger.info("Advanced security disabled")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -256,7 +319,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.22.0",
+    version="0.23.0",
     lifespan=lifespan,
 )
 
@@ -292,6 +355,7 @@ app.include_router(calibration_enhanced_router, tags=["calibration-enhanced"])
 app.include_router(testing_router, tags=["testing"])
 app.include_router(backup_router, tags=["backup"])
 app.include_router(discovery_router, tags=["discovery"])
+app.include_router(security_router, tags=["security"])
 
 
 @app.get("/")

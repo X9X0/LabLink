@@ -138,6 +138,21 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Device caching for fast access
   - [x] 15+ discovery API endpoints
 
+- [x] **Advanced security system** (enterprise-grade security for multi-user environments)
+  - [x] JWT authentication (secure token-based authentication with access/refresh tokens)
+  - [x] Role-based access control (RBAC with granular permissions)
+  - [x] User management (complete lifecycle with password policies)
+  - [x] API key management (programmatic access with scoped permissions)
+  - [x] IP whitelisting/blacklisting (network-level access control)
+  - [x] Security audit logging (comprehensive audit trail for compliance)
+  - [x] Session management (track and manage active user sessions)
+  - [x] Account lockout protection (brute-force attack prevention)
+  - [x] Password policies (complexity requirements, expiration, change enforcement)
+  - [x] Three default roles (admin, operator, viewer) with custom role support
+  - [x] 30+ security configuration settings
+  - [x] 25+ security API endpoints
+  - [x] Compliance support (NIST CSF, ISO 27001, FDA 21 CFR Part 11, GDPR)
+
 - [x] **Desktop GUI client** (PyQt6-based cross-platform application)
   - [x] Equipment control and monitoring
   - [x] Data acquisition interface
