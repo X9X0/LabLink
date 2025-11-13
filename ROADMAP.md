@@ -1,8 +1,8 @@
 # LabLink Development Roadmap
 
-**Current Version:** v0.23.0 (Server) / v1.0.0 (Client)
+**Current Version:** v0.24.0 (Server) / v1.0.0 (Client)
 **Last Updated:** 2025-11-13
-**Status:** Production-ready with advanced security, equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
+**Status:** Production-ready with MVP web dashboard, advanced security, equipment discovery, backup & restore, automated test sequences, enhanced calibration management, database integration, data analysis, waveform capture, signal processing, SPC, and historical data tracking
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Component | Version | Status | Features |
 |-----------|---------|--------|----------|
-| **Server** | v0.23.0 | ✅ Complete | Advanced security, Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
+| **Server** | v0.24.0 | ✅ Complete | MVP web dashboard, Advanced security, Equipment discovery, Backup & restore, Automated test sequences, Enhanced calibration, Database integration, Data analysis, Signal processing, SPC, Waveform analysis, Enhanced WebSocket, Data acquisition, Safety, Locks, State management, Advanced Logging, Alarms, Diagnostics, Performance, Scheduler |
 | **Client** | v1.0.0 | ✅ Complete | Real-time visualization, WebSocket streaming, Equipment control |
 | **Testing** | - | ✅ Complete | 34+ tests, CI/CD pipeline, Mock equipment |
 | **Documentation** | - | ✅ Excellent | API docs, user guides, system docs, analysis guide, waveform guide, security guide (6,000+ pages) |
@@ -28,6 +28,7 @@
 | **Testing** | v0.20.0 | ✅ Complete | Test sequences, parameter sweeps, validation, templates, multi-equipment coordination, 15+ endpoints |
 | **Backup** | v0.21.0 | ✅ Complete | Auto-backup, compression, verification, retention, selective restore, 10+ endpoints |
 | **Discovery** | v0.22.0 | ✅ Complete | mDNS/VISA scanning, smart recommendations, history tracking, aliases, 15+ endpoints |
+| **Web Dashboard** | v0.24.0 | ✅ MVP Complete | Login/auth, equipment status, control modal, discovery, dark mode, responsive design, auto-refresh |
 
 ---
 
@@ -43,6 +44,79 @@
 ---
 
 ## 📚 Version History
+
+### v0.24.0 - MVP Web Dashboard (2025-11-13) ✅
+
+**Status**: Complete
+
+Modern web-based dashboard for remote equipment monitoring and control with JWT authentication, real-time updates, and responsive design.
+
+**Key Features:**
+- **Authentication**: Login page with JWT authentication and refresh tokens
+- **Equipment Dashboard**: Real-time equipment status with auto-refresh (5s interval)
+- **Equipment Control**: Connect/disconnect and send commands via modal interface
+- **Discovery Integration**: Start discovery scans and add discovered devices
+- **Statistics Overview**: Dashboard cards showing total, connected, disconnected, and error equipment
+- **Dark Mode**: System-aware dark mode with manual toggle and localStorage persistence
+- **Responsive Design**: Mobile-first approach with breakpoints for tablets and desktops
+- **Modern UI**: Clean, professional interface with status badges and loading states
+
+**Components Created:**
+- `server/web/templates/login.html` - Login page with JWT auth (72 lines)
+- `server/web/templates/dashboard.html` - Equipment dashboard (150+ lines)
+- `server/web/static/css/main.css` - Main stylesheet with dark mode (270+ lines)
+- `server/web/static/css/login.css` - Login page styles (60+ lines)
+- `server/web/static/css/dashboard.css` - Dashboard styles (350+ lines)
+- `server/web/static/js/utils.js` - Utility functions (200+ lines)
+- `server/web/static/js/api.js` - API client with auto-refresh (250+ lines)
+- `server/web/static/js/auth.js` - Authentication module with RBAC (150+ lines)
+- `server/web/static/js/login.js` - Login page logic (50+ lines)
+- `server/web/static/js/dashboard.js` - Dashboard functionality (400+ lines)
+- `server/web/routes.py` - FastAPI routes for web pages (50+ lines)
+
+**Dashboard Features:**
+- Equipment list with status cards (connected, disconnected, error)
+- Quick actions (connect, disconnect, control)
+- Command modal for sending SCPI commands with response display
+- Discovery system integration with device addition
+- Statistics cards with real-time updates
+- Auto-refresh every 5 seconds for equipment status
+- Navbar with user info, dark mode toggle, and logout
+- Fully responsive design (mobile, tablet, desktop)
+
+**Technical Stack:**
+- Vanilla JavaScript ES6+ (no framework dependencies)
+- JWT authentication with automatic token refresh
+- CSS variables for theming (light/dark mode)
+- Responsive design with CSS Grid and Flexbox
+- localStorage for token persistence and theme preferences
+- RESTful API integration with comprehensive error handling
+
+**API Integration:**
+- Root path `/` now serves dashboard
+- `/login.html` - Login page
+- `/dashboard.html` - Dashboard page
+- `/static/*` - Static assets (CSS, JS, images)
+- `/api` - API root (moved from `/`)
+- Automatic 401 token refresh
+- 30+ API endpoints called from dashboard
+
+**Files Created**: 11 new files (~2,000+ lines)
+**Files Modified**: 2 files (main.py for integration)
+
+**Future Enhancements (v0.25.0+):**
+- Live charts with Chart.js integration
+- Profile management UI
+- Configuration editor
+- User settings page
+- Enhanced WebSocket integration for real-time updates
+- Alarm notifications in dashboard
+- Scheduler management UI
+- Advanced equipment control panels
+
+**Total Additions**: ~2,000 lines of code
+
+---
 
 ### v0.23.0 - Advanced Security System (2025-11-13) ✅
 
@@ -1753,49 +1827,74 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 
 ---
 
-### 11. Simple Web Dashboard 💡
-**Priority:** ⭐
-**Effort:** 1-2 weeks
+### 11. Web Dashboard ✅ (MVP) / 💡 (Enhanced)
+**Priority:** ⭐⭐
+**Effort:** MVP Complete (v0.24.0) / 1-2 weeks for enhanced features
+**Status:** MVP Complete, Enhanced features planned for v0.25.0+
 
-**Features:**
-- [ ] Real-time status display
-- [ ] Quick equipment control
-- [ ] Live charts
+**MVP Features (Complete v0.24.0):**
+- [x] Login page with JWT authentication
+- [x] Real-time equipment status display with auto-refresh
+- [x] Quick equipment control (connect/disconnect/commands)
+- [x] Discovery integration
+- [x] Responsive design (mobile/tablet/desktop)
+- [x] Dark mode with system detection
+
+**Enhanced Features (Planned v0.25.0+):**
+- [ ] Live charts with Chart.js integration
+- [ ] WebSocket real-time streaming (replace polling)
 - [ ] Profile management UI
 - [ ] Configuration editor
-- [ ] Responsive design
-- [ ] Dark mode
+- [ ] User settings and preferences page
+- [ ] Alarm notifications and history
+- [ ] Scheduler management UI
+- [ ] Advanced equipment control panels
+- [ ] Data acquisition dashboard
+- [ ] Historical data visualization
+- [ ] Multi-language support (i18n)
 
 **Benefits:**
-- Remote monitoring
-- Quick access
-- Multi-platform support
-- Easy administration
+- ✅ Remote monitoring (MVP complete)
+- ✅ Quick access (MVP complete)
+- ✅ Multi-platform support (MVP complete)
+- Easy administration (enhanced features)
+- Professional visualization (enhanced features)
 
-**Dependencies:** None
+**Dependencies:** None (MVP), WebSocket integration recommended for enhanced features
 
 ---
 
-### 12. Advanced Security 💡
-**Priority:** ⭐
-**Effort:** 2-3 days
+### 12. Advanced Security ✅ / 💡 (OAuth2)
+**Priority:** ⭐⭐⭐
+**Effort:** Complete (v0.23.0) / 1-2 days for OAuth2
+**Status:** Core features complete, OAuth2 planned
 
-**Features:**
-- [ ] Role-based access control (admin, operator, viewer)
-- [ ] Equipment-specific permissions
-- [ ] API key management
-- [ ] Audit logging
-- [ ] IP whitelisting
-- [ ] JWT authentication
-- [ ] OAuth2 support
+**Features Implemented (v0.23.0):**
+- [x] Role-based access control (admin, operator, viewer)
+- [x] Equipment-specific permissions via RBAC
+- [x] API key management with scopes
+- [x] Audit logging (security events)
+- [x] IP whitelisting/blacklisting
+- [x] JWT authentication (access + refresh tokens)
+- [x] User management (CRUD, password policies)
+- [x] Session management and tracking
+- [x] Account lockout protection
+
+**Planned Features (v0.25.0+):**
+- [ ] OAuth2 authentication providers (Google, GitHub, Microsoft)
+- [ ] SAML 2.0 support for enterprise SSO
+- [ ] LDAP/Active Directory integration
+- [ ] Multi-factor authentication (MFA/2FA)
+- [ ] Hardware security key support (FIDO2/WebAuthn)
 
 **Benefits:**
-- Enterprise security
-- Fine-grained access control
-- Compliance support
-- Multi-user safety
+- ✅ Enterprise security (v0.23.0 complete)
+- ✅ Fine-grained access control (v0.23.0 complete)
+- ✅ Compliance support (v0.23.0 complete)
+- ✅ Multi-user safety (v0.23.0 complete)
+- External identity provider support (OAuth2 pending)
 
-**Dependencies:** Database Integration (recommended)
+**Dependencies:** None for core features (complete), Web Dashboard for OAuth2 flows
 
 ---
 

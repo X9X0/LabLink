@@ -16,6 +16,7 @@ from config.validator import validate_config
 from api import equipment_router, data_router, profiles_router, safety_router, locks_router, state_router, acquisition_router, alarms_router, scheduler_router, diagnostics_router, calibration_router, performance_router, waveform_router, analysis_router, database_router, calibration_enhanced_router, testing_router, backup_router, discovery_router, security_router
 from websocket_server import handle_websocket
 from logging_config import setup_logging, LoggingMiddleware, get_logger
+from web.routes import register_web_routes
 
 # Setup advanced logging system
 setup_logging()
@@ -265,6 +266,65 @@ async def lifespan(app: FastAPI):
                 logger.error(f"Failed to create default admin user: {e}")
 
         logger.info("Advanced security initialized - JWT auth, RBAC, API keys, IP whitelisting, audit logging enabled")
+
+        # Initialize OAuth2 providers if enabled (v0.25.0)
+        if settings.enable_oauth2:
+            from security import init_oauth2_manager, OAuth2Config, OAuth2Provider, OAUTH2_DEFAULTS
+            logger.info("Initializing OAuth2 authentication providers...")
+
+            oauth2_configs = []
+
+            # Google OAuth2
+            if settings.oauth2_google_enabled and settings.oauth2_google_client_id and settings.oauth2_google_client_secret:
+                google_defaults = OAUTH2_DEFAULTS[OAuth2Provider.GOOGLE]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.GOOGLE,
+                    client_id=settings.oauth2_google_client_id,
+                    client_secret=settings.oauth2_google_client_secret,
+                    authorization_url=google_defaults["authorization_url"],
+                    token_url=google_defaults["token_url"],
+                    user_info_url=google_defaults["user_info_url"],
+                    scopes=google_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - Google OAuth2 enabled")
+
+            # GitHub OAuth2
+            if settings.oauth2_github_enabled and settings.oauth2_github_client_id and settings.oauth2_github_client_secret:
+                github_defaults = OAUTH2_DEFAULTS[OAuth2Provider.GITHUB]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.GITHUB,
+                    client_id=settings.oauth2_github_client_id,
+                    client_secret=settings.oauth2_github_client_secret,
+                    authorization_url=github_defaults["authorization_url"],
+                    token_url=github_defaults["token_url"],
+                    user_info_url=github_defaults["user_info_url"],
+                    scopes=github_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - GitHub OAuth2 enabled")
+
+            # Microsoft OAuth2
+            if settings.oauth2_microsoft_enabled and settings.oauth2_microsoft_client_id and settings.oauth2_microsoft_client_secret:
+                microsoft_defaults = OAUTH2_DEFAULTS[OAuth2Provider.MICROSOFT]
+                oauth2_configs.append(OAuth2Config(
+                    provider=OAuth2Provider.MICROSOFT,
+                    client_id=settings.oauth2_microsoft_client_id,
+                    client_secret=settings.oauth2_microsoft_client_secret,
+                    authorization_url=microsoft_defaults["authorization_url"],
+                    token_url=microsoft_defaults["token_url"],
+                    user_info_url=microsoft_defaults["user_info_url"],
+                    scopes=microsoft_defaults["scopes"],
+                    enabled=True,
+                ))
+                logger.info("  - Microsoft OAuth2 enabled")
+
+            if oauth2_configs:
+                oauth2_manager = init_oauth2_manager(oauth2_configs)
+                logger.info(f"OAuth2 initialized with {len(oauth2_configs)} provider(s)")
+            else:
+                logger.warning("OAuth2 enabled but no providers configured")
+
     else:
         logger.info("Advanced security disabled")
 
@@ -335,7 +395,10 @@ app.add_middleware(
 # Add logging middleware
 app.add_middleware(LoggingMiddleware)
 
-# Include routers
+# Register web routes (static files and HTML templates)
+register_web_routes(app)
+
+# Include API routers
 app.include_router(equipment_router, prefix="/api/equipment", tags=["equipment"])
 app.include_router(data_router, prefix="/api/data", tags=["data"])
 app.include_router(profiles_router, prefix="/api/profiles", tags=["profiles"])
@@ -358,12 +421,12 @@ app.include_router(discovery_router, tags=["discovery"])
 app.include_router(security_router, tags=["security"])
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
+@app.get("/api")
+async def api_root():
+    """API root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.22.0",
+        "version": "0.24.0",
         "status": "running",
     }
 

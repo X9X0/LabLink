@@ -1,0 +1,99 @@
+/* Login Page Styles */
+
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-lg);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.login-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--spacing-xl);
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.login-header h1 {
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.login-header p {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.login-form {
+    width: 100%;
+}
+
+.login-form .form-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+.login-form input {
+    font-size: 1rem;
+    padding: 0.75rem 1rem;
+}
+
+.login-form .checkbox-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+.login-form .checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.login-form .checkbox-group input[type="checkbox"] {
+    width: auto;
+    cursor: pointer;
+}
+
+.login-form button[type="submit"] {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+}
+
+.login-footer {
+    margin-top: var(--spacing-xl);
+    text-align: center;
+}
+
+.login-footer p {
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.btn-spinner {
+    display: none;
+}
+
+button[type="submit"]:disabled .btn-text {
+    display: none;
+}
+
+button[type="submit"]:disabled .btn-spinner {
+    display: inline-flex;
+}
+
+@media (max-width: 480px) {
+    .login-card {
+        padding: var(--spacing-lg);
+    }
+}

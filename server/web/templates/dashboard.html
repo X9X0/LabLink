@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LabLink Dashboard</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>LabLink</h1>
+                <span class="navbar-subtitle">Dashboard</span>
+            </div>
+
+            <div class="navbar-actions">
+                <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon" style="display: none;">🌙</span>
+                </button>
+
+                <div class="user-menu">
+                    <span class="user-name" id="userName">User</span>
+                    <button class="btn btn-secondary btn-sm" id="logoutButton">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Alert for notifications -->
+        <div class="alert alert-info" id="alert" style="display: none;"></div>
+
+        <!-- Overview Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Equipment</div>
+                <div class="stat-value" id="totalEquipment">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Connected</div>
+                <div class="stat-value stat-success" id="connectedEquipment">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Disconnected</div>
+                <div class="stat-value stat-warning" id="disconnectedEquipment">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Error</div>
+                <div class="stat-value stat-error" id="errorEquipment">0</div>
+            </div>
+        </div>
+
+        <!-- Equipment List -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Equipment</h2>
+                <button class="btn btn-primary btn-sm" id="refreshButton">
+                    <span class="btn-text">Refresh</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+
+            <div id="equipmentList" class="equipment-grid">
+                <!-- Equipment cards will be dynamically inserted here -->
+            </div>
+
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <p>No equipment found</p>
+                <p class="text-muted">Add equipment to get started</p>
+            </div>
+        </div>
+
+        <!-- Discovery Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Discovery</h2>
+                <button class="btn btn-secondary btn-sm" id="startDiscoveryButton">
+                    <span class="btn-text">Start Discovery</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+
+            <div id="discoveryStatus" class="discovery-status" style="display: none;">
+                <p>Scanning for equipment...</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="discoveryProgress"></div>
+                </div>
+            </div>
+
+            <div id="discoveredDevices" class="discovered-devices" style="display: none;">
+                <!-- Discovered devices will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipment Control Modal (for simple commands) -->
+    <div id="controlModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Equipment Control</h3>
+                <button class="btn btn-icon btn-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modalAlert" class="alert alert-info" style="display: none;"></div>
+
+                <div class="form-group">
+                    <label for="commandInput">Command</label>
+                    <input type="text" id="commandInput" placeholder="Enter command (e.g., *IDN?)">
+                </div>
+
+                <div id="commandResponse" class="command-response" style="display: none;">
+                    <label>Response:</label>
+                    <pre id="responseText"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelCommand">Cancel</button>
+                <button class="btn btn-primary" id="sendCommand">
+                    <span class="btn-text">Send</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

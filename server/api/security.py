@@ -673,3 +673,277 @@ async def list_my_sessions(current_user: User = Depends(get_current_user)):
     """List current user's sessions."""
     security_manager = get_security_manager()
     return security_manager.session_manager.get_user_sessions(current_user.user_id)
+
+
+# ============================================================================
+# OAuth2 Authentication Endpoints
+# ============================================================================
+
+@router.get("/oauth2/providers", tags=["oauth2"])
+async def list_oauth2_providers():
+    """List available OAuth2 providers."""
+    from security.oauth2 import get_oauth2_manager
+
+    oauth2_manager = get_oauth2_manager()
+    enabled_providers = oauth2_manager.get_enabled_providers()
+
+    return {
+        "providers": [
+            {
+                "provider": provider.value,
+                "name": provider.value.capitalize(),
+                "enabled": True,
+            }
+            for provider in enabled_providers
+        ]
+    }
+
+
+@router.get("/oauth2/authorize/{provider}", tags=["oauth2"])
+async def get_oauth2_authorization_url(
+    provider: OAuth2Provider,
+    redirect_uri: str,
+    state: Optional[str] = None,
+):
+    """
+    Get OAuth2 authorization URL for provider.
+
+    Args:
+        provider: OAuth2 provider (google, github, microsoft)
+        redirect_uri: Redirect URI after authorization
+        state: Optional state parameter for CSRF protection
+
+    Returns:
+        Authorization URL and state
+    """
+    from security.oauth2 import get_oauth2_manager
+
+    oauth2_manager = get_oauth2_manager()
+    prov = oauth2_manager.get_provider(provider)
+
+    if not prov:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth2 provider not configured: {provider}",
+        )
+
+    if not prov.config.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth2 provider disabled: {provider}",
+        )
+
+    # Generate state if not provided (for CSRF protection)
+    import secrets
+    if not state:
+        state = secrets.token_urlsafe(32)
+
+    authorization_url = prov.get_authorization_url(redirect_uri, state)
+
+    return {
+        "authorization_url": authorization_url,
+        "state": state,
+        "provider": provider.value,
+    }
+
+
+@router.post("/oauth2/login", response_model=TokenResponse, tags=["oauth2"])
+async def oauth2_login(
+    login_request: OAuth2LoginRequest,
+    request: Request,
+):
+    """
+    Login with OAuth2 provider.
+
+    Creates a new user account if email doesn't exist, or logs in existing user.
+
+    Args:
+        login_request: OAuth2 login request with code and redirect_uri
+        request: FastAPI request object
+
+    Returns:
+        JWT tokens and user information
+    """
+    from security.oauth2 import get_oauth2_manager
+
+    security_manager = get_security_manager()
+    oauth2_manager = get_oauth2_manager()
+
+    try:
+        # Authenticate with OAuth2 provider
+        external_id, email, full_name = await oauth2_manager.authenticate(
+            login_request.provider,
+            login_request.code,
+            login_request.redirect_uri,
+        )
+
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No email received from OAuth2 provider",
+            )
+
+        # Check if user exists with this email
+        user = await security_manager.get_user_by_username(email)
+
+        if not user:
+            # Create new user from OAuth2 data
+            from security import UserCreate, create_default_operator_role
+            import secrets
+
+            # Generate random password (user won't use it, OAuth2 only)
+            random_password = secrets.token_urlsafe(32)
+
+            # Get default operator role
+            operator_role = create_default_operator_role()
+            existing_role = security_manager.get_role_by_name(operator_role.name)
+            role_ids = [existing_role.role_id] if existing_role else []
+
+            user_create = UserCreate(
+                username=email,
+                email=email,
+                password=random_password,
+                full_name=full_name or email,
+                roles=role_ids,
+                must_change_password=False,  # OAuth2 users don't use passwords
+            )
+
+            user = await security_manager.create_user(user_create, created_by=None)
+
+            # Log audit event
+            await security_manager.log_audit_event(
+                event_type=AuditEventType.USER_CREATED,
+                user_id=user.user_id,
+                ip_address=request.client.host if request.client else None,
+                details={
+                    "method": "oauth2",
+                    "provider": login_request.provider.value,
+                    "external_id": external_id,
+                },
+            )
+
+            logger.info(f"New user created via OAuth2: {email} ({login_request.provider})")
+
+        # Link OAuth2 account if not already linked
+        # Note: In production, you'd want to store OAuth2 provider associations
+        # in a separate table (user_id, provider, external_id)
+
+        # Create JWT tokens
+        access_token = create_access_token(
+            data={"sub": user.username, "user_id": user.user_id},
+            config=security_manager.config,
+        )
+
+        refresh_token = create_refresh_token(
+            data={"sub": user.username, "user_id": user.user_id},
+            config=security_manager.config,
+        )
+
+        # Create session
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        session_id = security_manager.session_manager.create_session(
+            user_id=user.user_id,
+            username=user.username,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+        # Log successful login
+        await security_manager.log_audit_event(
+            event_type=AuditEventType.LOGIN_SUCCESS,
+            user_id=user.user_id,
+            username=user.username,
+            ip_address=ip_address,
+            details={
+                "method": "oauth2",
+                "provider": login_request.provider.value,
+                "session_id": session_id,
+            },
+        )
+
+        logger.info(f"OAuth2 login successful: {user.username} via {login_request.provider}")
+
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            user=user_to_response(user),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth2 login failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"OAuth2 authentication failed: {str(e)}",
+        )
+
+
+@router.post("/oauth2/link", response_model=OAuth2LinkResponse, tags=["oauth2"])
+async def link_oauth2_account(
+    link_request: OAuth2LoginRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+):
+    """
+    Link OAuth2 account to existing user.
+
+    Args:
+        link_request: OAuth2 login request with code and redirect_uri
+        current_user: Currently authenticated user
+        request: FastAPI request object
+
+    Returns:
+        OAuth2 link response with provider info
+    """
+    from security.oauth2 import get_oauth2_manager
+
+    security_manager = get_security_manager()
+    oauth2_manager = get_oauth2_manager()
+
+    try:
+        # Authenticate with OAuth2 provider
+        external_id, email, full_name = await oauth2_manager.authenticate(
+            link_request.provider,
+            link_request.code,
+            link_request.redirect_uri,
+        )
+
+        # Note: In production, you'd want to store this association in a database table
+        # For now, we'll just log it
+
+        # Log audit event
+        await security_manager.log_audit_event(
+            event_type=AuditEventType.OAUTH2_LINKED,
+            user_id=current_user.user_id,
+            username=current_user.username,
+            ip_address=request.client.host if request and request.client else None,
+            details={
+                "provider": link_request.provider.value,
+                "external_id": external_id,
+                "email": email,
+            },
+        )
+
+        logger.info(
+            f"OAuth2 account linked: {current_user.username} -> {link_request.provider} ({external_id})"
+        )
+
+        return OAuth2LinkResponse(
+            success=True,
+            provider=link_request.provider,
+            external_id=external_id,
+            email=email,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth2 link failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth2 link failed: {str(e)}",
+        )

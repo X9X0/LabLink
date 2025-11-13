@@ -86,6 +86,13 @@ from .manager import (
     init_security_manager,
 )
 
+from .oauth2 import (
+    OAuth2Manager,
+    get_oauth2_manager,
+    init_oauth2_manager,
+    OAUTH2_DEFAULTS,
+)
+
 __all__ = [
     # Enums
     "RoleType",
@@ -144,4 +151,8 @@ __all__ = [
     "SecurityManager",
     "get_security_manager",
     "init_security_manager",
+    "OAuth2Manager",
+    "get_oauth2_manager",
+    "init_oauth2_manager",
+    "OAUTH2_DEFAULTS",
 ]
