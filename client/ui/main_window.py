@@ -21,7 +21,10 @@ from ui.alarm_panel import AlarmPanel
 from ui.scheduler_panel import SchedulerPanel
 from ui.diagnostics_panel import DiagnosticsPanel
 from ui.sync_panel import SyncPanel
+from ui.ssh_deploy_wizard import SSHDeployWizard
+from ui.server_selector import ServerSelector
 from utils.token_storage import get_token_storage
+from utils.server_manager import get_server_manager
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,7 @@ class MainWindow(QMainWindow):
         self.login_dialog: Optional[LoginDialog] = None
         self.ws_connected = False
         self.token_storage = get_token_storage()
+        self.server_manager = get_server_manager()
 
         self._setup_ui()
         self._setup_menus()
@@ -58,6 +62,19 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Server selector toolbar
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.server_selector = ServerSelector()
+        self.server_selector.connect_requested.connect(self._on_server_connect_requested)
+        self.server_selector.server_changed.connect(self._on_server_changed)
+        toolbar_layout.addWidget(self.server_selector)
+
+        toolbar_layout.addStretch()
+
+        layout.addLayout(toolbar_layout)
 
         # Tab widget for main panels
         self.tab_widget = QTabWidget()
@@ -128,6 +145,12 @@ class MainWindow(QMainWindow):
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
 
+        deploy_action = QAction("Deploy Server via &SSH...", self)
+        deploy_action.triggered.connect(self.show_deploy_wizard)
+        tools_menu.addAction(deploy_action)
+
+        tools_menu.addSeparator()
+
         diagnostics_action = QAction("Run &Diagnostics", self)
         diagnostics_action.triggered.connect(self.run_diagnostics)
         tools_menu.addAction(diagnostics_action)
@@ -172,6 +195,56 @@ class MainWindow(QMainWindow):
             ws_port = self.connection_dialog.get_ws_port()
 
             self.connect_to_server(host, api_port, ws_port)
+
+    def show_deploy_wizard(self):
+        """Show SSH deployment wizard."""
+        try:
+            wizard = SSHDeployWizard(self)
+            wizard.exec()
+        except ImportError as e:
+            QMessageBox.warning(
+                self,
+                "Missing Dependencies",
+                f"SSH deployment requires additional packages:\n{e}\n\n"
+                "Please install: pip install paramiko scp"
+            )
+
+    def _on_server_connect_requested(self, server_name: str):
+        """Handle server connect request from server selector.
+
+        Args:
+            server_name: Name of server to connect to
+        """
+        server = self.server_manager.get_server(server_name)
+        if not server:
+            return
+
+        if server.connected:
+            # Disconnect
+            self.disconnect_from_server()
+            self.server_manager.mark_disconnected(server_name)
+            self.server_selector.refresh()
+        else:
+            # Connect
+            self.connect_to_server(server.host, server.api_port, server.ws_port)
+
+            if self.client and self.client.connected:
+                # Mark as connected
+                username = self.client.username if hasattr(self.client, 'username') else None
+                self.server_manager.mark_connected(server_name, self.client, username)
+                self.server_manager.set_active_server(server_name)
+                self.server_selector.refresh()
+
+    def _on_server_changed(self, server_name: str):
+        """Handle server selection change.
+
+        Args:
+            server_name: Name of selected server
+        """
+        server = self.server_manager.get_server(server_name)
+        if server and server.connected:
+            # Update status bar
+            self.connection_label.setText(f"Connected to: {server.name} ({server.host})")
 
     def connect_to_server(self, host: str, api_port: int, ws_port: int):
         """Connect to LabLink server.
