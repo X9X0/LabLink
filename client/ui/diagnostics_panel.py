@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
-from api.client import LabLinkClient
+from client.api.client import LabLinkClient
 
 logger = logging.getLogger(__name__)
 

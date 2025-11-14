@@ -20,7 +20,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from utils.data_buffer import CircularBuffer
+from client.utils.data_buffer import CircularBuffer
 
 logger = logging.getLogger(__name__)
 

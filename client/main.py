@@ -15,7 +15,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 import qasync
 
-from ui.main_window import MainWindow
+from client.ui.main_window import MainWindow
 
 
 def setup_logging():

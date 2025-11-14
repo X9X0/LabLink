@@ -19,8 +19,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from api.client import LabLinkClient
-from ui.widgets.waveform_display import WaveformDisplay
+from client.api.client import LabLinkClient
+from client.ui.widgets.waveform_display import WaveformDisplay
 
 logger = logging.getLogger(__name__)
 

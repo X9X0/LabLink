@@ -15,7 +15,7 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
 
-from utils.server_manager import get_server_manager, ServerConnection
+from client.utils.server_manager import get_server_manager, ServerConnection
 
 logger = logging.getLogger(__name__)
 

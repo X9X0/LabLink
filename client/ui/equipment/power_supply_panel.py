@@ -19,8 +19,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from api.client import LabLinkClient
-from ui.widgets.power_chart_widget import PowerChartWidget
+from client.api.client import LabLinkClient
+from client.ui.widgets.power_chart_widget import PowerChartWidget
 
 logger = logging.getLogger(__name__)
 
