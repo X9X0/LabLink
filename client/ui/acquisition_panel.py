@@ -21,7 +21,7 @@ from models import (
 )
 
 try:
-    from ui.widgets.plot_widget import PlotWidget
+    from client.ui.widgets.plot_widget import PlotWidget
     HAS_PLOT_WIDGET = True
 except ImportError:
     HAS_PLOT_WIDGET = False
