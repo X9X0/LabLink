@@ -1,0 +1,19 @@
+{
+  "name": "Oscilloscope - Debug Quick",
+  "description": "Quick debug settings: 1ms/div, AC coupling, auto trigger",
+  "equipment_type": "oscilloscope",
+  "model": "generic",
+  "settings": {
+    "timebase_scale": 0.001,
+    "channel_1_scale": 1.0,
+    "channel_1_coupling": "AC",
+    "trigger_mode": "auto"
+  },
+  "created_at": "2025-11-14 01:17:48.238830",
+  "modified_at": "2025-11-14 01:17:48.238900",
+  "tags": [
+    "debug",
+    "quick",
+    "default"
+  ]
+}

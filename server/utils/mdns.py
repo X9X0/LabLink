@@ -9,6 +9,9 @@ try:
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
+    # Define dummy types for type hints when zeroconf is not available
+    Zeroconf = None  # type: ignore
+    ServiceInfo = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
