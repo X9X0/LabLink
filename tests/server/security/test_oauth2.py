@@ -34,14 +34,16 @@ class TestOAuth2Config:
             provider=OAuth2Provider.GOOGLE,
             client_id="test-client-id",
             client_secret="test-client-secret",
-            redirect_uri="http://localhost:8000/callback",
+            authorization_url="https://accounts.google.com/o/oauth2/v2/auth",
+            token_url="https://oauth2.googleapis.com/token",
+            user_info_url="https://www.googleapis.com/oauth2/v2/userinfo",
             enabled=True
         )
 
         assert config.provider == OAuth2Provider.GOOGLE
         assert config.client_id == "test-client-id"
         assert config.client_secret == "test-client-secret"
-        assert config.redirect_uri == "http://localhost:8000/callback"
+        assert config.authorization_url == "https://accounts.google.com/o/oauth2/v2/auth"
         assert config.enabled is True
 
     def test_oauth2_provider_enum(self):
@@ -57,7 +59,9 @@ class TestOAuth2Config:
                 provider=provider,
                 client_id="test",
                 client_secret="test",
-                redirect_uri="http://test",
+                authorization_url="https://example.com/auth",
+                token_url="https://example.com/token",
+                user_info_url="https://example.com/userinfo",
                 enabled=True
             )
             assert config.provider == provider
@@ -109,7 +113,9 @@ class TestOAuth2Manager:
             provider=OAuth2Provider.GOOGLE,
             client_id="google-client-id",
             client_secret="google-client-secret",
-            redirect_uri="http://localhost:8000/callback/google",
+            authorization_url="https://accounts.google.com/o/oauth2/v2/auth",
+            token_url="https://oauth2.googleapis.com/token",
+            user_info_url="https://www.googleapis.com/oauth2/v2/userinfo",
             enabled=True
         )
 
@@ -120,7 +126,9 @@ class TestOAuth2Manager:
             provider=OAuth2Provider.GITHUB,
             client_id="github-client-id",
             client_secret="github-client-secret",
-            redirect_uri="http://localhost:8000/callback/github",
+            authorization_url="https://github.com/login/oauth/authorize",
+            token_url="https://github.com/login/oauth/access_token",
+            user_info_url="https://api.github.com/user",
             enabled=True
         )
 
@@ -292,7 +300,9 @@ class TestOAuth2Flow:
             provider=OAuth2Provider.GOOGLE,
             client_id="test-client-id",
             client_secret="test-client-secret",
-            redirect_uri="http://localhost:8000/callback",
+            authorization_url="https://accounts.google.com/o/oauth2/v2/auth",
+            token_url="https://oauth2.googleapis.com/token",
+            user_info_url="https://www.googleapis.com/oauth2/v2/userinfo",
             enabled=True
         )
         manager.configure_provider(config)
@@ -365,7 +375,9 @@ class TestOAuth2ErrorHandling:
             provider=OAuth2Provider.GOOGLE,
             client_id="test",
             client_secret="test",
-            redirect_uri="http://test",
+            authorization_url="https://example.com/auth",
+            token_url="https://example.com/token",
+            user_info_url="https://example.com/userinfo",
             enabled=False
         )
         manager.configure_provider(disabled_config)
@@ -393,7 +405,9 @@ class TestOAuth2ErrorHandling:
             provider=OAuth2Provider.GOOGLE,
             client_id="test",
             client_secret="test",
-            redirect_uri="http://test",
+            authorization_url="https://example.com/auth",
+            token_url="https://example.com/token",
+            user_info_url="https://example.com/userinfo",
             enabled=True
         )
         manager.configure_provider(config)
@@ -420,7 +434,9 @@ class TestOAuth2ErrorHandling:
             provider=OAuth2Provider.GOOGLE,
             client_id="test",
             client_secret="test",
-            redirect_uri="http://test",
+            authorization_url="https://example.com/auth",
+            token_url="https://example.com/token",
+            user_info_url="https://example.com/userinfo",
             enabled=True
         )
         manager.configure_provider(config)

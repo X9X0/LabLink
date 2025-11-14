@@ -60,12 +60,18 @@ class TestPermission:
         """Test all resource types."""
         resources = [
             ResourceType.EQUIPMENT,
-            ResourceType.USER,
-            ResourceType.ROLE,
-            ResourceType.API_KEY,
-            ResourceType.PROFILE,
-            ResourceType.DATA,
-            ResourceType.SYSTEM
+            ResourceType.ACQUISITION,
+            ResourceType.PROFILES,
+            ResourceType.STATES,
+            ResourceType.SAFETY,
+            ResourceType.LOCKS,
+            ResourceType.ALARMS,
+            ResourceType.SCHEDULER,
+            ResourceType.DIAGNOSTICS,
+            ResourceType.PERFORMANCE,
+            ResourceType.BACKUP,
+            ResourceType.DISCOVERY,
+            ResourceType.WAVEFORM
         ]
 
         for resource in resources:
@@ -104,12 +110,12 @@ class TestRole:
         """Test creating a role."""
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[]
         )
 
         assert role.name == "test_role"
-        assert role.type == RoleType.CUSTOM
+        assert role.role_type == RoleType.CUSTOM
         assert len(role.permissions) == 0
 
     def test_role_with_permissions(self):
@@ -121,7 +127,7 @@ class TestRole:
 
         role = Role(
             name="equipment_manager",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms
         )
 
@@ -133,7 +139,7 @@ class TestRole:
         """Test role with description."""
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[],
             description="Test role description"
         )
@@ -149,7 +155,7 @@ class TestDefaultRoles:
         role = create_default_admin_role()
 
         assert role.name == "admin"
-        assert role.type == RoleType.ADMIN
+        assert role.role_type == RoleType.ADMIN
         assert len(role.permissions) > 0
 
         # Admin should have ADMIN permission for all resources
@@ -161,7 +167,7 @@ class TestDefaultRoles:
         role = create_default_operator_role()
 
         assert role.name == "operator"
-        assert role.type == RoleType.OPERATOR
+        assert role.role_type == RoleType.OPERATOR
         assert len(role.permissions) > 0
 
         # Operator should have read/write/execute but not admin
@@ -175,7 +181,7 @@ class TestDefaultRoles:
         role = create_default_viewer_role()
 
         assert role.name == "viewer"
-        assert role.type == RoleType.VIEWER
+        assert role.role_type == RoleType.VIEWER
         assert len(role.permissions) > 0
 
         # Viewer should only have READ permission
@@ -211,12 +217,12 @@ class TestUserRoles:
             email="test@example.com",
             full_name="Test User",
             hashed_password="hashed",
-            roles=[viewer_role],
+            roles=[viewer_role.role_id],
             is_active=True
         )
 
         assert len(user.roles) == 1
-        assert user.roles[0].name == "viewer"
+        assert user.roles[0] == viewer_role.role_id
 
     def test_user_with_multiple_roles(self):
         """Test user with multiple roles."""
@@ -228,14 +234,13 @@ class TestUserRoles:
             email="test@example.com",
             full_name="Test User",
             hashed_password="hashed",
-            roles=[viewer_role, operator_role],
+            roles=[viewer_role.role_id, operator_role.role_id],
             is_active=True
         )
 
         assert len(user.roles) == 2
-        role_names = {r.name for r in user.roles}
-        assert "viewer" in role_names
-        assert "operator" in role_names
+        assert viewer_role.role_id in user.roles
+        assert operator_role.role_id in user.roles
 
     def test_user_no_roles(self):
         """Test user with no roles."""
@@ -263,7 +268,7 @@ class TestPermissionChecking:
         )
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[equipment_perm]
         )
 
@@ -294,7 +299,7 @@ class TestPermissionChecking:
         )
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[read_perm]
         )
 
@@ -343,7 +348,7 @@ class TestRoleTypes:
                 type=role_type,
                 permissions=[]
             )
-            assert role.type == role_type
+            assert role.role_type == role_type
 
 
 class TestCustomRoles:
@@ -359,7 +364,7 @@ class TestCustomRoles:
 
         role = Role(
             name="equipment_operator",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Can read, write, and execute equipment commands"
         )
@@ -371,9 +376,9 @@ class TestCustomRoles:
         """Test creating read-only role for all resources."""
         resources = [
             ResourceType.EQUIPMENT,
-            ResourceType.USER,
-            ResourceType.PROFILE,
-            ResourceType.DATA
+            ResourceType.DIAGNOSTICS,
+            ResourceType.PROFILES,
+            ResourceType.WAVEFORM
         ]
 
         perms = [
@@ -383,7 +388,7 @@ class TestCustomRoles:
 
         role = Role(
             name="readonly_all",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Read-only access to all resources"
         )
@@ -394,14 +399,14 @@ class TestCustomRoles:
     def test_create_data_analyst_role(self):
         """Test creating specialized data analyst role."""
         perms = [
-            Permission(action=PermissionAction.READ, resource=ResourceType.DATA),
+            Permission(action=PermissionAction.READ, resource=ResourceType.WAVEFORM),
             Permission(action=PermissionAction.READ, resource=ResourceType.EQUIPMENT),
-            Permission(action=PermissionAction.EXECUTE, resource=ResourceType.DATA)
+            Permission(action=PermissionAction.EXECUTE, resource=ResourceType.WAVEFORM)
         ]
 
         role = Role(
             name="data_analyst",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Can read equipment and analyze data"
         )
@@ -410,7 +415,7 @@ class TestCustomRoles:
 
         # Can read data and equipment
         can_read_data = any(
-            p.action == PermissionAction.READ and p.resource == ResourceType.DATA
+            p.action == PermissionAction.READ and p.resource == ResourceType.WAVEFORM
             for p in role.permissions
         )
         can_read_equipment = any(
