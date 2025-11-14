@@ -4,12 +4,14 @@ import logging
 import uuid
 from typing import Any, Dict
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+from server.config.settings import settings
 from shared.models.data import PowerSupplyData
+from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
+                                     EquipmentType)
 
 from .base import BaseEquipment
-from .safety import SafetyValidator, SafetyLimits, get_default_limits, emergency_stop_manager
-from server.config.settings import settings
+from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
+                     get_default_limits)
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +47,13 @@ class BKPowerSupplyBase(BaseEquipment):
             max_voltage=self.max_voltage,
             max_current=self.max_current,
             max_power=default_limits.max_power,
-            voltage_slew_rate=default_limits.voltage_slew_rate if settings.enforce_slew_rate else None,
-            current_slew_rate=default_limits.current_slew_rate if settings.enforce_slew_rate else None,
-            require_interlock=False
+            voltage_slew_rate=(
+                default_limits.voltage_slew_rate if settings.enforce_slew_rate else None
+            ),
+            current_slew_rate=(
+                default_limits.current_slew_rate if settings.enforce_slew_rate else None
+            ),
+            require_interlock=False,
         )
 
         self.safety_validator = SafetyValidator(safety_limits, equipment_id)
@@ -136,8 +142,7 @@ class BKPowerSupplyBase(BaseEquipment):
             # Apply slew rate limiting
             if settings.enforce_slew_rate:
                 voltage = await self.safety_validator.apply_voltage_slew_limit(
-                    voltage,
-                    self._current_voltage
+                    voltage, self._current_voltage
                 )
 
         # Set voltage
@@ -162,8 +167,7 @@ class BKPowerSupplyBase(BaseEquipment):
             # Apply slew rate limiting
             if settings.enforce_slew_rate:
                 current = await self.safety_validator.apply_current_slew_limit(
-                    current,
-                    self._current_current
+                    current, self._current_current
                 )
 
         # Set current
@@ -188,7 +192,9 @@ class BKPowerSupplyBase(BaseEquipment):
 
         # Get output state
         output_state = await self._query("OUTP?")
-        output_enabled = output_state.strip() == "1" or output_state.strip().upper() == "ON"
+        output_enabled = (
+            output_state.strip() == "1" or output_state.strip().upper() == "ON"
+        )
 
         # Get setpoints
         voltage_set_str = await self._query("VOLT?")
@@ -256,7 +262,9 @@ class BK9130B(BKPowerSupplyBase):
 
         max_v = 5.0 if channel == 3 else self.max_voltage
         if voltage < 0 or voltage > max_v:
-            raise ValueError(f"Voltage must be between 0 and {max_v}V for channel {channel}")
+            raise ValueError(
+                f"Voltage must be between 0 and {max_v}V for channel {channel}"
+            )
 
         await self._write(f"INST:NSEL {channel}")
         await self._write(f"VOLT {voltage}")

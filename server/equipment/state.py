@@ -4,8 +4,8 @@ Provides comprehensive state capture, versioning, comparison, and restoration
 capabilities for all equipment types.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -31,9 +31,7 @@ class EquipmentState(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class StateDiff(BaseModel):
@@ -49,9 +47,7 @@ class StateDiff(BaseModel):
     unchanged: List[str] = Field(default_factory=list)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class StateVersion(BaseModel):
@@ -66,9 +62,7 @@ class StateVersion(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class StateManager:
@@ -77,7 +71,9 @@ class StateManager:
     def __init__(self):
         self._states: Dict[str, EquipmentState] = {}  # state_id -> state
         self._equipment_states: Dict[str, List[str]] = {}  # equipment_id -> [state_ids]
-        self._named_states: Dict[str, Dict[str, str]] = {}  # equipment_id -> {name: state_id}
+        self._named_states: Dict[str, Dict[str, str]] = (
+            {}
+        )  # equipment_id -> {name: state_id}
         self._versions: Dict[str, List[StateVersion]] = {}  # equipment_id -> [versions]
         self._state_dir: Optional[Path] = None
 
@@ -93,7 +89,7 @@ class StateManager:
         name: Optional[str] = None,
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        save_to_disk: bool = False
+        save_to_disk: bool = False,
     ) -> EquipmentState:
         """
         Capture current equipment state.
@@ -121,7 +117,7 @@ class StateManager:
             state_data["status"] = status.dict()
 
             # Try to get equipment-specific state
-            if hasattr(equipment, 'get_state'):
+            if hasattr(equipment, "get_state"):
                 # Equipment has custom get_state method
                 custom_state = await equipment.get_state()
                 state_data.update(custom_state)
@@ -136,7 +132,9 @@ class StateManager:
         # Create state object
         state = EquipmentState(
             equipment_id=equipment_id,
-            equipment_type=info.type.value if hasattr(info.type, 'value') else str(info.type),
+            equipment_type=(
+                info.type.value if hasattr(info.type, "value") else str(info.type)
+            ),
             equipment_model=info.model,
             name=name,
             description=description,
@@ -144,8 +142,8 @@ class StateManager:
             state_data=state_data,
             metadata={
                 "manufacturer": info.manufacturer,
-                "serial_number": info.serial_number
-            }
+                "serial_number": info.serial_number,
+            },
         )
 
         # Store in memory
@@ -174,16 +172,16 @@ class StateManager:
         """Capture common state data from equipment."""
         # Try common getter methods
         common_getters = {
-            'voltage': 'get_voltage',
-            'current': 'get_current',
-            'power': 'get_power',
-            'output_enabled': 'get_output',
-            'input_enabled': 'get_input',
-            'mode': 'get_mode',
-            'range': 'get_range',
-            'timebase': 'get_timebase',
-            'trigger': 'get_trigger',
-            'channels': 'get_channel_settings',
+            "voltage": "get_voltage",
+            "current": "get_current",
+            "power": "get_power",
+            "output_enabled": "get_output",
+            "input_enabled": "get_input",
+            "mode": "get_mode",
+            "range": "get_range",
+            "timebase": "get_timebase",
+            "trigger": "get_trigger",
+            "channels": "get_channel_settings",
         }
 
         for key, method_name in common_getters.items():
@@ -200,7 +198,7 @@ class StateManager:
         equipment,
         state_id: Optional[str] = None,
         state_name: Optional[str] = None,
-        state: Optional[EquipmentState] = None
+        state: Optional[EquipmentState] = None,
     ) -> bool:
         """
         Restore equipment to a previous state.
@@ -249,7 +247,7 @@ class StateManager:
 
         try:
             # Try custom restore method first
-            if hasattr(equipment, 'restore_state'):
+            if hasattr(equipment, "restore_state"):
                 await equipment.restore_state(state_data)
             else:
                 # Restore using common setters
@@ -268,14 +266,14 @@ class StateManager:
         """Restore common state data to equipment."""
         # Try common setter methods
         common_setters = {
-            'voltage': 'set_voltage',
-            'current': 'set_current',
-            'mode': 'set_mode',
-            'range': 'set_range',
-            'timebase': 'set_timebase',
-            'trigger': 'set_trigger',
-            'output_enabled': 'set_output',
-            'input_enabled': 'set_input',
+            "voltage": "set_voltage",
+            "current": "set_current",
+            "mode": "set_mode",
+            "range": "set_range",
+            "timebase": "set_timebase",
+            "trigger": "set_trigger",
+            "output_enabled": "set_output",
+            "input_enabled": "set_input",
         }
 
         for key, method_name in common_setters.items():
@@ -289,9 +287,7 @@ class StateManager:
                     logger.warning(f"Could not restore {key}: {e}")
 
     def compare_states(
-        self,
-        state1: EquipmentState,
-        state2: EquipmentState
+        self, state1: EquipmentState, state2: EquipmentState
     ) -> StateDiff:
         """
         Compare two equipment states and return differences.
@@ -309,7 +305,7 @@ class StateManager:
         diff = StateDiff(
             state_id_1=state1.state_id,
             state_id_2=state2.state_id,
-            equipment_id=state1.equipment_id
+            equipment_id=state1.equipment_id,
         )
 
         # Get all keys
@@ -333,10 +329,7 @@ class StateManager:
             val2 = state2.state_data[key]
 
             if val1 != val2:
-                diff.modified[key] = {
-                    "old": val1,
-                    "new": val2
-                }
+                diff.modified[key] = {"old": val1, "new": val2}
             else:
                 diff.unchanged.append(key)
 
@@ -358,9 +351,7 @@ class StateManager:
         return self._states.get(state_id)
 
     def get_equipment_states(
-        self,
-        equipment_id: str,
-        limit: Optional[int] = None
+        self, equipment_id: str, limit: Optional[int] = None
     ) -> List[EquipmentState]:
         """Get all states for equipment."""
         if equipment_id not in self._equipment_states:
@@ -369,11 +360,7 @@ class StateManager:
         state_ids = self._equipment_states[equipment_id]
 
         # Get state objects
-        states = [
-            self._states[sid]
-            for sid in state_ids
-            if sid in self._states
-        ]
+        states = [self._states[sid] for sid in state_ids if sid in self._states]
 
         # Sort by timestamp (newest first)
         states.sort(key=lambda s: s.timestamp, reverse=True)
@@ -402,14 +389,14 @@ class StateManager:
         # Remove from equipment states
         if equipment_id in self._equipment_states:
             self._equipment_states[equipment_id] = [
-                sid for sid in self._equipment_states[equipment_id]
-                if sid != state_id
+                sid for sid in self._equipment_states[equipment_id] if sid != state_id
             ]
 
         # Remove from named states
         if equipment_id in self._named_states:
             to_remove = [
-                name for name, sid in self._named_states[equipment_id].items()
+                name
+                for name, sid in self._named_states[equipment_id].items()
                 if sid == state_id
             ]
             for name in to_remove:
@@ -431,7 +418,7 @@ class StateManager:
         filepath = self._state_dir / filename
 
         try:
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 json.dump(state.dict(), f, indent=2, default=str)
             logger.debug(f"Saved state to {filepath}")
         except Exception as e:
@@ -459,7 +446,7 @@ class StateManager:
 
         for filepath in self._state_dir.glob("*.json"):
             try:
-                with open(filepath, 'r') as f:
+                with open(filepath, "r") as f:
                     data = json.load(f)
 
                 state = EquipmentState(**data)
@@ -523,7 +510,7 @@ class StateManager:
         self,
         equipment_id: str,
         state: EquipmentState,
-        change_description: Optional[str] = None
+        change_description: Optional[str] = None,
     ) -> StateVersion:
         """Create a versioned state."""
         if equipment_id not in self._versions:
@@ -542,14 +529,12 @@ class StateManager:
             version_number=version_number,
             state=state,
             parent_version_id=parent_version_id,
-            change_description=change_description
+            change_description=change_description,
         )
 
         versions.append(version)
 
-        logger.info(
-            f"Created version {version_number} for equipment {equipment_id}"
-        )
+        logger.info(f"Created version {version_number} for equipment {equipment_id}")
 
         return version
 
@@ -558,9 +543,7 @@ class StateManager:
         return self._versions.get(equipment_id, [])
 
     def get_version(
-        self,
-        equipment_id: str,
-        version_number: int
+        self, equipment_id: str, version_number: int
     ) -> Optional[StateVersion]:
         """Get specific version."""
         versions = self._versions.get(equipment_id, [])

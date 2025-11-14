@@ -1,10 +1,11 @@
 """Safety limits and interlocks system for equipment protection."""
 
-import logging
 import asyncio
-from typing import Dict, Optional, List
+import logging
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 from server.config.settings import settings
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class SafetyViolationType(Enum):
     """Types of safety violations."""
+
     VOLTAGE_LIMIT = "voltage_limit"
     CURRENT_LIMIT = "current_limit"
     POWER_LIMIT = "power_limit"
@@ -37,14 +39,22 @@ class SafetyLimits(BaseModel):
     max_power: Optional[float] = Field(None, description="Maximum power (W)")
 
     # Slew rate limits (for gradual changes)
-    voltage_slew_rate: Optional[float] = Field(None, description="Max voltage change rate (V/s)")
-    current_slew_rate: Optional[float] = Field(None, description="Max current change rate (A/s)")
+    voltage_slew_rate: Optional[float] = Field(
+        None, description="Max voltage change rate (V/s)"
+    )
+    current_slew_rate: Optional[float] = Field(
+        None, description="Max current change rate (A/s)"
+    )
 
     # Additional limits
-    temperature_limit: Optional[float] = Field(None, description="Maximum temperature (°C)")
+    temperature_limit: Optional[float] = Field(
+        None, description="Maximum temperature (°C)"
+    )
 
     # Interlock requirements
-    require_interlock: bool = Field(False, description="Require interlock before operation")
+    require_interlock: bool = Field(
+        False, description="Require interlock before operation"
+    )
 
     class Config:
         json_schema_extra = {
@@ -53,7 +63,7 @@ class SafetyLimits(BaseModel):
                 "max_current": 5.0,
                 "max_power": 150.0,
                 "voltage_slew_rate": 10.0,
-                "require_interlock": False
+                "require_interlock": False,
             }
         }
 
@@ -67,7 +77,7 @@ class SafetyViolation(Exception):
         message: str,
         attempted_value: Optional[float] = None,
         limit_value: Optional[float] = None,
-        equipment_id: Optional[str] = None
+        equipment_id: Optional[str] = None,
     ):
         self.violation_type = violation_type
         self.message = message
@@ -95,6 +105,7 @@ class SafetyViolation(Exception):
 
 class SafetyEvent(BaseModel):
     """Record of a safety event."""
+
     timestamp: datetime = Field(default_factory=datetime.now)
     equipment_id: str
     violation_type: SafetyViolationType
@@ -112,11 +123,7 @@ class SlewRateLimiter:
         self._last_times: Dict[str, datetime] = {}
 
     async def check_and_limit(
-        self,
-        key: str,
-        new_value: float,
-        current_value: float,
-        max_slew_rate: float
+        self, key: str, new_value: float, current_value: float, max_slew_rate: float
     ) -> float:
         """
         Check slew rate and return safe value.
@@ -194,7 +201,7 @@ class SafetyValidator:
                 f"Voltage {voltage}V exceeds maximum limit",
                 attempted_value=voltage,
                 limit_value=self.limits.max_voltage,
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
         if self.limits.min_voltage is not None and voltage < self.limits.min_voltage:
@@ -203,7 +210,7 @@ class SafetyValidator:
                 f"Voltage {voltage}V below minimum limit",
                 attempted_value=voltage,
                 limit_value=self.limits.min_voltage,
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
     def check_current(self, current: float) -> None:
@@ -219,7 +226,7 @@ class SafetyValidator:
                 f"Current {current}A exceeds maximum limit",
                 attempted_value=current,
                 limit_value=self.limits.max_current,
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
         if self.limits.min_current is not None and current < self.limits.min_current:
@@ -228,7 +235,7 @@ class SafetyValidator:
                 f"Current {current}A below minimum limit",
                 attempted_value=current,
                 limit_value=self.limits.min_current,
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
     def check_power(self, power: float) -> None:
@@ -244,7 +251,7 @@ class SafetyValidator:
                 f"Power {power}W exceeds maximum limit",
                 attempted_value=power,
                 limit_value=self.limits.max_power,
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
     def check_interlock(self) -> None:
@@ -258,18 +265,18 @@ class SafetyValidator:
             raise SafetyViolation(
                 SafetyViolationType.INTERLOCK,
                 "Interlock required but not engaged",
-                equipment_id=self.equipment_id
+                equipment_id=self.equipment_id,
             )
 
     def set_interlock(self, state: bool) -> None:
         """Set interlock state."""
         self._interlock_state = state
-        logger.info(f"Interlock {'engaged' if state else 'released'} for {self.equipment_id}")
+        logger.info(
+            f"Interlock {'engaged' if state else 'released'} for {self.equipment_id}"
+        )
 
     async def apply_voltage_slew_limit(
-        self,
-        new_voltage: float,
-        current_voltage: float
+        self, new_voltage: float, current_voltage: float
     ) -> float:
         """
         Apply slew rate limiting to voltage change.
@@ -284,13 +291,11 @@ class SafetyValidator:
             f"{self.equipment_id}_voltage",
             new_voltage,
             current_voltage,
-            self.limits.voltage_slew_rate
+            self.limits.voltage_slew_rate,
         )
 
     async def apply_current_slew_limit(
-        self,
-        new_current: float,
-        current_current: float
+        self, new_current: float, current_current: float
     ) -> float:
         """
         Apply slew rate limiting to current change.
@@ -305,7 +310,7 @@ class SafetyValidator:
             f"{self.equipment_id}_current",
             new_current,
             current_current,
-            self.limits.current_slew_rate
+            self.limits.current_slew_rate,
         )
 
     def log_safety_event(
@@ -314,7 +319,7 @@ class SafetyValidator:
         message: str,
         attempted_value: Optional[float] = None,
         limit_value: Optional[float] = None,
-        action_taken: str = "blocked"
+        action_taken: str = "blocked",
     ):
         """Log a safety event."""
         event = SafetyEvent(
@@ -323,7 +328,7 @@ class SafetyValidator:
             message=message,
             attempted_value=attempted_value,
             limit_value=limit_value,
-            action_taken=action_taken
+            action_taken=action_taken,
         )
 
         self._safety_events.append(event)
@@ -357,7 +362,7 @@ class EmergencyStopManager:
             return {
                 "already_active": True,
                 "stop_time": self._stop_time,
-                "equipment_count": len(self._stopped_equipment)
+                "equipment_count": len(self._stopped_equipment),
             }
 
         self._emergency_stop_active = True
@@ -368,7 +373,7 @@ class EmergencyStopManager:
         return {
             "activated": True,
             "stop_time": self._stop_time,
-            "message": "Emergency stop activated - all outputs will be disabled"
+            "message": "Emergency stop activated - all outputs will be disabled",
         }
 
     def deactivate_emergency_stop(self) -> Dict[str, any]:
@@ -381,18 +386,22 @@ class EmergencyStopManager:
         if not self._emergency_stop_active:
             return {"already_inactive": True}
 
-        duration = (datetime.now() - self._stop_time).total_seconds() if self._stop_time else 0
+        duration = (
+            (datetime.now() - self._stop_time).total_seconds() if self._stop_time else 0
+        )
 
         self._emergency_stop_active = False
         stopped_count = len(self._stopped_equipment)
         self._stopped_equipment.clear()
 
-        logger.info(f"Emergency stop deactivated after {duration:.1f}s - {stopped_count} equipment affected")
+        logger.info(
+            f"Emergency stop deactivated after {duration:.1f}s - {stopped_count} equipment affected"
+        )
 
         return {
             "deactivated": True,
             "duration_seconds": duration,
-            "equipment_count": stopped_count
+            "equipment_count": stopped_count,
         }
 
     def is_active(self) -> bool:
@@ -409,7 +418,7 @@ class EmergencyStopManager:
         return {
             "active": self._emergency_stop_active,
             "stop_time": self._stop_time,
-            "stopped_equipment": self._stopped_equipment.copy()
+            "stopped_equipment": self._stopped_equipment.copy(),
         }
 
 
@@ -428,8 +437,8 @@ DEFAULT_SAFETY_LIMITS = {
         max_current=10.0,
         max_power=300.0,
         voltage_slew_rate=20.0,  # 20V/s
-        current_slew_rate=5.0,   # 5A/s
-        require_interlock=False
+        current_slew_rate=5.0,  # 5A/s
+        require_interlock=False,
     ),
     "electronic_load": SafetyLimits(
         max_voltage=150.0,
@@ -437,7 +446,7 @@ DEFAULT_SAFETY_LIMITS = {
         max_power=200.0,
         voltage_slew_rate=50.0,
         current_slew_rate=10.0,
-        require_interlock=False
+        require_interlock=False,
     ),
 }
 
@@ -445,6 +454,5 @@ DEFAULT_SAFETY_LIMITS = {
 def get_default_limits(equipment_type: str) -> SafetyLimits:
     """Get default safety limits for equipment type."""
     return DEFAULT_SAFETY_LIMITS.get(
-        equipment_type.lower(),
-        SafetyLimits()  # Empty limits if unknown type
+        equipment_type.lower(), SafetyLimits()  # Empty limits if unknown type
     )

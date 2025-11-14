@@ -3,7 +3,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class JsonFormatter(logging.Formatter):
@@ -44,12 +44,34 @@ class JsonFormatter(logging.Formatter):
         # Add any custom fields from extra dict
         for key, value in record.__dict__.items():
             if key not in [
-                "name", "msg", "args", "created", "filename", "funcName",
-                "levelname", "levelno", "lineno", "module", "msecs", "message",
-                "pathname", "process", "processName", "relativeCreated", "thread",
-                "threadName", "exc_info", "exc_text", "stack_info", "user_id",
-                "equipment_id", "request_id", "duration_ms", "status_code",
-                "endpoint", "method"
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "message",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "user_id",
+                "equipment_id",
+                "request_id",
+                "duration_ms",
+                "status_code",
+                "endpoint",
+                "method",
             ]:
                 if not key.startswith("_"):
                     log_data[key] = value
@@ -62,11 +84,11 @@ class ColoredFormatter(logging.Formatter):
 
     # ANSI color codes
     COLORS = {
-        "DEBUG": "\033[36m",      # Cyan
-        "INFO": "\033[32m",       # Green
-        "WARNING": "\033[33m",    # Yellow
-        "ERROR": "\033[31m",      # Red
-        "CRITICAL": "\033[35m",   # Magenta
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
     }
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -76,7 +98,9 @@ class ColoredFormatter(logging.Formatter):
         # Color the level name
         levelname = record.levelname
         if levelname in self.COLORS:
-            colored_levelname = f"{self.COLORS[levelname]}{self.BOLD}{levelname:8s}{self.RESET}"
+            colored_levelname = (
+                f"{self.COLORS[levelname]}{self.BOLD}{levelname:8s}{self.RESET}"
+            )
             record.levelname = colored_levelname
 
         # Format the message
@@ -97,7 +121,7 @@ class CompactFormatter(logging.Formatter):
             timestamp,
             record.levelname[0],  # First letter only (D/I/W/E/C)
             record.name.split(".")[-1],  # Just module name
-            record.getMessage()
+            record.getMessage(),
         ]
 
         # Add performance info if present

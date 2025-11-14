@@ -1,24 +1,27 @@
 """Scheduler data models."""
 
-from enum import Enum
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-from pydantic import BaseModel, Field
 import uuid
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class ScheduleType(str, Enum):
     """Type of scheduled job."""
-    ACQUISITION = "acquisition"          # Start data acquisition
-    STATE_CAPTURE = "state_capture"      # Capture equipment state
-    EQUIPMENT_TEST = "equipment_test"    # Run equipment test
-    MEASUREMENT = "measurement"          # Take single measurement
-    COMMAND = "command"                  # Execute equipment command
-    SCRIPT = "script"                    # Run custom script
+
+    ACQUISITION = "acquisition"  # Start data acquisition
+    STATE_CAPTURE = "state_capture"  # Capture equipment state
+    EQUIPMENT_TEST = "equipment_test"  # Run equipment test
+    MEASUREMENT = "measurement"  # Take single measurement
+    COMMAND = "command"  # Execute equipment command
+    SCRIPT = "script"  # Run custom script
 
 
 class JobStatus(str, Enum):
     """Job execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -29,16 +32,18 @@ class JobStatus(str, Enum):
 
 class TriggerType(str, Enum):
     """Schedule trigger types."""
-    CRON = "cron"                # Cron expression
-    INTERVAL = "interval"        # Fixed interval
-    DATE = "date"                # One-time at specific date/time
-    DAILY = "daily"              # Daily at specific time
-    WEEKLY = "weekly"            # Weekly on specific day/time
-    MONTHLY = "monthly"          # Monthly on specific day/time
+
+    CRON = "cron"  # Cron expression
+    INTERVAL = "interval"  # Fixed interval
+    DATE = "date"  # One-time at specific date/time
+    DAILY = "daily"  # Daily at specific time
+    WEEKLY = "weekly"  # Weekly on specific day/time
+    MONTHLY = "monthly"  # Monthly on specific day/time
 
 
 class ScheduleConfig(BaseModel):
     """Configuration for a scheduled job."""
+
     job_id: str = Field(default_factory=lambda: f"job_{uuid.uuid4().hex[:8]}")
     name: str = Field(..., description="Job name")
     description: Optional[str] = Field(None, description="Job description")
@@ -51,7 +56,9 @@ class ScheduleConfig(BaseModel):
     trigger_type: TriggerType = Field(..., description="Type of schedule trigger")
 
     # Cron expression (for CRON trigger)
-    cron_expression: Optional[str] = Field(None, description="Cron expression (e.g., '0 */6 * * *')")
+    cron_expression: Optional[str] = Field(
+        None, description="Cron expression (e.g., '0 */6 * * *')"
+    )
 
     # Interval settings (for INTERVAL trigger)
     interval_seconds: Optional[int] = Field(None, description="Interval in seconds")
@@ -62,22 +69,30 @@ class ScheduleConfig(BaseModel):
     # Date/time settings (for DATE, DAILY, WEEKLY, MONTHLY)
     run_date: Optional[datetime] = Field(None, description="Specific date/time to run")
     time_of_day: Optional[str] = Field(None, description="Time of day (HH:MM:SS)")
-    day_of_week: Optional[int] = Field(None, description="Day of week (0=Monday, 6=Sunday)")
+    day_of_week: Optional[int] = Field(
+        None, description="Day of week (0=Monday, 6=Sunday)"
+    )
     day_of_month: Optional[int] = Field(None, description="Day of month (1-31)")
 
     # Job-specific parameters
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Job-specific parameters")
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict, description="Job-specific parameters"
+    )
 
     # Control settings
     enabled: bool = Field(default=True, description="Whether job is enabled")
     max_instances: int = Field(default=1, description="Maximum concurrent instances")
-    misfire_grace_time: int = Field(default=300, description="Grace time for missed runs (seconds)")
+    misfire_grace_time: int = Field(
+        default=300, description="Grace time for missed runs (seconds)"
+    )
     coalesce: bool = Field(default=True, description="Coalesce missed runs")
 
     # Execution limits
     start_date: Optional[datetime] = Field(None, description="Start date for schedule")
     end_date: Optional[datetime] = Field(None, description="End date for schedule")
-    max_executions: Optional[int] = Field(None, description="Maximum number of executions")
+    max_executions: Optional[int] = Field(
+        None, description="Maximum number of executions"
+    )
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.now)
@@ -85,13 +100,21 @@ class ScheduleConfig(BaseModel):
     tags: List[str] = Field(default_factory=list, description="Tags for categorization")
 
     # Integration settings (v0.14.0)
-    profile_id: Optional[str] = Field(None, description="Equipment profile to apply before execution")
-    on_failure_alarm: bool = Field(default=False, description="Create alarm on job failure")
-    conflict_policy: str = Field(default="skip", description="Policy when job conflicts occur (skip, queue, replace)")
+    profile_id: Optional[str] = Field(
+        None, description="Equipment profile to apply before execution"
+    )
+    on_failure_alarm: bool = Field(
+        default=False, description="Create alarm on job failure"
+    )
+    conflict_policy: str = Field(
+        default="skip",
+        description="Policy when job conflicts occur (skip, queue, replace)",
+    )
 
 
 class JobExecution(BaseModel):
     """A job execution instance."""
+
     execution_id: str = Field(default_factory=lambda: f"exec_{uuid.uuid4().hex[:8]}")
     job_id: str = Field(..., description="Associated job ID")
 
@@ -114,6 +137,7 @@ class JobExecution(BaseModel):
 
 class JobHistory(BaseModel):
     """Historical record of job executions."""
+
     job_id: str
     job_name: str
     total_executions: int = 0
@@ -128,6 +152,7 @@ class JobHistory(BaseModel):
 
 class ScheduleStatistics(BaseModel):
     """Scheduler statistics."""
+
     total_jobs: int = 0
     active_jobs: int = 0
     disabled_jobs: int = 0

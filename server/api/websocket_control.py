@@ -1,9 +1,10 @@
 """API endpoints for WebSocket control and monitoring."""
 
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from enum import Enum
 
 # Import will be available after we integrate with main.py
 # from websocket.enhanced_manager import enhanced_stream_manager
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/api/websocket", tags=["websocket"])
 
 class CompressionTypeAPI(str, Enum):
     """Compression types for API."""
+
     NONE = "none"
     GZIP = "gzip"
     ZLIB = "zlib"
@@ -21,6 +23,7 @@ class CompressionTypeAPI(str, Enum):
 
 class MessagePriorityAPI(str, Enum):
     """Message priorities for API."""
+
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -29,6 +32,7 @@ class MessagePriorityAPI(str, Enum):
 
 class RecordingFormatAPI(str, Enum):
     """Recording formats for API."""
+
     JSON = "json"
     JSONL = "jsonl"
     CSV = "csv"
@@ -37,14 +41,14 @@ class RecordingFormatAPI(str, Enum):
 
 class StartRecordingRequest(BaseModel):
     """Request to start recording a WebSocket stream."""
+
     session_id: str = Field(..., description="Recording session identifier")
-    metadata: Optional[Dict[str, Any]] = Field(
-        None, description="Optional metadata"
-    )
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata")
 
 
 class StartRecordingResponse(BaseModel):
     """Response for start recording."""
+
     session_id: str
     filepath: str
     started_at: str
@@ -52,6 +56,7 @@ class StartRecordingResponse(BaseModel):
 
 class StopRecordingResponse(BaseModel):
     """Response for stop recording."""
+
     session_id: str
     filepath: str
     duration_seconds: float
@@ -62,6 +67,7 @@ class StopRecordingResponse(BaseModel):
 
 class RecordingStatsResponse(BaseModel):
     """Recording statistics."""
+
     session_id: str
     filepath: str
     duration_seconds: float
@@ -72,6 +78,7 @@ class RecordingStatsResponse(BaseModel):
 
 class ConnectionInfo(BaseModel):
     """Connection information."""
+
     client_id: str
     metadata: Dict[str, Any]
     backpressure: Optional[Dict[str, Any]]
@@ -79,6 +86,7 @@ class ConnectionInfo(BaseModel):
 
 class GlobalStats(BaseModel):
     """Global WebSocket statistics."""
+
     total_connections: int
     total_messages_sent: int
     total_messages_received: int
@@ -91,6 +99,7 @@ class GlobalStats(BaseModel):
 
 class BackpressureStats(BaseModel):
     """Backpressure statistics for a connection."""
+
     messages_queued: int
     messages_sent: int
     messages_dropped: int
@@ -102,9 +111,8 @@ class BackpressureStats(BaseModel):
 
 class SendTestMessageRequest(BaseModel):
     """Request to send a test message."""
-    client_id: Optional[str] = Field(
-        None, description="Client ID (None for broadcast)"
-    )
+
+    client_id: Optional[str] = Field(None, description="Client ID (None for broadcast)")
     message: Dict[str, Any] = Field(..., description="Message to send")
     priority: MessagePriorityAPI = Field(
         MessagePriorityAPI.NORMAL, description="Message priority"
@@ -138,14 +146,13 @@ async def start_recording(request: StartRecordingRequest):
         from datetime import datetime
 
         filepath = enhanced_stream_manager.start_recording(
-            request.session_id,
-            request.metadata
+            request.session_id, request.metadata
         )
 
         return StartRecordingResponse(
             session_id=request.session_id,
             filepath=filepath,
-            started_at=datetime.now().isoformat()
+            started_at=datetime.now().isoformat(),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -164,14 +171,10 @@ async def stop_recording(session_id: str):
     stats = enhanced_stream_manager.stop_recording(session_id)
     if stats is None:
         raise HTTPException(
-            status_code=404,
-            detail=f"Recording session {session_id} not found"
+            status_code=404, detail=f"Recording session {session_id} not found"
         )
 
-    return StopRecordingResponse(
-        session_id=session_id,
-        **stats
-    )
+    return StopRecordingResponse(session_id=session_id, **stats)
 
 
 @router.get("/recording/stats/{session_id}", response_model=RecordingStatsResponse)
@@ -183,14 +186,10 @@ async def get_recording_stats(session_id: str):
     stats = enhanced_stream_manager.get_recording_stats(session_id)
     if stats is None:
         raise HTTPException(
-            status_code=404,
-            detail=f"Recording session {session_id} not found"
+            status_code=404, detail=f"Recording session {session_id} not found"
         )
 
-    return RecordingStatsResponse(
-        session_id=session_id,
-        **stats
-    )
+    return RecordingStatsResponse(session_id=session_id, **stats)
 
 
 @router.get("/recording/active", response_model=List[str])
@@ -219,10 +218,7 @@ async def get_connection_info(client_id: str):
 
     info = enhanced_stream_manager.get_connection_info(client_id)
     if info is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Connection {client_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Connection {client_id} not found")
 
     return info
 
@@ -235,10 +231,7 @@ async def get_connection_backpressure(client_id: str):
 
     stats = enhanced_stream_manager.get_backpressure_stats(client_id)
     if stats is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Connection {client_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Connection {client_id} not found")
 
     return stats
 
@@ -262,7 +255,7 @@ async def send_test_message(request: SendTestMessageRequest):
         raise HTTPException(status_code=503, detail="WebSocket manager not initialized")
 
     # Convert API enums to internal enums
-    from websocket.enhanced_features import MessagePriority, CompressionType
+    from websocket.enhanced_features import CompressionType, MessagePriority
 
     priority_map = {
         MessagePriorityAPI.LOW: MessagePriority.LOW,
@@ -284,22 +277,14 @@ async def send_test_message(request: SendTestMessageRequest):
         if request.client_id:
             # Send to specific client
             success = await enhanced_stream_manager.send_to_client(
-                request.client_id,
-                request.message,
-                priority,
-                compression
+                request.client_id, request.message, priority, compression
             )
             if not success:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to queue message"
-                )
+                raise HTTPException(status_code=500, detail="Failed to queue message")
         else:
             # Broadcast to all clients
             await enhanced_stream_manager.broadcast(
-                request.message,
-                priority,
-                compression
+                request.message, priority, compression
             )
 
         return {"status": "success", "message": "Message queued for sending"}

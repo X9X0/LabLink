@@ -1,20 +1,22 @@
 """Log handlers with rotation and archival."""
 
-import logging
 import gzip
+import logging
 import shutil
-from pathlib import Path
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from datetime import datetime
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from pathlib import Path
 from typing import Optional
 
-from .formatters import JsonFormatter, ColoredFormatter, CompactFormatter
+from .formatters import ColoredFormatter, CompactFormatter, JsonFormatter
 
 
 class CompressingRotatingFileHandler(RotatingFileHandler):
     """Rotating file handler that compresses old log files."""
 
-    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None, delay=False):
+    def __init__(
+        self, filename, mode="a", maxBytes=0, backupCount=0, encoding=None, delay=False
+    ):
         """Initialize handler."""
         super().__init__(filename, mode, maxBytes, backupCount, encoding, delay)
 
@@ -27,8 +29,8 @@ class CompressingRotatingFileHandler(RotatingFileHandler):
             log_file = f"{self.baseFilename}.1"
             if Path(log_file).exists():
                 compressed_file = f"{log_file}.gz"
-                with open(log_file, 'rb') as f_in:
-                    with gzip.open(compressed_file, 'wb') as f_out:
+                with open(log_file, "rb") as f_in:
+                    with gzip.open(compressed_file, "wb") as f_out:
                         shutil.copyfileobj(f_in, f_out)
                 Path(log_file).unlink()
 
@@ -39,7 +41,7 @@ def get_rotating_file_handler(
     max_bytes: int,
     backup_count: int,
     formatter_type: str = "json",
-    compress: bool = True
+    compress: bool = True,
 ) -> logging.Handler:
     """
     Get a rotating file handler with specified configuration.
@@ -65,14 +67,14 @@ def get_rotating_file_handler(
             filename=str(filepath),
             maxBytes=max_bytes,
             backupCount=backup_count,
-            encoding='utf-8'
+            encoding="utf-8",
         )
     else:
         handler = RotatingFileHandler(
             filename=str(filepath),
             maxBytes=max_bytes,
             backupCount=backup_count,
-            encoding='utf-8'
+            encoding="utf-8",
         )
 
     # Set formatter
@@ -81,9 +83,9 @@ def get_rotating_file_handler(
     elif formatter_type == "compact":
         handler.setFormatter(CompactFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        ))
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
 
     return handler
 
@@ -91,10 +93,10 @@ def get_rotating_file_handler(
 def get_timed_rotating_handler(
     log_dir: str,
     filename: str,
-    when: str = 'midnight',
+    when: str = "midnight",
     interval: int = 1,
     backup_count: int = 30,
-    formatter_type: str = "json"
+    formatter_type: str = "json",
 ) -> TimedRotatingFileHandler:
     """
     Get a time-based rotating file handler.
@@ -120,7 +122,7 @@ def get_timed_rotating_handler(
         when=when,
         interval=interval,
         backupCount=backup_count,
-        encoding='utf-8'
+        encoding="utf-8",
     )
 
     # Set formatter
@@ -129,14 +131,16 @@ def get_timed_rotating_handler(
     elif formatter_type == "compact":
         handler.setFormatter(CompactFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        ))
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
 
     return handler
 
 
-def get_console_handler(colored: bool = True, level: int = logging.INFO) -> logging.StreamHandler:
+def get_console_handler(
+    colored: bool = True, level: int = logging.INFO
+) -> logging.StreamHandler:
     """
     Get a console handler for terminal output.
 
@@ -151,14 +155,16 @@ def get_console_handler(colored: bool = True, level: int = logging.INFO) -> logg
     handler.setLevel(level)
 
     if colored:
-        handler.setFormatter(ColoredFormatter(
-            '%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-            datefmt='%H:%M:%S'
-        ))
+        handler.setFormatter(
+            ColoredFormatter(
+                "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
     else:
-        handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
-        ))
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        )
 
     return handler
 
@@ -180,7 +186,7 @@ def get_equipment_handler(log_dir: str, equipment_id: str) -> logging.Handler:
         max_bytes=10 * 1024 * 1024,  # 10 MB
         backup_count=5,
         formatter_type="json",
-        compress=True
+        compress=True,
     )
 
 
@@ -200,7 +206,7 @@ def get_performance_handler(log_dir: str) -> logging.Handler:
         max_bytes=50 * 1024 * 1024,  # 50 MB
         backup_count=10,
         formatter_type="json",
-        compress=True
+        compress=True,
     )
 
 
@@ -220,5 +226,5 @@ def get_audit_handler(log_dir: str) -> logging.Handler:
         max_bytes=100 * 1024 * 1024,  # 100 MB
         backup_count=30,
         formatter_type="json",
-        compress=True
+        compress=True,
     )

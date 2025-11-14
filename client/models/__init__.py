@@ -1,36 +1,14 @@
 """Data models for LabLink GUI client."""
 
-from .equipment import (
-    Equipment,
-    EquipmentType,
-    ConnectionStatus,
-    EquipmentCommand,
-)
-
-from .acquisition import (
-    # Enums
-    AcquisitionMode,
-    AcquisitionState,
-    TriggerType,
-    TriggerEdge,
-    ExportFormat,
-    TrendType,
-    DataQuality,
-    SyncState,
-    # Data classes
-    TriggerConfig,
-    AcquisitionConfig,
-    DataPoint,
-    AcquisitionSession,
-    RollingStatistics,
-    FFTResult,
-    TrendAnalysis,
-    QualityMetrics,
-    PeakInfo,
-    CrossingInfo,
-    SyncConfig,
-    SyncGroup,
-)
+from .acquisition import (AcquisitionConfig,  # Enums; Data classes
+                          AcquisitionMode, AcquisitionSession,
+                          AcquisitionState, CrossingInfo, DataPoint,
+                          DataQuality, ExportFormat, FFTResult, PeakInfo,
+                          QualityMetrics, RollingStatistics, SyncConfig,
+                          SyncGroup, SyncState, TrendAnalysis, TrendType,
+                          TriggerConfig, TriggerEdge, TriggerType)
+from .equipment import (ConnectionStatus, Equipment, EquipmentCommand,
+                        EquipmentType)
 
 __all__ = [
     # Equipment models

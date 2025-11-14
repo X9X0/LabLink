@@ -11,57 +11,24 @@ Provides REST API for:
 - Security status
 """
 
+import logging
 from datetime import datetime
 from typing import List, Optional
-import logging
 
-from fastapi import APIRouter, HTTPException, status, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-from security import (
-    # Models
-    User,
-    UserCreate,
-    UserUpdate,
-    UserResponse,
-    PasswordChange,
-    PasswordReset,
-    LoginRequest,
-    TokenResponse,
-    RefreshTokenRequest,
-    Role,
-    APIKey,
-    APIKeyCreate,
-    APIKeyResponse,
-    IPWhitelistEntry,
-    IPWhitelistCreate,
-    AuditLogEntry,
-    AuditLogQuery,
-    SecurityStatus,
-    SessionInfo,
-    AuditEventType,
-    OAuth2Provider,
-    OAuth2LoginRequest,
-    OAuth2LinkResponse,
-    # MFA Models
-    MFASetupResponse,
-    MFAVerifyRequest,
-    MFALoginRequest,
-    MFADisableRequest,
-    BackupCodesResponse,
-    MFAStatusResponse,
-
-    # Manager
-    get_security_manager,
-
-    # Auth
-    create_access_token,
-    create_refresh_token,
-    decode_refresh_token,
-    verify_password,
-    user_to_response,
-)
-
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from security import (APIKey,  # Models; MFA Models; Manager; Auth
+                      APIKeyCreate, APIKeyResponse, AuditEventType,
+                      AuditLogEntry, AuditLogQuery, BackupCodesResponse,
+                      IPWhitelistCreate, IPWhitelistEntry, LoginRequest,
+                      MFADisableRequest, MFALoginRequest, MFASetupResponse,
+                      MFAStatusResponse, MFAVerifyRequest, OAuth2LinkResponse,
+                      OAuth2LoginRequest, OAuth2Provider, PasswordChange,
+                      PasswordReset, RefreshTokenRequest, Role, SecurityStatus,
+                      SessionInfo, TokenResponse, User, UserCreate,
+                      UserResponse, UserUpdate, create_access_token,
+                      create_refresh_token, decode_refresh_token,
+                      get_security_manager, user_to_response, verify_password)
 from security.rbac import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -74,14 +41,16 @@ security_scheme = HTTPBearer()
 # Helper Functions
 # ============================================================================
 
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme)
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
 ) -> User:
     """Get current authenticated user from token."""
     security_manager = get_security_manager()
     token = credentials.credentials
 
     from security.auth import decode_token
+
     token_payload = decode_token(token, security_manager.config)
 
     if not token_payload:
@@ -114,6 +83,7 @@ async def require_superuser(current_user: User = Depends(get_current_user)) -> U
 # Authentication Endpoints
 # ============================================================================
 
+
 @router.post("/login", response_model=TokenResponse, tags=["authentication"])
 async def login(request: Request, login_request: LoginRequest):
     """
@@ -126,14 +96,18 @@ async def login(request: Request, login_request: LoginRequest):
 
     # Check if account is locked
     if security_manager.attempt_tracker.is_locked_out(login_request.username):
-        remaining = security_manager.attempt_tracker.get_lockout_time_remaining(login_request.username)
-        await security_manager.audit_log(AuditLogEntry(
-            event_type=AuditEventType.LOGIN_FAILED,
-            username=login_request.username,
-            ip_address=ip_address,
-            success=False,
-            error_message=f"Account locked for {remaining} seconds",
-        ))
+        remaining = security_manager.attempt_tracker.get_lockout_time_remaining(
+            login_request.username
+        )
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                username=login_request.username,
+                ip_address=ip_address,
+                success=False,
+                error_message=f"Account locked for {remaining} seconds",
+            )
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily locked. Try again in {remaining} seconds.",
@@ -145,13 +119,15 @@ async def login(request: Request, login_request: LoginRequest):
     if not user:
         # Record failed attempt
         security_manager.attempt_tracker.record_failed_attempt(login_request.username)
-        await security_manager.audit_log(AuditLogEntry(
-            event_type=AuditEventType.LOGIN_FAILED,
-            username=login_request.username,
-            ip_address=ip_address,
-            success=False,
-            error_message="User not found",
-        ))
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                username=login_request.username,
+                ip_address=ip_address,
+                success=False,
+                error_message="User not found",
+            )
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -160,17 +136,23 @@ async def login(request: Request, login_request: LoginRequest):
     # Verify password
     if not verify_password(login_request.password, user.hashed_password):
         # Record failed attempt
-        attempts = security_manager.attempt_tracker.record_failed_attempt(login_request.username)
-        await security_manager.audit_log(AuditLogEntry(
-            event_type=AuditEventType.LOGIN_FAILED,
-            user_id=user.user_id,
-            username=user.username,
-            ip_address=ip_address,
-            success=False,
-            error_message="Invalid password",
-        ))
+        attempts = security_manager.attempt_tracker.record_failed_attempt(
+            login_request.username
+        )
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                user_id=user.user_id,
+                username=user.username,
+                ip_address=ip_address,
+                success=False,
+                error_message="Invalid password",
+            )
+        )
 
-        remaining_attempts = security_manager.config.max_failed_login_attempts - attempts
+        remaining_attempts = (
+            security_manager.config.max_failed_login_attempts - attempts
+        )
         if remaining_attempts > 0:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -184,14 +166,16 @@ async def login(request: Request, login_request: LoginRequest):
 
     # Check if user is active
     if not user.is_active:
-        await security_manager.audit_log(AuditLogEntry(
-            event_type=AuditEventType.LOGIN_FAILED,
-            user_id=user.user_id,
-            username=user.username,
-            ip_address=ip_address,
-            success=False,
-            error_message="Account disabled",
-        ))
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                user_id=user.user_id,
+                username=user.username,
+                ip_address=ip_address,
+                success=False,
+                error_message="Account disabled",
+            )
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
@@ -200,7 +184,7 @@ async def login(request: Request, login_request: LoginRequest):
     # Check MFA
     if user.mfa_enabled:
         # MFA is enabled - require token
-        mfa_token = getattr(login_request, 'mfa_token', None)
+        mfa_token = getattr(login_request, "mfa_token", None)
 
         if not mfa_token:
             # MFA required but no token provided
@@ -212,23 +196,26 @@ async def login(request: Request, login_request: LoginRequest):
 
         # Verify MFA token
         from security.mfa import verify_mfa_token
+
         is_valid, used_backup_code = verify_mfa_token(
-            user.mfa_secret,
-            mfa_token,
-            user.backup_codes
+            user.mfa_secret, mfa_token, user.backup_codes
         )
 
         if not is_valid:
             # Record failed attempt
-            attempts = security_manager.attempt_tracker.record_failed_attempt(login_request.username)
-            await security_manager.audit_log(AuditLogEntry(
-                event_type=AuditEventType.LOGIN_FAILED,
-                user_id=user.user_id,
-                username=user.username,
-                ip_address=ip_address,
-                success=False,
-                error_message="Invalid MFA token",
-            ))
+            attempts = security_manager.attempt_tracker.record_failed_attempt(
+                login_request.username
+            )
+            await security_manager.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.LOGIN_FAILED,
+                    user_id=user.user_id,
+                    username=user.username,
+                    ip_address=ip_address,
+                    success=False,
+                    error_message="Invalid MFA token",
+                )
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid MFA token",
@@ -239,6 +226,7 @@ async def login(request: Request, login_request: LoginRequest):
             # Find and remove the used backup code
             for code_hash in user.backup_codes:
                 from security.mfa import verify_backup_code
+
                 if verify_backup_code(mfa_token, code_hash):
                     await security_manager.remove_backup_code(user.user_id, code_hash)
                     logger.info(f"Backup code used for user: {user.username}")
@@ -249,11 +237,15 @@ async def login(request: Request, login_request: LoginRequest):
 
     # Update last login
     from sqlite3 import connect
+
     conn = connect(str(security_manager.db_path))
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         UPDATE users SET last_login = ?, last_login_ip = ? WHERE user_id = ?
-    """, (datetime.utcnow(), ip_address, user.user_id))
+    """,
+        (datetime.utcnow(), ip_address, user.user_id),
+    )
     conn.commit()
     conn.close()
 
@@ -263,21 +255,25 @@ async def login(request: Request, login_request: LoginRequest):
 
     # Create session
     from security.models import AuthMethod as AuthMethodEnum
+
     session_id = security_manager.session_manager.create_session(
-        user, ip_address,
+        user,
+        ip_address,
         auth_method=AuthMethodEnum.PASSWORD,
         expires_in_minutes=security_manager.config.access_token_expire_minutes,
     )
 
     # Audit log
-    await security_manager.audit_log(AuditLogEntry(
-        event_type=AuditEventType.LOGIN_SUCCESS,
-        user_id=user.user_id,
-        username=user.username,
-        ip_address=ip_address,
-        success=True,
-        auth_method=AuthMethodEnum.PASSWORD,
-    ))
+    await security_manager.audit_log(
+        AuditLogEntry(
+            event_type=AuditEventType.LOGIN_SUCCESS,
+            user_id=user.user_id,
+            username=user.username,
+            ip_address=ip_address,
+            success=True,
+            auth_method=AuthMethodEnum.PASSWORD,
+        )
+    )
 
     logger.info(f"User logged in: {user.username} from {ip_address}")
 
@@ -299,12 +295,14 @@ async def logout(current_user: User = Depends(get_current_user)):
     count = security_manager.session_manager.destroy_user_sessions(current_user.user_id)
 
     # Audit log
-    await security_manager.audit_log(AuditLogEntry(
-        event_type=AuditEventType.LOGOUT,
-        user_id=current_user.user_id,
-        username=current_user.username,
-        success=True,
-    ))
+    await security_manager.audit_log(
+        AuditLogEntry(
+            event_type=AuditEventType.LOGOUT,
+            user_id=current_user.user_id,
+            username=current_user.username,
+            success=True,
+        )
+    )
 
     logger.info(f"User logged out: {current_user.username} ({count} sessions)")
 
@@ -317,7 +315,9 @@ async def refresh_token(refresh_request: RefreshTokenRequest):
     security_manager = get_security_manager()
 
     # Decode refresh token
-    user_id = decode_refresh_token(refresh_request.refresh_token, security_manager.config)
+    user_id = decode_refresh_token(
+        refresh_request.refresh_token, security_manager.config
+    )
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -357,6 +357,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 # Multi-Factor Authentication Endpoints
 # ============================================================================
 
+
 @router.post("/mfa/setup", response_model=MFASetupResponse, tags=["mfa"])
 async def setup_mfa(current_user: User = Depends(get_current_user)):
     """
@@ -370,7 +371,8 @@ async def setup_mfa(current_user: User = Depends(get_current_user)):
             detail="MFA is already enabled",
         )
 
-    from security.mfa import setup_mfa as mfa_setup, hash_backup_codes
+    from security.mfa import hash_backup_codes
+    from security.mfa import setup_mfa as mfa_setup
 
     # Generate MFA setup data
     secret, qr_code, backup_codes, provisioning_uri = mfa_setup(current_user.username)
@@ -415,6 +417,7 @@ async def verify_mfa_setup(
 
     # Verify the token
     from security.mfa import verify_totp_token
+
     if not verify_totp_token(user.mfa_secret, verify_request.token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -448,10 +451,11 @@ async def disable_mfa(
     # If MFA is enabled, require MFA token
     if current_user.mfa_enabled and disable_request.mfa_token:
         from security.mfa import verify_mfa_token
+
         is_valid, _ = verify_mfa_token(
             current_user.mfa_secret,
             disable_request.mfa_token,
-            current_user.backup_codes
+            current_user.backup_codes,
         )
         if not is_valid:
             raise HTTPException(
@@ -471,7 +475,9 @@ async def disable_mfa(
 @router.get("/mfa/status", response_model=MFAStatusResponse, tags=["mfa"])
 async def get_mfa_status(current_user: User = Depends(get_current_user)):
     """Get MFA status for the current user."""
-    backup_codes_remaining = len(current_user.backup_codes) if current_user.backup_codes else 0
+    backup_codes_remaining = (
+        len(current_user.backup_codes) if current_user.backup_codes else 0
+    )
 
     return MFAStatusResponse(
         mfa_enabled=current_user.mfa_enabled,
@@ -479,7 +485,9 @@ async def get_mfa_status(current_user: User = Depends(get_current_user)):
     )
 
 
-@router.post("/mfa/backup-codes/regenerate", response_model=BackupCodesResponse, tags=["mfa"])
+@router.post(
+    "/mfa/backup-codes/regenerate", response_model=BackupCodesResponse, tags=["mfa"]
+)
 async def regenerate_backup_codes(current_user: User = Depends(get_current_user)):
     """
     Regenerate backup codes for the current user.
@@ -511,6 +519,7 @@ async def regenerate_backup_codes(current_user: User = Depends(get_current_user)
 # User Management Endpoints
 # ============================================================================
 
+
 @router.post("/users", response_model=UserResponse, tags=["users"])
 async def create_user(
     user_create: UserCreate,
@@ -520,7 +529,9 @@ async def create_user(
     security_manager = get_security_manager()
 
     try:
-        user = await security_manager.create_user(user_create, created_by=current_user.user_id)
+        user = await security_manager.create_user(
+            user_create, created_by=current_user.user_id
+        )
         return user_to_response(user)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -578,11 +589,13 @@ async def update_user(
             detail="User not found",
         )
 
-    await security_manager.audit_log(AuditLogEntry(
-        event_type=AuditEventType.USER_UPDATED,
-        user_id=current_user.user_id,
-        resource_id=user_id,
-    ))
+    await security_manager.audit_log(
+        AuditLogEntry(
+            event_type=AuditEventType.USER_UPDATED,
+            user_id=current_user.user_id,
+            resource_id=user_id,
+        )
+    )
 
     return user_to_response(user)
 
@@ -643,26 +656,30 @@ async def reset_password(
     """Reset user password (superuser only)."""
     security_manager = get_security_manager()
 
-    from security.auth import hash_password
     from sqlite3 import connect
+
+    from security.auth import hash_password
 
     conn = connect(str(security_manager.db_path))
     cursor = conn.cursor()
 
     try:
         new_hash = hash_password(password_reset.new_password)
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE users SET
                 hashed_password = ?,
                 must_change_password = ?,
                 updated_at = ?
             WHERE user_id = ?
-        """, (
-            new_hash,
-            password_reset.must_change_password,
-            datetime.utcnow(),
-            password_reset.user_id,
-        ))
+        """,
+            (
+                new_hash,
+                password_reset.must_change_password,
+                datetime.utcnow(),
+                password_reset.user_id,
+            ),
+        )
 
         if cursor.rowcount == 0:
             raise HTTPException(
@@ -672,12 +689,14 @@ async def reset_password(
 
         conn.commit()
 
-        await security_manager.audit_log(AuditLogEntry(
-            event_type=AuditEventType.PASSWORD_CHANGED,
-            user_id=current_user.user_id,
-            resource_id=password_reset.user_id,
-            details={"admin_reset": True},
-        ))
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.PASSWORD_CHANGED,
+                user_id=current_user.user_id,
+                resource_id=password_reset.user_id,
+                details={"admin_reset": True},
+            )
+        )
 
         return {"message": "Password reset successfully"}
 
@@ -688,6 +707,7 @@ async def reset_password(
 # ============================================================================
 # Role Management Endpoints
 # ============================================================================
+
 
 @router.get("/roles", response_model=List[Role], tags=["roles"])
 async def list_roles(current_user: User = Depends(get_current_user)):
@@ -717,6 +737,7 @@ async def get_role(
 # ============================================================================
 # API Key Management Endpoints
 # ============================================================================
+
 
 @router.post("/api-keys", response_model=APIKeyResponse, tags=["api-keys"])
 async def create_api_key(
@@ -812,6 +833,7 @@ async def revoke_api_key(
 # IP Whitelist Endpoints
 # ============================================================================
 
+
 @router.post("/ip-whitelist", response_model=IPWhitelistEntry, tags=["ip-whitelist"])
 async def add_ip_whitelist(
     entry_create: IPWhitelistCreate,
@@ -819,10 +841,14 @@ async def add_ip_whitelist(
 ):
     """Add IP to whitelist (superuser only)."""
     security_manager = get_security_manager()
-    return await security_manager.add_ip_whitelist(entry_create, created_by=current_user.user_id)
+    return await security_manager.add_ip_whitelist(
+        entry_create, created_by=current_user.user_id
+    )
 
 
-@router.get("/ip-whitelist", response_model=List[IPWhitelistEntry], tags=["ip-whitelist"])
+@router.get(
+    "/ip-whitelist", response_model=List[IPWhitelistEntry], tags=["ip-whitelist"]
+)
 async def list_ip_whitelist(current_user: User = Depends(require_superuser)):
     """List IP whitelist entries (superuser only)."""
     security_manager = get_security_manager()
@@ -851,6 +877,7 @@ async def remove_ip_whitelist(
 # Audit Log Endpoints
 # ============================================================================
 
+
 @router.post("/audit-log/query", response_model=List[AuditLogEntry], tags=["audit"])
 async def query_audit_log(
     query: AuditLogQuery,
@@ -864,6 +891,7 @@ async def query_audit_log(
 # ============================================================================
 # Security Status Endpoints
 # ============================================================================
+
 
 @router.get("/status", response_model=SecurityStatus, tags=["status"])
 async def get_security_status(current_user: User = Depends(require_superuser)):
@@ -889,6 +917,7 @@ async def list_my_sessions(current_user: User = Depends(get_current_user)):
 # ============================================================================
 # OAuth2 Authentication Endpoints
 # ============================================================================
+
 
 @router.get("/oauth2/providers", tags=["oauth2"])
 async def list_oauth2_providers():
@@ -946,6 +975,7 @@ async def get_oauth2_authorization_url(
 
     # Generate state if not provided (for CSRF protection)
     import secrets
+
     if not state:
         state = secrets.token_urlsafe(32)
 
@@ -999,8 +1029,9 @@ async def oauth2_login(
 
         if not user:
             # Create new user from OAuth2 data
-            from security import UserCreate, create_default_operator_role
             import secrets
+
+            from security import UserCreate, create_default_operator_role
 
             # Generate random password (user won't use it, OAuth2 only)
             random_password = secrets.token_urlsafe(32)
@@ -1033,7 +1064,9 @@ async def oauth2_login(
                 },
             )
 
-            logger.info(f"New user created via OAuth2: {email} ({login_request.provider})")
+            logger.info(
+                f"New user created via OAuth2: {email} ({login_request.provider})"
+            )
 
         # Link OAuth2 account if not already linked
         # Note: In production, you'd want to store OAuth2 provider associations
@@ -1074,7 +1107,9 @@ async def oauth2_login(
             },
         )
 
-        logger.info(f"OAuth2 login successful: {user.username} via {login_request.provider}")
+        logger.info(
+            f"OAuth2 login successful: {user.username} via {login_request.provider}"
+        )
 
         return TokenResponse(
             access_token=access_token,

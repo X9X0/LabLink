@@ -2,11 +2,12 @@
 
 import logging
 import socket
-from typing import List, Dict, Any, Optional, Callable
 import time
+from typing import Any, Callable, Dict, List, Optional
 
 try:
-    from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
+    from zeroconf import ServiceBrowser, ServiceStateChange, Zeroconf
+
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -23,7 +24,7 @@ class LabLinkServer:
         address: str,
         port: int,
         ws_port: int,
-        properties: Dict[str, Any]
+        properties: Dict[str, Any],
     ):
         """
         Initialize server info.
@@ -45,19 +46,21 @@ class LabLinkServer:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
-            'name': self.name,
-            'address': self.address,
-            'port': self.port,
-            'ws_port': self.ws_port,
-            'url': f"http://{self.address}:{self.port}",
-            'ws_url': f"ws://{self.address}:{self.ws_port}/ws",
-            'properties': self.properties,
-            'discovered_at': self.discovered_at,
+            "name": self.name,
+            "address": self.address,
+            "port": self.port,
+            "ws_port": self.ws_port,
+            "url": f"http://{self.address}:{self.port}",
+            "ws_url": f"ws://{self.address}:{self.ws_port}/ws",
+            "properties": self.properties,
+            "discovered_at": self.discovered_at,
         }
 
     def __repr__(self):
         """String representation."""
-        return f"LabLinkServer(name='{self.name}', address='{self.address}:{self.port}')"
+        return (
+            f"LabLinkServer(name='{self.name}', address='{self.address}:{self.port}')"
+        )
 
 
 class LabLinkDiscovery:
@@ -104,7 +107,7 @@ class LabLinkDiscovery:
             self.browser = ServiceBrowser(
                 self.zeroconf,
                 self.SERVICE_TYPE,
-                handlers=[self._on_service_state_change]
+                handlers=[self._on_service_state_change],
             )
 
             self.running = True
@@ -114,6 +117,7 @@ class LabLinkDiscovery:
             # If timeout specified, wait then stop
             if timeout:
                 import threading
+
                 def stop_after_timeout():
                     time.sleep(timeout)
                     self.stop()
@@ -150,7 +154,7 @@ class LabLinkDiscovery:
         zeroconf: Zeroconf,
         service_type: str,
         name: str,
-        state_change: ServiceStateChange
+        state_change: ServiceStateChange,
     ):
         """
         Handle service state change.
@@ -189,15 +193,15 @@ class LabLinkDiscovery:
             properties = {}
             for key, value in info.properties.items():
                 try:
-                    properties[key.decode('utf-8')] = value.decode('utf-8')
+                    properties[key.decode("utf-8")] = value.decode("utf-8")
                 except:
                     pass
 
             # Get WebSocket port from properties
-            ws_port = int(properties.get('ws_port', port + 1))
+            ws_port = int(properties.get("ws_port", port + 1))
 
             # Get server name
-            server_name = properties.get('hostname', name.split('.')[0])
+            server_name = properties.get("hostname", name.split(".")[0])
 
             # Create server object
             server = LabLinkServer(
@@ -205,7 +209,7 @@ class LabLinkDiscovery:
                 address=address,
                 port=port,
                 ws_port=ws_port,
-                properties=properties
+                properties=properties,
             )
 
             # Add to discovered servers
@@ -214,7 +218,7 @@ class LabLinkDiscovery:
             logger.info(f"Discovered server: {server}")
 
             # Notify callbacks
-            self._notify_callbacks('added', server)
+            self._notify_callbacks("added", server)
 
         except Exception as e:
             logger.error(f"Error processing service info: {e}")
@@ -226,7 +230,7 @@ class LabLinkDiscovery:
             logger.info(f"Server removed: {server}")
 
             # Notify callbacks
-            self._notify_callbacks('removed', server)
+            self._notify_callbacks("removed", server)
 
     def _on_service_updated(self, zeroconf: Zeroconf, service_type: str, name: str):
         """Handle service updated."""
@@ -238,7 +242,7 @@ class LabLinkDiscovery:
             logger.info(f"Server updated: {server}")
 
             # Notify callbacks
-            self._notify_callbacks('updated', server)
+            self._notify_callbacks("updated", server)
 
     def _notify_callbacks(self, event_type: str, server: LabLinkServer):
         """

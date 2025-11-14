@@ -2,11 +2,12 @@
 
 import logging
 from typing import List
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from server.equipment.safety import emergency_stop_manager, SafetyEvent
 from server.equipment.manager import equipment_manager
+from server.equipment.safety import SafetyEvent, emergency_stop_manager
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ router = APIRouter()
 
 class EmergencyStopResponse(BaseModel):
     """Response for emergency stop operations."""
+
     success: bool
     message: str
     active: bool
@@ -24,6 +26,7 @@ class EmergencyStopResponse(BaseModel):
 
 class SafetyStatusResponse(BaseModel):
     """Response for safety status."""
+
     emergency_stop_active: bool
     stopped_equipment: List[str]
     equipment_with_safety: int
@@ -55,12 +58,12 @@ async def activate_emergency_stop():
         for equipment_id, equipment in equipment_manager.equipment.items():
             try:
                 # Try to disable output based on equipment type
-                if hasattr(equipment, 'set_output'):
+                if hasattr(equipment, "set_output"):
                     # Power supply
                     await equipment.set_output(False)
                     disabled_count += 1
                     logger.info(f"Disabled output for {equipment_id}")
-                elif hasattr(equipment, 'set_input'):
+                elif hasattr(equipment, "set_input"):
                     # Electronic load
                     await equipment.set_input(False)
                     disabled_count += 1
@@ -75,15 +78,17 @@ async def activate_emergency_stop():
             success=True,
             message=f"Emergency stop activated - {disabled_count} equipment outputs disabled",
             active=True,
-            stop_time=result.get("stop_time").isoformat() if result.get("stop_time") else None,
-            equipment_count=disabled_count
+            stop_time=(
+                result.get("stop_time").isoformat() if result.get("stop_time") else None
+            ),
+            equipment_count=disabled_count,
         )
 
     except Exception as e:
         logger.error(f"Error activating emergency stop: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to activate emergency stop: {str(e)}"
+            detail=f"Failed to activate emergency stop: {str(e)}",
         )
 
 
@@ -103,9 +108,7 @@ async def deactivate_emergency_stop():
 
         if result.get("already_inactive"):
             return EmergencyStopResponse(
-                success=True,
-                message="Emergency stop was not active",
-                active=False
+                success=True, message="Emergency stop was not active", active=False
             )
 
         logger.info("Emergency stop deactivated")
@@ -114,14 +117,14 @@ async def deactivate_emergency_stop():
             success=True,
             message="Emergency stop deactivated - outputs remain disabled",
             active=False,
-            equipment_count=result.get("equipment_count", 0)
+            equipment_count=result.get("equipment_count", 0),
         )
 
     except Exception as e:
         logger.error(f"Error deactivating emergency stop: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to deactivate emergency stop: {str(e)}"
+            detail=f"Failed to deactivate emergency stop: {str(e)}",
         )
 
 
@@ -140,7 +143,7 @@ async def get_emergency_stop_status():
         message="Emergency stop status retrieved",
         active=status["active"],
         stop_time=status["stop_time"].isoformat() if status["stop_time"] else None,
-        equipment_count=len(status["stopped_equipment"])
+        equipment_count=len(status["stopped_equipment"]),
     )
 
 
@@ -157,8 +160,9 @@ async def get_safety_status():
 
         # Count equipment with safety validators
         equipment_with_safety = sum(
-            1 for eq in equipment_manager.equipment.values()
-            if hasattr(eq, 'safety_validator')
+            1
+            for eq in equipment_manager.equipment.values()
+            if hasattr(eq, "safety_validator")
         )
 
         total_equipment = len(equipment_manager.equipment)
@@ -167,14 +171,14 @@ async def get_safety_status():
             emergency_stop_active=e_stop_status["active"],
             stopped_equipment=e_stop_status["stopped_equipment"],
             equipment_with_safety=equipment_with_safety,
-            total_equipment=total_equipment
+            total_equipment=total_equipment,
         )
 
     except Exception as e:
         logger.error(f"Error getting safety status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get safety status: {str(e)}"
+            detail=f"Failed to get safety status: {str(e)}",
         )
 
 
@@ -196,14 +200,14 @@ async def get_safety_events(equipment_id: str, limit: int = 50):
         if not equipment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipment '{equipment_id}' not found"
+                detail=f"Equipment '{equipment_id}' not found",
             )
 
-        if not hasattr(equipment, 'safety_validator'):
+        if not hasattr(equipment, "safety_validator"):
             return {
                 "equipment_id": equipment_id,
                 "events": [],
-                "message": "No safety validator configured for this equipment"
+                "message": "No safety validator configured for this equipment",
             }
 
         events = equipment.safety_validator.get_safety_events(limit=limit)
@@ -211,7 +215,7 @@ async def get_safety_events(equipment_id: str, limit: int = 50):
         return {
             "equipment_id": equipment_id,
             "events": [e.dict() for e in events],
-            "count": len(events)
+            "count": len(events),
         }
 
     except HTTPException:
@@ -220,5 +224,5 @@ async def get_safety_events(equipment_id: str, limit: int = 50):
         logger.error(f"Error getting safety events: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get safety events: {str(e)}"
+            detail=f"Failed to get safety events: {str(e)}",
         )

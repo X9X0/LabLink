@@ -1,27 +1,27 @@
 """Enhanced data acquisition panel for LabLink GUI."""
 
-import logging
 import asyncio
+import logging
 import time
-from typing import Optional, Dict, List, Set
 from collections import deque
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
-    QPushButton, QListWidget, QListWidgetItem, QMessageBox, QComboBox,
-    QSpinBox, QDoubleSpinBox, QFormLayout, QCheckBox, QLineEdit,
-    QTabWidget, QTextEdit, QSplitter, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView
-)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QEvent, QObject
+from typing import Dict, List, Optional, Set
+
+from models import (AcquisitionConfig, AcquisitionMode, AcquisitionState,
+                    ExportFormat, TriggerConfig, TriggerEdge, TriggerType)
+from PyQt6.QtCore import QEvent, QObject, Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
+                             QDoubleSpinBox, QFormLayout, QGroupBox,
+                             QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                             QListWidget, QListWidgetItem, QMessageBox,
+                             QPushButton, QSpinBox, QSplitter, QTableWidget,
+                             QTableWidgetItem, QTabWidget, QTextEdit,
+                             QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
-from models import (
-    AcquisitionMode, AcquisitionState, TriggerType, TriggerEdge,
-    ExportFormat, AcquisitionConfig, TriggerConfig
-)
 
 try:
     from client.ui.widgets.plot_widget import PlotWidget
+
     HAS_PLOT_WIDGET = True
 except ImportError:
     HAS_PLOT_WIDGET = False
@@ -140,8 +140,12 @@ class AcquisitionPanel(QWidget):
 
         # WebSocket streaming state
         self.ws_signals = AcquisitionWebSocketSignals()
-        self.streaming_acquisitions: Set[str] = set()  # Track acquisitions with active streams
-        self.plot_buffers: Dict[str, CircularBuffer] = {}  # acquisition_id -> CircularBuffer
+        self.streaming_acquisitions: Set[str] = (
+            set()
+        )  # Track acquisitions with active streams
+        self.plot_buffers: Dict[str, CircularBuffer] = (
+            {}
+        )  # acquisition_id -> CircularBuffer
 
         # Streaming quality metrics
         self.stream_start_time: Optional[float] = None
@@ -436,7 +440,9 @@ class AcquisitionPanel(QWidget):
         # Data table
         self.data_table = QTableWidget()
         self.data_table.setColumnCount(4)
-        self.data_table.setHorizontalHeaderLabels(["Timestamp", "Channel", "Value", "Unit"])
+        self.data_table.setHorizontalHeaderLabels(
+            ["Timestamp", "Channel", "Value", "Unit"]
+        )
         layout.addWidget(self.data_table)
 
         # Data controls
@@ -537,8 +543,12 @@ Samples Collected: {session.get('sample_count', 0)}
             return
 
         try:
-            self.client.ws_manager.on_acquisition_data(self._ws_acquisition_data_callback)
-            logger.info("Registered WebSocket acquisition handlers for acquisition panel")
+            self.client.ws_manager.on_acquisition_data(
+                self._ws_acquisition_data_callback
+            )
+            logger.info(
+                "Registered WebSocket acquisition handlers for acquisition panel"
+            )
         except Exception as e:
             logger.warning(f"Could not register WebSocket handlers: {e}")
 
@@ -570,7 +580,10 @@ Samples Collected: {session.get('sample_count', 0)}
         self.last_data_time = current_time
 
         # Only update if this is the selected acquisition
-        if self.current_acquisition_id and self.current_acquisition_id == acquisition_id:
+        if (
+            self.current_acquisition_id
+            and self.current_acquisition_id == acquisition_id
+        ):
             # Initialize buffer if needed
             if acquisition_id not in self.plot_buffers:
                 self.plot_buffers[acquisition_id] = CircularBuffer(max_size=1000)
@@ -651,7 +664,11 @@ Samples Collected: {session.get('sample_count', 0)}
         Args:
             acquisition_id: ID of acquisition to stream from
         """
-        if not self.client or not self.client.ws_manager or not self.client.ws_manager.connected:
+        if (
+            not self.client
+            or not self.client.ws_manager
+            or not self.client.ws_manager.connected
+        ):
             logger.debug("WebSocket not available - using polling fallback")
             return
 
@@ -660,7 +677,7 @@ Samples Collected: {session.get('sample_count', 0)}
             await self.client.start_acquisition_stream(
                 acquisition_id=acquisition_id,
                 stream_type="data",
-                interval_ms=100  # 10 Hz update rate
+                interval_ms=100,  # 10 Hz update rate
             )
             self.ws_signals.stream_started.emit(acquisition_id)
             logger.info(f"Stream started successfully for {acquisition_id}")
@@ -697,8 +714,7 @@ Samples Collected: {session.get('sample_count', 0)}
             self.equipment_combo.clear()
             for eq in equipment_list:
                 self.equipment_combo.addItem(
-                    f"{eq.get('model', 'Unknown')} ({eq.get('type', '')})",
-                    eq.get("id")
+                    f"{eq.get('model', 'Unknown')} ({eq.get('type', '')})", eq.get("id")
                 )
         except Exception as e:
             logger.error(f"Error refreshing equipment list: {e}")
@@ -738,7 +754,9 @@ Samples Collected: {session.get('sample_count', 0)}
     def create_session(self):
         """Create new acquisition session."""
         if not self.client:
-            QMessageBox.warning(self, "Not Connected", "Please connect to a server first")
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
             return
 
         equipment_id = self.equipment_combo.currentData()
@@ -750,9 +768,21 @@ Samples Collected: {session.get('sample_count', 0)}
             # Build trigger config
             trigger_config = TriggerConfig(
                 trigger_type=TriggerType(self.trigger_type_combo.currentText()),
-                level=self.trigger_level_spin.value() if self.trigger_level_spin.isEnabled() else None,
-                edge=TriggerEdge(self.trigger_edge_combo.currentText()) if self.trigger_edge_combo.isEnabled() else None,
-                channel=self.trigger_channel_edit.text() if self.trigger_channel_edit.isEnabled() else None
+                level=(
+                    self.trigger_level_spin.value()
+                    if self.trigger_level_spin.isEnabled()
+                    else None
+                ),
+                edge=(
+                    TriggerEdge(self.trigger_edge_combo.currentText())
+                    if self.trigger_edge_combo.isEnabled()
+                    else None
+                ),
+                channel=(
+                    self.trigger_channel_edit.text()
+                    if self.trigger_channel_edit.isEnabled()
+                    else None
+                ),
             )
 
             # Build acquisition config
@@ -763,24 +793,34 @@ Samples Collected: {session.get('sample_count', 0)}
                 mode=AcquisitionMode(self.mode_combo.currentText()),
                 sample_rate=self.sample_rate_spin.value(),
                 duration_seconds=self.duration_spin.value(),
-                num_samples=self.num_samples_spin.value() if self.num_samples_spin.isEnabled() else None,
+                num_samples=(
+                    self.num_samples_spin.value()
+                    if self.num_samples_spin.isEnabled()
+                    else None
+                ),
                 channels=channels,
                 trigger_config=trigger_config,
                 buffer_size=self.buffer_size_spin.value(),
                 auto_export=self.auto_export_check.isChecked(),
-                export_format=ExportFormat(self.export_format_combo.currentText())
+                export_format=ExportFormat(self.export_format_combo.currentText()),
             )
 
             # Create session
-            result = self.client.create_acquisition_session(equipment_id, config.to_dict())
+            result = self.client.create_acquisition_session(
+                equipment_id, config.to_dict()
+            )
             acquisition_id = result.get("acquisition_id")
 
             if acquisition_id:
                 self.current_acquisition_id = acquisition_id
-                QMessageBox.information(self, "Success", f"Session created: {acquisition_id}")
+                QMessageBox.information(
+                    self, "Success", f"Session created: {acquisition_id}"
+                )
                 self.refresh_sessions()
             else:
-                QMessageBox.warning(self, "Error", "Failed to get acquisition ID from response")
+                QMessageBox.warning(
+                    self, "Error", "Failed to get acquisition ID from response"
+                )
 
         except Exception as e:
             logger.error(f"Error creating acquisition session: {e}")
@@ -789,7 +829,9 @@ Samples Collected: {session.get('sample_count', 0)}
     def start_acquisition(self):
         """Start data acquisition."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select or create a session first")
+            QMessageBox.warning(
+                self, "No Session", "Please select or create a session first"
+            )
             return
 
         try:
@@ -800,7 +842,9 @@ Samples Collected: {session.get('sample_count', 0)}
                 self.refresh_sessions()
 
                 # Auto-start WebSocket streaming for started acquisition
-                asyncio.create_task(self._start_acquisition_stream(self.current_acquisition_id))
+                asyncio.create_task(
+                    self._start_acquisition_stream(self.current_acquisition_id)
+                )
         except Exception as e:
             logger.error(f"Error starting acquisition: {e}")
             QMessageBox.critical(self, "Error", f"Failed to start:\n{str(e)}")
@@ -864,12 +908,14 @@ Samples Collected: {session.get('sample_count', 0)}
             self,
             "Confirm Delete",
             f"Delete acquisition session {self.current_acquisition_id}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                result = self.client.delete_acquisition_session(self.current_acquisition_id)
+                result = self.client.delete_acquisition_session(
+                    self.current_acquisition_id
+                )
                 if result.get("success"):
                     QMessageBox.information(self, "Success", "Session deleted")
                     self.current_acquisition_id = None
@@ -886,32 +932,33 @@ Samples Collected: {session.get('sample_count', 0)}
 
         try:
             from PyQt6.QtWidgets import QFileDialog
+
             filename, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export Acquisition Data",
                 "",
-                "CSV Files (*.csv);;HDF5 Files (*.h5);;NumPy Files (*.npy);;JSON Files (*.json)"
+                "CSV Files (*.csv);;HDF5 Files (*.h5);;NumPy Files (*.npy);;JSON Files (*.json)",
             )
 
             if filename:
                 # Determine format from extension
-                if filename.endswith('.csv'):
-                    fmt = 'csv'
-                elif filename.endswith('.h5'):
-                    fmt = 'hdf5'
-                elif filename.endswith('.npy'):
-                    fmt = 'npy'
+                if filename.endswith(".csv"):
+                    fmt = "csv"
+                elif filename.endswith(".h5"):
+                    fmt = "hdf5"
+                elif filename.endswith(".npy"):
+                    fmt = "npy"
                 else:
-                    fmt = 'json'
+                    fmt = "json"
 
                 result = self.client.export_acquisition_data(
-                    self.current_acquisition_id,
-                    format=fmt,
-                    filepath=filename
+                    self.current_acquisition_id, format=fmt, filepath=filename
                 )
 
                 if result.get("success"):
-                    QMessageBox.information(self, "Success", f"Data exported to {filename}")
+                    QMessageBox.information(
+                        self, "Success", f"Data exported to {filename}"
+                    )
         except Exception as e:
             logger.error(f"Error exporting data: {e}")
             QMessageBox.critical(self, "Error", f"Failed to export:\n{str(e)}")
@@ -924,8 +971,7 @@ Samples Collected: {session.get('sample_count', 0)}
 
         try:
             result = self.client.get_acquisition_data(
-                self.current_acquisition_id,
-                max_points=self.max_points_spin.value()
+                self.current_acquisition_id, max_points=self.max_points_spin.value()
             )
 
             # API returns data in format: {channels: [...], data: {timestamps: [...], values: {CH1: [...]}}}
@@ -946,11 +992,23 @@ Samples Collected: {session.get('sample_count', 0)}
 
                     self.data_table.setItem(row, 0, QTableWidgetItem(str(timestamp)))
                     self.data_table.setItem(row, 1, QTableWidgetItem(str(channel)))
-                    self.data_table.setItem(row, 2, QTableWidgetItem(f"{value:.6f}" if isinstance(value, (int, float)) else str(value)))
-                    self.data_table.setItem(row, 3, QTableWidgetItem("V"))  # Default unit
+                    self.data_table.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(
+                            f"{value:.6f}"
+                            if isinstance(value, (int, float))
+                            else str(value)
+                        ),
+                    )
+                    self.data_table.setItem(
+                        row, 3, QTableWidgetItem("V")
+                    )  # Default unit
                     row += 1
 
-            logger.info(f"Loaded {len(timestamps)} data points across {len(channels)} channels")
+            logger.info(
+                f"Loaded {len(timestamps)} data points across {len(channels)} channels"
+            )
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
@@ -965,13 +1023,14 @@ Samples Collected: {session.get('sample_count', 0)}
         try:
             # First get acquisition data to discover channels
             data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id,
-                max_points=1
+                self.current_acquisition_id, max_points=1
             )
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                QMessageBox.warning(
+                    self, "No Channels", "No channels found in acquisition data"
+                )
                 return
 
             self.stats_table.setRowCount(0)
@@ -980,8 +1039,7 @@ Samples Collected: {session.get('sample_count', 0)}
             for channel in channels:
                 try:
                     result = self.client.get_acquisition_rolling_stats(
-                        self.current_acquisition_id,
-                        channel=channel
+                        self.current_acquisition_id, channel=channel
                     )
                     stats = result.get("stats", {})
                     self._add_stat_row(f"{channel} - Mean", stats.get("mean", 0), "")
@@ -989,9 +1047,13 @@ Samples Collected: {session.get('sample_count', 0)}
                     self._add_stat_row(f"{channel} - Min", stats.get("min", 0), "")
                     self._add_stat_row(f"{channel} - Max", stats.get("max", 0), "")
                     self._add_stat_row(f"{channel} - RMS", stats.get("rms", 0), "")
-                    self._add_stat_row(f"{channel} - P2P", stats.get("peak_to_peak", 0), "")
+                    self._add_stat_row(
+                        f"{channel} - P2P", stats.get("peak_to_peak", 0), ""
+                    )
                 except Exception as channel_error:
-                    logger.error(f"Error getting stats for channel {channel}: {channel_error}")
+                    logger.error(
+                        f"Error getting stats for channel {channel}: {channel_error}"
+                    )
 
         except Exception as e:
             logger.error(f"Error getting rolling stats: {e}")
@@ -1006,13 +1068,14 @@ Samples Collected: {session.get('sample_count', 0)}
         try:
             # Get channels from session data
             data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id,
-                max_points=1
+                self.current_acquisition_id, max_points=1
             )
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                QMessageBox.warning(
+                    self, "No Channels", "No channels found in acquisition data"
+                )
                 return
 
             self.stats_table.setRowCount(0)
@@ -1021,15 +1084,20 @@ Samples Collected: {session.get('sample_count', 0)}
             for channel in channels:
                 try:
                     result = self.client.get_acquisition_fft(
-                        self.current_acquisition_id,
-                        channel=channel
+                        self.current_acquisition_id, channel=channel
                     )
                     fft_data = result.get("fft", {})
-                    self._add_stat_row(f"{channel} - Fundamental Freq", fft_data.get("fundamental_frequency", 0), "Hz")
+                    self._add_stat_row(
+                        f"{channel} - Fundamental Freq",
+                        fft_data.get("fundamental_frequency", 0),
+                        "Hz",
+                    )
                     self._add_stat_row(f"{channel} - THD", fft_data.get("thd", 0), "%")
                     self._add_stat_row(f"{channel} - SNR", fft_data.get("snr", 0), "dB")
                 except Exception as channel_error:
-                    logger.error(f"Error getting FFT for channel {channel}: {channel_error}")
+                    logger.error(
+                        f"Error getting FFT for channel {channel}: {channel_error}"
+                    )
 
         except Exception as e:
             logger.error(f"Error getting FFT analysis: {e}")
@@ -1044,13 +1112,14 @@ Samples Collected: {session.get('sample_count', 0)}
         try:
             # Get channels from session data
             data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id,
-                max_points=1
+                self.current_acquisition_id, max_points=1
             )
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                QMessageBox.warning(
+                    self, "No Channels", "No channels found in acquisition data"
+                )
                 return
 
             self.stats_table.setRowCount(0)
@@ -1059,15 +1128,22 @@ Samples Collected: {session.get('sample_count', 0)}
             for channel in channels:
                 try:
                     result = self.client.get_acquisition_trend(
-                        self.current_acquisition_id,
-                        channel=channel
+                        self.current_acquisition_id, channel=channel
                     )
                     trend_data = result.get("trend", {})
-                    self._add_stat_row(f"{channel} - Trend", trend_data.get("trend", "unknown"), "")
-                    self._add_stat_row(f"{channel} - Slope", trend_data.get("slope", 0), "")
-                    self._add_stat_row(f"{channel} - Confidence", trend_data.get("confidence", 0), "")
+                    self._add_stat_row(
+                        f"{channel} - Trend", trend_data.get("trend", "unknown"), ""
+                    )
+                    self._add_stat_row(
+                        f"{channel} - Slope", trend_data.get("slope", 0), ""
+                    )
+                    self._add_stat_row(
+                        f"{channel} - Confidence", trend_data.get("confidence", 0), ""
+                    )
                 except Exception as channel_error:
-                    logger.error(f"Error getting trend for channel {channel}: {channel_error}")
+                    logger.error(
+                        f"Error getting trend for channel {channel}: {channel_error}"
+                    )
 
         except Exception as e:
             logger.error(f"Error getting trend analysis: {e}")
@@ -1082,13 +1158,14 @@ Samples Collected: {session.get('sample_count', 0)}
         try:
             # Get channels from session data
             data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id,
-                max_points=1
+                self.current_acquisition_id, max_points=1
             )
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(self, "No Channels", "No channels found in acquisition data")
+                QMessageBox.warning(
+                    self, "No Channels", "No channels found in acquisition data"
+                )
                 return
 
             self.stats_table.setRowCount(0)
@@ -1097,16 +1174,33 @@ Samples Collected: {session.get('sample_count', 0)}
             for channel in channels:
                 try:
                     result = self.client.get_acquisition_quality(
-                        self.current_acquisition_id,
-                        channel=channel
+                        self.current_acquisition_id, channel=channel
                     )
                     quality_data = result.get("quality", {})
-                    self._add_stat_row(f"{channel} - Quality Grade", quality_data.get("quality_grade", "unknown"), "")
-                    self._add_stat_row(f"{channel} - Noise Level", quality_data.get("noise_level", 0), "")
-                    self._add_stat_row(f"{channel} - Stability", quality_data.get("stability_score", 0), "")
-                    self._add_stat_row(f"{channel} - Outlier Ratio", quality_data.get("outlier_ratio", 0), "%")
+                    self._add_stat_row(
+                        f"{channel} - Quality Grade",
+                        quality_data.get("quality_grade", "unknown"),
+                        "",
+                    )
+                    self._add_stat_row(
+                        f"{channel} - Noise Level",
+                        quality_data.get("noise_level", 0),
+                        "",
+                    )
+                    self._add_stat_row(
+                        f"{channel} - Stability",
+                        quality_data.get("stability_score", 0),
+                        "",
+                    )
+                    self._add_stat_row(
+                        f"{channel} - Outlier Ratio",
+                        quality_data.get("outlier_ratio", 0),
+                        "%",
+                    )
                 except Exception as channel_error:
-                    logger.error(f"Error getting quality for channel {channel}: {channel_error}")
+                    logger.error(
+                        f"Error getting quality for channel {channel}: {channel_error}"
+                    )
 
         except Exception as e:
             logger.error(f"Error getting quality metrics: {e}")
@@ -1117,7 +1211,13 @@ Samples Collected: {session.get('sample_count', 0)}
         row = self.stats_table.rowCount()
         self.stats_table.insertRow(row)
         self.stats_table.setItem(row, 0, QTableWidgetItem(metric))
-        self.stats_table.setItem(row, 1, QTableWidgetItem(f"{value:.4f}" if isinstance(value, (int, float)) else str(value)))
+        self.stats_table.setItem(
+            row,
+            1,
+            QTableWidgetItem(
+                f"{value:.4f}" if isinstance(value, (int, float)) else str(value)
+            ),
+        )
         self.stats_table.setItem(row, 2, QTableWidgetItem(unit))
 
     def closeEvent(self, event):

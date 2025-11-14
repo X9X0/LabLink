@@ -1,13 +1,13 @@
 """Persistent storage for scheduler using SQLite."""
 
-import sqlite3
 import json
 import logging
-from typing import List, Optional, Dict, Any
+import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .models import ScheduleConfig, JobExecution, JobStatus
+from .models import JobExecution, JobStatus, ScheduleConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,8 @@ class SchedulerStorage:
         cursor = conn.cursor()
 
         # Jobs table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS scheduled_jobs (
                 job_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -67,10 +68,12 @@ class SchedulerStorage:
                 on_failure_alarm INTEGER DEFAULT 0,
                 conflict_policy TEXT DEFAULT 'skip'
             )
-        """)
+        """
+        )
 
         # Execution history table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_executions (
                 execution_id TEXT PRIMARY KEY,
                 job_id TEXT NOT NULL,
@@ -86,23 +89,34 @@ class SchedulerStorage:
                 trigger_info TEXT,
                 FOREIGN KEY (job_id) REFERENCES scheduled_jobs(job_id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         # Execution counts table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS job_execution_counts (
                 job_id TEXT PRIMARY KEY,
                 execution_count INTEGER DEFAULT 0,
                 last_updated TEXT,
                 FOREIGN KEY (job_id) REFERENCES scheduled_jobs(job_id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         # Create indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON scheduled_jobs(enabled)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_job_id ON job_executions(job_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_status ON job_executions(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_scheduled_time ON job_executions(scheduled_time)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON scheduled_jobs(enabled)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_executions_job_id ON job_executions(job_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_executions_status ON job_executions(status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_executions_scheduled_time ON job_executions(scheduled_time)"
+        )
 
         conn.commit()
         conn.close()
@@ -123,7 +137,8 @@ class SchedulerStorage:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO scheduled_jobs (
                     job_id, name, description, schedule_type, equipment_id,
                     trigger_type, cron_expression, interval_seconds, interval_minutes,
@@ -133,37 +148,39 @@ class SchedulerStorage:
                     max_executions, created_at, created_by, tags, profile_id,
                     on_failure_alarm, conflict_policy
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                config.job_id,
-                config.name,
-                config.description,
-                config.schedule_type.value,
-                config.equipment_id,
-                config.trigger_type.value,
-                config.cron_expression,
-                config.interval_seconds,
-                config.interval_minutes,
-                config.interval_hours,
-                config.interval_days,
-                config.run_date.isoformat() if config.run_date else None,
-                config.time_of_day,
-                config.day_of_week,
-                config.day_of_month,
-                json.dumps(config.parameters),
-                1 if config.enabled else 0,
-                config.max_instances,
-                config.misfire_grace_time,
-                1 if config.coalesce else 0,
-                config.start_date.isoformat() if config.start_date else None,
-                config.end_date.isoformat() if config.end_date else None,
-                config.max_executions,
-                config.created_at.isoformat(),
-                config.created_by,
-                json.dumps(config.tags),
-                getattr(config, 'profile_id', None),
-                1 if getattr(config, 'on_failure_alarm', False) else 0,
-                getattr(config, 'conflict_policy', 'skip')
-            ))
+            """,
+                (
+                    config.job_id,
+                    config.name,
+                    config.description,
+                    config.schedule_type.value,
+                    config.equipment_id,
+                    config.trigger_type.value,
+                    config.cron_expression,
+                    config.interval_seconds,
+                    config.interval_minutes,
+                    config.interval_hours,
+                    config.interval_days,
+                    config.run_date.isoformat() if config.run_date else None,
+                    config.time_of_day,
+                    config.day_of_week,
+                    config.day_of_month,
+                    json.dumps(config.parameters),
+                    1 if config.enabled else 0,
+                    config.max_instances,
+                    config.misfire_grace_time,
+                    1 if config.coalesce else 0,
+                    config.start_date.isoformat() if config.start_date else None,
+                    config.end_date.isoformat() if config.end_date else None,
+                    config.max_executions,
+                    config.created_at.isoformat(),
+                    config.created_by,
+                    json.dumps(config.tags),
+                    getattr(config, "profile_id", None),
+                    1 if getattr(config, "on_failure_alarm", False) else 0,
+                    getattr(config, "conflict_policy", "skip"),
+                ),
+            )
 
             conn.commit()
             conn.close()
@@ -261,26 +278,37 @@ class SchedulerStorage:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO job_executions (
                     execution_id, job_id, status, started_at, completed_at,
                     duration_seconds, result, error, output, scheduled_time,
                     actual_time, trigger_info
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                execution.execution_id,
-                execution.job_id,
-                execution.status.value,
-                execution.started_at.isoformat() if execution.started_at else None,
-                execution.completed_at.isoformat() if execution.completed_at else None,
-                execution.duration_seconds,
-                json.dumps(execution.result) if execution.result else None,
-                execution.error,
-                execution.output,
-                execution.scheduled_time.isoformat(),
-                execution.actual_time.isoformat() if execution.actual_time else None,
-                json.dumps(execution.trigger_info)
-            ))
+            """,
+                (
+                    execution.execution_id,
+                    execution.job_id,
+                    execution.status.value,
+                    execution.started_at.isoformat() if execution.started_at else None,
+                    (
+                        execution.completed_at.isoformat()
+                        if execution.completed_at
+                        else None
+                    ),
+                    execution.duration_seconds,
+                    json.dumps(execution.result) if execution.result else None,
+                    execution.error,
+                    execution.output,
+                    execution.scheduled_time.isoformat(),
+                    (
+                        execution.actual_time.isoformat()
+                        if execution.actual_time
+                        else None
+                    ),
+                    json.dumps(execution.trigger_info),
+                ),
+            )
 
             conn.commit()
             conn.close()
@@ -295,7 +323,7 @@ class SchedulerStorage:
         self,
         job_id: Optional[str] = None,
         limit: int = 100,
-        status: Optional[JobStatus] = None
+        status: Optional[JobStatus] = None,
     ) -> List[JobExecution]:
         """
         Load job executions from database.
@@ -353,7 +381,7 @@ class SchedulerStorage:
 
             cursor.execute(
                 "SELECT execution_count FROM job_execution_counts WHERE job_id = ?",
-                (job_id,)
+                (job_id,),
             )
             row = cursor.fetchone()
             conn.close()
@@ -378,13 +406,16 @@ class SchedulerStorage:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO job_execution_counts (job_id, execution_count, last_updated)
                 VALUES (?, 1, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     execution_count = execution_count + 1,
                     last_updated = ?
-            """, (job_id, datetime.now().isoformat(), datetime.now().isoformat()))
+            """,
+                (job_id, datetime.now().isoformat(), datetime.now().isoformat()),
+            )
 
             conn.commit()
             conn.close()
@@ -413,7 +444,7 @@ class SchedulerStorage:
 
             cursor.execute(
                 "DELETE FROM job_executions WHERE scheduled_time < ?",
-                (cutoff.isoformat(),)
+                (cutoff.isoformat(),),
             )
 
             deleted = cursor.rowcount
@@ -483,7 +514,9 @@ class SchedulerStorage:
             "error": row["error"],
             "output": row["output"],
             "scheduled_time": datetime.fromisoformat(row["scheduled_time"]),
-            "trigger_info": json.loads(row["trigger_info"]) if row["trigger_info"] else {},
+            "trigger_info": (
+                json.loads(row["trigger_info"]) if row["trigger_info"] else {}
+            ),
         }
 
         if row["started_at"]:

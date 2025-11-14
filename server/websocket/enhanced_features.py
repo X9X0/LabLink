@@ -13,18 +13,19 @@ import json
 import logging
 import time
 import zlib
+from collections import deque
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass, field
-from collections import deque
 
 logger = logging.getLogger(__name__)
 
 
 class CompressionType(str, Enum):
     """Message compression types."""
+
     NONE = "none"
     GZIP = "gzip"
     ZLIB = "zlib"
@@ -32,6 +33,7 @@ class CompressionType(str, Enum):
 
 class MessagePriority(int, Enum):
     """Message priority levels."""
+
     LOW = 0
     NORMAL = 1
     HIGH = 2
@@ -40,6 +42,7 @@ class MessagePriority(int, Enum):
 
 class RecordingFormat(str, Enum):
     """Stream recording formats."""
+
     JSON = "json"
     JSONL = "jsonl"  # JSON Lines (one JSON object per line)
     CSV = "csv"
@@ -49,6 +52,7 @@ class RecordingFormat(str, Enum):
 @dataclass
 class StreamRecordingConfig:
     """Configuration for stream recording."""
+
     enabled: bool = False
     format: RecordingFormat = RecordingFormat.JSONL
     output_dir: str = "./data/recordings"
@@ -61,6 +65,7 @@ class StreamRecordingConfig:
 @dataclass
 class BackpressureConfig:
     """Configuration for backpressure handling."""
+
     enabled: bool = True
     max_queue_size: int = 1000
     warning_threshold: int = 750  # 75% of max
@@ -73,6 +78,7 @@ class BackpressureConfig:
 @dataclass
 class PriorityMessage:
     """Message with priority information."""
+
     priority: MessagePriority
     timestamp: float
     data: Dict[str, Any]
@@ -94,9 +100,7 @@ class StreamRecorder:
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
 
     def start_recording(
-        self,
-        session_id: str,
-        metadata: Optional[Dict[str, Any]] = None
+        self, session_id: str, metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """Start recording a stream.
 
@@ -179,10 +183,7 @@ class StreamRecorder:
 
         # Add timestamp if configured
         if self.config.include_timestamps:
-            message = {
-                "_timestamp": datetime.now().isoformat(),
-                **message
-            }
+            message = {"_timestamp": datetime.now().isoformat(), **message}
 
         # Write based on format
         try:
@@ -215,9 +216,7 @@ class StreamRecorder:
             session["bytes_written"] = file_handle.tell()
 
             if current_size_mb >= self.config.max_file_size_mb:
-                logger.warning(
-                    f"Recording {session_id} reached max size, stopping"
-                )
+                logger.warning(f"Recording {session_id} reached max size, stopping")
                 self.stop_recording(session_id)
 
         except Exception as e:
@@ -296,8 +295,7 @@ class MessageCompressor:
 
     @staticmethod
     def compress(
-        data: str,
-        compression_type: CompressionType = CompressionType.GZIP
+        data: str, compression_type: CompressionType = CompressionType.GZIP
     ) -> bytes:
         """Compress a string message.
 
@@ -322,8 +320,7 @@ class MessageCompressor:
 
     @staticmethod
     def decompress(
-        data: bytes,
-        compression_type: CompressionType = CompressionType.GZIP
+        data: bytes, compression_type: CompressionType = CompressionType.GZIP
     ) -> str:
         """Decompress bytes to string.
 
@@ -345,10 +342,7 @@ class MessageCompressor:
         return data.decode("utf-8")
 
     @staticmethod
-    def calculate_compression_ratio(
-        original: str,
-        compressed: bytes
-    ) -> float:
+    def calculate_compression_ratio(original: str, compressed: bytes) -> float:
         """Calculate compression ratio.
 
         Args:
@@ -385,7 +379,7 @@ class PriorityQueue:
     def put(
         self,
         message: Dict[str, Any],
-        priority: MessagePriority = MessagePriority.NORMAL
+        priority: MessagePriority = MessagePriority.NORMAL,
     ) -> bool:
         """Add message to queue.
 
@@ -400,9 +394,7 @@ class PriorityQueue:
             return False
 
         priority_msg = PriorityMessage(
-            priority=priority,
-            timestamp=time.time(),
-            data=message
+            priority=priority, timestamp=time.time(), data=message
         )
 
         self.queues[priority].append(priority_msg)
@@ -420,7 +412,7 @@ class PriorityQueue:
             MessagePriority.CRITICAL,
             MessagePriority.HIGH,
             MessagePriority.NORMAL,
-            MessagePriority.LOW
+            MessagePriority.LOW,
         ]:
             if self.queues[priority]:
                 self._size -= 1
@@ -466,8 +458,7 @@ class BackpressureHandler:
         self.config = config
         self.message_queue = PriorityQueue(max_size=config.max_queue_size)
         self.rate_limiter = RateLimiter(
-            max_rate=config.max_messages_per_second,
-            burst_size=config.burst_size
+            max_rate=config.max_messages_per_second, burst_size=config.burst_size
         )
         self.stats = {
             "messages_queued": 0,
@@ -480,7 +471,7 @@ class BackpressureHandler:
     async def queue_message(
         self,
         message: Dict[str, Any],
-        priority: MessagePriority = MessagePriority.NORMAL
+        priority: MessagePriority = MessagePriority.NORMAL,
     ) -> bool:
         """Queue a message for sending.
 
@@ -500,9 +491,7 @@ class BackpressureHandler:
                 # Drop low priority messages to make room
                 dropped = self.message_queue.clear_low_priority()
                 self.stats["messages_dropped"] += dropped
-                logger.warning(
-                    f"Queue full, dropped {dropped} low priority messages"
-                )
+                logger.warning(f"Queue full, dropped {dropped} low priority messages")
             else:
                 self.stats["queue_overflows"] += 1
                 self.stats["messages_dropped"] += 1
@@ -557,9 +546,7 @@ class BackpressureHandler:
                     MessagePriority.CRITICAL
                 ),
                 "high": self.message_queue.size_by_priority(MessagePriority.HIGH),
-                "normal": self.message_queue.size_by_priority(
-                    MessagePriority.NORMAL
-                ),
+                "normal": self.message_queue.size_by_priority(MessagePriority.NORMAL),
                 "low": self.message_queue.size_by_priority(MessagePriority.LOW),
             },
         }

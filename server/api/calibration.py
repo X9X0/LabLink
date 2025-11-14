@@ -1,18 +1,14 @@
 """API endpoints for equipment calibration management."""
 
 import logging
-from typing import Optional, List
 from datetime import datetime, timedelta
+from typing import List, Optional
+
+from equipment.calibration import (CalibrationRecord, CalibrationResult,
+                                   CalibrationSchedule, CalibrationType,
+                                   get_calibration_manager)
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
-from equipment.calibration import (
-    get_calibration_manager,
-    CalibrationRecord,
-    CalibrationSchedule,
-    CalibrationType,
-    CalibrationResult,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +20,7 @@ router = APIRouter()
 
 class CalibrationRecordCreate(BaseModel):
     """Request model for creating calibration record."""
+
     equipment_id: str
     equipment_type: str
     equipment_model: str
@@ -46,6 +43,7 @@ class CalibrationRecordCreate(BaseModel):
 
 class CalibrationScheduleCreate(BaseModel):
     """Request model for creating calibration schedule."""
+
     equipment_id: str
     interval_days: int
     warning_days: int = 30
@@ -64,7 +62,9 @@ async def add_calibration_record(record_data: CalibrationRecordCreate):
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         # Convert string enums to actual enums
@@ -86,7 +86,7 @@ async def add_calibration_record(record_data: CalibrationRecordCreate):
             adjustments_made=record_data.adjustments_made,
             out_of_tolerance_items=record_data.out_of_tolerance_items,
             notes=record_data.notes,
-            certificate_number=record_data.certificate_number
+            certificate_number=record_data.certificate_number,
         )
 
         added_record = await cal_manager.add_calibration_record(record)
@@ -94,7 +94,7 @@ async def add_calibration_record(record_data: CalibrationRecordCreate):
         return {
             "success": True,
             "calibration_id": added_record.calibration_id,
-            "record": added_record.dict()
+            "record": added_record.dict(),
         }
 
     except ValueError as e:
@@ -110,7 +110,9 @@ async def get_calibration_history(equipment_id: str, limit: Optional[int] = None
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         history = await cal_manager.get_calibration_history(equipment_id, limit)
@@ -119,7 +121,7 @@ async def get_calibration_history(equipment_id: str, limit: Optional[int] = None
             "success": True,
             "equipment_id": equipment_id,
             "count": len(history),
-            "records": [record.dict() for record in history]
+            "records": [record.dict() for record in history],
         }
 
     except Exception as e:
@@ -127,13 +129,17 @@ async def get_calibration_history(equipment_id: str, limit: Optional[int] = None
         raise HTTPException(status_code=500, detail=f"Failed to get history: {str(e)}")
 
 
-@router.get("/calibration/records/{equipment_id}/latest", summary="Get latest calibration")
+@router.get(
+    "/calibration/records/{equipment_id}/latest", summary="Get latest calibration"
+)
 async def get_latest_calibration(equipment_id: str):
     """Get most recent calibration record."""
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         latest = await cal_manager.get_latest_calibration(equipment_id)
@@ -143,45 +149,56 @@ async def get_latest_calibration(equipment_id: str):
                 "success": True,
                 "equipment_id": equipment_id,
                 "has_calibration": False,
-                "record": None
+                "record": None,
             }
 
         return {
             "success": True,
             "equipment_id": equipment_id,
             "has_calibration": True,
-            "record": latest.dict()
+            "record": latest.dict(),
         }
 
     except Exception as e:
         logger.error(f"Error getting latest calibration: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get calibration: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get calibration: {str(e)}"
+        )
 
 
-@router.delete("/calibration/records/{equipment_id}/{calibration_id}", summary="Delete calibration record")
+@router.delete(
+    "/calibration/records/{equipment_id}/{calibration_id}",
+    summary="Delete calibration record",
+)
 async def delete_calibration_record(equipment_id: str, calibration_id: str):
     """Delete a calibration record."""
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
-        deleted = await cal_manager.delete_calibration_record(equipment_id, calibration_id)
+        deleted = await cal_manager.delete_calibration_record(
+            equipment_id, calibration_id
+        )
 
         if not deleted:
             raise HTTPException(status_code=404, detail="Calibration record not found")
 
         return {
             "success": True,
-            "message": f"Calibration record {calibration_id} deleted"
+            "message": f"Calibration record {calibration_id} deleted",
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting calibration record: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete record: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete record: {str(e)}"
+        )
 
 
 # ==================== Calibration Status Endpoints ====================
@@ -193,7 +210,9 @@ async def get_calibration_status(equipment_id: str):
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         status = await cal_manager.get_calibration_status(equipment_id)
@@ -208,7 +227,7 @@ async def get_calibration_status(equipment_id: str):
             "is_current": is_current,
             "days_until_due": days_until_due,
             "last_calibration_date": latest.calibration_date if latest else None,
-            "next_due_date": latest.due_date if latest else None
+            "next_due_date": latest.due_date if latest else None,
         }
 
     except Exception as e:
@@ -222,20 +241,20 @@ async def get_due_calibrations(include_due_soon: bool = True):
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         due_list = await cal_manager.get_due_calibrations(include_due_soon)
 
-        return {
-            "success": True,
-            "count": len(due_list),
-            "equipment": due_list
-        }
+        return {"success": True, "count": len(due_list), "equipment": due_list}
 
     except Exception as e:
         logger.error(f"Error getting due calibrations: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get due calibrations: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get due calibrations: {str(e)}"
+        )
 
 
 # ==================== Calibration Schedule Endpoints ====================
@@ -247,7 +266,9 @@ async def set_calibration_schedule(schedule_data: CalibrationScheduleCreate):
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         schedule = CalibrationSchedule(
@@ -257,7 +278,7 @@ async def set_calibration_schedule(schedule_data: CalibrationScheduleCreate):
             auto_schedule=schedule_data.auto_schedule,
             notify_due_soon=schedule_data.notify_due_soon,
             notify_overdue=schedule_data.notify_overdue,
-            notification_emails=schedule_data.notification_emails
+            notification_emails=schedule_data.notification_emails,
         )
 
         await cal_manager.set_calibration_schedule(schedule)
@@ -265,7 +286,7 @@ async def set_calibration_schedule(schedule_data: CalibrationScheduleCreate):
         return {
             "success": True,
             "message": "Calibration schedule set",
-            "schedule": schedule.dict()
+            "schedule": schedule.dict(),
         }
 
     except Exception as e:
@@ -279,7 +300,9 @@ async def get_calibration_schedule(equipment_id: str):
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         schedule = await cal_manager.get_calibration_schedule(equipment_id)
@@ -289,14 +312,14 @@ async def get_calibration_schedule(equipment_id: str):
                 "success": True,
                 "equipment_id": equipment_id,
                 "has_schedule": False,
-                "schedule": None
+                "schedule": None,
             }
 
         return {
             "success": True,
             "equipment_id": equipment_id,
             "has_schedule": True,
-            "schedule": schedule.dict()
+            "schedule": schedule.dict(),
         }
 
     except Exception as e:
@@ -304,13 +327,17 @@ async def get_calibration_schedule(equipment_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get schedule: {str(e)}")
 
 
-@router.delete("/calibration/schedules/{equipment_id}", summary="Delete calibration schedule")
+@router.delete(
+    "/calibration/schedules/{equipment_id}", summary="Delete calibration schedule"
+)
 async def delete_calibration_schedule(equipment_id: str):
     """Delete calibration schedule."""
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         deleted = await cal_manager.delete_calibration_schedule(equipment_id)
@@ -320,14 +347,16 @@ async def delete_calibration_schedule(equipment_id: str):
 
         return {
             "success": True,
-            "message": f"Calibration schedule deleted for {equipment_id}"
+            "message": f"Calibration schedule deleted for {equipment_id}",
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting calibration schedule: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete schedule: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete schedule: {str(e)}"
+        )
 
 
 # ==================== Calibration Reporting ====================
@@ -339,16 +368,17 @@ async def generate_calibration_report(equipment_ids: Optional[List[str]] = None)
     cal_manager = get_calibration_manager()
 
     if not cal_manager:
-        raise HTTPException(status_code=503, detail="Calibration manager not initialized")
+        raise HTTPException(
+            status_code=503, detail="Calibration manager not initialized"
+        )
 
     try:
         report = await cal_manager.generate_calibration_report(equipment_ids)
 
-        return {
-            "success": True,
-            "report": report
-        }
+        return {"success": True, "report": report}
 
     except Exception as e:
         logger.error(f"Error generating calibration report: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate report: {str(e)}"
+        )

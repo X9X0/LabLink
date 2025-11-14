@@ -1,15 +1,15 @@
 """Alarm monitoring panel for LabLink GUI."""
 
-import logging
 import asyncio
-from typing import Optional, Dict, Set
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
-from PyQt6.QtGui import QColor
+import logging
+from typing import Dict, Optional, Set
+
 import qasync
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QPushButton,
+                             QTableWidget, QTableWidgetItem, QVBoxLayout,
+                             QWidget)
 
 from client.api.client import LabLinkClient
 
@@ -51,10 +51,12 @@ class AlarmPanel(QWidget):
         # Active alarms table
         self.alarms_table = QTableWidget()
         self.alarms_table.setColumnCount(5)
-        self.alarms_table.setHorizontalHeaderLabels([
-            "Event ID", "Alarm Name", "Severity", "Status", "Timestamp"
-        ])
-        self.alarms_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.alarms_table.setHorizontalHeaderLabels(
+            ["Event ID", "Alarm Name", "Severity", "Status", "Timestamp"]
+        )
+        self.alarms_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.alarms_table)
 
         # Buttons
@@ -94,7 +96,7 @@ class AlarmPanel(QWidget):
             logger.info("Registering WebSocket alarm event handlers")
             # The WebSocket manager should have methods to subscribe to alarm events
             # For now, we'll use a generic message handler
-            if hasattr(self.client.ws_manager, 'on_alarm_event'):
+            if hasattr(self.client.ws_manager, "on_alarm_event"):
                 self.client.ws_manager.on_alarm_event(self._ws_alarm_callback)
             logger.info("Registered WebSocket alarm handlers for alarm panel")
         except Exception as e:
@@ -130,7 +132,9 @@ class AlarmPanel(QWidget):
         Args:
             event: Alarm event data
         """
-        logger.info(f"Received alarm event: {event.get('event_id')} - {event.get('alarm_name')}")
+        logger.info(
+            f"Received alarm event: {event.get('event_id')} - {event.get('alarm_name')}"
+        )
 
         # Refresh the entire table to show new alarm
         # In a more optimized version, we could just add the single row
@@ -168,8 +172,12 @@ class AlarmPanel(QWidget):
             self.alarms_table.setRowCount(len(events))
 
             for row, event in enumerate(events):
-                self.alarms_table.setItem(row, 0, QTableWidgetItem(event.get("event_id", "")))
-                self.alarms_table.setItem(row, 1, QTableWidgetItem(event.get("alarm_name", "")))
+                self.alarms_table.setItem(
+                    row, 0, QTableWidgetItem(event.get("event_id", ""))
+                )
+                self.alarms_table.setItem(
+                    row, 1, QTableWidgetItem(event.get("alarm_name", ""))
+                )
 
                 severity = event.get("severity", "")
                 severity_item = QTableWidgetItem(severity)
@@ -183,8 +191,12 @@ class AlarmPanel(QWidget):
                     severity_item.setBackground(QColor(255, 255, 200))
 
                 self.alarms_table.setItem(row, 2, severity_item)
-                self.alarms_table.setItem(row, 3, QTableWidgetItem(event.get("state", "")))
-                self.alarms_table.setItem(row, 4, QTableWidgetItem(event.get("timestamp", "")))
+                self.alarms_table.setItem(
+                    row, 3, QTableWidgetItem(event.get("state", ""))
+                )
+                self.alarms_table.setItem(
+                    row, 4, QTableWidgetItem(event.get("timestamp", ""))
+                )
 
         except Exception as e:
             logger.error(f"Error refreshing alarms: {e}")

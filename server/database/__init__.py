@@ -8,15 +8,10 @@ This module provides centralized data storage using SQLite for:
 - Historical data search and query
 """
 
-from .models import (
-    CommandRecord,
-    MeasurementRecord,
-    EquipmentUsageRecord,
-    DataSessionRecord,
-    DatabaseConfig,
-)
 from .manager import DatabaseManager
 from .migrations import MigrationManager
+from .models import (CommandRecord, DatabaseConfig, DataSessionRecord,
+                     EquipmentUsageRecord, MeasurementRecord)
 
 __all__ = [
     "CommandRecord",
@@ -57,5 +52,7 @@ def get_database_manager() -> DatabaseManager:
         RuntimeError: If database manager not initialized
     """
     if _db_manager is None:
-        raise RuntimeError("Database manager not initialized. Call initialize_database_manager() first.")
+        raise RuntimeError(
+            "Database manager not initialized. Call initialize_database_manager() first."
+        )
     return _db_manager

@@ -1,12 +1,10 @@
 """Login dialog for LabLink server authentication."""
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QPushButton, QCheckBox,
-    QDialogButtonBox, QGroupBox, QMessageBox
-)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QMessageBox, QPushButton, QVBoxLayout)
 
 
 class LoginDialog(QDialog):
@@ -94,7 +92,9 @@ class LoginDialog(QDialog):
             "Password: LabLink@2025<br>"
             "<i>Change password after first login!</i></small>"
         )
-        info_label.setStyleSheet("background-color: #f0f0f0; padding: 10px; border-radius: 5px;")
+        info_label.setStyleSheet(
+            "background-color: #f0f0f0; padding: 10px; border-radius: 5px;"
+        )
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
@@ -116,6 +116,7 @@ class LoginDialog(QDialog):
         """Load saved credentials if remember me was enabled."""
         try:
             from PyQt6.QtCore import QSettings
+
             settings = QSettings("LabLink", "Client")
 
             if settings.value("remember_me", False, type=bool):
@@ -136,6 +137,7 @@ class LoginDialog(QDialog):
         """Save credentials if remember me is enabled."""
         try:
             from PyQt6.QtCore import QSettings
+
             settings = QSettings("LabLink", "Client")
 
             if self.remember_me_checkbox.isChecked():
@@ -190,7 +192,9 @@ class LoginDialog(QDialog):
             if "401" in error_msg or "Unauthorized" in error_msg:
                 self._show_error("Invalid username or password")
             elif "connection" in error_msg.lower():
-                self._show_error("Cannot connect to server. Please check your connection.")
+                self._show_error(
+                    "Cannot connect to server. Please check your connection."
+                )
             else:
                 self._show_error(f"Login failed: {error_msg}")
 

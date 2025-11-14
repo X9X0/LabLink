@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from server.equipment.manager import equipment_manager
-from server.equipment.state import state_manager, EquipmentState, StateDiff
+from server.equipment.state import EquipmentState, StateDiff, state_manager
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,10 @@ router = APIRouter(prefix="/state", tags=["Equipment State Management"])
 # Request/Response Models
 # ============================================================================
 
+
 class CaptureStateRequest(BaseModel):
     """Request to capture equipment state."""
+
     equipment_id: str
     name: Optional[str] = Field(None, description="Optional name for the state")
     description: Optional[str] = Field(None, description="Optional description")
@@ -29,6 +31,7 @@ class CaptureStateRequest(BaseModel):
 
 class RestoreStateRequest(BaseModel):
     """Request to restore equipment state."""
+
     equipment_id: str
     state_id: Optional[str] = None
     state_name: Optional[str] = None
@@ -36,12 +39,14 @@ class RestoreStateRequest(BaseModel):
 
 class CompareStatesRequest(BaseModel):
     """Request to compare two states."""
+
     state_id_1: str
     state_id_2: str
 
 
 class StateResponse(BaseModel):
     """Equipment state response."""
+
     state_id: str
     equipment_id: str
     equipment_type: str
@@ -56,6 +61,7 @@ class StateResponse(BaseModel):
 
 class StateDiffResponse(BaseModel):
     """State comparison response."""
+
     state_id_1: str
     state_id_2: str
     equipment_id: str
@@ -71,6 +77,7 @@ class StateDiffResponse(BaseModel):
 # State Capture & Restore Endpoints
 # ============================================================================
 
+
 @router.post("/capture", summary="Capture equipment state")
 async def capture_state(request: CaptureStateRequest):
     """
@@ -85,8 +92,7 @@ async def capture_state(request: CaptureStateRequest):
         equipment = equipment_manager.get_equipment(request.equipment_id)
         if not equipment:
             raise HTTPException(
-                status_code=404,
-                detail=f"Equipment {request.equipment_id} not found"
+                status_code=404, detail=f"Equipment {request.equipment_id} not found"
             )
 
         state = await state_manager.capture_state(
@@ -94,7 +100,7 @@ async def capture_state(request: CaptureStateRequest):
             name=request.name,
             description=request.description,
             tags=request.tags,
-            save_to_disk=request.save_to_disk
+            save_to_disk=request.save_to_disk,
         )
 
         return {
@@ -110,8 +116,8 @@ async def capture_state(request: CaptureStateRequest):
                 description=state.description,
                 tags=state.tags,
                 state_data=state.state_data,
-                metadata=state.metadata
-            ).dict()
+                metadata=state.metadata,
+            ).dict(),
         }
 
     except HTTPException:
@@ -119,8 +125,7 @@ async def capture_state(request: CaptureStateRequest):
     except Exception as e:
         logger.error(f"Error capturing state: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to capture state: {str(e)}"
+            status_code=500, detail=f"Failed to capture state: {str(e)}"
         )
 
 
@@ -137,33 +142,28 @@ async def restore_state(request: RestoreStateRequest):
         equipment = equipment_manager.get_equipment(request.equipment_id)
         if not equipment:
             raise HTTPException(
-                status_code=404,
-                detail=f"Equipment {request.equipment_id} not found"
+                status_code=404, detail=f"Equipment {request.equipment_id} not found"
             )
 
         if not request.state_id and not request.state_name:
             raise HTTPException(
-                status_code=400,
-                detail="Must provide state_id or state_name"
+                status_code=400, detail="Must provide state_id or state_name"
             )
 
         success = await state_manager.restore_state(
             equipment=equipment,
             state_id=request.state_id,
-            state_name=request.state_name
+            state_name=request.state_name,
         )
 
         if success:
             return {
                 "success": True,
                 "message": "State restored successfully",
-                "equipment_id": request.equipment_id
+                "equipment_id": request.equipment_id,
             }
         else:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to restore state"
-            )
+            raise HTTPException(status_code=500, detail="Failed to restore state")
 
     except HTTPException:
         raise
@@ -172,14 +172,14 @@ async def restore_state(request: RestoreStateRequest):
     except Exception as e:
         logger.error(f"Error restoring state: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to restore state: {str(e)}"
+            status_code=500, detail=f"Failed to restore state: {str(e)}"
         )
 
 
 # ============================================================================
 # State Query Endpoints
 # ============================================================================
+
 
 @router.get("/get/{state_id}", summary="Get state by ID")
 async def get_state(state_id: str):
@@ -190,10 +190,7 @@ async def get_state(state_id: str):
         state = state_manager.get_state(state_id)
 
         if not state:
-            raise HTTPException(
-                status_code=404,
-                detail=f"State {state_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"State {state_id} not found")
 
         return StateResponse(
             state_id=state.state_id,
@@ -205,23 +202,22 @@ async def get_state(state_id: str):
             description=state.description,
             tags=state.tags,
             state_data=state.state_data,
-            metadata=state.metadata
+            metadata=state.metadata,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting state: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get state: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get state: {str(e)}")
 
 
 @router.get("/list/{equipment_id}", summary="List equipment states")
 async def list_equipment_states(
     equipment_id: str,
-    limit: int = Query(default=50, ge=1, le=1000, description="Maximum number of states to return")
+    limit: int = Query(
+        default=50, ge=1, le=1000, description="Maximum number of states to return"
+    ),
 ):
     """
     Get all captured states for specific equipment.
@@ -244,19 +240,16 @@ async def list_equipment_states(
                     description=s.description,
                     tags=s.tags,
                     state_data=s.state_data,
-                    metadata=s.metadata
+                    metadata=s.metadata,
                 ).dict()
                 for s in states
             ],
-            "count": len(states)
+            "count": len(states),
         }
 
     except Exception as e:
         logger.error(f"Error listing states: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list states: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list states: {str(e)}")
 
 
 @router.get("/named/{equipment_id}", summary="Get named states")
@@ -278,20 +271,19 @@ async def get_named_states(equipment_id: str):
                     "state_id": state.state_id,
                     "timestamp": state.timestamp.isoformat(),
                     "description": state.description,
-                    "tags": state.tags
+                    "tags": state.tags,
                 }
 
         return {
             "equipment_id": equipment_id,
             "named_states": states_info,
-            "count": len(states_info)
+            "count": len(states_info),
         }
 
     except Exception as e:
         logger.error(f"Error getting named states: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get named states: {str(e)}"
+            status_code=500, detail=f"Failed to get named states: {str(e)}"
         )
 
 
@@ -306,7 +298,7 @@ async def get_named_state(equipment_id: str, name: str):
         if not state:
             raise HTTPException(
                 status_code=404,
-                detail=f"Named state '{name}' not found for equipment {equipment_id}"
+                detail=f"Named state '{name}' not found for equipment {equipment_id}",
             )
 
         return StateResponse(
@@ -319,7 +311,7 @@ async def get_named_state(equipment_id: str, name: str):
             description=state.description,
             tags=state.tags,
             state_data=state.state_data,
-            metadata=state.metadata
+            metadata=state.metadata,
         )
 
     except HTTPException:
@@ -327,14 +319,14 @@ async def get_named_state(equipment_id: str, name: str):
     except Exception as e:
         logger.error(f"Error getting named state: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get named state: {str(e)}"
+            status_code=500, detail=f"Failed to get named state: {str(e)}"
         )
 
 
 # ============================================================================
 # State Comparison Endpoints
 # ============================================================================
+
 
 @router.post("/compare", summary="Compare two states")
 async def compare_states(request: CompareStatesRequest):
@@ -353,14 +345,12 @@ async def compare_states(request: CompareStatesRequest):
 
         if not state1:
             raise HTTPException(
-                status_code=404,
-                detail=f"State {request.state_id_1} not found"
+                status_code=404, detail=f"State {request.state_id_1} not found"
             )
 
         if not state2:
             raise HTTPException(
-                status_code=404,
-                detail=f"State {request.state_id_2} not found"
+                status_code=404, detail=f"State {request.state_id_2} not found"
             )
 
         diff = state_manager.compare_states(state1, state2)
@@ -372,7 +362,7 @@ async def compare_states(request: CompareStatesRequest):
             "removed_count": len(diff.removed),
             "modified_count": len(diff.modified),
             "unchanged_count": len(diff.unchanged),
-            "has_differences": bool(diff.added or diff.removed or diff.modified)
+            "has_differences": bool(diff.added or diff.removed or diff.modified),
         }
 
         return StateDiffResponse(
@@ -384,7 +374,7 @@ async def compare_states(request: CompareStatesRequest):
             removed=diff.removed,
             modified=diff.modified,
             unchanged=diff.unchanged,
-            summary=summary
+            summary=summary,
         )
 
     except HTTPException:
@@ -394,14 +384,14 @@ async def compare_states(request: CompareStatesRequest):
     except Exception as e:
         logger.error(f"Error comparing states: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to compare states: {str(e)}"
+            status_code=500, detail=f"Failed to compare states: {str(e)}"
         )
 
 
 # ============================================================================
 # State Management Endpoints
 # ============================================================================
+
 
 @router.delete("/delete/{state_id}", summary="Delete state")
 async def delete_state(state_id: str):
@@ -417,22 +407,16 @@ async def delete_state(state_id: str):
             return {
                 "success": True,
                 "message": "State deleted successfully",
-                "state_id": state_id
+                "state_id": state_id,
             }
         else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"State {state_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"State {state_id} not found")
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting state: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete state: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete state: {str(e)}")
 
 
 @router.post("/export/{state_id}", summary="Export state")
@@ -445,19 +429,13 @@ async def export_state(state_id: str):
     try:
         state_dict = state_manager.export_state(state_id)
 
-        return {
-            "success": True,
-            "state": state_dict
-        }
+        return {"success": True, "state": state_dict}
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error exporting state: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to export state: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to export state: {str(e)}")
 
 
 @router.post("/import", summary="Import state")
@@ -474,25 +452,22 @@ async def import_state(state_dict: dict):
             "success": True,
             "message": "State imported successfully",
             "state_id": state.state_id,
-            "equipment_id": state.equipment_id
+            "equipment_id": state.equipment_id,
         }
 
     except Exception as e:
         logger.error(f"Error importing state: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to import state: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to import state: {str(e)}")
 
 
 # ============================================================================
 # Version Management Endpoints
 # ============================================================================
 
+
 @router.post("/version/create/{equipment_id}", summary="Create state version")
 async def create_state_version(
-    equipment_id: str,
-    change_description: Optional[str] = None
+    equipment_id: str, change_description: Optional[str] = None
 ):
     """
     Create a versioned snapshot of current equipment state.
@@ -503,22 +478,19 @@ async def create_state_version(
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
             raise HTTPException(
-                status_code=404,
-                detail=f"Equipment {equipment_id} not found"
+                status_code=404, detail=f"Equipment {equipment_id} not found"
             )
 
         # Capture current state
         state = await state_manager.capture_state(
-            equipment=equipment,
-            description=change_description,
-            save_to_disk=True
+            equipment=equipment, description=change_description, save_to_disk=True
         )
 
         # Create version
         version = state_manager.create_version(
             equipment_id=equipment_id,
             state=state,
-            change_description=change_description
+            change_description=change_description,
         )
 
         return {
@@ -526,7 +498,7 @@ async def create_state_version(
             "message": "Version created successfully",
             "version_id": version.version_id,
             "version_number": version.version_number,
-            "state_id": state.state_id
+            "state_id": state.state_id,
         }
 
     except HTTPException:
@@ -534,8 +506,7 @@ async def create_state_version(
     except Exception as e:
         logger.error(f"Error creating version: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create version: {str(e)}"
+            status_code=500, detail=f"Failed to create version: {str(e)}"
         )
 
 
@@ -556,22 +527,23 @@ async def list_state_versions(equipment_id: str):
                     "state_id": v.state.state_id,
                     "parent_version_id": v.parent_version_id,
                     "change_description": v.change_description,
-                    "created_at": v.created_at.isoformat()
+                    "created_at": v.created_at.isoformat(),
                 }
                 for v in versions
             ],
-            "count": len(versions)
+            "count": len(versions),
         }
 
     except Exception as e:
         logger.error(f"Error listing versions: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list versions: {str(e)}"
+            status_code=500, detail=f"Failed to list versions: {str(e)}"
         )
 
 
-@router.get("/version/get/{equipment_id}/{version_number}", summary="Get specific version")
+@router.get(
+    "/version/get/{equipment_id}/{version_number}", summary="Get specific version"
+)
 async def get_state_version(equipment_id: str, version_number: int):
     """
     Get a specific state version.
@@ -582,7 +554,7 @@ async def get_state_version(equipment_id: str, version_number: int):
         if not version:
             raise HTTPException(
                 status_code=404,
-                detail=f"Version {version_number} not found for equipment {equipment_id}"
+                detail=f"Version {version_number} not found for equipment {equipment_id}",
             )
 
         return {
@@ -602,15 +574,12 @@ async def get_state_version(equipment_id: str, version_number: int):
                 description=version.state.description,
                 tags=version.state.tags,
                 state_data=version.state.state_data,
-                metadata=version.state.metadata
-            ).dict()
+                metadata=version.state.metadata,
+            ).dict(),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting version: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get version: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get version: {str(e)}")

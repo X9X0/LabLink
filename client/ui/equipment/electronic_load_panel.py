@@ -1,23 +1,24 @@
 """Electronic load-specific control panel."""
 
+import asyncio
 import logging
 from typing import Optional
-import asyncio
 
 try:
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
-        QPushButton, QDoubleSpinBox, QCheckBox, QFormLayout,
-        QTabWidget, QComboBox, QSlider
-    )
     from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
+                                 QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+                                 QPushButton, QSlider, QTabWidget, QVBoxLayout,
+                                 QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from client.api.client import LabLinkClient
 from client.ui.widgets.power_chart_widget import PowerChartWidget
@@ -93,12 +94,14 @@ class ElectronicLoadPanel(QWidget):
         mode_select_layout.addWidget(QLabel("Mode:"))
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems([
-            "CC - Constant Current",
-            "CV - Constant Voltage",
-            "CR - Constant Resistance",
-            "CP - Constant Power"
-        ])
+        self.mode_combo.addItems(
+            [
+                "CC - Constant Current",
+                "CV - Constant Voltage",
+                "CR - Constant Resistance",
+                "CP - Constant Power",
+            ]
+        )
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         mode_select_layout.addWidget(self.mode_combo)
 
@@ -131,9 +134,13 @@ class ElectronicLoadPanel(QWidget):
 
         self.current_slider = QSlider(Qt.Orientation.Horizontal)
         self.current_slider.setRange(0, 30000)  # mA
-        self.current_slider.valueChanged.connect(lambda v: self.current_spin.setValue(v/1000.0))
+        self.current_slider.valueChanged.connect(
+            lambda v: self.current_spin.setValue(v / 1000.0)
+        )
         current_layout.addWidget(self.current_slider)
-        self.current_spin.valueChanged.connect(lambda v: self.current_slider.setValue(int(v*1000)))
+        self.current_spin.valueChanged.connect(
+            lambda v: self.current_slider.setValue(int(v * 1000))
+        )
 
         setpoint_layout.addWidget(self.current_widget)
 
@@ -156,9 +163,13 @@ class ElectronicLoadPanel(QWidget):
 
         self.voltage_slider = QSlider(Qt.Orientation.Horizontal)
         self.voltage_slider.setRange(0, 120000)  # mV
-        self.voltage_slider.valueChanged.connect(lambda v: self.voltage_spin.setValue(v/1000.0))
+        self.voltage_slider.valueChanged.connect(
+            lambda v: self.voltage_spin.setValue(v / 1000.0)
+        )
         voltage_layout.addWidget(self.voltage_slider)
-        self.voltage_spin.valueChanged.connect(lambda v: self.voltage_slider.setValue(int(v*1000)))
+        self.voltage_spin.valueChanged.connect(
+            lambda v: self.voltage_slider.setValue(int(v * 1000))
+        )
 
         self.voltage_widget.hide()
         setpoint_layout.addWidget(self.voltage_widget)
@@ -202,9 +213,13 @@ class ElectronicLoadPanel(QWidget):
 
         self.power_slider = QSlider(Qt.Orientation.Horizontal)
         self.power_slider.setRange(0, 300000)  # mW
-        self.power_slider.valueChanged.connect(lambda v: self.power_spin.setValue(v/1000.0))
+        self.power_slider.valueChanged.connect(
+            lambda v: self.power_spin.setValue(v / 1000.0)
+        )
         power_layout.addWidget(self.power_slider)
-        self.power_spin.valueChanged.connect(lambda v: self.power_slider.setValue(int(v*1000)))
+        self.power_spin.valueChanged.connect(
+            lambda v: self.power_slider.setValue(int(v * 1000))
+        )
 
         self.power_widget.hide()
         setpoint_layout.addWidget(self.power_widget)
@@ -218,17 +233,23 @@ class ElectronicLoadPanel(QWidget):
 
         measurements_layout.addWidget(QLabel("<b>Voltage:</b>"), 0, 0)
         self.voltage_actual_label = QLabel("0.000 V")
-        self.voltage_actual_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #FF0000;")
+        self.voltage_actual_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #FF0000;"
+        )
         measurements_layout.addWidget(self.voltage_actual_label, 0, 1)
 
         measurements_layout.addWidget(QLabel("<b>Current:</b>"), 1, 0)
         self.current_actual_label = QLabel("0.000 A")
-        self.current_actual_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;")
+        self.current_actual_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #00FF00;"
+        )
         measurements_layout.addWidget(self.current_actual_label, 1, 1)
 
         measurements_layout.addWidget(QLabel("<b>Power:</b>"), 2, 0)
         self.power_actual_label = QLabel("0.000 W")
-        self.power_actual_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #0000FF;")
+        self.power_actual_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #0000FF;"
+        )
         measurements_layout.addWidget(self.power_actual_label, 2, 1)
 
         measurements_group.setLayout(measurements_layout)
@@ -249,7 +270,9 @@ class ElectronicLoadPanel(QWidget):
         actions_layout = QHBoxLayout()
 
         self.apply_btn = QPushButton("Apply Settings")
-        self.apply_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
+        self.apply_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;"
+        )
         self.apply_btn.clicked.connect(self._on_apply_settings)
         self.apply_btn.setEnabled(False)
         actions_layout.addWidget(self.apply_btn)
@@ -301,9 +324,11 @@ class ElectronicLoadPanel(QWidget):
         self.equipment_id = equipment_id
 
         # Update info
-        model = info.get('model', 'Unknown')
-        manufacturer = info.get('manufacturer', 'Unknown')
-        self.info_label.setText(f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})")
+        model = info.get("model", "Unknown")
+        manufacturer = info.get("manufacturer", "Unknown")
+        self.info_label.setText(
+            f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})"
+        )
 
         # Enable controls
         self.apply_btn.setEnabled(True)
@@ -335,7 +360,7 @@ class ElectronicLoadPanel(QWidget):
 
     def _on_input_changed(self, state: int):
         """Handle input checkbox change."""
-        enabled = (state == Qt.CheckState.Checked.value)
+        enabled = state == Qt.CheckState.Checked.value
         logger.info(f"Input changed: {enabled}")
 
     def _on_apply_settings(self):
@@ -359,18 +384,22 @@ class ElectronicLoadPanel(QWidget):
 
         input_enabled = self.input_checkbox.isChecked()
 
-        logger.info(f"Applying: mode={mode}, setpoint={setpoint}, input={input_enabled}")
+        logger.info(
+            f"Applying: mode={mode}, setpoint={setpoint}, input={input_enabled}"
+        )
 
         asyncio.create_task(self._apply_settings_async(mode, setpoint, input_enabled))
 
-    async def _apply_settings_async(self, mode: str, setpoint: float, input_enabled: bool):
+    async def _apply_settings_async(
+        self, mode: str, setpoint: float, input_enabled: bool
+    ):
         """Apply settings asynchronously."""
         try:
             # Set mode
             await self.client.send_command(
                 equipment_id=self.equipment_id,
                 command="set_mode",
-                parameters={"mode": mode}
+                parameters={"mode": mode},
             )
 
             # Set setpoint based on mode
@@ -378,32 +407,32 @@ class ElectronicLoadPanel(QWidget):
                 await self.client.send_command(
                     equipment_id=self.equipment_id,
                     command="set_current",
-                    parameters={"current": setpoint}
+                    parameters={"current": setpoint},
                 )
             elif mode == "CV":
                 await self.client.send_command(
                     equipment_id=self.equipment_id,
                     command="set_voltage",
-                    parameters={"voltage": setpoint}
+                    parameters={"voltage": setpoint},
                 )
             elif mode == "CR":
                 await self.client.send_command(
                     equipment_id=self.equipment_id,
                     command="set_resistance",
-                    parameters={"resistance": setpoint}
+                    parameters={"resistance": setpoint},
                 )
             else:  # CP
                 await self.client.send_command(
                     equipment_id=self.equipment_id,
                     command="set_power",
-                    parameters={"power": setpoint}
+                    parameters={"power": setpoint},
                 )
 
             # Set input
             await self.client.send_command(
                 equipment_id=self.equipment_id,
                 command="set_input",
-                parameters={"enabled": input_enabled}
+                parameters={"enabled": input_enabled},
             )
 
             self.status_label.setText("Status: Settings applied")
@@ -436,9 +465,7 @@ class ElectronicLoadPanel(QWidget):
         """Start streaming (async)."""
         try:
             await self.client.start_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="readings",
-                interval_ms=200
+                equipment_id=self.equipment_id, stream_type="readings", interval_ms=200
             )
 
             self.streaming = True
@@ -458,8 +485,7 @@ class ElectronicLoadPanel(QWidget):
         """Stop streaming (async)."""
         try:
             await self.client.stop_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="readings"
+                equipment_id=self.equipment_id, stream_type="readings"
             )
 
             self.streaming = False
@@ -473,35 +499,43 @@ class ElectronicLoadPanel(QWidget):
 
     def _on_readings_data(self, message: dict):
         """Handle incoming readings data."""
-        if message.get('equipment_id') != self.equipment_id:
+        if message.get("equipment_id") != self.equipment_id:
             return
 
-        if message.get('stream_type') != 'readings':
+        if message.get("stream_type") != "readings":
             return
 
-        data = message.get('data', {})
+        data = message.get("data", {})
 
         # Update displays
-        voltage = data.get('voltage', 0.0)
-        current = data.get('current', 0.0)
-        power = data.get('power', 0.0)
+        voltage = data.get("voltage", 0.0)
+        current = data.get("current", 0.0)
+        power = data.get("power", 0.0)
 
         self.voltage_actual_label.setText(f"{voltage:.3f} V")
         self.current_actual_label.setText(f"{current:.3f} A")
         self.power_actual_label.setText(f"{power:.3f} W")
 
         # Update mode
-        mode = data.get('mode', 'Unknown')
+        mode = data.get("mode", "Unknown")
         self.mode_label.setText(f"Mode: {mode}")
 
         if mode == "CC":
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #00FF00;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #00FF00;"
+            )
         elif mode == "CV":
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF0000;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #FF0000;"
+            )
         elif mode == "CR":
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #FFA500;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #FFA500;"
+            )
         elif mode == "CP":
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #0000FF;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #0000FF;"
+            )
 
         # Update chart
         self.chart.update_from_message(message)

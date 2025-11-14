@@ -1,22 +1,10 @@
 """Shared data models for LabLink client-server communication."""
 
-from .equipment import (
-    EquipmentType,
-    EquipmentInfo,
-    EquipmentStatus,
-    ConnectionType,
-)
-from .commands import (
-    Command,
-    CommandResponse,
-    DataStreamConfig,
-)
-from .data import (
-    WaveformData,
-    MeasurementData,
-    PowerSupplyData,
-    ElectronicLoadData,
-)
+from .commands import Command, CommandResponse, DataStreamConfig
+from .data import (ElectronicLoadData, MeasurementData, PowerSupplyData,
+                   WaveformData)
+from .equipment import (ConnectionType, EquipmentInfo, EquipmentStatus,
+                        EquipmentType)
 
 __all__ = [
     "EquipmentType",

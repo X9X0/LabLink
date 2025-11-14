@@ -3,24 +3,16 @@
 import asyncio
 import logging
 import time
-import psutil
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from .models import (
-    DiagnosticTest,
-    DiagnosticResult,
-    DiagnosticStatus,
-    DiagnosticCategory,
-    HealthStatus,
-    ConnectionDiagnostics,
-    CommunicationDiagnostics,
-    PerformanceBenchmark,
-    EquipmentHealth,
-    DiagnosticReport,
-    SystemDiagnostics,
-)
+import psutil
+
+from .models import (CommunicationDiagnostics, ConnectionDiagnostics,
+                     DiagnosticCategory, DiagnosticReport, DiagnosticResult,
+                     DiagnosticStatus, DiagnosticTest, EquipmentHealth,
+                     HealthStatus, PerformanceBenchmark, SystemDiagnostics)
 
 logger = logging.getLogger(__name__)
 
@@ -37,24 +29,28 @@ class DiagnosticsManager:
         self._max_benchmark_history = 100
 
         # Statistics tracking
-        self._connection_stats: Dict[str, Dict] = defaultdict(lambda: {
-            "connection_count": 0,
-            "disconnection_count": 0,
-            "total_uptime": 0,
-            "last_connected": None,
-            "errors": []
-        })
+        self._connection_stats: Dict[str, Dict] = defaultdict(
+            lambda: {
+                "connection_count": 0,
+                "disconnection_count": 0,
+                "total_uptime": 0,
+                "last_connected": None,
+                "errors": [],
+            }
+        )
 
-        self._communication_stats: Dict[str, Dict] = defaultdict(lambda: {
-            "total_commands": 0,
-            "successful": 0,
-            "failed": 0,
-            "timeouts": 0,
-            "retries": 0,
-            "response_times": [],
-            "bytes_sent": 0,
-            "bytes_received": 0
-        })
+        self._communication_stats: Dict[str, Dict] = defaultdict(
+            lambda: {
+                "total_commands": 0,
+                "successful": 0,
+                "failed": 0,
+                "timeouts": 0,
+                "retries": 0,
+                "response_times": [],
+                "bytes_sent": 0,
+                "bytes_received": 0,
+            }
+        )
 
         self._server_start_time = datetime.now()
 
@@ -70,7 +66,7 @@ class DiagnosticsManager:
                 equipment_id=equipment_id,
                 health_status=HealthStatus.OFFLINE,
                 health_score=0.0,
-                active_issues=["Equipment not found"]
+                active_issues=["Equipment not found"],
             )
 
         # Run all diagnostic tests
@@ -97,15 +93,23 @@ class DiagnosticsManager:
             recommendations.append("Check physical connections and power")
 
         if comm_diag.error_rate and comm_diag.error_rate > 5.0:
-            warnings.append(f"High communication error rate: {comm_diag.error_rate:.1f}%")
+            warnings.append(
+                f"High communication error rate: {comm_diag.error_rate:.1f}%"
+            )
             recommendations.append("Check cable quality and connection stability")
 
         if comm_diag.average_response_time_ms > 1000:
-            warnings.append(f"Slow response time: {comm_diag.average_response_time_ms:.0f}ms")
+            warnings.append(
+                f"Slow response time: {comm_diag.average_response_time_ms:.0f}ms"
+            )
             recommendations.append("Check network latency or equipment load")
 
         # Determine component statuses
-        connection_status = DiagnosticStatus.PASS if connection_diag.is_connected else DiagnosticStatus.FAIL
+        connection_status = (
+            DiagnosticStatus.PASS
+            if connection_diag.is_connected
+            else DiagnosticStatus.FAIL
+        )
         communication_status = self._get_communication_status(comm_diag)
         performance_status = self._get_performance_status(perf_benchmark)
         functionality_status = self._get_functionality_status(func_results)
@@ -125,9 +129,15 @@ class DiagnosticsManager:
             warnings=warnings,
             recommendations=recommendations,
             test_results=func_results,
-            passed_tests=len([r for r in func_results if r.status == DiagnosticStatus.PASS]),
-            failed_tests=len([r for r in func_results if r.status == DiagnosticStatus.FAIL]),
-            warning_tests=len([r for r in func_results if r.status == DiagnosticStatus.WARNING])
+            passed_tests=len(
+                [r for r in func_results if r.status == DiagnosticStatus.PASS]
+            ),
+            failed_tests=len(
+                [r for r in func_results if r.status == DiagnosticStatus.FAIL]
+            ),
+            warning_tests=len(
+                [r for r in func_results if r.status == DiagnosticStatus.WARNING]
+            ),
         )
 
         self._health_cache[equipment_id] = health
@@ -141,10 +151,7 @@ class DiagnosticsManager:
         stats = self._connection_stats[equipment_id]
 
         if not equipment:
-            return ConnectionDiagnostics(
-                equipment_id=equipment_id,
-                is_connected=False
-            )
+            return ConnectionDiagnostics(equipment_id=equipment_id, is_connected=False)
 
         # Measure response time
         start = time.time()
@@ -176,9 +183,11 @@ class DiagnosticsManager:
             disconnection_count=stats["disconnection_count"],
             last_error=stats["errors"][-1]["error"] if stats["errors"] else None,
             uptime_seconds=uptime,
-            visa_resource=equipment.resource_name if hasattr(equipment, 'resource_name') else None,
+            visa_resource=(
+                equipment.resource_name if hasattr(equipment, "resource_name") else None
+            ),
             response_time_ms=response_time_ms,
-            error_rate=error_rate
+            error_rate=error_rate,
         )
 
     async def _check_communication(self, equipment_id: str) -> CommunicationDiagnostics:
@@ -191,7 +200,9 @@ class DiagnosticsManager:
         failed = stats["failed"]
 
         response_times = stats["response_times"][-100:]  # Last 100
-        avg_response = sum(response_times) / len(response_times) if response_times else 0
+        avg_response = (
+            sum(response_times) / len(response_times) if response_times else 0
+        )
         min_response = min(response_times) if response_times else 0
         max_response = max(response_times) if response_times else 0
 
@@ -222,10 +233,12 @@ class DiagnosticsManager:
             bytes_received=stats["bytes_received"],
             data_transfer_rate_bps=data_rate,
             last_error=stats.get("last_error"),
-            error_history=error_history
+            error_history=error_history,
         )
 
-    async def _run_performance_benchmark(self, equipment_id: str) -> Optional[PerformanceBenchmark]:
+    async def _run_performance_benchmark(
+        self, equipment_id: str
+    ) -> Optional[PerformanceBenchmark]:
         """Run performance benchmarks on equipment."""
         from equipment.manager import equipment_manager
 
@@ -253,7 +266,9 @@ class DiagnosticsManager:
             valid_latencies = [l for l in command_latencies.values() if l > 0]
             if valid_latencies:
                 avg_latency = sum(valid_latencies) / len(valid_latencies)
-                throughput = 1000 / avg_latency if avg_latency > 0 else 0  # commands/sec
+                throughput = (
+                    1000 / avg_latency if avg_latency > 0 else 0
+                )  # commands/sec
 
         # System resources
         cpu_usage = psutil.cpu_percent(interval=0.1)
@@ -263,7 +278,9 @@ class DiagnosticsManager:
         # Performance score (simplified)
         perf_score = 100.0
         if command_latencies:
-            avg_latency = sum([l for l in command_latencies.values() if l > 0]) / len(command_latencies)
+            avg_latency = sum([l for l in command_latencies.values() if l > 0]) / len(
+                command_latencies
+            )
             # Penalize for slow responses
             if avg_latency > 100:
                 perf_score -= min(50, (avg_latency - 100) / 10)
@@ -274,7 +291,7 @@ class DiagnosticsManager:
             throughput_commands_per_sec=throughput,
             cpu_usage_percent=cpu_usage,
             memory_usage_mb=memory_usage,
-            performance_score=max(0, perf_score)
+            performance_score=max(0, perf_score),
         )
 
         # Store in history
@@ -299,7 +316,7 @@ class DiagnosticsManager:
             "IDN Query Test",
             equipment_id,
             lambda: equipment.query("*IDN?"),
-            expected="Equipment responds to identification query"
+            expected="Equipment responds to identification query",
         )
         results.append(result)
 
@@ -308,7 +325,7 @@ class DiagnosticsManager:
             "Operation Complete Test",
             equipment_id,
             lambda: equipment.query("*OPC?"),
-            expected="Equipment responds to operation complete query"
+            expected="Equipment responds to operation complete query",
         )
         results.append(result)
 
@@ -317,13 +334,15 @@ class DiagnosticsManager:
             "Error Query Test",
             equipment_id,
             lambda: equipment.query("SYST:ERR?"),
-            expected="Equipment can report errors"
+            expected="Equipment can report errors",
         )
         results.append(result)
 
         return results
 
-    async def _run_test(self, name: str, equipment_id: str, test_func, expected: str) -> DiagnosticResult:
+    async def _run_test(
+        self, name: str, equipment_id: str, test_func, expected: str
+    ) -> DiagnosticResult:
         """Run a single diagnostic test."""
         started_at = datetime.now()
 
@@ -340,7 +359,7 @@ class DiagnosticsManager:
                 completed_at=datetime.now(),
                 duration_seconds=duration,
                 message=f"Test passed: {expected}",
-                details={"result": str(result_value)}
+                details={"result": str(result_value)},
             )
 
         except Exception as e:
@@ -351,7 +370,7 @@ class DiagnosticsManager:
                 started_at=started_at,
                 completed_at=datetime.now(),
                 message=f"Test failed: {expected}",
-                error=str(e)
+                error=str(e),
             )
 
     def _calculate_health_score(
@@ -359,7 +378,7 @@ class DiagnosticsManager:
         connection: ConnectionDiagnostics,
         communication: CommunicationDiagnostics,
         performance: Optional[PerformanceBenchmark],
-        func_results: List[DiagnosticResult]
+        func_results: List[DiagnosticResult],
     ) -> float:
         """Calculate overall health score (0-100)."""
         score = 0.0
@@ -374,7 +393,9 @@ class DiagnosticsManager:
 
         # Communication (30 points)
         if communication.total_commands > 0:
-            success_rate = (communication.successful_commands / communication.total_commands) * 100
+            success_rate = (
+                communication.successful_commands / communication.total_commands
+            ) * 100
             score += (success_rate / 100) * 30
 
         # Performance (20 points)
@@ -401,7 +422,9 @@ class DiagnosticsManager:
         else:
             return HealthStatus.OFFLINE
 
-    def _get_communication_status(self, comm: CommunicationDiagnostics) -> DiagnosticStatus:
+    def _get_communication_status(
+        self, comm: CommunicationDiagnostics
+    ) -> DiagnosticStatus:
         """Get communication status from diagnostics."""
         if comm.total_commands == 0:
             return DiagnosticStatus.UNKNOWN
@@ -414,7 +437,9 @@ class DiagnosticsManager:
         else:
             return DiagnosticStatus.FAIL
 
-    def _get_performance_status(self, perf: Optional[PerformanceBenchmark]) -> DiagnosticStatus:
+    def _get_performance_status(
+        self, perf: Optional[PerformanceBenchmark]
+    ) -> DiagnosticStatus:
         """Get performance status from benchmark."""
         if not perf or not perf.performance_score:
             return DiagnosticStatus.UNKNOWN
@@ -426,7 +451,9 @@ class DiagnosticsManager:
         else:
             return DiagnosticStatus.FAIL
 
-    def _get_functionality_status(self, results: List[DiagnosticResult]) -> DiagnosticStatus:
+    def _get_functionality_status(
+        self, results: List[DiagnosticResult]
+    ) -> DiagnosticStatus:
         """Get functionality status from test results."""
         if not results:
             return DiagnosticStatus.UNKNOWN
@@ -446,7 +473,7 @@ class DiagnosticsManager:
     async def generate_diagnostic_report(
         self,
         equipment_ids: Optional[List[str]] = None,
-        categories: Optional[List[DiagnosticCategory]] = None
+        categories: Optional[List[DiagnosticCategory]] = None,
     ) -> DiagnosticReport:
         """Generate comprehensive diagnostic report."""
         from equipment.manager import equipment_manager
@@ -464,7 +491,9 @@ class DiagnosticsManager:
             equipment_health.append(health)
 
         # Calculate statistics
-        total_tests = sum(h.passed_tests + h.failed_tests + h.warning_tests for h in equipment_health)
+        total_tests = sum(
+            h.passed_tests + h.failed_tests + h.warning_tests for h in equipment_health
+        )
         passed_tests = sum(h.passed_tests for h in equipment_health)
         failed_tests = sum(h.failed_tests for h in equipment_health)
         warning_tests = sum(h.warning_tests for h in equipment_health)
@@ -508,7 +537,7 @@ class DiagnosticsManager:
             duration_seconds=duration,
             critical_issues=list(set(critical_issues)),
             warnings=list(set(warnings)),
-            recommendations=list(set(recommendations))
+            recommendations=list(set(recommendations)),
         )
 
     async def get_system_diagnostics(self) -> SystemDiagnostics:
@@ -539,7 +568,7 @@ class DiagnosticsManager:
         # System resources
         cpu_percent = psutil.cpu_percent(interval=0.1)
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
         uptime = (datetime.now() - self._server_start_time).total_seconds()
 
         return SystemDiagnostics(
@@ -553,7 +582,7 @@ class DiagnosticsManager:
             server_memory_percent=memory.percent,
             server_disk_percent=disk.percent,
             server_uptime_seconds=uptime,
-            equipment_health=equipment_health_status
+            equipment_health=equipment_health_status,
         )
 
     # ==================== Enhanced Diagnostics (v0.12.0) ====================
@@ -593,8 +622,8 @@ class DiagnosticsManager:
         Returns:
             Dictionary with error information
         """
-        from equipment.manager import equipment_manager
         from equipment.error_codes import get_error_code_db
+        from equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
@@ -605,11 +634,7 @@ class DiagnosticsManager:
             error_message = await equipment.get_error_message()
 
             if error_code is None:
-                return {
-                    "has_error": False,
-                    "error_code": None,
-                    "error_message": None
-                }
+                return {"has_error": False, "error_code": None, "error_message": None}
 
             # Get detailed error information from database
             error_db = get_error_code_db()
@@ -630,7 +655,7 @@ class DiagnosticsManager:
                 "has_error": True,
                 "error_code": error_code,
                 "error_message": error_message,
-                "error_info": error_info
+                "error_info": error_info,
             }
 
         except Exception as e:
@@ -659,7 +684,7 @@ class DiagnosticsManager:
                 status=DiagnosticStatus.ERROR,
                 started_at=started_at,
                 completed_at=datetime.now(),
-                error="Equipment not found"
+                error="Equipment not found",
             )
 
         try:
@@ -675,7 +700,7 @@ class DiagnosticsManager:
                     started_at=started_at,
                     completed_at=datetime.now(),
                     duration_seconds=duration,
-                    message="Self-test not supported by equipment"
+                    message="Self-test not supported by equipment",
                 )
 
             passed = result.get("passed", False)
@@ -689,7 +714,7 @@ class DiagnosticsManager:
                 completed_at=datetime.now(),
                 duration_seconds=duration,
                 message=f"Self-test {'passed' if passed else 'failed'}",
-                details=result
+                details=result,
             )
 
         except Exception as e:
@@ -699,7 +724,7 @@ class DiagnosticsManager:
                 status=DiagnosticStatus.ERROR,
                 started_at=started_at,
                 completed_at=datetime.now(),
-                error=str(e)
+                error=str(e),
             )
 
     async def check_calibration_status(self, equipment_id: str) -> Dict[str, Any]:
@@ -717,10 +742,7 @@ class DiagnosticsManager:
         cal_manager = get_calibration_manager()
 
         if not cal_manager:
-            return {
-                "error": "Calibration manager not initialized",
-                "status": "unknown"
-            }
+            return {"error": "Calibration manager not initialized", "status": "unknown"}
 
         try:
             status = await cal_manager.get_calibration_status(equipment_id)
@@ -732,9 +754,11 @@ class DiagnosticsManager:
                 "status": status.value,
                 "is_current": is_current,
                 "days_until_due": days_until_due,
-                "last_calibration_date": latest_record.calibration_date if latest_record else None,
+                "last_calibration_date": (
+                    latest_record.calibration_date if latest_record else None
+                ),
                 "next_due_date": latest_record.due_date if latest_record else None,
-                "last_result": latest_record.result.value if latest_record else None
+                "last_result": latest_record.result.value if latest_record else None,
             }
 
         except Exception as e:
@@ -767,12 +791,14 @@ class DiagnosticsManager:
             "temperature_celsius": None,
             "operating_hours": None,
             "error_info": None,
-            "calibration_status": None
+            "calibration_status": None,
         }
 
         try:
             # Temperature
-            diagnostics["temperature_celsius"] = await self.check_temperature(equipment_id)
+            diagnostics["temperature_celsius"] = await self.check_temperature(
+                equipment_id
+            )
 
             # Operating hours
             operating_hours = await equipment.get_operating_hours()
@@ -782,7 +808,9 @@ class DiagnosticsManager:
             diagnostics["error_info"] = await self.check_error_codes(equipment_id)
 
             # Calibration status
-            diagnostics["calibration_status"] = await self.check_calibration_status(equipment_id)
+            diagnostics["calibration_status"] = await self.check_calibration_status(
+                equipment_id
+            )
 
         except Exception as e:
             logger.error(f"Error gathering diagnostics for {equipment_id}: {e}")
@@ -812,7 +840,7 @@ class DiagnosticsManager:
         response_time_ms: float,
         bytes_sent: int = 0,
         bytes_received: int = 0,
-        error: Optional[str] = None
+        error: Optional[str] = None,
     ):
         """Record command execution statistics."""
         stats = self._communication_stats[equipment_id]
@@ -825,10 +853,9 @@ class DiagnosticsManager:
             if error:
                 if "error_list" not in stats:
                     stats["error_list"] = []
-                stats["error_list"].append({
-                    "timestamp": datetime.now(),
-                    "error": error
-                })
+                stats["error_list"].append(
+                    {"timestamp": datetime.now(), "error": error}
+                )
                 stats["last_error"] = error
 
         stats["response_times"].append(response_time_ms)
@@ -843,9 +870,7 @@ class DiagnosticsManager:
         return self._health_cache.get(equipment_id)
 
     def get_benchmark_history(
-        self,
-        equipment_id: str,
-        limit: int = 100
+        self, equipment_id: str, limit: int = 100
     ) -> List[PerformanceBenchmark]:
         """Get benchmark history for equipment."""
         benchmarks = self._benchmarks.get(equipment_id, [])

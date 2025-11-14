@@ -1,14 +1,14 @@
 """Scheduler management panel for LabLink GUI."""
 
-import logging
 import asyncio
-from typing import Optional, Dict, Set
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
+import logging
+from typing import Dict, Optional, Set
+
 import qasync
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QPushButton,
+                             QTableWidget, QTableWidgetItem, QVBoxLayout,
+                             QWidget)
 
 from client.api.client import LabLinkClient
 
@@ -53,10 +53,12 @@ class SchedulerPanel(QWidget):
         # Jobs table
         self.jobs_table = QTableWidget()
         self.jobs_table.setColumnCount(5)
-        self.jobs_table.setHorizontalHeaderLabels([
-            "Job ID", "Name", "Type", "Trigger", "Enabled"
-        ])
-        self.jobs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.jobs_table.setHorizontalHeaderLabels(
+            ["Job ID", "Name", "Type", "Trigger", "Enabled"]
+        )
+        self.jobs_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.jobs_table)
 
         # Buttons
@@ -98,7 +100,7 @@ class SchedulerPanel(QWidget):
             # If not implemented yet, this will fail gracefully
             logger.info("Registering WebSocket scheduler event handlers")
             # The WebSocket manager should have methods to subscribe to scheduler events
-            if hasattr(self.client.ws_manager, 'on_scheduler_event'):
+            if hasattr(self.client.ws_manager, "on_scheduler_event"):
                 self.client.ws_manager.on_scheduler_event(self._ws_scheduler_callback)
             logger.info("Registered WebSocket scheduler handlers for scheduler panel")
         except Exception as e:
@@ -204,9 +206,15 @@ class SchedulerPanel(QWidget):
             for row, job in enumerate(jobs):
                 self.jobs_table.setItem(row, 0, QTableWidgetItem(job.get("job_id", "")))
                 self.jobs_table.setItem(row, 1, QTableWidgetItem(job.get("name", "")))
-                self.jobs_table.setItem(row, 2, QTableWidgetItem(job.get("schedule_type", "")))
-                self.jobs_table.setItem(row, 3, QTableWidgetItem(job.get("trigger_type", "")))
-                self.jobs_table.setItem(row, 4, QTableWidgetItem(str(job.get("enabled", False))))
+                self.jobs_table.setItem(
+                    row, 2, QTableWidgetItem(job.get("schedule_type", ""))
+                )
+                self.jobs_table.setItem(
+                    row, 3, QTableWidgetItem(job.get("trigger_type", ""))
+                )
+                self.jobs_table.setItem(
+                    row, 4, QTableWidgetItem(str(job.get("enabled", False)))
+                )
 
         except Exception as e:
             logger.error(f"Error refreshing scheduler: {e}")

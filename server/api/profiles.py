@@ -2,10 +2,11 @@
 
 import logging
 from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from server.equipment.profiles import profile_manager, EquipmentProfile
+from server.equipment.profiles import EquipmentProfile, profile_manager
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ router = APIRouter()
 
 class ProfileCreateRequest(BaseModel):
     """Request to create a profile."""
+
     name: str
     description: Optional[str] = None
     equipment_type: str
@@ -24,12 +26,14 @@ class ProfileCreateRequest(BaseModel):
 
 class ProfileListResponse(BaseModel):
     """Response for profile list."""
+
     profiles: List[EquipmentProfile]
     count: int
 
 
 class ProfileResponse(BaseModel):
     """Response for single profile operations."""
+
     success: bool
     message: str
     profile: Optional[EquipmentProfile] = None
@@ -48,15 +52,12 @@ async def list_profiles(equipment_type: Optional[str] = None):
     """
     try:
         profiles = profile_manager.list_profiles(equipment_type=equipment_type)
-        return ProfileListResponse(
-            profiles=profiles,
-            count=len(profiles)
-        )
+        return ProfileListResponse(profiles=profiles, count=len(profiles))
     except Exception as e:
         logger.error(f"Error listing profiles: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list profiles: {str(e)}"
+            detail=f"Failed to list profiles: {str(e)}",
         )
 
 
@@ -77,13 +78,11 @@ async def get_profile(profile_name: str):
         if not profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Profile '{profile_name}' not found"
+                detail=f"Profile '{profile_name}' not found",
             )
 
         return ProfileResponse(
-            success=True,
-            message="Profile retrieved successfully",
-            profile=profile
+            success=True, message="Profile retrieved successfully", profile=profile
         )
 
     except HTTPException:
@@ -92,11 +91,13 @@ async def get_profile(profile_name: str):
         logger.error(f"Error getting profile: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get profile: {str(e)}"
+            detail=f"Failed to get profile: {str(e)}",
         )
 
 
-@router.post("/create", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/create", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_profile(request: ProfileCreateRequest):
     """
     Create a new equipment profile.
@@ -114,26 +115,26 @@ async def create_profile(request: ProfileCreateRequest):
             equipment_type=request.equipment_type,
             model=request.model,
             settings=request.settings,
-            tags=request.tags or []
+            tags=request.tags or [],
         )
 
         if profile_manager.save_profile(profile):
             return ProfileResponse(
                 success=True,
                 message=f"Profile '{request.name}' created successfully",
-                profile=profile
+                profile=profile,
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to save profile"
+                detail="Failed to save profile",
             )
 
     except Exception as e:
         logger.error(f"Error creating profile: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create profile: {str(e)}"
+            detail=f"Failed to create profile: {str(e)}",
         )
 
 
@@ -155,7 +156,7 @@ async def update_profile(profile_name: str, request: ProfileCreateRequest):
         if not existing_profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Profile '{profile_name}' not found"
+                detail=f"Profile '{profile_name}' not found",
             )
 
         # Create updated profile
@@ -166,7 +167,7 @@ async def update_profile(profile_name: str, request: ProfileCreateRequest):
             model=request.model,
             settings=request.settings,
             tags=request.tags or [],
-            created_at=existing_profile.created_at  # Preserve creation time
+            created_at=existing_profile.created_at,  # Preserve creation time
         )
 
         if profile_manager.save_profile(profile):
@@ -175,14 +176,12 @@ async def update_profile(profile_name: str, request: ProfileCreateRequest):
                 profile_manager.delete_profile(profile_name)
 
             return ProfileResponse(
-                success=True,
-                message=f"Profile updated successfully",
-                profile=profile
+                success=True, message=f"Profile updated successfully", profile=profile
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update profile"
+                detail="Failed to update profile",
             )
 
     except HTTPException:
@@ -191,7 +190,7 @@ async def update_profile(profile_name: str, request: ProfileCreateRequest):
         logger.error(f"Error updating profile: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update profile: {str(e)}"
+            detail=f"Failed to update profile: {str(e)}",
         )
 
 
@@ -209,13 +208,12 @@ async def delete_profile(profile_name: str):
     try:
         if profile_manager.delete_profile(profile_name):
             return ProfileResponse(
-                success=True,
-                message=f"Profile '{profile_name}' deleted successfully"
+                success=True, message=f"Profile '{profile_name}' deleted successfully"
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Profile '{profile_name}' not found"
+                detail=f"Profile '{profile_name}' not found",
             )
 
     except HTTPException:
@@ -224,7 +222,7 @@ async def delete_profile(profile_name: str):
         logger.error(f"Error deleting profile: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete profile: {str(e)}"
+            detail=f"Failed to delete profile: {str(e)}",
         )
 
 
@@ -247,18 +245,18 @@ async def apply_profile_to_equipment(profile_name: str, equipment_id: str):
         if not equipment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipment '{equipment_id}' not found"
+                detail=f"Equipment '{equipment_id}' not found",
             )
 
         if profile_manager.apply_profile(equipment, profile_name):
             return ProfileResponse(
                 success=True,
-                message=f"Profile '{profile_name}' applied to equipment '{equipment_id}'"
+                message=f"Profile '{profile_name}' applied to equipment '{equipment_id}'",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to apply profile"
+                detail=f"Failed to apply profile",
             )
 
     except HTTPException:
@@ -267,5 +265,5 @@ async def apply_profile_to_equipment(profile_name: str, equipment_id: str):
         logger.error(f"Error applying profile: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to apply profile: {str(e)}"
+            detail=f"Failed to apply profile: {str(e)}",
         )

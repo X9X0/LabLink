@@ -4,8 +4,9 @@ import logging
 import uuid
 from typing import Any
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 from shared.models.data import ElectronicLoadData
+from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
+                                     EquipmentType)
 
 from .base import BaseEquipment
 

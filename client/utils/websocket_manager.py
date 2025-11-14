@@ -3,9 +3,9 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Callable, Optional, Any, List
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
 
 try:
     import websockets
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class StreamType(str, Enum):
     """Types of data streams."""
+
     READINGS = "readings"
     WAVEFORM = "waveform"
     MEASUREMENTS = "measurements"
@@ -26,6 +27,7 @@ class StreamType(str, Enum):
 
 class MessageType(str, Enum):
     """WebSocket message types."""
+
     # Client -> Server
     START_STREAM = "start_stream"
     STOP_STREAM = "stop_stream"
@@ -46,6 +48,7 @@ class MessageType(str, Enum):
 @dataclass
 class StreamConfig:
     """Configuration for a data stream."""
+
     equipment_id: str
     stream_type: str
     interval_ms: int = 100
@@ -68,7 +71,9 @@ class WebSocketManager:
             port: WebSocket port
         """
         if websockets is None:
-            raise ImportError("websockets library not installed. Install with: pip install websockets")
+            raise ImportError(
+                "websockets library not installed. Install with: pip install websockets"
+            )
 
         self.host = host
         self.port = port
@@ -221,7 +226,9 @@ class WebSocketManager:
     async def _reconnect_loop(self):
         """Automatically reconnect on connection loss."""
         while self._should_reconnect and not self.connected:
-            logger.info(f"Attempting to reconnect in {self._reconnect_delay} seconds...")
+            logger.info(
+                f"Attempting to reconnect in {self._reconnect_delay} seconds..."
+            )
             await asyncio.sleep(self._reconnect_delay)
 
             if self._should_reconnect:
@@ -249,7 +256,7 @@ class WebSocketManager:
                 await self.start_equipment_stream(
                     equipment_id=config.equipment_id,
                     stream_type=config.stream_type,
-                    interval_ms=config.interval_ms
+                    interval_ms=config.interval_ms,
                 )
             except Exception as e:
                 logger.error(f"Failed to restart stream {stream_key}: {e}")
@@ -329,10 +336,7 @@ class WebSocketManager:
     # ==================== Equipment Streaming ====================
 
     async def start_equipment_stream(
-        self,
-        equipment_id: str,
-        stream_type: str = "readings",
-        interval_ms: int = 100
+        self, equipment_id: str, stream_type: str = "readings", interval_ms: int = 100
     ):
         """Start streaming data from equipment.
 
@@ -351,7 +355,7 @@ class WebSocketManager:
             "type": MessageType.START_STREAM,
             "equipment_id": equipment_id,
             "stream_type": stream_type_str,
-            "interval_ms": interval_ms
+            "interval_ms": interval_ms,
         }
 
         await self._send_message(message)
@@ -361,15 +365,13 @@ class WebSocketManager:
         self._active_streams[stream_key] = StreamConfig(
             equipment_id=equipment_id,
             stream_type=stream_type_str,
-            interval_ms=interval_ms
+            interval_ms=interval_ms,
         )
 
         logger.info(f"Started {stream_type_str} stream for {equipment_id}")
 
     async def stop_equipment_stream(
-        self,
-        equipment_id: str,
-        stream_type: str = "readings"
+        self, equipment_id: str, stream_type: str = "readings"
     ):
         """Stop streaming data from equipment.
 
@@ -386,7 +388,7 @@ class WebSocketManager:
         message = {
             "type": MessageType.STOP_STREAM,
             "equipment_id": equipment_id,
-            "stream_type": stream_type_str
+            "stream_type": stream_type_str,
         }
 
         await self._send_message(message)
@@ -400,10 +402,7 @@ class WebSocketManager:
     # ==================== Acquisition Streaming ====================
 
     async def start_acquisition_stream(
-        self,
-        acquisition_id: str,
-        interval_ms: int = 100,
-        num_samples: int = 100
+        self, acquisition_id: str, interval_ms: int = 100, num_samples: int = 100
     ):
         """Start streaming acquisition data.
 
@@ -416,7 +415,7 @@ class WebSocketManager:
             "type": MessageType.START_ACQUISITION_STREAM,
             "acquisition_id": acquisition_id,
             "interval_ms": interval_ms,
-            "num_samples": num_samples
+            "num_samples": num_samples,
         }
 
         await self._send_message(message)
@@ -430,7 +429,7 @@ class WebSocketManager:
         """
         message = {
             "type": MessageType.STOP_ACQUISITION_STREAM,
-            "acquisition_id": acquisition_id
+            "acquisition_id": acquisition_id,
         }
 
         await self._send_message(message)
@@ -571,7 +570,7 @@ class WebSocketManager:
             "active_streams": len(self._active_streams),
             "stream_list": list(self._active_streams.keys()),
             "message_handlers": len(self._message_handlers),
-            "stream_data_handlers": len(self._stream_data_handlers)
+            "stream_data_handlers": len(self._stream_data_handlers),
         }
 
     def get_active_streams(self) -> List[str]:

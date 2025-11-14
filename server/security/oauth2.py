@@ -14,13 +14,14 @@ Supports:
 - Account linking
 """
 
-import httpx
-from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
 
-from .models import OAuth2Provider, OAuth2Config, User
+import httpx
 from logging_config import get_logger
+
+from .models import OAuth2Config, OAuth2Provider, User
 
 logger = get_logger(__name__)
 
@@ -56,6 +57,7 @@ OAUTH2_DEFAULTS = {
 # OAuth2 Provider Base Class
 # ============================================================================
 
+
 class OAuth2ProviderBase:
     """Base class for OAuth2 providers."""
 
@@ -69,7 +71,9 @@ class OAuth2ProviderBase:
         self.config = config
         self.provider = config.provider
 
-    def get_authorization_url(self, redirect_uri: str, state: Optional[str] = None) -> str:
+    def get_authorization_url(
+        self, redirect_uri: str, state: Optional[str] = None
+    ) -> str:
         """
         Generate authorization URL for OAuth2 flow.
 
@@ -189,6 +193,7 @@ class OAuth2ProviderBase:
 # Google OAuth2 Provider
 # ============================================================================
 
+
 class GoogleOAuth2Provider(OAuth2ProviderBase):
     """Google OAuth2 provider implementation."""
 
@@ -204,6 +209,7 @@ class GoogleOAuth2Provider(OAuth2ProviderBase):
 # ============================================================================
 # GitHub OAuth2 Provider
 # ============================================================================
+
 
 class GitHubOAuth2Provider(OAuth2ProviderBase):
     """GitHub OAuth2 provider implementation."""
@@ -249,6 +255,7 @@ class GitHubOAuth2Provider(OAuth2ProviderBase):
 # Microsoft OAuth2 Provider
 # ============================================================================
 
+
 class MicrosoftOAuth2Provider(OAuth2ProviderBase):
     """Microsoft OAuth2 provider implementation."""
 
@@ -264,6 +271,7 @@ class MicrosoftOAuth2Provider(OAuth2ProviderBase):
 # ============================================================================
 # OAuth2 Manager
 # ============================================================================
+
 
 class OAuth2Manager:
     """Manages OAuth2 providers and authentication flows."""
@@ -325,9 +333,7 @@ class OAuth2Manager:
             List of enabled provider types
         """
         return [
-            provider
-            for provider, prov in self.providers.items()
-            if prov.config.enabled
+            provider for provider, prov in self.providers.items() if prov.config.enabled
         ]
 
     async def authenticate(

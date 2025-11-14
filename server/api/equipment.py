@@ -2,15 +2,16 @@
 
 import logging
 from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, EquipmentCommand
-from shared.models.commands import Command, CommandResponse
-
-from server.equipment.manager import equipment_manager
-from server.equipment.locks import lock_manager
 from server.config.settings import settings
+from server.equipment.locks import lock_manager
+from server.equipment.manager import equipment_manager
+from shared.models.commands import Command, CommandResponse
+from shared.models.equipment import (EquipmentCommand, EquipmentInfo,
+                                     EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,23 @@ router = APIRouter()
 
 # Commands that require exclusive control (vs read-only)
 CONTROL_COMMANDS = {
-    "set_voltage", "set_current", "set_output", "set_input",
-    "set_mode", "set_range", "set_channel", "set_trigger",
-    "set_timebase", "set_scale", "set_position", "set_offset",
-    "reset", "clear", "save", "recall", "calibrate"
+    "set_voltage",
+    "set_current",
+    "set_output",
+    "set_input",
+    "set_mode",
+    "set_range",
+    "set_channel",
+    "set_trigger",
+    "set_timebase",
+    "set_scale",
+    "set_position",
+    "set_offset",
+    "reset",
+    "clear",
+    "save",
+    "recall",
+    "calibrate",
 }
 
 
@@ -34,6 +48,7 @@ def requires_control(action: str) -> bool:
 
 class ConnectDeviceRequest(BaseModel):
     """Request to connect to a device."""
+
     resource_string: str
     equipment_type: EquipmentType
     model: str
@@ -41,6 +56,7 @@ class ConnectDeviceRequest(BaseModel):
 
 class DiscoverDevicesResponse(BaseModel):
     """Response for device discovery."""
+
     resources: List[str]
 
 
@@ -131,16 +147,18 @@ async def execute_command(equipment_id: str, command: Command):
                 if not command.session_id:
                     raise HTTPException(
                         status_code=401,
-                        detail="session_id required for control commands when locks are enabled"
+                        detail="session_id required for control commands when locks are enabled",
                     )
 
-                if not lock_manager.can_control_equipment(equipment_id, command.session_id):
+                if not lock_manager.can_control_equipment(
+                    equipment_id, command.session_id
+                ):
                     lock_status = lock_manager.get_lock_status(equipment_id)
                     current_owner = lock_status.get("session_id", "unknown")
                     raise HTTPException(
                         status_code=403,
                         detail=f"Equipment {equipment_id} is locked by session {current_owner}. "
-                               f"Acquire exclusive lock before control commands."
+                        f"Acquire exclusive lock before control commands.",
                     )
 
                 # Update lock activity
@@ -149,10 +167,12 @@ async def execute_command(equipment_id: str, command: Command):
             else:
                 # Read-only commands require at least observer access
                 if command.session_id:
-                    if not lock_manager.can_observe_equipment(equipment_id, command.session_id):
+                    if not lock_manager.can_observe_equipment(
+                        equipment_id, command.session_id
+                    ):
                         raise HTTPException(
                             status_code=403,
-                            detail=f"No observer or control access to equipment {equipment_id}"
+                            detail=f"No observer or control access to equipment {equipment_id}",
                         )
 
                     # Update lock activity if session has a lock

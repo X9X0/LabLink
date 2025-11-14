@@ -1,13 +1,15 @@
 """Base class for all equipment."""
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Any
-import asyncio
+from typing import Any, Optional
+
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                     EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,9 @@ class BaseEquipment(ABC):
         async with self._lock:
             try:
                 # Open the resource
-                self.instrument = self.resource_manager.open_resource(self.resource_string)
+                self.instrument = self.resource_manager.open_resource(
+                    self.resource_string
+                )
 
                 # Set timeout (10 seconds)
                 self.instrument.timeout = 10000
@@ -93,7 +97,9 @@ class BaseEquipment(ABC):
 
         try:
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, self.instrument.query_binary_values, command, datatype='B')
+            response = await loop.run_in_executor(
+                None, self.instrument.query_binary_values, command, datatype="B"
+            )
             return bytes(response)
         except Exception as e:
             logger.error(f"Error querying binary '{command}': {e}")
@@ -146,8 +152,8 @@ class BaseEquipment(ABC):
             # Try standard SCPI error query
             response = await self._query("SYST:ERR?")
             # Parse response format: "code,message"
-            if response and ',' in response:
-                code_str = response.split(',')[0].strip()
+            if response and "," in response:
+                code_str = response.split(",")[0].strip()
                 return int(code_str)
         except Exception:
             pass
@@ -164,8 +170,8 @@ class BaseEquipment(ABC):
             # Try standard SCPI error query
             response = await self._query("SYST:ERR?")
             # Parse response format: "code,message"
-            if response and ',' in response:
-                message = response.split(',', 1)[1].strip().strip('"')
+            if response and "," in response:
+                message = response.split(",", 1)[1].strip().strip('"')
                 return message
         except Exception:
             pass

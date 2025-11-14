@@ -7,21 +7,16 @@ Provides decorators and middleware for:
 - Resource-level access control
 """
 
-from typing import Optional, List, Callable
-from functools import wraps
 import logging
+from functools import wraps
+from typing import Callable, List, Optional
 
-from fastapi import HTTPException, status, Request, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .models import (
-    User,
-    TokenPayload,
-    ResourceType,
-    PermissionAction,
-    AuthMethod,
-)
-from .auth import decode_token, AuthConfig
+from .auth import AuthConfig, decode_token
+from .models import (AuthMethod, PermissionAction, ResourceType, TokenPayload,
+                     User)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +27,7 @@ security_scheme = HTTPBearer()
 # ============================================================================
 # Dependency Injection for FastAPI
 # ============================================================================
+
 
 class RBACDependencies:
     """Dependencies for RBAC in FastAPI."""
@@ -114,6 +110,7 @@ class RBACDependencies:
 # ============================================================================
 # Permission Checking
 # ============================================================================
+
 
 class PermissionChecker:
     """Checks permissions for users."""
@@ -207,6 +204,7 @@ class PermissionChecker:
         Returns:
             FastAPI dependency function
         """
+
         async def check_permission(user: User = Depends(get_current_user)):
             await self.require_permission(user, resource, action, resource_id)
             return user
@@ -217,6 +215,7 @@ class PermissionChecker:
 # ============================================================================
 # Decorators
 # ============================================================================
+
 
 def require_auth(get_user_func: Callable, config: AuthConfig):
     """
@@ -229,6 +228,7 @@ def require_auth(get_user_func: Callable, config: AuthConfig):
     Returns:
         Decorator function
     """
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, request: Request = None, **kwargs):
@@ -274,6 +274,7 @@ def require_auth(get_user_func: Callable, config: AuthConfig):
             return await func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -295,6 +296,7 @@ def require_permission(
     Returns:
         Decorator function
     """
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, current_user: User = None, **kwargs):
@@ -311,11 +313,14 @@ def require_permission(
 
             # Check permission
             checker = PermissionChecker(get_role_func)
-            await checker.require_permission(current_user, resource, action, resource_id)
+            await checker.require_permission(
+                current_user, resource, action, resource_id
+            )
 
             return await func(*args, current_user=current_user, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -329,6 +334,7 @@ def require_role(role_name: str):
     Returns:
         Decorator function
     """
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, current_user: User = None, **kwargs):
@@ -351,6 +357,7 @@ def require_role(role_name: str):
             return await func(*args, current_user=current_user, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -361,6 +368,7 @@ def require_superuser():
     Returns:
         Decorator function
     """
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, current_user: User = None, **kwargs):
@@ -371,9 +379,7 @@ def require_superuser():
                 )
 
             if not current_user.is_superuser:
-                logger.warning(
-                    f"Superuser access denied: user={current_user.username}"
-                )
+                logger.warning(f"Superuser access denied: user={current_user.username}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Superuser access required",
@@ -382,12 +388,14 @@ def require_superuser():
             return await func(*args, current_user=current_user, **kwargs)
 
         return wrapper
+
     return decorator
 
 
 # ============================================================================
 # API Key Authentication
 # ============================================================================
+
 
 class APIKeyChecker:
     """Checks API keys for authentication."""
@@ -453,6 +461,7 @@ class APIKeyChecker:
 # IP Whitelisting
 # ============================================================================
 
+
 class IPWhitelistChecker:
     """Checks IP addresses against whitelist/blacklist."""
 
@@ -475,7 +484,8 @@ class IPWhitelistChecker:
         Returns:
             True if allowed
         """
-        from ipaddress import ip_address as parse_ip, ip_network
+        from ipaddress import ip_address as parse_ip
+        from ipaddress import ip_network
 
         try:
             client_ip = parse_ip(ip_address)

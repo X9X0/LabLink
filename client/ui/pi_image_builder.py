@@ -3,17 +3,17 @@
 This wizard creates custom Raspberry Pi images with LabLink pre-installed.
 """
 
+import logging
 import os
 import subprocess
-import logging
 from pathlib import Path
 from typing import Optional
-from PyQt6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QPushButton, QProgressBar, QTextEdit,
-    QFileDialog, QCheckBox, QGroupBox, QMessageBox, QComboBox
-)
+
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QMessageBox, QProgressBar, QPushButton, QTextEdit,
+                             QVBoxLayout, QWizard, QWizardPage)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ImageBuildThread(QThread):
         wifi_password: str = "",
         admin_password: str = "",
         enable_ssh: bool = True,
-        auto_expand: bool = True
+        auto_expand: bool = True,
     ):
         """Initialize build thread.
 
@@ -67,7 +67,7 @@ class ImageBuildThread(QThread):
                 self.finished.emit(
                     False,
                     f"Build script not found at: {script_path}\n\n"
-                    "Please ensure build-pi-image.sh is in the LabLink root directory."
+                    "Please ensure build-pi-image.sh is in the LabLink root directory.",
                 )
                 return
 
@@ -97,11 +97,11 @@ class ImageBuildThread(QThread):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
             )
 
             # Monitor progress
-            for line in iter(process.stdout.readline, ''):
+            for line in iter(process.stdout.readline, ""):
                 if not line:
                     break
 
@@ -135,20 +135,20 @@ class ImageBuildThread(QThread):
                     True,
                     f"Raspberry Pi image created successfully!\n\n"
                     f"Image saved to: {self.output_path}\n\n"
-                    f"You can now write this image to an SD card."
+                    f"You can now write this image to an SD card.",
                 )
             else:
                 self.finished.emit(
                     False,
                     f"Build failed with exit code {process.returncode}\n\n"
-                    "Check the output log for details."
+                    "Check the output log for details.",
                 )
 
         except FileNotFoundError:
             self.finished.emit(
                 False,
                 "Build script not found.\n\n"
-                "This tool requires bash to be installed."
+                "This tool requires bash to be installed.",
             )
         except Exception as e:
             logger.exception("Image build failed")
@@ -162,7 +162,9 @@ class ConfigurationPage(QWizardPage):
         """Initialize configuration page."""
         super().__init__()
         self.setTitle("Raspberry Pi Configuration")
-        self.setSubTitle("Configure the Raspberry Pi system settings for your LabLink server.")
+        self.setSubTitle(
+            "Configure the Raspberry Pi system settings for your LabLink server."
+        )
 
         layout = QVBoxLayout()
 
@@ -176,7 +178,9 @@ class ConfigurationPage(QWizardPage):
 
         self.admin_password_edit = QLineEdit()
         self.admin_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.admin_password_edit.setPlaceholderText("Leave empty to use default: raspberry")
+        self.admin_password_edit.setPlaceholderText(
+            "Leave empty to use default: raspberry"
+        )
         basic_layout.addRow("Admin Password:", self.admin_password_edit)
 
         basic_group.setLayout(basic_layout)
@@ -236,7 +240,9 @@ class ConfigurationPage(QWizardPage):
             "Build process may take 10-30 minutes depending on your internet connection."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
+        info_label.setStyleSheet(
+            "color: #666; padding: 10px; background-color: #f0f0f0; border-radius: 5px;"
+        )
         layout.addWidget(info_label)
 
         self.setLayout(layout)
@@ -254,7 +260,7 @@ class ConfigurationPage(QWizardPage):
             self,
             "Save Raspberry Pi Image",
             os.path.expanduser("~/lablink-pi.img"),
-            "Disk Images (*.img)"
+            "Disk Images (*.img)",
         )
 
         if file_path:
@@ -275,7 +281,9 @@ class ConfigurationPage(QWizardPage):
         # Check output path
         output_path = self.output_path_edit.text().strip()
         if not output_path:
-            QMessageBox.warning(self, "No Output Path", "Please select where to save the image.")
+            QMessageBox.warning(
+                self, "No Output Path", "Please select where to save the image."
+            )
             return False
 
         # Check if Wi-Fi SSID and password are both provided or both empty
@@ -288,7 +296,7 @@ class ConfigurationPage(QWizardPage):
                 "No Wi-Fi Password",
                 "You entered a Wi-Fi SSID but no password. Continue anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.No,
             )
             return reply == QMessageBox.StandardButton.Yes
 
@@ -302,7 +310,9 @@ class BuildProgressPage(QWizardPage):
         """Initialize progress page."""
         super().__init__()
         self.setTitle("Building Image")
-        self.setSubTitle("Creating custom Raspberry Pi image with LabLink pre-installed...")
+        self.setSubTitle(
+            "Creating custom Raspberry Pi image with LabLink pre-installed..."
+        )
 
         self.build_thread: Optional[ImageBuildThread] = None
         self.build_complete = False
@@ -359,7 +369,7 @@ class BuildProgressPage(QWizardPage):
             wifi_password=wifi_password,
             admin_password=admin_password,
             enable_ssh=enable_ssh,
-            auto_expand=auto_expand
+            auto_expand=auto_expand,
         )
 
         # Connect signals
@@ -470,7 +480,7 @@ class PiImageBuilderWizard(QWizard):
                 "Write to SD Card?",
                 "Would you like to write this image to an SD card now?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
+                QMessageBox.StandardButton.Yes,
             )
 
             if reply == QMessageBox.StandardButton.Yes:

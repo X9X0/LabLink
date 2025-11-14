@@ -1,10 +1,10 @@
 """Error handling and recovery system for equipment connections."""
 
-import logging
 import asyncio
-from typing import Optional, Callable, Any
+import logging
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, Callable, Optional
 
 from server.config.settings import settings
 
@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -27,7 +28,7 @@ class EquipmentError(Exception):
         message: str,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
         recoverable: bool = True,
-        troubleshooting_hint: Optional[str] = None
+        troubleshooting_hint: Optional[str] = None,
     ):
         self.message = message
         self.severity = severity
@@ -56,7 +57,7 @@ class ConnectionError(EquipmentError):
                 "2) USB/Network cable is connected, "
                 "3) Equipment is not in use by another application, "
                 "4) VISA drivers are installed correctly"
-            )
+            ),
         )
         self.resource_string = resource_string
         self.original_error = original_error
@@ -74,7 +75,7 @@ class CommandError(EquipmentError):
                 "Check: 1) Equipment is still connected, "
                 "2) Command parameters are valid, "
                 "3) Equipment is not in an error state"
-            )
+            ),
         )
         self.command = command
         self.equipment_id = equipment_id
@@ -93,7 +94,7 @@ class TimeoutError(EquipmentError):
                 "Try: 1) Increasing the timeout value, "
                 "2) Checking equipment responsiveness, "
                 "3) Reducing command complexity"
-            )
+            ),
         )
         self.operation = operation
         self.timeout_ms = timeout_ms
@@ -108,11 +109,7 @@ class RetryHandler:
         self.enabled = settings.enable_command_retry
 
     async def execute_with_retry(
-        self,
-        func: Callable,
-        *args,
-        operation_name: str = "operation",
-        **kwargs
+        self, func: Callable, *args, operation_name: str = "operation", **kwargs
     ) -> Any:
         """
         Execute a function with retry logic.
@@ -143,7 +140,7 @@ class RetryHandler:
             except Exception as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    delay_ms = self.retry_delay_ms * (2 ** attempt)  # Exponential backoff
+                    delay_ms = self.retry_delay_ms * (2**attempt)  # Exponential backoff
                     logger.warning(
                         f"{operation_name} failed (attempt {attempt + 1}/{self.max_retries + 1}). "
                         f"Retrying in {delay_ms}ms... Error: {str(e)}"
@@ -167,11 +164,7 @@ class ReconnectionHandler:
         self.enabled = settings.enable_auto_reconnect
 
     async def attempt_reconnect(
-        self,
-        connect_func: Callable,
-        equipment_id: str,
-        *args,
-        **kwargs
+        self, connect_func: Callable, equipment_id: str, *args, **kwargs
     ) -> bool:
         """
         Attempt to reconnect to equipment.
@@ -193,7 +186,7 @@ class ReconnectionHandler:
 
         for attempt in range(self.max_attempts):
             try:
-                delay_ms = self.base_delay_ms * (self.backoff_multiplier ** attempt)
+                delay_ms = self.base_delay_ms * (self.backoff_multiplier**attempt)
 
                 if attempt > 0:
                     logger.info(
@@ -211,7 +204,9 @@ class ReconnectionHandler:
                     f"Reconnection attempt {attempt + 1}/{self.max_attempts} failed for {equipment_id}: {e}"
                 )
 
-        logger.error(f"❌ Failed to reconnect to {equipment_id} after {self.max_attempts} attempts")
+        logger.error(
+            f"❌ Failed to reconnect to {equipment_id} after {self.max_attempts} attempts"
+        )
         return False
 
 
@@ -230,7 +225,9 @@ class HealthMonitor:
             logger.info("Health monitoring disabled")
             return
 
-        logger.info(f"Starting health monitoring (interval: {self.check_interval_sec}s)")
+        logger.info(
+            f"Starting health monitoring (interval: {self.check_interval_sec}s)"
+        )
         self._monitor_task = asyncio.create_task(self._monitor_loop(equipment_manager))
 
     async def stop(self):
@@ -262,12 +259,13 @@ class HealthMonitor:
                 status = await equipment.get_status()
 
                 if not status.connected:
-                    logger.warning(f"Health check failed for {equipment_id} - disconnected")
+                    logger.warning(
+                        f"Health check failed for {equipment_id} - disconnected"
+                    )
                     # Trigger reconnection
                     reconnect_handler = ReconnectionHandler()
                     await reconnect_handler.attempt_reconnect(
-                        equipment.connect,
-                        equipment_id
+                        equipment.connect, equipment_id
                     )
                 else:
                     self.equipment_health[equipment_id] = datetime.now()

@@ -1,16 +1,13 @@
 """API endpoints for scheduled operations."""
 
 import logging
-from typing import Optional, List
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.scheduler import (
-    scheduler_manager,
-    ScheduleConfig,
-    ScheduleType,
-    TriggerType,
-)
+from server.scheduler import (ScheduleConfig, ScheduleType, TriggerType,
+                              scheduler_manager)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +19,7 @@ router = APIRouter()
 
 class CreateJobRequest(BaseModel):
     """Request to create a scheduled job."""
+
     name: str
     description: Optional[str] = None
     schedule_type: str
@@ -67,7 +65,7 @@ async def create_job(request: CreateJobRequest):
             tags=request.tags,
             profile_id=request.profile_id,
             on_failure_alarm=request.on_failure_alarm,
-            conflict_policy=request.conflict_policy
+            conflict_policy=request.conflict_policy,
         )
 
         result = await scheduler_manager.create_job(config)
@@ -75,7 +73,7 @@ async def create_job(request: CreateJobRequest):
         return {
             "success": True,
             "job_id": result.job_id,
-            "message": "Job created successfully"
+            "message": "Job created successfully",
         }
 
     except ValueError as e:
@@ -93,10 +91,7 @@ async def get_job(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    return {
-        "success": True,
-        "job": job.dict()
-    }
+    return {"success": True, "job": job.dict()}
 
 
 @router.get("/scheduler/jobs", summary="List jobs")
@@ -104,11 +99,7 @@ async def list_jobs(enabled: Optional[bool] = None):
     """List all scheduled jobs."""
     jobs = scheduler_manager.list_jobs(enabled=enabled)
 
-    return {
-        "success": True,
-        "count": len(jobs),
-        "jobs": [j.dict() for j in jobs]
-    }
+    return {"success": True, "count": len(jobs), "jobs": [j.dict() for j in jobs]}
 
 
 @router.delete("/scheduler/jobs/{job_id}", summary="Delete job")
@@ -120,10 +111,7 @@ async def delete_job(job_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        return {
-            "success": True,
-            "message": "Job deleted successfully"
-        }
+        return {"success": True, "message": "Job deleted successfully"}
 
     except HTTPException:
         raise
@@ -141,10 +129,7 @@ async def pause_job(job_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        return {
-            "success": True,
-            "message": "Job paused"
-        }
+        return {"success": True, "message": "Job paused"}
 
     except HTTPException:
         raise
@@ -162,10 +147,7 @@ async def resume_job(job_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        return {
-            "success": True,
-            "message": "Job resumed"
-        }
+        return {"success": True, "message": "Job resumed"}
 
     except HTTPException:
         raise
@@ -183,7 +165,7 @@ async def run_job_now(job_id: str):
         return {
             "success": True,
             "execution_id": execution.execution_id,
-            "message": "Job triggered"
+            "message": "Job triggered",
         }
 
     except ValueError as e:
@@ -202,12 +184,11 @@ async def get_execution(execution_id: str):
     execution = scheduler_manager.get_execution(execution_id)
 
     if execution is None:
-        raise HTTPException(status_code=404, detail=f"Execution {execution_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Execution {execution_id} not found"
+        )
 
-    return {
-        "success": True,
-        "execution": execution.dict()
-    }
+    return {"success": True, "execution": execution.dict()}
 
 
 @router.get("/scheduler/executions", summary="List executions")
@@ -219,12 +200,14 @@ async def list_executions(job_id: Optional[str] = None, limit: int = 100):
         return {
             "success": True,
             "count": len(executions),
-            "executions": [e.dict() for e in executions]
+            "executions": [e.dict() for e in executions],
         }
 
     except Exception as e:
         logger.error(f"Error listing executions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list executions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list executions: {str(e)}"
+        )
 
 
 @router.get("/scheduler/jobs/{job_id}/history", summary="Get job history")
@@ -235,10 +218,7 @@ async def get_job_history(job_id: str):
     if history is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    return {
-        "success": True,
-        "history": history.dict()
-    }
+    return {"success": True, "history": history.dict()}
 
 
 # ==================== Statistics Endpoints ====================
@@ -250,14 +230,13 @@ async def get_statistics():
     try:
         stats = scheduler_manager.get_statistics()
 
-        return {
-            "success": True,
-            "statistics": stats.dict()
-        }
+        return {"success": True, "statistics": stats.dict()}
 
     except Exception as e:
         logger.error(f"Error getting statistics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get statistics: {str(e)}"
+        )
 
 
 @router.get("/scheduler/running", summary="Get running jobs")
@@ -269,9 +248,11 @@ async def get_running_jobs():
         return {
             "success": True,
             "count": len(running_jobs),
-            "running_jobs": running_jobs
+            "running_jobs": running_jobs,
         }
 
     except Exception as e:
         logger.error(f"Error getting running jobs: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get running jobs: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get running jobs: {str(e)}"
+        )

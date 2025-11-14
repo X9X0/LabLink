@@ -2,11 +2,13 @@
 
 import logging
 import uuid
-import numpy as np
 from typing import Any, Dict, Optional
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+import numpy as np
+
 from shared.models.data import WaveformData
+from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
+                                     EquipmentType)
 
 from .base import BaseEquipment
 

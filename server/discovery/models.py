@@ -1,8 +1,9 @@
 """Equipment discovery system data models."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -42,7 +43,9 @@ class DiscoveredDevice(BaseModel):
 
     # Identity
     device_id: str = Field(..., description="Unique device identifier")
-    resource_name: str = Field(..., description="VISA resource name (e.g., TCPIP::192.168.1.100::INSTR)")
+    resource_name: str = Field(
+        ..., description="VISA resource name (e.g., TCPIP::192.168.1.100::INSTR)"
+    )
 
     # Device info
     manufacturer: Optional[str] = Field(None, description="Manufacturer name")
@@ -58,30 +61,50 @@ class DiscoveredDevice(BaseModel):
     port: Optional[int] = Field(None, description="TCP/IP port")
 
     # Discovery info
-    discovery_method: DiscoveryMethod = Field(..., description="How device was discovered")
-    discovered_at: datetime = Field(default_factory=datetime.now, description="When device was discovered")
-    last_seen: datetime = Field(default_factory=datetime.now, description="Last time device was seen")
+    discovery_method: DiscoveryMethod = Field(
+        ..., description="How device was discovered"
+    )
+    discovered_at: datetime = Field(
+        default_factory=datetime.now, description="When device was discovered"
+    )
+    last_seen: datetime = Field(
+        default_factory=datetime.now, description="Last time device was seen"
+    )
 
     # Connection status
-    status: ConnectionStatus = Field(ConnectionStatus.AVAILABLE, description="Connection status")
+    status: ConnectionStatus = Field(
+        ConnectionStatus.AVAILABLE, description="Connection status"
+    )
     is_connected: bool = Field(False, description="Currently connected to server")
 
     # User configuration
-    friendly_name: Optional[str] = Field(None, description="User-assigned friendly name")
+    friendly_name: Optional[str] = Field(
+        None, description="User-assigned friendly name"
+    )
     alias: Optional[str] = Field(None, description="Short alias for device")
     location: Optional[str] = Field(None, description="Physical location")
     tags: List[str] = Field(default_factory=list, description="User tags")
 
     # Metadata
-    capabilities: List[str] = Field(default_factory=list, description="Device capabilities")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    capabilities: List[str] = Field(
+        default_factory=list, description="Device capabilities"
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
     # Connection quality
-    signal_strength: Optional[int] = Field(None, ge=0, le=100, description="Signal strength (0-100)")
-    response_time_ms: Optional[float] = Field(None, description="Average response time in ms")
+    signal_strength: Optional[int] = Field(
+        None, ge=0, le=100, description="Signal strength (0-100)"
+    )
+    response_time_ms: Optional[float] = Field(
+        None, description="Average response time in ms"
+    )
 
     # Smart recommendations
-    confidence_score: float = Field(0.0, ge=0.0, le=1.0, description="Confidence in device identification")
+    confidence_score: float = Field(
+        0.0, ge=0.0, le=1.0, description="Confidence in device identification"
+    )
     recommended: bool = Field(False, description="Recommended for connection")
 
 
@@ -94,13 +117,19 @@ class ConnectionHistoryEntry(BaseModel):
     resource_name: str = Field(..., description="VISA resource name")
 
     # Event info
-    event_type: str = Field(..., description="Event type (connected, disconnected, failed)")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Event timestamp")
+    event_type: str = Field(
+        ..., description="Event type (connected, disconnected, failed)"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Event timestamp"
+    )
 
     # Connection details
     success: bool = Field(..., description="Connection successful")
     error_message: Optional[str] = Field(None, description="Error message if failed")
-    connection_time_ms: Optional[float] = Field(None, description="Time to establish connection")
+    connection_time_ms: Optional[float] = Field(
+        None, description="Time to establish connection"
+    )
 
     # Device info at time of connection
     manufacturer: Optional[str] = None
@@ -123,7 +152,9 @@ class LastKnownGood(BaseModel):
     resource_name: str = Field(..., description="VISA resource name that worked")
 
     # Connection details
-    last_successful: datetime = Field(..., description="Last successful connection time")
+    last_successful: datetime = Field(
+        ..., description="Last successful connection time"
+    )
     connection_count: int = Field(0, description="Number of successful connections")
 
     # Device info
@@ -156,7 +187,9 @@ class SmartRecommendation(BaseModel):
     response_time_ms: Optional[float] = None
 
     # Alternative options
-    alternatives: List[str] = Field(default_factory=list, description="Alternative resource names")
+    alternatives: List[str] = Field(
+        default_factory=list, description="Alternative resource names"
+    )
 
 
 class DiscoveryConfig(BaseModel):
@@ -166,11 +199,17 @@ class DiscoveryConfig(BaseModel):
     enable_mdns: bool = Field(True, description="Enable mDNS/Bonjour discovery")
     enable_visa_scan: bool = Field(True, description="Enable VISA resource scanning")
     enable_usb_scan: bool = Field(True, description="Enable USB device scanning")
-    enable_auto_discovery: bool = Field(True, description="Enable automatic discovery on startup")
+    enable_auto_discovery: bool = Field(
+        True, description="Enable automatic discovery on startup"
+    )
 
     # Discovery intervals
-    mdns_scan_interval_sec: int = Field(60, ge=10, description="mDNS scan interval (seconds)")
-    visa_scan_interval_sec: int = Field(30, ge=10, description="VISA scan interval (seconds)")
+    mdns_scan_interval_sec: int = Field(
+        60, ge=10, description="mDNS scan interval (seconds)"
+    )
+    visa_scan_interval_sec: int = Field(
+        30, ge=10, description="VISA scan interval (seconds)"
+    )
 
     # Discovery scope
     scan_tcpip: bool = Field(True, description="Scan TCPIP resources")
@@ -179,21 +218,31 @@ class DiscoveryConfig(BaseModel):
     scan_serial: bool = Field(False, description="Scan serial resources")
 
     # Network settings (for mDNS)
-    mdns_service_type: str = Field("_scpi._tcp.local.", description="mDNS service type to search for")
+    mdns_service_type: str = Field(
+        "_scpi._tcp.local.", description="mDNS service type to search for"
+    )
     mdns_timeout_sec: float = Field(5.0, ge=1.0, description="mDNS query timeout")
 
     # Connection testing
     test_connections: bool = Field(True, description="Test discovered devices")
-    connection_timeout_ms: int = Field(5000, ge=1000, description="Connection test timeout")
+    connection_timeout_ms: int = Field(
+        5000, ge=1000, description="Connection test timeout"
+    )
 
     # History settings
     enable_history: bool = Field(True, description="Track connection history")
     history_retention_days: int = Field(90, ge=1, description="Days to keep history")
-    max_history_entries: int = Field(1000, ge=100, description="Maximum history entries")
+    max_history_entries: int = Field(
+        1000, ge=100, description="Maximum history entries"
+    )
 
     # Smart recommendations
-    enable_recommendations: bool = Field(True, description="Enable smart recommendations")
-    min_confidence_threshold: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence for recommendations")
+    enable_recommendations: bool = Field(
+        True, description="Enable smart recommendations"
+    )
+    min_confidence_threshold: float = Field(
+        0.6, ge=0.0, le=1.0, description="Minimum confidence for recommendations"
+    )
 
     # Cache settings
     cache_discovered_devices: bool = Field(True, description="Cache discovered devices")
@@ -201,7 +250,9 @@ class DiscoveryConfig(BaseModel):
 
     # Device identification
     query_idn: bool = Field(True, description="Query *IDN? for device identification")
-    parse_idn: bool = Field(True, description="Parse *IDN? response for manufacturer/model")
+    parse_idn: bool = Field(
+        True, description="Parse *IDN? response for manufacturer/model"
+    )
 
 
 class DiscoveryStatus(BaseModel):
@@ -235,7 +286,9 @@ class DiscoveryStatus(BaseModel):
 class DiscoveryScanRequest(BaseModel):
     """Request to perform discovery scan."""
 
-    methods: Optional[List[DiscoveryMethod]] = Field(None, description="Methods to use (all if None)")
+    methods: Optional[List[DiscoveryMethod]] = Field(
+        None, description="Methods to use (all if None)"
+    )
     test_connections: bool = Field(True, description="Test discovered devices")
     force_refresh: bool = Field(False, description="Ignore cache")
 
@@ -259,7 +312,9 @@ class DiscoveryScanResult(BaseModel):
     usb_count: int = Field(0, description="Devices via USB")
 
     # Devices
-    devices: List[DiscoveredDevice] = Field(default_factory=list, description="Discovered devices")
+    devices: List[DiscoveredDevice] = Field(
+        default_factory=list, description="Discovered devices"
+    )
 
     # Errors
     errors: List[str] = Field(default_factory=list, description="Errors encountered")
@@ -275,8 +330,12 @@ class DeviceAlias(BaseModel):
     location: Optional[str] = Field(None, description="Physical location")
     tags: List[str] = Field(default_factory=list, description="Tags")
     notes: Optional[str] = Field(None, description="User notes")
-    created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
-    updated_at: datetime = Field(default_factory=datetime.now, description="Updated timestamp")
+    created_at: datetime = Field(
+        default_factory=datetime.now, description="Created timestamp"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now, description="Updated timestamp"
+    )
 
 
 class ConnectionStatistics(BaseModel):

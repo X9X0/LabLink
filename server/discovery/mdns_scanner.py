@@ -1,23 +1,18 @@
 """mDNS/Bonjour scanner for equipment discovery."""
 
 import logging
-from typing import List, Optional, Dict
-from datetime import datetime
 import socket
+from datetime import datetime
+from typing import Dict, List, Optional
 
-from .models import (
-    DiscoveredDevice,
-    DiscoveryMethod,
-    DeviceType,
-    ConnectionStatus,
-    DiscoveryConfig,
-)
+from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
+                     DiscoveryConfig, DiscoveryMethod)
 
 logger = logging.getLogger(__name__)
 
 # Try to import zeroconf (optional dependency)
 try:
-    from zeroconf import ServiceBrowser, ServiceListener, Zeroconf, ServiceInfo
+    from zeroconf import ServiceBrowser, ServiceInfo, ServiceListener, Zeroconf
 
     ZEROCONF_AVAILABLE = True
 except ImportError:
@@ -26,6 +21,7 @@ except ImportError:
     # Define dummy classes for when zeroconf is not available
     class ServiceListener:  # type: ignore
         """Dummy ServiceListener for when zeroconf is not available."""
+
         pass
 
     Zeroconf = None  # type: ignore

@@ -1,27 +1,18 @@
 """Discovery manager - coordinates all discovery methods."""
 
-import logging
 import asyncio
-from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+import logging
 import uuid
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
-from .models import (
-    DiscoveredDevice,
-    DiscoveryMethod,
-    ConnectionStatus,
-    DiscoveryConfig,
-    DiscoveryStatus,
-    DiscoveryScanRequest,
-    DiscoveryScanResult,
-    LastKnownGood,
-    SmartRecommendation,
-    DeviceAlias,
-    ConnectionStatistics,
-)
-from .visa_scanner import VISAScanner
-from .mdns_scanner import MDNSScanner
 from .history import ConnectionHistoryTracker
+from .mdns_scanner import MDNSScanner
+from .models import (ConnectionStatistics, ConnectionStatus, DeviceAlias,
+                     DiscoveredDevice, DiscoveryConfig, DiscoveryMethod,
+                     DiscoveryScanRequest, DiscoveryScanResult,
+                     DiscoveryStatus, LastKnownGood, SmartRecommendation)
+from .visa_scanner import VISAScanner
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +120,10 @@ class DiscoveryManager:
         logger.info(f"Starting discovery scan {scan_id}...")
 
         result = DiscoveryScanResult(
-            scan_id=scan_id, started_at=started_at, completed_at=started_at, duration_ms=0.0
+            scan_id=scan_id,
+            started_at=started_at,
+            completed_at=started_at,
+            duration_ms=0.0,
         )
 
         try:
@@ -145,7 +139,11 @@ class DiscoveryManager:
                 not request or not request.force_refresh
             ) and self.config.cache_discovered_devices
             if use_cache and self.devices:
-                cache_age = (datetime.now() - self.last_scan).total_seconds() if self.last_scan else float('inf')
+                cache_age = (
+                    (datetime.now() - self.last_scan).total_seconds()
+                    if self.last_scan
+                    else float("inf")
+                )
                 if cache_age < self.config.cache_ttl_sec:
                     logger.debug(f"Using cached devices (age: {cache_age:.1f}s)")
                     result.devices = list(self.devices.values())
@@ -222,7 +220,9 @@ class DiscoveryManager:
 
         return result
 
-    def _update_device_cache(self, discovered: List[DiscoveredDevice]) -> tuple[int, int]:
+    def _update_device_cache(
+        self, discovered: List[DiscoveredDevice]
+    ) -> tuple[int, int]:
         """Update device cache with newly discovered devices.
 
         Args:
@@ -473,7 +473,9 @@ class DiscoveryManager:
             if stats.success_rate > 0.9:
                 reasons.append(f"High success rate ({stats.success_rate*100:.0f}%)")
             if stats.total_connections > 10:
-                reasons.append(f"Frequently used ({stats.total_connections} connections)")
+                reasons.append(
+                    f"Frequently used ({stats.total_connections} connections)"
+                )
 
         # Recent activity
         if device.last_seen:
@@ -512,7 +514,9 @@ class DiscoveryManager:
             if d.discovery_method == DiscoveryMethod.VISA
         )
         usb_count = sum(
-            1 for d in self.devices.values() if d.discovery_method == DiscoveryMethod.USB
+            1
+            for d in self.devices.values()
+            if d.discovery_method == DiscoveryMethod.USB
         )
         manual_count = sum(
             1
@@ -548,9 +552,9 @@ class DiscoveryManager:
             visa_devices=visa_count,
             usb_devices=usb_count,
             manual_devices=manual_count,
-            last_scan_duration_ms=self.scan_durations[-1]
-            if self.scan_durations
-            else None,
+            last_scan_duration_ms=(
+                self.scan_durations[-1] if self.scan_durations else None
+            ),
             avg_scan_duration_ms=avg_duration,
         )
 

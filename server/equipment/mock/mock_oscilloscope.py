@@ -1,14 +1,16 @@
 """Mock oscilloscope driver for testing without hardware."""
 
+import asyncio
 import logging
 import uuid
-import asyncio
-import numpy as np
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+import numpy as np
+
 from shared.models.data import WaveformData
+from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                     EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +288,7 @@ class MockOscilloscope:
             Dict with 'value' key containing the instantaneous voltage reading
         """
         # Parse channel number from string (handle 'CH1' or '1' format)
-        channel_num = int(channel.replace('CH', '').replace('ch', ''))
+        channel_num = int(channel.replace("CH", "").replace("ch", ""))
 
         if channel_num < 1 or channel_num > self.num_channels:
             raise ValueError(f"Invalid channel: {channel}")

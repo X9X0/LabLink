@@ -11,20 +11,15 @@ import asyncio
 import base64
 import json
 import logging
-from typing import Any, Dict, Optional, Set
 from datetime import datetime
+from typing import Any, Dict, Optional, Set
+
 from fastapi import WebSocket
 
-from .enhanced_features import (
-    StreamRecorder,
-    StreamRecordingConfig,
-    MessageCompressor,
-    CompressionType,
-    BackpressureHandler,
-    BackpressureConfig,
-    MessagePriority,
-    RecordingFormat,
-)
+from .enhanced_features import (BackpressureConfig, BackpressureHandler,
+                                CompressionType, MessageCompressor,
+                                MessagePriority, RecordingFormat,
+                                StreamRecorder, StreamRecordingConfig)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +72,7 @@ class EnhancedStreamManager:
         self,
         websocket: WebSocket,
         client_id: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """Accept and configure a WebSocket connection.
 
@@ -98,9 +93,7 @@ class EnhancedStreamManager:
         )
 
         # Start send task for this connection
-        self.send_tasks[client_id] = asyncio.create_task(
-            self._send_loop(client_id)
-        )
+        self.send_tasks[client_id] = asyncio.create_task(self._send_loop(client_id))
 
         # Update statistics
         self.stats["total_connections"] += 1
@@ -188,9 +181,7 @@ class EnhancedStreamManager:
 
         for client_id in list(self.active_connections.keys()):
             if client_id not in exclude:
-                await self.send_to_client(
-                    client_id, message, priority, compression
-                )
+                await self.send_to_client(client_id, message, priority, compression)
 
     async def _send_loop(self, client_id: str):
         """Background task to send queued messages to client.
@@ -240,9 +231,7 @@ class EnhancedStreamManager:
                             self.recorder.record_message(session_id, message)
 
                 except Exception as e:
-                    logger.error(
-                        f"Error sending message to {client_id}: {e}"
-                    )
+                    logger.error(f"Error sending message to {client_id}: {e}")
                     self.disconnect(client_id)
                     break
 
@@ -255,7 +244,7 @@ class EnhancedStreamManager:
         self,
         websocket: WebSocket,
         message: Dict[str, Any],
-        compression_type: CompressionType
+        compression_type: CompressionType,
     ):
         """Send a compressed message.
 
@@ -273,9 +262,7 @@ class EnhancedStreamManager:
         compressed_size = len(compressed)
 
         # Calculate compression ratio
-        ratio = self.compressor.calculate_compression_ratio(
-            json_str, compressed
-        )
+        ratio = self.compressor.calculate_compression_ratio(json_str, compressed)
         self.stats["compression_ratio_sum"] += ratio
         self.stats["compression_count"] += 1
 
@@ -320,14 +307,10 @@ class EnhancedStreamManager:
             },
         }
 
-        await self.send_to_client(
-            client_id, capabilities, MessagePriority.HIGH
-        )
+        await self.send_to_client(client_id, capabilities, MessagePriority.HIGH)
 
     def start_recording(
-        self,
-        session_id: str,
-        metadata: Optional[Dict[str, Any]] = None
+        self, session_id: str, metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """Start recording WebSocket stream.
 
@@ -385,8 +368,7 @@ class EnhancedStreamManager:
         avg_compression_ratio = 0.0
         if self.stats["compression_count"] > 0:
             avg_compression_ratio = (
-                self.stats["compression_ratio_sum"] /
-                self.stats["compression_count"]
+                self.stats["compression_ratio_sum"] / self.stats["compression_count"]
             )
 
         return {

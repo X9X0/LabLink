@@ -74,7 +74,7 @@ class SessionManager:
         client_name: Optional[str] = None,
         client_ip: Optional[str] = None,
         timeout_seconds: int = 600,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
     ) -> SessionInfo:
         """
         Create a new session.
@@ -92,18 +92,23 @@ class SessionManager:
             client_name=client_name,
             client_ip=client_ip,
             timeout_seconds=timeout_seconds,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
         self._sessions[session.session_id] = session
 
-        self._log_event(session.session_id, {
-            "event": "session_created",
-            "client_name": client_name,
-            "client_ip": client_ip
-        })
+        self._log_event(
+            session.session_id,
+            {
+                "event": "session_created",
+                "client_name": client_name,
+                "client_ip": client_ip,
+            },
+        )
 
-        logger.info(f"Session created: {session.session_id} (client={client_name}, ip={client_ip})")
+        logger.info(
+            f"Session created: {session.session_id} (client={client_name}, ip={client_ip})"
+        )
 
         return session
 
@@ -134,10 +139,9 @@ class SessionManager:
         session = self._sessions[session_id]
         duration = session.session_duration()
 
-        self._log_event(session_id, {
-            "event": "session_ended",
-            "duration_seconds": duration
-        })
+        self._log_event(
+            session_id, {"event": "session_ended", "duration_seconds": duration}
+        )
 
         del self._sessions[session_id]
 
@@ -158,10 +162,13 @@ class SessionManager:
             if session.is_expired():
                 expired_sessions.append(session_id)
 
-                self._log_event(session_id, {
-                    "event": "session_expired",
-                    "duration_seconds": session.session_duration()
-                })
+                self._log_event(
+                    session_id,
+                    {
+                        "event": "session_expired",
+                        "duration_seconds": session.session_duration(),
+                    },
+                )
 
                 del self._sessions[session_id]
 
@@ -187,10 +194,10 @@ class SessionManager:
         if session_id in self._sessions:
             self._sessions[session_id].metadata.update(metadata)
 
-            self._log_event(session_id, {
-                "event": "metadata_updated",
-                "metadata_keys": list(metadata.keys())
-            })
+            self._log_event(
+                session_id,
+                {"event": "metadata_updated", "metadata_keys": list(metadata.keys())},
+            )
 
             return True
         return False
@@ -198,14 +205,16 @@ class SessionManager:
     def get_sessions_by_client(self, client_name: str) -> List[SessionInfo]:
         """Get all sessions for a specific client."""
         return [
-            session for session in self._sessions.values()
+            session
+            for session in self._sessions.values()
             if session.client_name == client_name
         ]
 
     def get_sessions_by_ip(self, client_ip: str) -> List[SessionInfo]:
         """Get all sessions from a specific IP address."""
         return [
-            session for session in self._sessions.values()
+            session
+            for session in self._sessions.values()
             if session.client_ip == client_ip
         ]
 

@@ -10,43 +10,22 @@ Centralized management of:
 - SQLite persistence
 """
 
-import sqlite3
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from .models import (
-    User,
-    UserCreate,
-    UserUpdate,
-    Role,
-    Permission,
-    APIKey,
-    APIKeyCreate,
-    IPWhitelistEntry,
-    IPWhitelistCreate,
-    AuditLogEntry,
-    AuditLogQuery,
-    AuditEventType,
-    SecurityStatus,
-    RoleType,
-    create_default_admin_role,
-    create_default_operator_role,
-    create_default_viewer_role,
-)
-from .auth import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    create_refresh_token,
-    decode_refresh_token,
-    user_to_response,
-    AuthConfig,
-    SessionManager,
-    LoginAttemptTracker,
-)
+from .auth import (AuthConfig, LoginAttemptTracker, SessionManager,
+                   create_access_token, create_refresh_token,
+                   decode_refresh_token, hash_password, user_to_response,
+                   verify_password)
+from .models import (APIKey, APIKeyCreate, AuditEventType, AuditLogEntry,
+                     AuditLogQuery, IPWhitelistCreate, IPWhitelistEntry,
+                     Permission, Role, RoleType, SecurityStatus, User,
+                     UserCreate, UserUpdate, create_default_admin_role,
+                     create_default_operator_role, create_default_viewer_role)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +33,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # Security Manager
 # ============================================================================
+
 
 class SecurityManager:
     """Manages all security operations with SQLite persistence."""
@@ -76,6 +56,7 @@ class SecurityManager:
         # Configuration
         if config is None:
             from secrets import token_urlsafe
+
             config = AuthConfig(secret_key=token_urlsafe(64))
         self.config = config
 
@@ -99,7 +80,8 @@ class SecurityManager:
         cursor = conn.cursor()
 
         # Users table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 user_id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
@@ -121,10 +103,12 @@ class SecurityManager:
                 updated_at TIMESTAMP NOT NULL,
                 created_by TEXT
             )
-        """)
+        """
+        )
 
         # Roles table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS roles (
                 role_id TEXT PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
@@ -134,10 +118,12 @@ class SecurityManager:
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL
             )
-        """)
+        """
+        )
 
         # API Keys table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS api_keys (
                 key_id TEXT PRIMARY KEY,
                 key TEXT UNIQUE NOT NULL,
@@ -156,10 +142,12 @@ class SecurityManager:
                 created_by TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         # IP Whitelist table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS ip_whitelist (
                 entry_id TEXT PRIMARY KEY,
                 ip_address TEXT NOT NULL,
@@ -169,10 +157,12 @@ class SecurityManager:
                 created_by TEXT NOT NULL,
                 expires_at TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Audit Log table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS audit_log (
                 entry_id TEXT PRIMARY KEY,
                 timestamp TIMESTAMP NOT NULL,
@@ -188,16 +178,27 @@ class SecurityManager:
                 details TEXT,  -- JSON dict
                 auth_method TEXT
             )
-        """)
+        """
+        )
 
         # Create indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)"
+        )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_key ON api_keys(key)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type)"
+        )
 
         # Add MFA columns if they don't exist (migration)
         try:
@@ -213,7 +214,9 @@ class SecurityManager:
             pass  # Column already exists
 
         try:
-            cursor.execute("ALTER TABLE users ADD COLUMN backup_codes TEXT")  # JSON array
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN backup_codes TEXT"
+            )  # JSON array
             logger.info("Added backup_codes column to users table")
         except sqlite3.OperationalError:
             pass  # Column already exists
@@ -244,24 +247,31 @@ class SecurityManager:
     # User Management
     # ========================================================================
 
-    async def create_user(self, user_create: UserCreate, created_by: Optional[str] = None) -> User:
+    async def create_user(
+        self, user_create: UserCreate, created_by: Optional[str] = None
+    ) -> User:
         """Create a new user."""
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
 
         try:
             # Check if username exists
-            cursor.execute("SELECT user_id FROM users WHERE username = ?", (user_create.username,))
+            cursor.execute(
+                "SELECT user_id FROM users WHERE username = ?", (user_create.username,)
+            )
             if cursor.fetchone():
                 raise ValueError(f"Username '{user_create.username}' already exists")
 
             # Check if email exists
-            cursor.execute("SELECT user_id FROM users WHERE email = ?", (user_create.email,))
+            cursor.execute(
+                "SELECT user_id FROM users WHERE email = ?", (user_create.email,)
+            )
             if cursor.fetchone():
                 raise ValueError(f"Email '{user_create.email}' already exists")
 
             # Create user
             from secrets import token_urlsafe
+
             user_id = token_urlsafe(16)
             now = datetime.utcnow()
 
@@ -280,7 +290,8 @@ class SecurityManager:
             )
 
             # Insert into database
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO users (
                     user_id, username, email, hashed_password, full_name,
                     roles, is_active, is_superuser, must_change_password,
@@ -288,25 +299,41 @@ class SecurityManager:
                     last_login, last_login_ip, oauth2_providers, metadata,
                     created_at, updated_at, created_by
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                user.user_id, user.username, user.email, user.hashed_password,
-                user.full_name, json.dumps(user.roles), user.is_active,
-                user.is_superuser, user.must_change_password, user.password_expires_at,
-                user.failed_login_attempts, user.locked_until, user.last_login,
-                user.last_login_ip, json.dumps(user.oauth2_providers),
-                json.dumps(user.metadata), user.created_at, user.updated_at,
-                user.created_by
-            ))
+            """,
+                (
+                    user.user_id,
+                    user.username,
+                    user.email,
+                    user.hashed_password,
+                    user.full_name,
+                    json.dumps(user.roles),
+                    user.is_active,
+                    user.is_superuser,
+                    user.must_change_password,
+                    user.password_expires_at,
+                    user.failed_login_attempts,
+                    user.locked_until,
+                    user.last_login,
+                    user.last_login_ip,
+                    json.dumps(user.oauth2_providers),
+                    json.dumps(user.metadata),
+                    user.created_at,
+                    user.updated_at,
+                    user.created_by,
+                ),
+            )
 
             conn.commit()
 
             # Audit log
-            await self.audit_log(AuditLogEntry(
-                event_type=AuditEventType.USER_CREATED,
-                user_id=created_by,
-                resource_id=user.user_id,
-                details={"username": user.username, "email": user.email}
-            ))
+            await self.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.USER_CREATED,
+                    user_id=created_by,
+                    resource_id=user.user_id,
+                    details={"username": user.username, "email": user.email},
+                )
+            )
 
             logger.info(f"User created: {user.username} (ID: {user.user_id})")
             return user
@@ -371,7 +398,10 @@ class SecurityManager:
             if is_active is None:
                 cursor.execute("SELECT * FROM users ORDER BY username")
             else:
-                cursor.execute("SELECT * FROM users WHERE is_active = ? ORDER BY username", (is_active,))
+                cursor.execute(
+                    "SELECT * FROM users WHERE is_active = ? ORDER BY username",
+                    (is_active,),
+                )
 
             return [self._user_from_row(row) for row in cursor.fetchall()]
 
@@ -405,15 +435,24 @@ class SecurityManager:
             user.updated_at = datetime.utcnow()
 
             # Update database
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users SET
                     email = ?, full_name = ?, roles = ?, is_active = ?,
                     is_superuser = ?, must_change_password = ?, updated_at = ?
                 WHERE user_id = ?
-            """, (
-                user.email, user.full_name, json.dumps(user.roles), user.is_active,
-                user.is_superuser, user.must_change_password, user.updated_at, user_id
-            ))
+            """,
+                (
+                    user.email,
+                    user.full_name,
+                    json.dumps(user.roles),
+                    user.is_active,
+                    user.is_superuser,
+                    user.must_change_password,
+                    user.updated_at,
+                    user_id,
+                ),
+            )
 
             conn.commit()
 
@@ -437,11 +476,13 @@ class SecurityManager:
             conn.commit()
 
             # Audit log
-            await self.audit_log(AuditLogEntry(
-                event_type=AuditEventType.USER_DELETED,
-                resource_id=user_id,
-                details={"username": user.username}
-            ))
+            await self.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.USER_DELETED,
+                    resource_id=user_id,
+                    details={"username": user.username},
+                )
+            )
 
             logger.info(f"User deleted: {user.username}")
             return True
@@ -450,10 +491,7 @@ class SecurityManager:
             conn.close()
 
     async def change_password(
-        self,
-        user_id: str,
-        old_password: str,
-        new_password: str
+        self, user_id: str, old_password: str, new_password: str
     ) -> bool:
         """Change user password."""
         user = await self.get_user(user_id)
@@ -470,28 +508,34 @@ class SecurityManager:
 
         try:
             new_hash = hash_password(new_password)
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users SET
                     hashed_password = ?,
                     must_change_password = 0,
                     password_expires_at = ?,
                     updated_at = ?
                 WHERE user_id = ?
-            """, (
-                new_hash,
-                datetime.utcnow() + timedelta(days=self.config.require_password_change_days),
-                datetime.utcnow(),
-                user_id
-            ))
+            """,
+                (
+                    new_hash,
+                    datetime.utcnow()
+                    + timedelta(days=self.config.require_password_change_days),
+                    datetime.utcnow(),
+                    user_id,
+                ),
+            )
 
             conn.commit()
 
             # Audit log
-            await self.audit_log(AuditLogEntry(
-                event_type=AuditEventType.PASSWORD_CHANGED,
-                user_id=user_id,
-                username=user.username,
-            ))
+            await self.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.PASSWORD_CHANGED,
+                    user_id=user_id,
+                    username=user.username,
+                )
+            )
 
             logger.info(f"Password changed for user: {user.username}")
             return True
@@ -522,7 +566,9 @@ class SecurityManager:
             updated_at=datetime.fromisoformat(row[17]),
             created_by=row[18],
             # MFA fields (indices 19, 20, 21) - handle gracefully if columns don't exist yet
-            mfa_enabled=bool(row[19]) if len(row) > 19 and row[19] is not None else False,
+            mfa_enabled=(
+                bool(row[19]) if len(row) > 19 and row[19] is not None else False
+            ),
             mfa_secret=row[20] if len(row) > 20 else None,
             backup_codes=json.loads(row[21]) if len(row) > 21 and row[21] else [],
         )
@@ -531,7 +577,9 @@ class SecurityManager:
     # Multi-Factor Authentication
     # ========================================================================
 
-    async def enable_mfa(self, user_id: str, secret: str, backup_codes: List[str]) -> bool:
+    async def enable_mfa(
+        self, user_id: str, secret: str, backup_codes: List[str]
+    ) -> bool:
         """
         Enable MFA for a user.
 
@@ -547,11 +595,14 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users
                 SET mfa_enabled = 1, mfa_secret = ?, backup_codes = ?, updated_at = ?
                 WHERE user_id = ?
-            """, (secret, json.dumps(backup_codes), datetime.utcnow(), user_id))
+            """,
+                (secret, json.dumps(backup_codes), datetime.utcnow(), user_id),
+            )
 
             conn.commit()
             logger.info(f"MFA enabled for user: {user_id}")
@@ -574,11 +625,14 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users
                 SET mfa_enabled = 0, mfa_secret = NULL, backup_codes = NULL, updated_at = ?
                 WHERE user_id = ?
-            """, (datetime.utcnow(), user_id))
+            """,
+                (datetime.utcnow(), user_id),
+            )
 
             conn.commit()
             logger.info(f"MFA disabled for user: {user_id}")
@@ -602,18 +656,23 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users
                 SET backup_codes = ?, updated_at = ?
                 WHERE user_id = ? AND mfa_enabled = 1
-            """, (json.dumps(new_codes), datetime.utcnow(), user_id))
+            """,
+                (json.dumps(new_codes), datetime.utcnow(), user_id),
+            )
 
             conn.commit()
             if cursor.rowcount > 0:
                 logger.info(f"Backup codes regenerated for user: {user_id}")
                 return True
             else:
-                logger.warning(f"Failed to regenerate backup codes for user: {user_id} (MFA not enabled)")
+                logger.warning(
+                    f"Failed to regenerate backup codes for user: {user_id} (MFA not enabled)"
+                )
                 return False
 
         finally:
@@ -641,14 +700,19 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users
                 SET backup_codes = ?, updated_at = ?
                 WHERE user_id = ?
-            """, (json.dumps(remaining_codes), datetime.utcnow(), user_id))
+            """,
+                (json.dumps(remaining_codes), datetime.utcnow(), user_id),
+            )
 
             conn.commit()
-            logger.info(f"Backup code removed for user: {user_id}. Remaining: {len(remaining_codes)}")
+            logger.info(
+                f"Backup code removed for user: {user_id}. Remaining: {len(remaining_codes)}"
+            )
             return True
 
         finally:
@@ -664,16 +728,23 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO roles (
                     role_id, name, role_type, description, permissions,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                role.role_id, role.name, role.role_type.value, role.description,
-                json.dumps([p.dict() for p in role.permissions]),
-                role.created_at, role.updated_at
-            ))
+            """,
+                (
+                    role.role_id,
+                    role.name,
+                    role.role_type.value,
+                    role.description,
+                    json.dumps([p.dict() for p in role.permissions]),
+                    role.created_at,
+                    role.updated_at,
+                ),
+            )
 
             conn.commit()
             logger.info(f"Role created: {role.name}")
@@ -772,29 +843,44 @@ class SecurityManager:
                 created_by=created_by,
             )
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO api_keys (
                     key_id, key, key_prefix, user_id, name, description,
                     scopes, permissions, is_active, expires_at, last_used,
                     last_used_ip, usage_count, created_at, created_by
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                api_key.key_id, api_key.key, api_key.key_prefix, api_key.user_id,
-                api_key.name, api_key.description, json.dumps(api_key.scopes),
-                json.dumps([p.dict() for p in api_key.permissions]),
-                api_key.is_active, api_key.expires_at, api_key.last_used,
-                api_key.last_used_ip, api_key.usage_count, now, api_key.created_by
-            ))
+            """,
+                (
+                    api_key.key_id,
+                    api_key.key,
+                    api_key.key_prefix,
+                    api_key.user_id,
+                    api_key.name,
+                    api_key.description,
+                    json.dumps(api_key.scopes),
+                    json.dumps([p.dict() for p in api_key.permissions]),
+                    api_key.is_active,
+                    api_key.expires_at,
+                    api_key.last_used,
+                    api_key.last_used_ip,
+                    api_key.usage_count,
+                    now,
+                    api_key.created_by,
+                ),
+            )
 
             conn.commit()
 
             # Audit log
-            await self.audit_log(AuditLogEntry(
-                event_type=AuditEventType.API_KEY_CREATED,
-                user_id=created_by,
-                resource_id=api_key.key_id,
-                details={"name": api_key.name, "user_id": user_id}
-            ))
+            await self.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.API_KEY_CREATED,
+                    user_id=created_by,
+                    resource_id=api_key.key_id,
+                    details={"name": api_key.name, "user_id": user_id},
+                )
+            )
 
             logger.info(f"API key created: {api_key.name} for user {user_id}")
             return api_key
@@ -825,7 +911,10 @@ class SecurityManager:
 
         try:
             if user_id:
-                cursor.execute("SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+                cursor.execute(
+                    "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,),
+                )
             else:
                 cursor.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
 
@@ -840,15 +929,19 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("UPDATE api_keys SET is_active = 0 WHERE key_id = ?", (key_id,))
+            cursor.execute(
+                "UPDATE api_keys SET is_active = 0 WHERE key_id = ?", (key_id,)
+            )
             conn.commit()
 
             if cursor.rowcount > 0:
                 # Audit log
-                await self.audit_log(AuditLogEntry(
-                    event_type=AuditEventType.API_KEY_REVOKED,
-                    resource_id=key_id,
-                ))
+                await self.audit_log(
+                    AuditLogEntry(
+                        event_type=AuditEventType.API_KEY_REVOKED,
+                        resource_id=key_id,
+                    )
+                )
 
                 logger.info(f"API key revoked: {key_id}")
                 return True
@@ -885,7 +978,9 @@ class SecurityManager:
     # IP Whitelist Management
     # ========================================================================
 
-    async def add_ip_whitelist(self, entry_create: IPWhitelistCreate, created_by: str) -> IPWhitelistEntry:
+    async def add_ip_whitelist(
+        self, entry_create: IPWhitelistCreate, created_by: str
+    ) -> IPWhitelistEntry:
         """Add IP to whitelist."""
         from secrets import token_urlsafe
 
@@ -906,19 +1001,29 @@ class SecurityManager:
                 expires_at=expires_at,
             )
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO ip_whitelist (
                     entry_id, ip_address, is_whitelist, description,
                     created_at, created_by, expires_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                entry.entry_id, entry.ip_address, entry.is_whitelist,
-                entry.description, entry.created_at, entry.created_by, entry.expires_at
-            ))
+            """,
+                (
+                    entry.entry_id,
+                    entry.ip_address,
+                    entry.is_whitelist,
+                    entry.description,
+                    entry.created_at,
+                    entry.created_by,
+                    entry.expires_at,
+                ),
+            )
 
             conn.commit()
 
-            logger.info(f"IP {'whitelist' if entry.is_whitelist else 'blacklist'} entry added: {entry.ip_address}")
+            logger.info(
+                f"IP {'whitelist' if entry.is_whitelist else 'blacklist'} entry added: {entry.ip_address}"
+            )
             return entry
 
         finally:
@@ -972,20 +1077,30 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO audit_log (
                     entry_id, timestamp, event_type, user_id, username,
                     ip_address, resource_type, resource_id, action, success,
                     error_message, details, auth_method
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                entry.entry_id, entry.timestamp, entry.event_type.value,
-                entry.user_id, entry.username, entry.ip_address,
-                entry.resource_type.value if entry.resource_type else None,
-                entry.resource_id, entry.action, entry.success,
-                entry.error_message, json.dumps(entry.details),
-                entry.auth_method.value if entry.auth_method else None
-            ))
+            """,
+                (
+                    entry.entry_id,
+                    entry.timestamp,
+                    entry.event_type.value,
+                    entry.user_id,
+                    entry.username,
+                    entry.ip_address,
+                    entry.resource_type.value if entry.resource_type else None,
+                    entry.resource_id,
+                    entry.action,
+                    entry.success,
+                    entry.error_message,
+                    json.dumps(entry.details),
+                    entry.auth_method.value if entry.auth_method else None,
+                ),
+            )
 
             conn.commit()
 
@@ -1040,7 +1155,7 @@ class SecurityManager:
 
     def _audit_log_from_row(self, row) -> AuditLogEntry:
         """Convert database row to AuditLogEntry object."""
-        from .models import ResourceType, AuthMethod
+        from .models import AuthMethod, ResourceType
 
         return AuditLogEntry(
             entry_id=row[0],
@@ -1095,10 +1210,13 @@ class SecurityManager:
 
             # Failed login attempts in last 24 hours
             since = datetime.utcnow() - timedelta(hours=24)
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) FROM audit_log
                 WHERE event_type = ? AND timestamp >= ?
-            """, (AuditEventType.LOGIN_FAILED.value, since))
+            """,
+                (AuditEventType.LOGIN_FAILED.value, since),
+            )
             failed_login_attempts_24h = cursor.fetchone()[0]
 
             # Active sessions

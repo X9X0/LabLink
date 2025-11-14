@@ -1,19 +1,20 @@
 """SSH Deployment Wizard for deploying LabLink server to remote machines."""
 
-import logging
 import asyncio
-from typing import Optional, Dict, List
+import logging
 from pathlib import Path
+from typing import Dict, List, Optional
 
 try:
-    from PyQt6.QtWidgets import (
-        QWizard, QWizardPage, QVBoxLayout, QHBoxLayout, QFormLayout,
-        QLabel, QLineEdit, QPushButton, QTextEdit, QCheckBox, QComboBox,
-        QSpinBox, QFileDialog, QRadioButton, QButtonGroup, QProgressBar,
-        QGroupBox, QMessageBox
-    )
-    from PyQt6.QtCore import Qt, pyqtSignal, QThread
+    from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QFont
+    from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox,
+                                 QFileDialog, QFormLayout, QGroupBox,
+                                 QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+                                 QProgressBar, QPushButton, QRadioButton,
+                                 QSpinBox, QTextEdit, QVBoxLayout, QWizard,
+                                 QWizardPage)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
@@ -44,16 +45,16 @@ class DeploymentThread(QThread):
             from scp import SCPClient
 
             # Extract configuration
-            host = self.config['host']
-            port = self.config['port']
-            username = self.config['username']
-            auth_method = self.config['auth_method']
-            password = self.config.get('password')
-            key_file = self.config.get('key_file')
-            server_path = self.config['server_path']
-            source_path = self.config['source_path']
-            install_deps = self.config['install_deps']
-            setup_service = self.config['setup_service']
+            host = self.config["host"]
+            port = self.config["port"]
+            username = self.config["username"]
+            auth_method = self.config["auth_method"]
+            password = self.config.get("password")
+            key_file = self.config.get("key_file")
+            server_path = self.config["server_path"]
+            source_path = self.config["source_path"]
+            install_deps = self.config["install_deps"]
+            setup_service = self.config["setup_service"]
 
             self.progress.emit(5, "Connecting to remote host...")
 
@@ -63,11 +64,23 @@ class DeploymentThread(QThread):
 
             # Connect
             try:
-                if auth_method == 'password':
-                    ssh.connect(host, port=port, username=username, password=password, timeout=15)
-                elif auth_method == 'key':
+                if auth_method == "password":
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        password=password,
+                        timeout=15,
+                    )
+                elif auth_method == "key":
                     key_path = Path(key_file).expanduser()
-                    ssh.connect(host, port=port, username=username, key_filename=str(key_path), timeout=15)
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        key_filename=str(key_path),
+                        timeout=15,
+                    )
                 else:
                     raise ValueError(f"Unknown auth method: {auth_method}")
             except Exception as e:
@@ -102,16 +115,16 @@ class DeploymentThread(QThread):
                     source = Path(source_path)
                     if source.is_dir():
                         # Copy all Python files and requirements
-                        for pattern in ['*.py', 'requirements.txt', '*.md']:
+                        for pattern in ["*.py", "requirements.txt", "*.md"]:
                             for file in source.rglob(pattern):
-                                if '__pycache__' in str(file) or '.git' in str(file):
+                                if "__pycache__" in str(file) or ".git" in str(file):
                                     continue
 
                                 relative = file.relative_to(source)
                                 remote_file = f"{server_path}/{relative}"
 
                                 # Create remote directory structure
-                                remote_dir = '/'.join(remote_file.split('/')[:-1])
+                                remote_dir = "/".join(remote_file.split("/")[:-1])
                                 ssh.exec_command(f"mkdir -p {remote_dir}")
 
                                 # Copy file
@@ -134,7 +147,7 @@ class DeploymentThread(QThread):
                     f"cd {server_path}",
                     "python3 -m venv venv",
                     "source venv/bin/activate && pip install --upgrade pip",
-                    f"source venv/bin/activate && pip install -r requirements.txt"
+                    f"source venv/bin/activate && pip install -r requirements.txt",
                 ]
 
                 for i, cmd in enumerate(commands):
@@ -159,9 +172,7 @@ class DeploymentThread(QThread):
             # Set up systemd service
             if setup_service:
                 self.progress.emit(90, "Setting up systemd service...")
-                service_content = self._generate_service_file(
-                    username, server_path
-                )
+                service_content = self._generate_service_file(username, server_path)
 
                 # Write service file
                 service_path = "/tmp/lablink.service"
@@ -172,7 +183,7 @@ class DeploymentThread(QThread):
                     f"sudo mv {service_path} /etc/systemd/system/lablink.service",
                     "sudo systemctl daemon-reload",
                     "sudo systemctl enable lablink.service",
-                    "sudo systemctl start lablink.service"
+                    "sudo systemctl start lablink.service",
                 ]
 
                 for cmd in commands:
@@ -193,7 +204,9 @@ class DeploymentThread(QThread):
             self.finished.emit(True, "LabLink server deployed successfully!")
 
         except ImportError as e:
-            self.finished.emit(False, f"Missing required package: {e}\nPlease install paramiko and scp")
+            self.finished.emit(
+                False, f"Missing required package: {e}\nPlease install paramiko and scp"
+            )
         except Exception as e:
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
@@ -332,10 +345,7 @@ class ConnectionPage(QWizardPage):
     def _browse_key_file(self):
         """Browse for SSH key file."""
         filename, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select SSH Private Key",
-            str(Path.home() / ".ssh"),
-            "All Files (*)"
+            self, "Select SSH Private Key", str(Path.home() / ".ssh"), "All Files (*)"
         )
         if filename:
             self.key_edit.setText(filename)
@@ -361,11 +371,23 @@ class ConnectionPage(QWizardPage):
             try:
                 if self.password_radio.isChecked():
                     password = self.password_edit.text()
-                    ssh.connect(host, port=port, username=username, password=password, timeout=10)
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        password=password,
+                        timeout=10,
+                    )
                 else:
                     key_file = self.key_edit.text()
                     key_path = Path(key_file).expanduser()
-                    ssh.connect(host, port=port, username=username, key_filename=str(key_path), timeout=10)
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        key_filename=str(key_path),
+                        timeout=10,
+                    )
 
                 ssh.close()
                 self.test_result_label.setText("✅ Connection successful!")
@@ -414,12 +436,16 @@ class DeploymentOptionsPage(QWizardPage):
         options_group = QGroupBox("Installation Options")
         options_layout = QVBoxLayout()
 
-        self.install_deps_check = QCheckBox("Install Python dependencies (pip install -r requirements.txt)")
+        self.install_deps_check = QCheckBox(
+            "Install Python dependencies (pip install -r requirements.txt)"
+        )
         self.install_deps_check.setChecked(True)
         self.registerField("install_deps", self.install_deps_check)
         options_layout.addWidget(self.install_deps_check)
 
-        self.setup_service_check = QCheckBox("Set up as systemd service (auto-start on boot)")
+        self.setup_service_check = QCheckBox(
+            "Set up as systemd service (auto-start on boot)"
+        )
         self.setup_service_check.setChecked(True)
         self.registerField("setup_service", self.setup_service_check)
         options_layout.addWidget(self.setup_service_check)
@@ -430,9 +456,7 @@ class DeploymentOptionsPage(QWizardPage):
     def _browse_source(self):
         """Browse for source directory."""
         dirname = QFileDialog.getExistingDirectory(
-            self,
-            "Select Server Directory",
-            self.source_edit.text() or str(Path.home())
+            self, "Select Server Directory", self.source_edit.text() or str(Path.home())
         )
         if dirname:
             self.source_edit.setText(dirname)
@@ -479,16 +503,26 @@ class DeploymentProgressPage(QWizardPage):
         wizard = self.wizard()
 
         config = {
-            'host': wizard.field('host'),
-            'port': wizard.field('port'),
-            'username': wizard.field('username'),
-            'auth_method': 'password' if wizard.page(0).password_radio.isChecked() else 'key',
-            'password': wizard.field('password') if wizard.page(0).password_radio.isChecked() else None,
-            'key_file': wizard.field('key_file') if wizard.page(0).key_radio.isChecked() else None,
-            'source_path': wizard.field('source_path'),
-            'server_path': wizard.field('server_path'),
-            'install_deps': wizard.field('install_deps'),
-            'setup_service': wizard.field('setup_service'),
+            "host": wizard.field("host"),
+            "port": wizard.field("port"),
+            "username": wizard.field("username"),
+            "auth_method": (
+                "password" if wizard.page(0).password_radio.isChecked() else "key"
+            ),
+            "password": (
+                wizard.field("password")
+                if wizard.page(0).password_radio.isChecked()
+                else None
+            ),
+            "key_file": (
+                wizard.field("key_file")
+                if wizard.page(0).key_radio.isChecked()
+                else None
+            ),
+            "source_path": wizard.field("source_path"),
+            "server_path": wizard.field("server_path"),
+            "install_deps": wizard.field("install_deps"),
+            "setup_service": wizard.field("setup_service"),
         }
 
         # Start deployment
@@ -546,7 +580,10 @@ class DeploymentProgressPage(QWizardPage):
 
     def isComplete(self):
         """Check if page is complete."""
-        return self.deployment_thread is not None and not self.deployment_thread.isRunning()
+        return (
+            self.deployment_thread is not None
+            and not self.deployment_thread.isRunning()
+        )
 
     def cleanupPage(self):
         """Clean up when leaving page."""
@@ -586,7 +623,7 @@ class SSHDeployWizard(QWizard):
                 self,
                 "Deployment Successful",
                 "The LabLink server has been successfully deployed!\n\n"
-                "You can now connect to it using the connection dialog."
+                "You can now connect to it using the connection dialog.",
             )
 
         super().accept()

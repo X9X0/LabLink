@@ -11,20 +11,12 @@ and visualization capabilities including:
 - XY mode
 """
 
-from .models import (
-    ExtendedWaveformData,
-    CursorData,
-    CursorType,
-    MathChannelConfig,
-    MathOperation,
-    PersistenceConfig,
-    PersistenceMode,
-    HistogramData,
-    XYPlotData,
-    EnhancedMeasurements,
-)
 from .analyzer import WaveformAnalyzer
 from .manager import WaveformManager
+from .models import (CursorData, CursorType, EnhancedMeasurements,
+                     ExtendedWaveformData, HistogramData, MathChannelConfig,
+                     MathOperation, PersistenceConfig, PersistenceMode,
+                     XYPlotData)
 
 __all__ = [
     "ExtendedWaveformData",

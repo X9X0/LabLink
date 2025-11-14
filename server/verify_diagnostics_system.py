@@ -78,14 +78,22 @@ class DiagnosticsVerifier:
 
         # Required classes
         required_classes = {
-            "DiagnosticStatus", "DiagnosticCategory", "HealthStatus",
-            "DiagnosticTest", "DiagnosticResult",
-            "ConnectionDiagnostics", "CommunicationDiagnostics",
-            "PerformanceBenchmark", "EquipmentHealth",
-            "DiagnosticReport", "SystemDiagnostics"
+            "DiagnosticStatus",
+            "DiagnosticCategory",
+            "HealthStatus",
+            "DiagnosticTest",
+            "DiagnosticResult",
+            "ConnectionDiagnostics",
+            "CommunicationDiagnostics",
+            "PerformanceBenchmark",
+            "EquipmentHealth",
+            "DiagnosticReport",
+            "SystemDiagnostics",
         }
 
-        found_classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+        found_classes = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        }
         missing = required_classes - found_classes
 
         if missing:
@@ -98,7 +106,9 @@ class DiagnosticsVerifier:
                 # Look for field annotations
                 annotations = []
                 for item in node.body:
-                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    if isinstance(item, ast.AnnAssign) and isinstance(
+                        item.target, ast.Name
+                    ):
                         annotations.append(item.target.id)
 
                 required_fields = {"equipment_id", "health_status", "health_score"}
@@ -141,10 +151,15 @@ class DiagnosticsVerifier:
             "get_system_diagnostics",
             "record_connection",
             "record_disconnection",
-            "record_command"
+            "record_command",
         }
 
-        found_methods = {node.name for node in manager_class.body if isinstance(node, ast.AsyncFunctionDef) or isinstance(node, ast.FunctionDef)}
+        found_methods = {
+            node.name
+            for node in manager_class.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            or isinstance(node, ast.FunctionDef)
+        }
         missing = required_methods - found_methods
 
         if missing:
@@ -185,18 +200,31 @@ class DiagnosticsVerifier:
             if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
                 for decorator in node.decorator_list:
                     if isinstance(decorator, ast.Attribute):
-                        if isinstance(decorator.value, ast.Name) and decorator.value.id == "router":
+                        if (
+                            isinstance(decorator.value, ast.Name)
+                            and decorator.value.id == "router"
+                        ):
                             endpoints.append(node.name)
-                    elif isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
-                        if isinstance(decorator.func.value, ast.Name) and decorator.func.value.id == "router":
+                    elif isinstance(decorator, ast.Call) and isinstance(
+                        decorator.func, ast.Attribute
+                    ):
+                        if (
+                            isinstance(decorator.func.value, ast.Name)
+                            and decorator.func.value.id == "router"
+                        ):
                             endpoints.append(node.name)
 
         # Required endpoints (at least these)
         required_endpoints = {
-            "get_equipment_health", "get_all_equipment_health", "get_cached_health",
-            "check_connection", "get_communication_diagnostics",
-            "run_benchmark", "get_benchmark_history",
-            "generate_diagnostic_report", "get_system_diagnostics"
+            "get_equipment_health",
+            "get_all_equipment_health",
+            "get_cached_health",
+            "check_connection",
+            "get_communication_diagnostics",
+            "run_benchmark",
+            "get_benchmark_history",
+            "generate_diagnostic_report",
+            "get_system_diagnostics",
         }
 
         missing = required_endpoints - set(endpoints)
@@ -217,12 +245,18 @@ class DiagnosticsVerifier:
             content = f.read()
 
         required_exports = {
-            "DiagnosticStatus", "DiagnosticCategory", "HealthStatus",
-            "DiagnosticTest", "DiagnosticResult",
-            "ConnectionDiagnostics", "CommunicationDiagnostics",
-            "PerformanceBenchmark", "EquipmentHealth",
-            "DiagnosticReport", "SystemDiagnostics",
-            "diagnostics_manager"
+            "DiagnosticStatus",
+            "DiagnosticCategory",
+            "HealthStatus",
+            "DiagnosticTest",
+            "DiagnosticResult",
+            "ConnectionDiagnostics",
+            "CommunicationDiagnostics",
+            "PerformanceBenchmark",
+            "EquipmentHealth",
+            "DiagnosticReport",
+            "SystemDiagnostics",
+            "diagnostics_manager",
         }
 
         for export in required_exports:
@@ -248,7 +282,7 @@ class DiagnosticsVerifier:
             return False
 
         # Check router included
-        if 'app.include_router(diagnostics_router' not in content:
+        if "app.include_router(diagnostics_router" not in content:
             self.errors.append("diagnostics_router not added to app")
             return False
 

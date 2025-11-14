@@ -4,18 +4,18 @@ import logging
 from typing import Optional
 
 try:
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton,
-        QLabel, QDialog, QFormLayout, QLineEdit, QSpinBox,
-        QDialogButtonBox, QMessageBox, QMenu
-    )
     from PyQt6.QtCore import Qt, pyqtSignal
     from PyQt6.QtGui import QAction
+    from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
+                                 QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+                                 QMenu, QMessageBox, QPushButton, QSpinBox,
+                                 QVBoxLayout, QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-from client.utils.server_manager import get_server_manager, ServerConnection
+from client.utils.server_manager import ServerConnection, get_server_manager
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +74,25 @@ class AddServerDialog(QDialog):
             Dictionary with server configuration
         """
         return {
-            'name': self.name_edit.text().strip(),
-            'host': self.host_edit.text().strip(),
-            'api_port': self.api_port_spin.value(),
-            'ws_port': self.ws_port_spin.value(),
-            'description': self.description_edit.text().strip()
+            "name": self.name_edit.text().strip(),
+            "host": self.host_edit.text().strip(),
+            "api_port": self.api_port_spin.value(),
+            "ws_port": self.ws_port_spin.value(),
+            "description": self.description_edit.text().strip(),
         }
 
     def accept(self):
         """Validate and accept dialog."""
         config = self.get_server_config()
 
-        if not config['name']:
+        if not config["name"]:
             QMessageBox.warning(self, "Invalid Input", "Please enter a server name")
             return
 
-        if not config['host']:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a hostname or IP address")
+        if not config["host"]:
+            QMessageBox.warning(
+                self, "Invalid Input", "Please enter a hostname or IP address"
+            )
             return
 
         super().accept()
@@ -179,9 +181,7 @@ class ServerSelector(QWidget):
             status = "● " if server.connected else "○ "
             self.server_combo.addItem(f"{status}{server.name}")
             self.server_combo.setItemData(
-                self.server_combo.count() - 1,
-                server.name,
-                Qt.ItemDataRole.UserRole
+                self.server_combo.count() - 1, server.name, Qt.ItemDataRole.UserRole
             )
 
         # Restore selection if possible
@@ -216,7 +216,9 @@ class ServerSelector(QWidget):
 
             if server:
                 # Update button text based on connection status
-                self.connect_btn.setText("Disconnect" if server.connected else "Connect")
+                self.connect_btn.setText(
+                    "Disconnect" if server.connected else "Connect"
+                )
                 self.server_changed.emit(server_name)
 
     def _on_connect_clicked(self):
@@ -245,28 +247,28 @@ class ServerSelector(QWidget):
             try:
                 # Check if server already exists
                 existing = self.server_manager.find_server_by_host(
-                    config['host'], config['api_port']
+                    config["host"], config["api_port"]
                 )
 
                 if existing:
                     QMessageBox.warning(
                         self,
                         "Server Exists",
-                        f"A server with this host and port already exists: {existing.name}"
+                        f"A server with this host and port already exists: {existing.name}",
                     )
                     return
 
                 # Add server
                 metadata = {}
-                if config['description']:
-                    metadata['description'] = config['description']
+                if config["description"]:
+                    metadata["description"] = config["description"]
 
                 self.server_manager.add_server(
-                    config['name'],
-                    config['host'],
-                    config['api_port'],
-                    config['ws_port'],
-                    metadata
+                    config["name"],
+                    config["host"],
+                    config["api_port"],
+                    config["ws_port"],
+                    metadata,
                 )
 
                 self._refresh_server_list()
@@ -274,22 +276,18 @@ class ServerSelector(QWidget):
                 # Select the newly added server
                 for i in range(self.server_combo.count()):
                     name = self.server_combo.itemData(i, Qt.ItemDataRole.UserRole)
-                    if name == config['name']:
+                    if name == config["name"]:
                         self.server_combo.setCurrentIndex(i)
                         break
 
                 QMessageBox.information(
                     self,
                     "Server Added",
-                    f"Server '{config['name']}' has been added successfully."
+                    f"Server '{config['name']}' has been added successfully.",
                 )
 
             except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Failed to add server: {e}"
-                )
+                QMessageBox.critical(self, "Error", f"Failed to add server: {e}")
 
     def _on_remove_server(self):
         """Handle remove server action."""
@@ -310,7 +308,7 @@ class ServerSelector(QWidget):
             self,
             "Remove Server",
             f"Are you sure you want to remove server '{server_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -321,7 +319,7 @@ class ServerSelector(QWidget):
                 QMessageBox.warning(
                     self,
                     "Server Connected",
-                    "Please disconnect from the server before removing it."
+                    "Please disconnect from the server before removing it.",
                 )
                 return
 
@@ -329,17 +327,11 @@ class ServerSelector(QWidget):
             self._refresh_server_list()
 
             QMessageBox.information(
-                self,
-                "Server Removed",
-                f"Server '{server_name}' has been removed."
+                self, "Server Removed", f"Server '{server_name}' has been removed."
             )
 
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to remove server: {e}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to remove server: {e}")
 
     def get_selected_server(self) -> Optional[ServerConnection]:
         """Get the currently selected server.

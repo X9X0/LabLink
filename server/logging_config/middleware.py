@@ -1,12 +1,13 @@
 """Logging middleware for FastAPI."""
 
-import time
 import logging
+import time
 import uuid
+from typing import Any, Callable, Dict, Optional
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from typing import Callable, Optional, Dict, Any
 
 # Create loggers
 access_logger = logging.getLogger("lablink.access")
@@ -31,15 +32,19 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "user_name": None,
             "user_email": None,
             "user_role": None,
-            "auth_method": None
+            "auth_method": None,
         }
 
         # 1. Check for user in request state (set by auth middleware)
         if hasattr(request.state, "user"):
             user = request.state.user
             if user:
-                user_info["user_id"] = getattr(user, "id", None) or getattr(user, "user_id", None)
-                user_info["user_name"] = getattr(user, "name", None) or getattr(user, "username", None)
+                user_info["user_id"] = getattr(user, "id", None) or getattr(
+                    user, "user_id", None
+                )
+                user_info["user_name"] = getattr(user, "name", None) or getattr(
+                    user, "username", None
+                )
                 user_info["user_email"] = getattr(user, "email", None)
                 user_info["user_role"] = getattr(user, "role", None)
                 user_info["auth_method"] = "session"
@@ -111,7 +116,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = (time.time() - start_time) * 1000
 
             # Log access
-            status_code = response.status_code if 'response' in locals() else 500
+            status_code = response.status_code if "response" in locals() else 500
 
             access_logger.info(
                 f"{method} {path}",
@@ -128,8 +133,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     "user_id": user_info["user_id"],
                     "user_name": user_info["user_name"],
                     "user_role": user_info["user_role"],
-                    "auth_method": user_info["auth_method"]
-                }
+                    "auth_method": user_info["auth_method"],
+                },
             )
 
             # Log to audit trail for sensitive operations
@@ -148,8 +153,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                         "user_name": user_info["user_name"],
                         "user_email": user_info["user_email"],
                         "user_role": user_info["user_role"],
-                        "auth_method": user_info["auth_method"]
-                    }
+                        "auth_method": user_info["auth_method"],
+                    },
                 )
 
         return response
@@ -167,7 +172,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "/api/safety/",
             "/api/locks/",
             "/api/state/",
-            "/api/acquisition/session"
+            "/api/acquisition/session",
         ]
 
         return any(path.startswith(p) for p in sensitive_paths)
@@ -221,7 +226,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "GET": "read",
             "PUT": "update",
             "DELETE": "delete",
-            "PATCH": "patch"
+            "PATCH": "patch",
         }
 
         return action_map.get(method, "unknown")
@@ -234,46 +239,60 @@ class EquipmentEventLogger:
         """Initialize equipment event logger."""
         self.logger = logging.getLogger("lablink.equipment")
 
-    def log_connection(self, equipment_id: str, address: str, success: bool, error: str = None,
-                      user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_connection(
+        self,
+        equipment_id: str,
+        address: str,
+        success: bool,
+        error: str = None,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment connection event."""
         extra = {
             "equipment_id": equipment_id,
             "address": address,
             "event": "connection",
             "success": success,
-            "error": error
+            "error": error,
         }
         if user_id:
             extra["user_id"] = user_id
         if user_name:
             extra["user_name"] = user_name
 
-        self.logger.info(
-            f"Equipment connection: {equipment_id}",
-            extra=extra
-        )
+        self.logger.info(f"Equipment connection: {equipment_id}", extra=extra)
 
-    def log_disconnection(self, equipment_id: str, reason: str = None,
-                         user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_disconnection(
+        self,
+        equipment_id: str,
+        reason: str = None,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment disconnection event."""
         extra = {
             "equipment_id": equipment_id,
             "event": "disconnection",
-            "reason": reason
+            "reason": reason,
         }
         if user_id:
             extra["user_id"] = user_id
         if user_name:
             extra["user_name"] = user_name
 
-        self.logger.info(
-            f"Equipment disconnection: {equipment_id}",
-            extra=extra
-        )
+        self.logger.info(f"Equipment disconnection: {equipment_id}", extra=extra)
 
-    def log_command(self, equipment_id: str, command: str, success: bool, duration_ms: float,
-                   error: str = None, user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_command(
+        self,
+        equipment_id: str,
+        command: str,
+        success: bool,
+        duration_ms: float,
+        error: str = None,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment command execution."""
         extra = {
             "equipment_id": equipment_id,
@@ -281,26 +300,29 @@ class EquipmentEventLogger:
             "command": command,
             "success": success,
             "duration_ms": round(duration_ms, 2),
-            "error": error
+            "error": error,
         }
         if user_id:
             extra["user_id"] = user_id
         if user_name:
             extra["user_name"] = user_name
 
-        self.logger.info(
-            f"Equipment command: {equipment_id} - {command}",
-            extra=extra
-        )
+        self.logger.info(f"Equipment command: {equipment_id} - {command}", extra=extra)
 
-    def log_error(self, equipment_id: str, error_type: str, error_message: str,
-                 user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_error(
+        self,
+        equipment_id: str,
+        error_type: str,
+        error_message: str,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment error."""
         extra = {
             "equipment_id": equipment_id,
             "event": "error",
             "error_type": error_type,
-            "error_message": error_message
+            "error_message": error_message,
         }
         if user_id:
             extra["user_id"] = user_id
@@ -308,18 +330,23 @@ class EquipmentEventLogger:
             extra["user_name"] = user_name
 
         self.logger.error(
-            f"Equipment error: {equipment_id} - {error_type}",
-            extra=extra
+            f"Equipment error: {equipment_id} - {error_type}", extra=extra
         )
 
-    def log_state_change(self, equipment_id: str, old_state: str, new_state: str,
-                        user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_state_change(
+        self,
+        equipment_id: str,
+        old_state: str,
+        new_state: str,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment state change."""
         extra = {
             "equipment_id": equipment_id,
             "event": "state_change",
             "old_state": old_state,
-            "new_state": new_state
+            "new_state": new_state,
         }
         if user_id:
             extra["user_id"] = user_id
@@ -328,27 +355,30 @@ class EquipmentEventLogger:
 
         self.logger.info(
             f"Equipment state change: {equipment_id} ({old_state} -> {new_state})",
-            extra=extra
+            extra=extra,
         )
 
-    def log_health_check(self, equipment_id: str, is_healthy: bool, metrics: dict,
-                        user_id: Optional[str] = None, user_name: Optional[str] = None):
+    def log_health_check(
+        self,
+        equipment_id: str,
+        is_healthy: bool,
+        metrics: dict,
+        user_id: Optional[str] = None,
+        user_name: Optional[str] = None,
+    ):
         """Log equipment health check result."""
         extra = {
             "equipment_id": equipment_id,
             "event": "health_check",
             "is_healthy": is_healthy,
-            **metrics
+            **metrics,
         }
         if user_id:
             extra["user_id"] = user_id
         if user_name:
             extra["user_name"] = user_name
 
-        self.logger.info(
-            f"Equipment health check: {equipment_id}",
-            extra=extra
-        )
+        self.logger.info(f"Equipment health check: {equipment_id}", extra=extra)
 
 
 # Global equipment event logger instance

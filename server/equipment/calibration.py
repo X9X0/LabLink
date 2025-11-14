@@ -6,20 +6,22 @@ Manages calibration scheduling, record-keeping, and verification for lab equipme
 Ensures equipment meets accuracy requirements and regulatory compliance.
 """
 
-import logging
 import json
-from typing import Dict, List, Optional, Any
+import logging
+import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-import uuid
 
 logger = logging.getLogger(__name__)
 
 
 class CalibrationStatus(str, Enum):
     """Calibration status of equipment."""
+
     CURRENT = "current"  # Calibration is valid
     DUE_SOON = "due_soon"  # Calibration due within warning period
     DUE = "due"  # Calibration is due now
@@ -30,6 +32,7 @@ class CalibrationStatus(str, Enum):
 
 class CalibrationType(str, Enum):
     """Types of calibration procedures."""
+
     FULL = "full"  # Complete calibration of all parameters
     PARTIAL = "partial"  # Calibration of specific parameters
     VERIFICATION = "verification"  # Verification only (no adjustments)
@@ -40,6 +43,7 @@ class CalibrationType(str, Enum):
 
 class CalibrationResult(str, Enum):
     """Result of calibration procedure."""
+
     PASS = "pass"  # Calibration passed
     PASS_WITH_ADJUSTMENT = "pass_with_adjustment"  # Passed after adjustment
     FAIL = "fail"  # Calibration failed
@@ -49,6 +53,7 @@ class CalibrationResult(str, Enum):
 
 class CalibrationRecord(BaseModel):
     """Record of a calibration event."""
+
     calibration_id: str = Field(default_factory=lambda: f"cal_{uuid.uuid4().hex[:12]}")
     equipment_id: str = Field(..., description="Equipment identifier")
     equipment_type: str = Field(..., description="Type of equipment")
@@ -67,32 +72,40 @@ class CalibrationRecord(BaseModel):
 
     # Pre-calibration measurements
     pre_calibration_measurements: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Measurements before calibration"
+        default_factory=dict, description="Measurements before calibration"
     )
 
     # Post-calibration measurements
     post_calibration_measurements: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Measurements after calibration"
+        default_factory=dict, description="Measurements after calibration"
     )
 
     # Calibration standards used
     standards_used: List[Dict[str, str]] = Field(
         default_factory=list,
-        description="Calibration standards and traceable references"
+        description="Calibration standards and traceable references",
     )
 
     # Environmental conditions
-    temperature_celsius: Optional[float] = Field(None, description="Ambient temperature")
+    temperature_celsius: Optional[float] = Field(
+        None, description="Ambient temperature"
+    )
     humidity_percent: Optional[float] = Field(None, description="Ambient humidity")
 
     # Results and notes
-    adjustments_made: List[str] = Field(default_factory=list, description="Adjustments performed")
-    out_of_tolerance_items: List[str] = Field(default_factory=list, description="Out-of-tolerance findings")
+    adjustments_made: List[str] = Field(
+        default_factory=list, description="Adjustments performed"
+    )
+    out_of_tolerance_items: List[str] = Field(
+        default_factory=list, description="Out-of-tolerance findings"
+    )
     notes: Optional[str] = Field(None, description="Additional notes")
-    certificate_number: Optional[str] = Field(None, description="Calibration certificate number")
-    certificate_file_path: Optional[str] = Field(None, description="Path to certificate file")
+    certificate_number: Optional[str] = Field(
+        None, description="Calibration certificate number"
+    )
+    certificate_file_path: Optional[str] = Field(
+        None, description="Path to certificate file"
+    )
 
     # Metadata
     created_at: datetime = Field(default_factory=datetime.now)
@@ -101,18 +114,23 @@ class CalibrationRecord(BaseModel):
 
 class CalibrationSchedule(BaseModel):
     """Calibration schedule for equipment."""
+
     schedule_id: str = Field(default_factory=lambda: f"sched_{uuid.uuid4().hex[:8]}")
     equipment_id: str = Field(..., description="Equipment identifier")
 
     # Schedule parameters
     interval_days: int = Field(..., description="Calibration interval in days")
     warning_days: int = Field(default=30, description="Days before due to warn")
-    auto_schedule: bool = Field(default=True, description="Automatically schedule next calibration")
+    auto_schedule: bool = Field(
+        default=True, description="Automatically schedule next calibration"
+    )
 
     # Notification settings
     notify_due_soon: bool = Field(default=True, description="Notify when due soon")
     notify_overdue: bool = Field(default=True, description="Notify when overdue")
-    notification_emails: List[str] = Field(default_factory=list, description="Email addresses for notifications")
+    notification_emails: List[str] = Field(
+        default_factory=list, description="Email addresses for notifications"
+    )
 
     # Metadata
     enabled: bool = Field(default=True)
@@ -133,18 +151,24 @@ class CalibrationManager:
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
-        self._records: Dict[str, List[CalibrationRecord]] = {}  # equipment_id -> records
+        self._records: Dict[str, List[CalibrationRecord]] = (
+            {}
+        )  # equipment_id -> records
         self._schedules: Dict[str, CalibrationSchedule] = {}  # equipment_id -> schedule
 
         # Load existing data
         self._load_records()
         self._load_schedules()
 
-        logger.info(f"Calibration manager initialized with {len(self._records)} equipment records")
+        logger.info(
+            f"Calibration manager initialized with {len(self._records)} equipment records"
+        )
 
     # ==================== Record Management ====================
 
-    async def add_calibration_record(self, record: CalibrationRecord) -> CalibrationRecord:
+    async def add_calibration_record(
+        self, record: CalibrationRecord
+    ) -> CalibrationRecord:
         """
         Add a new calibration record.
 
@@ -162,18 +186,21 @@ class CalibrationManager:
         self._records[equipment_id].append(record)
         self._save_records(equipment_id)
 
-        logger.info(f"Added calibration record {record.calibration_id} for equipment {equipment_id}")
+        logger.info(
+            f"Added calibration record {record.calibration_id} for equipment {equipment_id}"
+        )
 
         # Auto-schedule next calibration if enabled
-        if equipment_id in self._schedules and self._schedules[equipment_id].auto_schedule:
+        if (
+            equipment_id in self._schedules
+            and self._schedules[equipment_id].auto_schedule
+        ):
             await self._auto_schedule_next(equipment_id, record)
 
         return record
 
     async def get_calibration_history(
-        self,
-        equipment_id: str,
-        limit: Optional[int] = None
+        self, equipment_id: str, limit: Optional[int] = None
     ) -> List[CalibrationRecord]:
         """
         Get calibration history for equipment.
@@ -195,7 +222,9 @@ class CalibrationManager:
 
         return records
 
-    async def get_latest_calibration(self, equipment_id: str) -> Optional[CalibrationRecord]:
+    async def get_latest_calibration(
+        self, equipment_id: str
+    ) -> Optional[CalibrationRecord]:
         """
         Get the most recent calibration record.
 
@@ -208,7 +237,9 @@ class CalibrationManager:
         records = await self.get_calibration_history(equipment_id, limit=1)
         return records[0] if records else None
 
-    async def delete_calibration_record(self, equipment_id: str, calibration_id: str) -> bool:
+    async def delete_calibration_record(
+        self, equipment_id: str, calibration_id: str
+    ) -> bool:
         """
         Delete a calibration record.
 
@@ -224,8 +255,7 @@ class CalibrationManager:
 
         original_count = len(self._records[equipment_id])
         self._records[equipment_id] = [
-            r for r in self._records[equipment_id]
-            if r.calibration_id != calibration_id
+            r for r in self._records[equipment_id] if r.calibration_id != calibration_id
         ]
 
         if len(self._records[equipment_id]) < original_count:
@@ -313,9 +343,13 @@ class CalibrationManager:
         self._schedules[schedule.equipment_id] = schedule
         self._save_schedules()
 
-        logger.info(f"Set calibration schedule for {schedule.equipment_id}: {schedule.interval_days} days")
+        logger.info(
+            f"Set calibration schedule for {schedule.equipment_id}: {schedule.interval_days} days"
+        )
 
-    async def get_calibration_schedule(self, equipment_id: str) -> Optional[CalibrationSchedule]:
+    async def get_calibration_schedule(
+        self, equipment_id: str
+    ) -> Optional[CalibrationSchedule]:
         """
         Get calibration schedule for equipment.
 
@@ -345,8 +379,7 @@ class CalibrationManager:
         return False
 
     async def get_due_calibrations(
-        self,
-        include_due_soon: bool = True
+        self, include_due_soon: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Get list of equipment with calibrations due.
@@ -371,16 +404,20 @@ class CalibrationManager:
                 include = True
 
             if include:
-                due_list.append({
-                    "equipment_id": equipment_id,
-                    "status": status.value,
-                    "days_until_due": days_until_due,
-                    "due_date": latest.due_date if latest else None,
-                    "last_calibration": latest.calibration_date if latest else None
-                })
+                due_list.append(
+                    {
+                        "equipment_id": equipment_id,
+                        "status": status.value,
+                        "days_until_due": days_until_due,
+                        "due_date": latest.due_date if latest else None,
+                        "last_calibration": latest.calibration_date if latest else None,
+                    }
+                )
 
         # Sort by days until due (most overdue first)
-        due_list.sort(key=lambda x: x["days_until_due"] if x["days_until_due"] is not None else 0)
+        due_list.sort(
+            key=lambda x: x["days_until_due"] if x["days_until_due"] is not None else 0
+        )
 
         return due_list
 
@@ -399,8 +436,7 @@ class CalibrationManager:
     # ==================== Reporting ====================
 
     async def generate_calibration_report(
-        self,
-        equipment_ids: Optional[List[str]] = None
+        self, equipment_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Generate calibration status report.
@@ -423,9 +459,9 @@ class CalibrationManager:
                 "due": 0,
                 "overdue": 0,
                 "never_calibrated": 0,
-                "unknown": 0
+                "unknown": 0,
             },
-            "equipment_details": []
+            "equipment_details": [],
         }
 
         for equipment_id in equipment_ids:
@@ -437,14 +473,18 @@ class CalibrationManager:
             report["status_summary"][status.value] += 1
 
             # Add details
-            report["equipment_details"].append({
-                "equipment_id": equipment_id,
-                "status": status.value,
-                "days_until_due": days_until_due,
-                "last_calibration_date": latest.calibration_date if latest else None,
-                "next_due_date": latest.due_date if latest else None,
-                "last_result": latest.result.value if latest else None
-            })
+            report["equipment_details"].append(
+                {
+                    "equipment_id": equipment_id,
+                    "status": status.value,
+                    "days_until_due": days_until_due,
+                    "last_calibration_date": (
+                        latest.calibration_date if latest else None
+                    ),
+                    "next_due_date": latest.due_date if latest else None,
+                    "last_result": latest.result.value if latest else None,
+                }
+            )
 
         return report
 
@@ -455,7 +495,7 @@ class CalibrationManager:
         records_file = self.storage_path / "records.json"
         if records_file.exists():
             try:
-                with open(records_file, 'r') as f:
+                with open(records_file, "r") as f:
                     data = json.load(f)
 
                 for equipment_id, records in data.items():
@@ -463,7 +503,9 @@ class CalibrationManager:
                         CalibrationRecord(**record) for record in records
                     ]
 
-                logger.info(f"Loaded {len(self._records)} equipment calibration records")
+                logger.info(
+                    f"Loaded {len(self._records)} equipment calibration records"
+                )
             except Exception as e:
                 logger.error(f"Error loading calibration records: {e}")
 
@@ -474,16 +516,17 @@ class CalibrationManager:
         # Load all records
         all_records = {}
         if records_file.exists():
-            with open(records_file, 'r') as f:
+            with open(records_file, "r") as f:
                 all_records = json.load(f)
 
         # Update records for this equipment
         all_records[equipment_id] = [
-            json.loads(record.model_dump_json()) for record in self._records.get(equipment_id, [])
+            json.loads(record.model_dump_json())
+            for record in self._records.get(equipment_id, [])
         ]
 
         # Save back
-        with open(records_file, 'w') as f:
+        with open(records_file, "w") as f:
             json.dump(all_records, f, indent=2, default=str)
 
     def _load_schedules(self):
@@ -491,7 +534,7 @@ class CalibrationManager:
         schedules_file = self.storage_path / "schedules.json"
         if schedules_file.exists():
             try:
-                with open(schedules_file, 'r') as f:
+                with open(schedules_file, "r") as f:
                     data = json.load(f)
 
                 for equipment_id, schedule in data.items():
@@ -510,7 +553,7 @@ class CalibrationManager:
             for equipment_id, schedule in self._schedules.items()
         }
 
-        with open(schedules_file, 'w') as f:
+        with open(schedules_file, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
 
@@ -523,7 +566,9 @@ def get_calibration_manager() -> Optional[CalibrationManager]:
     return calibration_manager
 
 
-def initialize_calibration_manager(storage_path: str = "data/calibration") -> CalibrationManager:
+def initialize_calibration_manager(
+    storage_path: str = "data/calibration",
+) -> CalibrationManager:
     """
     Initialize the global calibration manager.
 

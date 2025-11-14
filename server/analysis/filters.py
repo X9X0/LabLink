@@ -1,11 +1,12 @@
 """Signal filtering module using scipy.signal."""
 
-import numpy as np
 import logging
 from typing import Optional, Tuple
+
+import numpy as np
 from scipy import signal
 
-from .models import FilterConfig, FilterResult, FilterType, FilterMethod
+from .models import FilterConfig, FilterMethod, FilterResult, FilterType
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,9 @@ class SignalFilter:
 
         elif config.filter_type in [FilterType.BANDPASS, FilterType.BANDSTOP]:
             if not config.cutoff_low or not config.cutoff_high:
-                raise ValueError(f"{config.filter_type} requires cutoff_low and cutoff_high")
+                raise ValueError(
+                    f"{config.filter_type} requires cutoff_low and cutoff_high"
+                )
 
             wn = [config.cutoff_low / nyquist, config.cutoff_high / nyquist]
 
@@ -93,7 +96,11 @@ class SignalFilter:
 
         elif config.filter_method == FilterMethod.BESSEL:
             b, a = signal.bessel(
-                config.order, wn, btype=config.filter_type.value, analog=False, norm="phase"
+                config.order,
+                wn,
+                btype=config.filter_type.value,
+                analog=False,
+                norm="phase",
             )
 
         elif config.filter_method == FilterMethod.ELLIPTIC:
@@ -111,7 +118,9 @@ class SignalFilter:
         elif config.filter_method == FilterMethod.FIR:
             # Design FIR filter using window method
             numtaps = config.order * 2 + 1  # FIR filter length
-            b = signal.firwin(numtaps, wn, pass_zero=(config.filter_type.value == "lowpass"))
+            b = signal.firwin(
+                numtaps, wn, pass_zero=(config.filter_type.value == "lowpass")
+            )
             a = np.array([1.0])  # FIR filters have a=1
 
         else:
@@ -292,7 +301,9 @@ class SignalFilter:
 
         return filtered
 
-    def wiener_filter(self, data: np.ndarray, noise_power: Optional[float] = None) -> np.ndarray:
+    def wiener_filter(
+        self, data: np.ndarray, noise_power: Optional[float] = None
+    ) -> np.ndarray:
         """Apply Wiener filter for noise reduction.
 
         Args:

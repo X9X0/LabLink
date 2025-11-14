@@ -1,8 +1,9 @@
 """Token storage utility for persisting JWT tokens."""
 
-from PyQt6.QtCore import QSettings
-from typing import Optional, Tuple
 import logging
+from typing import Optional, Tuple
+
+from PyQt6.QtCore import QSettings
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,9 @@ class TokenStorage:
             self.settings.setValue("user_username", user_data.get("username", ""))
             self.settings.setValue("user_email", user_data.get("email", ""))
             self.settings.setValue("user_full_name", user_data.get("full_name", ""))
-            self.settings.setValue("user_is_superuser", user_data.get("is_superuser", False))
+            self.settings.setValue(
+                "user_is_superuser", user_data.get("is_superuser", False)
+            )
             self.settings.sync()
             logger.debug("User data saved successfully")
         except Exception as e:
@@ -100,7 +103,9 @@ class TokenStorage:
                 "username": username,
                 "email": self.settings.value("user_email", "", type=str),
                 "full_name": self.settings.value("user_full_name", "", type=str),
-                "is_superuser": self.settings.value("user_is_superuser", False, type=bool),
+                "is_superuser": self.settings.value(
+                    "user_is_superuser", False, type=bool
+                ),
             }
 
         except Exception as e:

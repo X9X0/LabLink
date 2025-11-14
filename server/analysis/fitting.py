@@ -1,8 +1,9 @@
 """Curve fitting and regression analysis module."""
 
-import numpy as np
 import logging
 from typing import Callable, Optional
+
+import numpy as np
 from scipy import optimize
 
 from .models import FitConfig, FitResult, FitType
@@ -70,7 +71,11 @@ class CurveFitter:
             if not config.custom_function:
                 raise ValueError("Custom fit requires custom_function")
             coeffs, fitted_y, equation = self._fit_custom(
-                x_data, y_data, config.custom_function, config.initial_guess, config.bounds
+                x_data,
+                y_data,
+                config.custom_function,
+                config.initial_guess,
+                config.bounds,
             )
 
         else:
@@ -103,7 +108,11 @@ class CurveFitter:
         return coeffs, fitted_y, equation
 
     def _fit_polynomial(
-        self, x_data: np.ndarray, y_data: np.ndarray, degree: int, weights: Optional[np.ndarray]
+        self,
+        x_data: np.ndarray,
+        y_data: np.ndarray,
+        degree: int,
+        weights: Optional[np.ndarray],
     ) -> tuple[np.ndarray, np.ndarray, str]:
         """Fit polynomial model."""
         coeffs = np.polyfit(x_data, y_data, degree, w=weights)
@@ -259,9 +268,7 @@ class CurveFitter:
         # Parse function definition
         try:
             tree = ast.parse(function_code)
-            if not (
-                len(tree.body) == 1 and isinstance(tree.body[0], ast.FunctionDef)
-            ):
+            if not (len(tree.body) == 1 and isinstance(tree.body[0], ast.FunctionDef)):
                 raise ValueError("Custom function must be a single function definition")
 
             func_name = tree.body[0].name
@@ -281,7 +288,9 @@ class CurveFitter:
                 custom_func, x_data, y_data, p0=initial_guess, bounds=bounds
             )
         else:
-            coeffs, _ = optimize.curve_fit(custom_func, x_data, y_data, p0=initial_guess)
+            coeffs, _ = optimize.curve_fit(
+                custom_func, x_data, y_data, p0=initial_guess
+            )
 
         fitted_y = custom_func(x_data, *coeffs)
         equation = f"Custom function with parameters: {coeffs}"
@@ -297,7 +306,9 @@ class CurveFitter:
 
         return r_squared
 
-    def predict(self, coeffs: np.ndarray, x_new: np.ndarray, fit_type: FitType) -> np.ndarray:
+    def predict(
+        self, coeffs: np.ndarray, x_new: np.ndarray, fit_type: FitType
+    ) -> np.ndarray:
         """Predict y values for new x values using fit coefficients.
 
         Args:
@@ -319,6 +330,9 @@ class CurveFitter:
         elif fit_type == FitType.SINUSOIDAL:
             return coeffs[0] * np.sin(coeffs[1] * x_new + coeffs[2]) + coeffs[3]
         elif fit_type == FitType.GAUSSIAN:
-            return coeffs[0] * np.exp(-((x_new - coeffs[1]) ** 2) / (2 * coeffs[2] ** 2)) + coeffs[3]
+            return (
+                coeffs[0] * np.exp(-((x_new - coeffs[1]) ** 2) / (2 * coeffs[2] ** 2))
+                + coeffs[3]
+            )
         else:
             raise ValueError(f"Prediction not supported for {fit_type}")

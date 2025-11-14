@@ -1,15 +1,17 @@
 """Advanced statistical analysis for acquisition data."""
 
-import numpy as np
-from typing import Optional, Tuple, List, Dict
-from enum import Enum
-from dataclasses import dataclass
-from scipy import signal, fft
 from collections import deque
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+from scipy import fft, signal
 
 
 class TrendType(str, Enum):
     """Trend detection types."""
+
     RISING = "rising"
     FALLING = "falling"
     STABLE = "stable"
@@ -20,6 +22,7 @@ class TrendType(str, Enum):
 @dataclass
 class RollingStats:
     """Rolling statistical metrics."""
+
     mean: float
     std: float
     min: float
@@ -33,6 +36,7 @@ class RollingStats:
 @dataclass
 class FrequencyAnalysis:
     """Frequency domain analysis results."""
+
     frequencies: np.ndarray
     magnitudes: np.ndarray
     phases: np.ndarray
@@ -45,6 +49,7 @@ class FrequencyAnalysis:
 @dataclass
 class TrendAnalysis:
     """Trend detection results."""
+
     trend: TrendType
     slope: float
     r_squared: float  # Goodness of fit
@@ -54,6 +59,7 @@ class TrendAnalysis:
 @dataclass
 class DataQuality:
     """Data quality metrics."""
+
     noise_level: float
     stability_score: float  # 0.0 (unstable) to 1.0 (stable)
     outlier_count: int
@@ -64,6 +70,7 @@ class DataQuality:
 @dataclass
 class PeakInfo:
     """Peak detection information."""
+
     indices: np.ndarray
     values: np.ndarray
     count: int
@@ -94,9 +101,14 @@ class StatisticsEngine:
         """
         if len(data) == 0:
             return RollingStats(
-                mean=0.0, std=0.0, min=0.0, max=0.0,
-                median=0.0, rms=0.0, peak_to_peak=0.0,
-                num_samples=0
+                mean=0.0,
+                std=0.0,
+                min=0.0,
+                max=0.0,
+                median=0.0,
+                rms=0.0,
+                peak_to_peak=0.0,
+                num_samples=0,
             )
 
         return RollingStats(
@@ -107,14 +119,11 @@ class StatisticsEngine:
             median=float(np.median(data)),
             rms=float(np.sqrt(np.mean(data**2))),
             peak_to_peak=float(np.ptp(data)),
-            num_samples=len(data)
+            num_samples=len(data),
         )
 
     def compute_fft(
-        self,
-        data: np.ndarray,
-        sample_rate: float,
-        window: str = "hann"
+        self, data: np.ndarray, sample_rate: float, window: str = "hann"
     ) -> FrequencyAnalysis:
         """
         Perform FFT analysis on time-domain data.
@@ -136,7 +145,7 @@ class StatisticsEngine:
                 dominant_frequency=0.0,
                 fundamental_amplitude=0.0,
                 thd=0.0,
-                snr=0.0
+                snr=0.0,
             )
 
         # Apply window function
@@ -154,9 +163,9 @@ class StatisticsEngine:
         n = len(fft_result)
 
         # Only use positive frequencies
-        frequencies = fft.fftfreq(n, 1.0 / sample_rate)[:n//2]
-        magnitudes = np.abs(fft_result)[:n//2] * (2.0 / n)
-        phases = np.angle(fft_result)[:n//2]
+        frequencies = fft.fftfreq(n, 1.0 / sample_rate)[: n // 2]
+        magnitudes = np.abs(fft_result)[: n // 2] * (2.0 / n)
+        phases = np.angle(fft_result)[: n // 2]
 
         # Find dominant frequency
         if len(magnitudes) > 0:
@@ -180,13 +189,11 @@ class StatisticsEngine:
             dominant_frequency=float(dominant_freq),
             fundamental_amplitude=float(fundamental_amp),
             thd=float(thd),
-            snr=float(snr)
+            snr=float(snr),
         )
 
     def detect_trend(
-        self,
-        data: np.ndarray,
-        timestamps: Optional[np.ndarray] = None
+        self, data: np.ndarray, timestamps: Optional[np.ndarray] = None
     ) -> TrendAnalysis:
         """
         Detect trend in time-series data.
@@ -200,10 +207,7 @@ class StatisticsEngine:
         """
         if len(data) < 3:
             return TrendAnalysis(
-                trend=TrendType.UNKNOWN,
-                slope=0.0,
-                r_squared=0.0,
-                confidence=0.0
+                trend=TrendType.UNKNOWN, slope=0.0, r_squared=0.0, confidence=0.0
             )
 
         # Use indices as x-values if no timestamps provided
@@ -257,13 +261,11 @@ class StatisticsEngine:
             trend=trend_type,
             slope=float(slope),
             r_squared=float(r_squared),
-            confidence=float(confidence)
+            confidence=float(confidence),
         )
 
     def assess_data_quality(
-        self,
-        data: np.ndarray,
-        outlier_threshold: float = 3.0
+        self, data: np.ndarray, outlier_threshold: float = 3.0
     ) -> DataQuality:
         """
         Assess the quality of acquired data.
@@ -281,7 +283,7 @@ class StatisticsEngine:
                 stability_score=0.0,
                 outlier_count=0,
                 missing_count=0,
-                valid_percentage=0.0
+                valid_percentage=0.0,
             )
 
         # Check for missing/invalid data (NaN or Inf)
@@ -295,7 +297,7 @@ class StatisticsEngine:
                 stability_score=0.0,
                 outlier_count=0,
                 missing_count=missing_count,
-                valid_percentage=0.0
+                valid_percentage=0.0,
             )
 
         # Compute noise level (normalized std deviation)
@@ -328,7 +330,7 @@ class StatisticsEngine:
             stability_score=float(stability_score),
             outlier_count=int(outlier_count),
             missing_count=int(missing_count),
-            valid_percentage=float(valid_percentage)
+            valid_percentage=float(valid_percentage),
         )
 
     def detect_peaks(
@@ -336,7 +338,7 @@ class StatisticsEngine:
         data: np.ndarray,
         prominence: Optional[float] = None,
         distance: Optional[int] = None,
-        height: Optional[float] = None
+        height: Optional[float] = None,
     ) -> PeakInfo:
         """
         Detect peaks in signal data.
@@ -351,33 +353,21 @@ class StatisticsEngine:
             PeakInfo object with peak locations and values
         """
         if len(data) < 3:
-            return PeakInfo(
-                indices=np.array([]),
-                values=np.array([]),
-                count=0
-            )
+            return PeakInfo(indices=np.array([]), values=np.array([]), count=0)
 
         # Use scipy's find_peaks with specified parameters
         peak_indices, _ = signal.find_peaks(
-            data,
-            prominence=prominence,
-            distance=distance,
-            height=height
+            data, prominence=prominence, distance=distance, height=height
         )
 
         peak_values = data[peak_indices]
 
         return PeakInfo(
-            indices=peak_indices,
-            values=peak_values,
-            count=len(peak_indices)
+            indices=peak_indices, values=peak_values, count=len(peak_indices)
         )
 
     def detect_threshold_crossings(
-        self,
-        data: np.ndarray,
-        threshold: float,
-        direction: str = "both"
+        self, data: np.ndarray, threshold: float, direction: str = "both"
     ) -> Dict[str, np.ndarray]:
         """
         Detect threshold crossings in data.
@@ -410,9 +400,7 @@ class StatisticsEngine:
             return {"rising": rising, "falling": falling}
 
     def compute_histogram(
-        self,
-        data: np.ndarray,
-        bins: int = 50
+        self, data: np.ndarray, bins: int = 50
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute histogram of data values.
@@ -449,7 +437,9 @@ class StatisticsEngine:
         thd = np.sqrt(harmonic_power) / fundamental
         return float(thd * 100.0)  # Return as percentage
 
-    def _compute_snr(self, magnitudes: np.ndarray, signal_idx: int, bandwidth: int = 5) -> float:
+    def _compute_snr(
+        self, magnitudes: np.ndarray, signal_idx: int, bandwidth: int = 5
+    ) -> float:
         """Compute Signal-to-Noise Ratio."""
         if len(magnitudes) == 0 or signal_idx >= len(magnitudes):
             return 0.0
@@ -465,7 +455,7 @@ class StatisticsEngine:
         noise_power = np.sum(magnitudes[noise_mask] ** 2)
 
         if noise_power == 0:
-            return float('inf')
+            return float("inf")
 
         snr = 10 * np.log10(signal_power / noise_power)
         return float(snr)

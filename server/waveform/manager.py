@@ -1,21 +1,17 @@
 """Waveform manager for high-speed acquisition and persistence."""
 
 import asyncio
-import numpy as np
 import logging
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
-from collections import deque
 import uuid
+from collections import deque
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 
-from .models import (
-    ExtendedWaveformData,
-    WaveformCaptureConfig,
-    PersistenceConfig,
-    PersistenceMode,
-    XYPlotData,
-)
+import numpy as np
+
 from .analyzer import WaveformAnalyzer
+from .models import (ExtendedWaveformData, PersistenceConfig, PersistenceMode,
+                     WaveformCaptureConfig, XYPlotData)
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +119,9 @@ class WaveformManager:
 
         # Apply post-processing
         if config.reduce_points:
-            result_waveform = self._decimate_waveform(result_waveform, config.reduce_points)
+            result_waveform = self._decimate_waveform(
+                result_waveform, config.reduce_points
+            )
 
         if config.apply_smoothing:
             result_waveform = self._smooth_waveform(result_waveform)
@@ -143,7 +141,7 @@ class WaveformManager:
         equipment_id: str,
         channel: int,
         rate_hz: float = 10.0,
-        callback = None,
+        callback=None,
     ) -> str:
         """Start continuous high-speed waveform acquisition.
 
@@ -444,6 +442,7 @@ class WaveformManager:
 
         # Decimate using scipy (anti-aliasing filter)
         from scipy import signal as sp_signal
+
         factor = len(voltage) // target_points
         if factor > 1:
             voltage_decimated = sp_signal.decimate(voltage, factor)
@@ -456,7 +455,9 @@ class WaveformManager:
             equipment_id=waveform.equipment_id,
             channel=waveform.channel,
             timestamp=waveform.timestamp,
-            sample_rate=waveform.sample_rate / factor if factor > 1 else waveform.sample_rate,
+            sample_rate=(
+                waveform.sample_rate / factor if factor > 1 else waveform.sample_rate
+            ),
             time_scale=waveform.time_scale,
             voltage_scale=waveform.voltage_scale,
             voltage_offset=waveform.voltage_offset,
@@ -484,7 +485,7 @@ class WaveformManager:
 
         # Moving average smoothing
         kernel = np.ones(window_size) / window_size
-        voltage_smooth = np.convolve(voltage, kernel, mode='same')
+        voltage_smooth = np.convolve(voltage, kernel, mode="same")
 
         result = ExtendedWaveformData(
             equipment_id=waveform.equipment_id,

@@ -1,13 +1,13 @@
 """Report generation module."""
 
+import json
 import logging
 import uuid
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Any
-import json
+from pathlib import Path
+from typing import Any, Dict, List
 
-from .models import ReportConfig, Report, ReportSection, ReportFormat
+from .models import Report, ReportConfig, ReportFormat, ReportSection
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,9 @@ class ReportGenerator:
             # PDF generation requires additional dependencies (matplotlib, reportlab)
             # For now, generate HTML and note that PDF conversion would be next step
             file_path = self._generate_html_report(report_id, sections, config)
-            logger.warning("PDF generation not fully implemented - generating HTML instead")
+            logger.warning(
+                "PDF generation not fully implemented - generating HTML instead"
+            )
         else:
             raise ValueError(f"Unsupported report format: {config.format}")
 
@@ -254,7 +256,11 @@ class ReportGenerator:
         for i in range(num_rows):
             html += "  <tr>\n"
             for header in headers:
-                value = table[header][i] if isinstance(table[header], list) else table[header]
+                value = (
+                    table[header][i]
+                    if isinstance(table[header], list)
+                    else table[header]
+                )
                 html += f"    <td>{value}</td>\n"
             html += "  </tr>\n"
 
@@ -277,7 +283,11 @@ class ReportGenerator:
         for i in range(num_rows):
             row_values = []
             for header in headers:
-                value = table[header][i] if isinstance(table[header], list) else table[header]
+                value = (
+                    table[header][i]
+                    if isinstance(table[header], list)
+                    else table[header]
+                )
                 row_values.append(str(value))
             md += "| " + " | ".join(row_values) + " |\n"
 

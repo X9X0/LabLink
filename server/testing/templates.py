@@ -1,7 +1,8 @@
 """Common test sequence templates."""
 
 from typing import List
-from .models import TestSequence, TestStep, StepType, ValidationOperator
+
+from .models import StepType, TestSequence, TestStep, ValidationOperator
 
 
 class TestTemplateLibrary:
@@ -9,9 +10,7 @@ class TestTemplateLibrary:
 
     @staticmethod
     def voltage_accuracy_test(
-        equipment_id: str,
-        test_points: List[float],
-        tolerance_percent: float = 1.0
+        equipment_id: str, test_points: List[float], tolerance_percent: float = 1.0
     ) -> TestSequence:
         """Create voltage accuracy test template.
 
@@ -27,66 +26,78 @@ class TestTemplateLibrary:
         step_num = 1
 
         # Setup
-        steps.append(TestStep(
-            step_number=step_num,
-            step_type=StepType.SETUP,
-            name="Initialize equipment",
-            equipment_id=equipment_id,
-            command="*RST",
-        ))
+        steps.append(
+            TestStep(
+                step_number=step_num,
+                step_type=StepType.SETUP,
+                name="Initialize equipment",
+                equipment_id=equipment_id,
+                command="*RST",
+            )
+        )
         step_num += 1
 
         # Test each voltage point
         for voltage in test_points:
             # Set voltage
-            steps.append(TestStep(
-                step_number=step_num,
-                step_type=StepType.COMMAND,
-                name=f"Set voltage to {voltage}V",
-                equipment_id=equipment_id,
-                command=f"VOLT {voltage}",
-            ))
+            steps.append(
+                TestStep(
+                    step_number=step_num,
+                    step_type=StepType.COMMAND,
+                    name=f"Set voltage to {voltage}V",
+                    equipment_id=equipment_id,
+                    command=f"VOLT {voltage}",
+                )
+            )
             step_num += 1
 
             # Delay for settling
-            steps.append(TestStep(
-                step_number=step_num,
-                step_type=StepType.DELAY,
-                name="Wait for settling",
-                delay_seconds=0.5,
-            ))
+            steps.append(
+                TestStep(
+                    step_number=step_num,
+                    step_type=StepType.DELAY,
+                    name="Wait for settling",
+                    delay_seconds=0.5,
+                )
+            )
             step_num += 1
 
             # Measure voltage
-            steps.append(TestStep(
-                step_number=step_num,
-                step_type=StepType.MEASUREMENT,
-                name=f"Measure voltage at {voltage}V",
-                equipment_id=equipment_id,
-                measurement_type="voltage",
-                measurement_params={"command": "MEAS:VOLT?"},
-            ))
+            steps.append(
+                TestStep(
+                    step_number=step_num,
+                    step_type=StepType.MEASUREMENT,
+                    name=f"Measure voltage at {voltage}V",
+                    equipment_id=equipment_id,
+                    measurement_type="voltage",
+                    measurement_params={"command": "MEAS:VOLT?"},
+                )
+            )
             step_num += 1
 
             # Validate
-            steps.append(TestStep(
-                step_number=step_num,
-                step_type=StepType.VALIDATION,
-                name=f"Validate voltage within {tolerance_percent}%",
-                validation_operator=ValidationOperator.EQUAL,
-                validation_value=voltage,
-                tolerance_percent=tolerance_percent,
-            ))
+            steps.append(
+                TestStep(
+                    step_number=step_num,
+                    step_type=StepType.VALIDATION,
+                    name=f"Validate voltage within {tolerance_percent}%",
+                    validation_operator=ValidationOperator.EQUAL,
+                    validation_value=voltage,
+                    tolerance_percent=tolerance_percent,
+                )
+            )
             step_num += 1
 
         # Cleanup
-        steps.append(TestStep(
-            step_number=step_num,
-            step_type=StepType.CLEANUP,
-            name="Reset equipment",
-            equipment_id=equipment_id,
-            command="OUTP OFF",
-        ))
+        steps.append(
+            TestStep(
+                step_number=step_num,
+                step_type=StepType.CLEANUP,
+                name="Reset equipment",
+                equipment_id=equipment_id,
+                command="OUTP OFF",
+            )
+        )
 
         return TestSequence(
             name="Voltage Accuracy Test",
@@ -100,10 +111,7 @@ class TestTemplateLibrary:
 
     @staticmethod
     def frequency_response_sweep(
-        equipment_id: str,
-        start_freq: float,
-        stop_freq: float,
-        num_points: int = 50
+        equipment_id: str, start_freq: float, stop_freq: float, num_points: int = 50
     ) -> TestSequence:
         """Create frequency response sweep template.
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """LabLink GUI Client - Main entry point."""
 
-import sys
-import logging
 import asyncio
+import logging
+import sys
 from pathlib import Path
 
 # Add client directory to path
 client_dir = Path(__file__).parent
 sys.path.insert(0, str(client_dir))
 
-from PyQt6.QtWidgets import QApplication
+import qasync
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
-import qasync
+from PyQt6.QtWidgets import QApplication
 
 from client.ui.main_window import MainWindow
 
@@ -22,11 +22,8 @@ def setup_logging():
     """Set up logging configuration."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('lablink_client.log')
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler("lablink_client.log")],
     )
 
 

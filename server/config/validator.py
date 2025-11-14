@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -40,14 +41,20 @@ class ConfigValidator:
         """Validate server configuration."""
         # Check port conflicts
         if settings.api_port == settings.ws_port:
-            self.errors.append(f"API port and WebSocket port cannot be the same: {settings.api_port}")
+            self.errors.append(
+                f"API port and WebSocket port cannot be the same: {settings.api_port}"
+            )
 
         # Check port range
         if settings.api_port < 1024:
-            self.warnings.append(f"API port {settings.api_port} < 1024 may require root privileges")
+            self.warnings.append(
+                f"API port {settings.api_port} < 1024 may require root privileges"
+            )
 
         if settings.ws_port < 1024:
-            self.warnings.append(f"WebSocket port {settings.ws_port} < 1024 may require root privileges")
+            self.warnings.append(
+                f"WebSocket port {settings.ws_port} < 1024 may require root privileges"
+            )
 
         # Check host binding
         if settings.host == "0.0.0.0":
@@ -121,7 +128,7 @@ class ConfigValidator:
                 )
 
             total_reconnect_time = sum(
-                settings.reconnect_delay_ms * (settings.reconnect_backoff_multiplier ** i)
+                settings.reconnect_delay_ms * (settings.reconnect_backoff_multiplier**i)
                 for i in range(settings.reconnect_attempts)
             )
             if total_reconnect_time > 30000:
@@ -149,7 +156,9 @@ class ConfigValidator:
         # Check log rotation
         if settings.log_to_file:
             if settings.log_rotation_size_mb < 1:
-                self.warnings.append("Log rotation size is very small, files may rotate frequently")
+                self.warnings.append(
+                    "Log rotation size is very small, files may rotate frequently"
+                )
 
             if settings.log_retention_days < 7:
                 self.warnings.append(

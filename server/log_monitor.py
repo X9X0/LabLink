@@ -19,34 +19,35 @@ Usage:
     python log_monitor.py --alert-on "connection failed" --notify
 """
 
+import argparse
 import json
 import sys
 import time
-import argparse
-from pathlib import Path
-from datetime import datetime
-from typing import List, Optional, Set
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Set
 
 
 # ANSI color codes
 class Colors:
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    GRAY = '\033[90m'
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    WHITE = "\033[97m"
+    GRAY = "\033[90m"
 
 
 @dataclass
 class MonitorStats:
     """Statistics for monitoring session."""
+
     start_time: datetime
     total_entries: int = 0
     by_level: dict = None
@@ -77,7 +78,7 @@ class LogMonitor:
 
         files = []
         for filepath in self.log_dir.glob(self.file_pattern):
-            if filepath.is_file() and filepath.suffix == '.log':
+            if filepath.is_file() and filepath.suffix == ".log":
                 files.append(filepath)
 
         return sorted(files)
@@ -99,13 +100,16 @@ class LogMonitor:
 
             # Read new content
             if current_size > last_position:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     f.seek(last_position)
                     lines = [line.strip() for line in f.readlines() if line.strip()]
                     self.file_positions[filepath] = f.tell()
 
         except Exception as e:
-            print(f"{Colors.RED}Error reading {filepath}: {e}{Colors.RESET}", file=sys.stderr)
+            print(
+                f"{Colors.RED}Error reading {filepath}: {e}{Colors.RESET}",
+                file=sys.stderr,
+            )
 
         return lines
 
@@ -118,26 +122,26 @@ class LogMonitor:
 
     def format_log_entry(self, entry: dict, colorize: bool = True) -> str:
         """Format a log entry for display."""
-        timestamp = entry.get('timestamp', '')
+        timestamp = entry.get("timestamp", "")
         if timestamp:
             try:
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                timestamp = dt.strftime('%H:%M:%S.%f')[:-3]
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                timestamp = dt.strftime("%H:%M:%S.%f")[:-3]
             except:
                 pass
 
-        level = entry.get('level', 'UNKNOWN')
-        logger = entry.get('logger', '')
-        message = entry.get('message', '')
+        level = entry.get("level", "UNKNOWN")
+        logger = entry.get("logger", "")
+        message = entry.get("message", "")
 
         # Color by level
         if colorize:
             level_colors = {
-                'DEBUG': Colors.CYAN,
-                'INFO': Colors.GREEN,
-                'WARNING': Colors.YELLOW,
-                'ERROR': Colors.RED,
-                'CRITICAL': Colors.MAGENTA + Colors.BOLD
+                "DEBUG": Colors.CYAN,
+                "INFO": Colors.GREEN,
+                "WARNING": Colors.YELLOW,
+                "ERROR": Colors.RED,
+                "CRITICAL": Colors.MAGENTA + Colors.BOLD,
             }
             color = level_colors.get(level, Colors.WHITE)
             level_str = f"{color}{level:8s}{Colors.RESET}"
@@ -148,11 +152,23 @@ class LogMonitor:
         output = f"{Colors.GRAY}{timestamp}{Colors.RESET} {level_str} {Colors.BLUE}{logger:30s}{Colors.RESET} {message}"
 
         # Add extra fields if present
-        extra_fields = {k: v for k, v in entry.items()
-                       if k not in ['timestamp', 'level', 'logger', 'message', 'module', 'function', 'line']}
+        extra_fields = {
+            k: v
+            for k, v in entry.items()
+            if k
+            not in [
+                "timestamp",
+                "level",
+                "logger",
+                "message",
+                "module",
+                "function",
+                "line",
+            ]
+        }
 
         if extra_fields:
-            extra_str = ' '.join(f"{k}={v}" for k, v in extra_fields.items())
+            extra_str = " ".join(f"{k}={v}" for k, v in extra_fields.items())
             output += f"\n  {Colors.GRAY}└─ {extra_str}{Colors.RESET}"
 
         return output
@@ -160,20 +176,20 @@ class LogMonitor:
     def check_filters(self, entry: dict, filters: dict) -> bool:
         """Check if entry passes all filters."""
         # Level filter
-        if filters.get('levels'):
-            if entry.get('level') not in filters['levels']:
+        if filters.get("levels"):
+            if entry.get("level") not in filters["levels"]:
                 return False
 
         # Logger filter
-        if filters.get('loggers'):
-            logger = entry.get('logger', '')
-            if not any(log in logger for log in filters['loggers']):
+        if filters.get("loggers"):
+            logger = entry.get("logger", "")
+            if not any(log in logger for log in filters["loggers"]):
                 return False
 
         # Keyword filter
-        if filters.get('keywords'):
-            message = entry.get('message', '').lower()
-            if not any(kw.lower() in message for kw in filters['keywords']):
+        if filters.get("keywords"):
+            message = entry.get("message", "").lower()
+            if not any(kw.lower() in message for kw in filters["keywords"]):
                 return False
 
         return True
@@ -183,11 +199,11 @@ class LogMonitor:
         if not alert_patterns:
             return False
 
-        message = entry.get('message', '').lower()
-        level = entry.get('level', '')
+        message = entry.get("message", "").lower()
+        level = entry.get("level", "")
 
         # Always alert on CRITICAL
-        if level == 'CRITICAL':
+        if level == "CRITICAL":
             return True
 
         # Check patterns
@@ -209,7 +225,7 @@ class LogMonitor:
     def display_stats(self):
         """Display monitoring statistics."""
         elapsed = datetime.now() - self.stats.start_time
-        elapsed_str = str(elapsed).split('.')[0]  # Remove microseconds
+        elapsed_str = str(elapsed).split(".")[0]  # Remove microseconds
 
         print(f"\n{Colors.BOLD}{'=' * 80}")
         print(f"📊 Monitoring Statistics")
@@ -220,30 +236,34 @@ class LogMonitor:
 
         if self.stats.by_level:
             print(f"\n{Colors.BOLD}By Level:{Colors.RESET}")
-            for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+            for level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
                 if level in self.stats.by_level:
                     count = self.stats.by_level[level]
                     print(f"  {level:10s}: {count:6d}")
 
         if self.stats.by_logger:
             print(f"\n{Colors.BOLD}Top Loggers:{Colors.RESET}")
-            sorted_loggers = sorted(self.stats.by_logger.items(), key=lambda x: x[1], reverse=True)[:10]
+            sorted_loggers = sorted(
+                self.stats.by_logger.items(), key=lambda x: x[1], reverse=True
+            )[:10]
             for logger, count in sorted_loggers:
                 print(f"  {logger:40s}: {count:6d}")
 
         print(f"{Colors.BOLD}{'=' * 80}{Colors.RESET}\n")
 
-    def monitor(self, filters: dict, alert_patterns: List[str], show_stats_interval: int = 0):
+    def monitor(
+        self, filters: dict, alert_patterns: List[str], show_stats_interval: int = 0
+    ):
         """Main monitoring loop."""
         print(f"{Colors.BOLD}🔍 LabLink Log Monitor{Colors.RESET}")
         print(f"Monitoring: {self.log_dir}/{self.file_pattern}")
         print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        if filters.get('levels'):
+        if filters.get("levels"):
             print(f"Levels: {', '.join(filters['levels'])}")
-        if filters.get('loggers'):
+        if filters.get("loggers"):
             print(f"Loggers: {', '.join(filters['loggers'])}")
-        if filters.get('keywords'):
+        if filters.get("keywords"):
             print(f"Keywords: {', '.join(filters['keywords'])}")
         if alert_patterns:
             print(f"Alerts: {', '.join(alert_patterns)}")
@@ -267,8 +287,8 @@ class LogMonitor:
 
                         # Update stats
                         self.stats.total_entries += 1
-                        self.stats.by_level[entry.get('level', 'UNKNOWN')] += 1
-                        self.stats.by_logger[entry.get('logger', '')] += 1
+                        self.stats.by_level[entry.get("level", "UNKNOWN")] += 1
+                        self.stats.by_logger[entry.get("logger", "")] += 1
                         self.recent_entries.append(entry)
 
                         # Check filters
@@ -302,7 +322,7 @@ class LogMonitor:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description='LabLink Log Monitor - Real-time log monitoring with filtering',
+        description="LabLink Log Monitor - Real-time log monitoring with filtering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -320,20 +340,36 @@ Examples:
 
   # Show stats every 60 seconds
   python log_monitor.py --follow --stats-interval 60
-        """
+        """,
     )
 
-    parser.add_argument('--log-dir', default='./logs', help='Log directory path (default: ./logs)')
-    parser.add_argument('--file-pattern', default='*.log', help='Log file pattern (default: *.log)')
-    parser.add_argument('--follow', '-f', action='store_true', help='Follow log files in real-time')
-    parser.add_argument('--level', nargs='+', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                       help='Filter by log level')
-    parser.add_argument('--logger', nargs='+', help='Filter by logger name')
-    parser.add_argument('--keyword', nargs='+', help='Filter by keywords in message')
-    parser.add_argument('--alert-on', nargs='+', help='Alert on these patterns')
-    parser.add_argument('--no-color', action='store_true', help='Disable colored output')
-    parser.add_argument('--stats-interval', type=int, default=0,
-                       help='Show stats every N seconds (0 = disabled)')
+    parser.add_argument(
+        "--log-dir", default="./logs", help="Log directory path (default: ./logs)"
+    )
+    parser.add_argument(
+        "--file-pattern", default="*.log", help="Log file pattern (default: *.log)"
+    )
+    parser.add_argument(
+        "--follow", "-f", action="store_true", help="Follow log files in real-time"
+    )
+    parser.add_argument(
+        "--level",
+        nargs="+",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Filter by log level",
+    )
+    parser.add_argument("--logger", nargs="+", help="Filter by logger name")
+    parser.add_argument("--keyword", nargs="+", help="Filter by keywords in message")
+    parser.add_argument("--alert-on", nargs="+", help="Alert on these patterns")
+    parser.add_argument(
+        "--no-color", action="store_true", help="Disable colored output"
+    )
+    parser.add_argument(
+        "--stats-interval",
+        type=int,
+        default=0,
+        help="Show stats every N seconds (0 = disabled)",
+    )
 
     args = parser.parse_args()
 
@@ -345,15 +381,11 @@ Examples:
     # Disable colors if requested or not a TTY
     if args.no_color or not sys.stdout.isatty():
         for attr in dir(Colors):
-            if not attr.startswith('_'):
-                setattr(Colors, attr, '')
+            if not attr.startswith("_"):
+                setattr(Colors, attr, "")
 
     # Build filters
-    filters = {
-        'levels': args.level,
-        'loggers': args.logger,
-        'keywords': args.keyword
-    }
+    filters = {"levels": args.level, "loggers": args.logger, "keywords": args.keyword}
 
     # Start monitoring
     log_dir = Path(args.log_dir)
@@ -365,9 +397,10 @@ Examples:
     except Exception as e:
         print(f"{Colors.RED}Error: {e}{Colors.RESET}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

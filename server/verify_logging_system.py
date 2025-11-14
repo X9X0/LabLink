@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 # Color codes for terminal output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
 
 
 def print_header(text: str):
@@ -51,8 +51,8 @@ class ASTVisitor(ast.NodeVisitor):
         """Visit class definition."""
         self.current_class = node.name
         self.classes[node.name] = {
-            'methods': [],
-            'bases': [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
+            "methods": [],
+            "bases": [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
         }
         self.generic_visit(node)
         self.current_class = None
@@ -60,7 +60,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         """Visit function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -68,7 +68,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node):
         """Visit async function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -77,7 +77,7 @@ class ASTVisitor(ast.NodeVisitor):
 def parse_python_file(filepath: Path):
     """Parse a Python file and extract structure information."""
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             tree = ast.parse(f.read())
         visitor = ASTVisitor()
         visitor.visit(tree)
@@ -139,7 +139,7 @@ def verify_handlers():
         "get_console_handler",
         "get_equipment_handler",
         "get_performance_handler",
-        "get_audit_handler"
+        "get_audit_handler",
     ]
 
     missing_functions = [f for f in required_functions if f not in visitor.functions]
@@ -184,7 +184,7 @@ def verify_performance():
         "log_system_metrics",
         "log_equipment_metrics",
         "log_api_metrics",
-        "log_acquisition_metrics"
+        "log_acquisition_metrics",
     ]
 
     monitor_methods = visitor.classes.get("PerformanceMonitor", {}).get("methods", [])
@@ -246,7 +246,7 @@ def verify_middleware():
         "log_command",
         "log_error",
         "log_state_change",
-        "log_health_check"
+        "log_health_check",
     ]
 
     event_methods = visitor.classes.get("EquipmentEventLogger", {}).get("methods", [])
@@ -279,7 +279,7 @@ def verify_utils():
         "get_logger",
         "setup_logging",
         "setup_specialized_loggers",
-        "cleanup_old_logs"
+        "cleanup_old_logs",
     ]
 
     missing_functions = [f for f in required_functions if f not in visitor.functions]
@@ -345,7 +345,7 @@ def verify_module_init():
         "LoggingMiddleware",
         "get_logger",
         "setup_logging",
-        "log_performance"
+        "log_performance",
     ]
 
     missing_exports = [exp for exp in required_exports if exp not in content]
@@ -370,7 +370,7 @@ def main():
         ("Middleware", verify_middleware),
         ("Utilities", verify_utils),
         ("Module Exports", verify_module_init),
-        ("Integration", verify_integration)
+        ("Integration", verify_integration),
     ]
 
     results = []

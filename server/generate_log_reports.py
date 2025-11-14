@@ -20,20 +20,18 @@ Usage:
     python generate_log_reports.py --custom --days 7 --output report.html
 """
 
-import sys
-import json
 import argparse
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, Any, List
+import json
+import sys
 from collections import defaultdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List
 
 # Import our log analysis modules
 try:
-    from log_analyzer import (
-        LogReader, LogQuery, LogAnalyzer,
-        LogFormatter, LogEntry
-    )
+    from log_analyzer import (LogAnalyzer, LogEntry, LogFormatter, LogQuery,
+                              LogReader)
 except ImportError:
     print("Error: log_analyzer.py must be in the same directory", file=sys.stderr)
     sys.exit(1)
@@ -73,14 +71,16 @@ class ReportGenerator:
 
         return self._generate_report(entries, f"{days}-Day Report", f"Last {days} days")
 
-    def _generate_report(self, entries: List[LogEntry], title: str, period: str) -> Dict[str, Any]:
+    def _generate_report(
+        self, entries: List[LogEntry], title: str, period: str
+    ) -> Dict[str, Any]:
         """Generate comprehensive report from entries."""
         report = {
             "metadata": {
                 "title": title,
                 "period": period,
                 "generated_at": datetime.now().isoformat(),
-                "entry_count": len(entries)
+                "entry_count": len(entries),
             },
             "summary": self.analyzer.generate_summary(entries),
             "errors": self.analyzer.analyze_errors(entries),
@@ -88,7 +88,7 @@ class ReportGenerator:
             "anomalies": self.analyzer.detect_anomalies(entries, sensitivity=2.0),
             "user_activity": self._analyze_user_activity(entries),
             "equipment_activity": self._analyze_equipment_activity(entries),
-            "api_activity": self._analyze_api_activity(entries)
+            "api_activity": self._analyze_api_activity(entries),
         }
 
         return report
@@ -96,7 +96,7 @@ class ReportGenerator:
     def _analyze_user_activity(self, entries: List[LogEntry]) -> Dict[str, Any]:
         """Analyze user activity."""
         # Filter audit logs
-        audit_entries = [e for e in entries if 'audit' in e.logger]
+        audit_entries = [e for e in entries if "audit" in e.logger]
 
         if not audit_entries:
             return {"total_actions": 0, "by_user": {}, "by_action": {}}
@@ -107,8 +107,8 @@ class ReportGenerator:
         user_action_details = defaultdict(lambda: defaultdict(int))
 
         for entry in audit_entries:
-            user_id = entry.extra.get('user_id', 'unknown')
-            action = entry.extra.get('action', 'unknown')
+            user_id = entry.extra.get("user_id", "unknown")
+            action = entry.extra.get("action", "unknown")
 
             user_actions[user_id] += 1
             action_counts[action] += 1
@@ -117,18 +117,22 @@ class ReportGenerator:
         return {
             "total_actions": len(audit_entries),
             "unique_users": len(user_actions),
-            "by_user": dict(sorted(user_actions.items(), key=lambda x: x[1], reverse=True)[:10]),
-            "by_action": dict(sorted(action_counts.items(), key=lambda x: x[1], reverse=True)),
+            "by_user": dict(
+                sorted(user_actions.items(), key=lambda x: x[1], reverse=True)[:10]
+            ),
+            "by_action": dict(
+                sorted(action_counts.items(), key=lambda x: x[1], reverse=True)
+            ),
             "top_user_details": {
                 user: dict(actions)
                 for user, actions in list(user_action_details.items())[:5]
-            }
+            },
         }
 
     def _analyze_equipment_activity(self, entries: List[LogEntry]) -> Dict[str, Any]:
         """Analyze equipment activity."""
         # Filter equipment logs
-        equipment_entries = [e for e in entries if 'equipment' in e.logger]
+        equipment_entries = [e for e in entries if "equipment" in e.logger]
 
         if not equipment_entries:
             return {"total_events": 0, "by_equipment": {}, "by_event_type": {}}
@@ -139,27 +143,31 @@ class ReportGenerator:
         equipment_errors = defaultdict(int)
 
         for entry in equipment_entries:
-            equipment_id = entry.extra.get('equipment_id', 'unknown')
-            event_type = entry.extra.get('event', 'unknown')
+            equipment_id = entry.extra.get("equipment_id", "unknown")
+            event_type = entry.extra.get("event", "unknown")
 
             equipment_events[equipment_id] += 1
             event_types[event_type] += 1
 
-            if entry.level in ['ERROR', 'CRITICAL']:
+            if entry.level in ["ERROR", "CRITICAL"]:
                 equipment_errors[equipment_id] += 1
 
         return {
             "total_events": len(equipment_entries),
             "unique_equipment": len(equipment_events),
-            "by_equipment": dict(sorted(equipment_events.items(), key=lambda x: x[1], reverse=True)),
+            "by_equipment": dict(
+                sorted(equipment_events.items(), key=lambda x: x[1], reverse=True)
+            ),
             "by_event_type": dict(event_types),
-            "equipment_with_errors": dict(sorted(equipment_errors.items(), key=lambda x: x[1], reverse=True))
+            "equipment_with_errors": dict(
+                sorted(equipment_errors.items(), key=lambda x: x[1], reverse=True)
+            ),
         }
 
     def _analyze_api_activity(self, entries: List[LogEntry]) -> Dict[str, Any]:
         """Analyze API activity."""
         # Filter access logs
-        access_entries = [e for e in entries if 'access' in e.logger]
+        access_entries = [e for e in entries if "access" in e.logger]
 
         if not access_entries:
             return {"total_requests": 0, "by_endpoint": {}, "by_status": {}}
@@ -171,10 +179,10 @@ class ReportGenerator:
         slow_requests = []
 
         for entry in access_entries:
-            path = entry.extra.get('path', 'unknown')
-            status = entry.extra.get('status_code', 0)
-            method = entry.extra.get('method', 'unknown')
-            duration = entry.extra.get('duration_ms', 0)
+            path = entry.extra.get("path", "unknown")
+            status = entry.extra.get("status_code", 0)
+            method = entry.extra.get("method", "unknown")
+            duration = entry.extra.get("duration_ms", 0)
 
             endpoint_counts[f"{method} {path}"] += 1
             status_counts[str(status)] += 1
@@ -182,18 +190,24 @@ class ReportGenerator:
 
             # Track slow requests (>1s)
             if duration > 1000:
-                slow_requests.append({
-                    "endpoint": f"{method} {path}",
-                    "duration_ms": duration,
-                    "timestamp": entry.timestamp.isoformat()
-                })
+                slow_requests.append(
+                    {
+                        "endpoint": f"{method} {path}",
+                        "duration_ms": duration,
+                        "timestamp": entry.timestamp.isoformat(),
+                    }
+                )
 
         return {
             "total_requests": len(access_entries),
-            "by_endpoint": dict(sorted(endpoint_counts.items(), key=lambda x: x[1], reverse=True)[:10]),
+            "by_endpoint": dict(
+                sorted(endpoint_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            ),
             "by_status": dict(sorted(status_counts.items())),
             "by_method": dict(method_counts),
-            "slow_requests": sorted(slow_requests, key=lambda x: x['duration_ms'], reverse=True)[:10]
+            "slow_requests": sorted(
+                slow_requests, key=lambda x: x["duration_ms"], reverse=True
+            )[:10],
         }
 
 
@@ -206,7 +220,7 @@ class ReportFormatter:
         lines = []
 
         # Header
-        metadata = report['metadata']
+        metadata = report["metadata"]
         lines.append("=" * 80)
         lines.append(f"  {metadata['title']}")
         lines.append(f"  Period: {metadata['period']}")
@@ -218,14 +232,16 @@ class ReportFormatter:
         # Summary
         lines.append("📊 SUMMARY")
         lines.append("-" * 80)
-        summary = report['summary']
-        if summary['total_entries'] > 0:
-            lines.append(f"Time Range: {summary['time_range']['start']} to {summary['time_range']['end']}")
+        summary = report["summary"]
+        if summary["total_entries"] > 0:
+            lines.append(
+                f"Time Range: {summary['time_range']['start']} to {summary['time_range']['end']}"
+            )
             lines.append(f"Duration: {summary['time_range']['duration']}")
             lines.append("")
             lines.append("Log Levels:")
-            for level, count in summary['level_distribution'].items():
-                pct = (count / summary['total_entries']) * 100
+            for level, count in summary["level_distribution"].items():
+                pct = (count / summary["total_entries"]) * 100
                 lines.append(f"  {level:10s}: {count:6,d} ({pct:5.1f}%)")
         else:
             lines.append("No entries in this period")
@@ -234,17 +250,17 @@ class ReportFormatter:
         # Errors
         lines.append("❌ ERROR ANALYSIS")
         lines.append("-" * 80)
-        errors = report['errors']
-        if errors['total_errors'] > 0:
+        errors = report["errors"]
+        if errors["total_errors"] > 0:
             lines.append(f"Total Errors: {errors['total_errors']:,}")
             lines.append("")
             lines.append("Top Error Types:")
-            for error_msg, count in list(errors['error_types'].items())[:5]:
+            for error_msg, count in list(errors["error_types"].items())[:5]:
                 lines.append(f"  [{count:3d}] {error_msg[:70]}")
             lines.append("")
-            if errors['affected_modules']:
+            if errors["affected_modules"]:
                 lines.append("Affected Modules:")
-                for module, count in list(errors['affected_modules'].items())[:5]:
+                for module, count in list(errors["affected_modules"].items())[:5]:
                     lines.append(f"  {module:30s}: {count:3d}")
         else:
             lines.append("No errors in this period ✓")
@@ -253,11 +269,11 @@ class ReportFormatter:
         # Performance
         lines.append("⚡ PERFORMANCE")
         lines.append("-" * 80)
-        perf = report['performance']
-        if perf['total_measurements'] > 0:
+        perf = report["performance"]
+        if perf["total_measurements"] > 0:
             lines.append(f"Total Measurements: {perf['total_measurements']:,}")
-            if perf['duration_stats']:
-                stats = perf['duration_stats']
+            if perf["duration_stats"]:
+                stats = perf["duration_stats"]
                 lines.append("")
                 lines.append("Duration Statistics (ms):")
                 lines.append(f"  Mean:   {stats['mean']:8.2f}")
@@ -265,11 +281,13 @@ class ReportFormatter:
                 lines.append(f"  Min:    {stats['min']:8.2f}")
                 lines.append(f"  Max:    {stats['max']:8.2f}")
                 lines.append(f"  StdDev: {stats['stdev']:8.2f}")
-            if perf['slow_operations']:
+            if perf["slow_operations"]:
                 lines.append("")
                 lines.append("Slowest Operations:")
-                for op in perf['slow_operations'][:5]:
-                    lines.append(f"  [{op['duration_ms']:7.1f}ms] {op['operation'][:60]}")
+                for op in perf["slow_operations"][:5]:
+                    lines.append(
+                        f"  [{op['duration_ms']:7.1f}ms] {op['operation'][:60]}"
+                    )
         else:
             lines.append("No performance measurements in this period")
         lines.append("")
@@ -277,14 +295,16 @@ class ReportFormatter:
         # Anomalies
         lines.append("🚨 ANOMALIES")
         lines.append("-" * 80)
-        anomalies = report['anomalies']
+        anomalies = report["anomalies"]
         if anomalies:
             lines.append(f"Detected {len(anomalies)} anomalies:")
             lines.append("")
             for i, anomaly in enumerate(anomalies[:10], 1):
-                lines.append(f"{i}. {anomaly['type'].upper()} - Severity: {anomaly['severity']}")
+                lines.append(
+                    f"{i}. {anomaly['type'].upper()} - Severity: {anomaly['severity']}"
+                )
                 for key, value in anomaly.items():
-                    if key not in ['type', 'severity']:
+                    if key not in ["type", "severity"]:
                         lines.append(f"   {key}: {value}")
                 lines.append("")
         else:
@@ -294,17 +314,17 @@ class ReportFormatter:
         # User Activity
         lines.append("👥 USER ACTIVITY")
         lines.append("-" * 80)
-        user_activity = report['user_activity']
-        if user_activity['total_actions'] > 0:
+        user_activity = report["user_activity"]
+        if user_activity["total_actions"] > 0:
             lines.append(f"Total Actions: {user_activity['total_actions']:,}")
             lines.append(f"Unique Users: {user_activity['unique_users']}")
             lines.append("")
             lines.append("Top Users:")
-            for user, count in list(user_activity['by_user'].items())[:10]:
+            for user, count in list(user_activity["by_user"].items())[:10]:
                 lines.append(f"  {user:30s}: {count:4d} actions")
             lines.append("")
             lines.append("Actions by Type:")
-            for action, count in user_activity['by_action'].items():
+            for action, count in user_activity["by_action"].items():
                 lines.append(f"  {action:30s}: {count:4d}")
         else:
             lines.append("No user activity logged")
@@ -313,22 +333,22 @@ class ReportFormatter:
         # Equipment Activity
         lines.append("🔧 EQUIPMENT ACTIVITY")
         lines.append("-" * 80)
-        equipment = report['equipment_activity']
-        if equipment['total_events'] > 0:
+        equipment = report["equipment_activity"]
+        if equipment["total_events"] > 0:
             lines.append(f"Total Events: {equipment['total_events']:,}")
             lines.append(f"Unique Equipment: {equipment['unique_equipment']}")
             lines.append("")
             lines.append("By Equipment:")
-            for equip_id, count in list(equipment['by_equipment'].items())[:10]:
+            for equip_id, count in list(equipment["by_equipment"].items())[:10]:
                 lines.append(f"  {equip_id:30s}: {count:4d} events")
             lines.append("")
             lines.append("By Event Type:")
-            for event_type, count in equipment['by_event_type'].items():
+            for event_type, count in equipment["by_event_type"].items():
                 lines.append(f"  {event_type:30s}: {count:4d}")
-            if equipment['equipment_with_errors']:
+            if equipment["equipment_with_errors"]:
                 lines.append("")
                 lines.append("Equipment with Errors:")
-                for equip_id, count in equipment['equipment_with_errors'].items():
+                for equip_id, count in equipment["equipment_with_errors"].items():
                     lines.append(f"  {equip_id:30s}: {count:4d} errors")
         else:
             lines.append("No equipment activity logged")
@@ -337,25 +357,25 @@ class ReportFormatter:
         # API Activity
         lines.append("🌐 API ACTIVITY")
         lines.append("-" * 80)
-        api = report['api_activity']
-        if api['total_requests'] > 0:
+        api = report["api_activity"]
+        if api["total_requests"] > 0:
             lines.append(f"Total Requests: {api['total_requests']:,}")
             lines.append("")
             lines.append("Top Endpoints:")
-            for endpoint, count in api['by_endpoint'].items():
+            for endpoint, count in api["by_endpoint"].items():
                 lines.append(f"  [{count:5d}] {endpoint}")
             lines.append("")
             lines.append("By HTTP Method:")
-            for method, count in api['by_method'].items():
+            for method, count in api["by_method"].items():
                 lines.append(f"  {method:10s}: {count:6,d}")
             lines.append("")
             lines.append("By Status Code:")
-            for status, count in api['by_status'].items():
+            for status, count in api["by_status"].items():
                 lines.append(f"  {status:10s}: {count:6,d}")
-            if api['slow_requests']:
+            if api["slow_requests"]:
                 lines.append("")
                 lines.append("Slow Requests (>1s):")
-                for req in api['slow_requests'][:5]:
+                for req in api["slow_requests"][:5]:
                     lines.append(f"  [{req['duration_ms']:7.1f}ms] {req['endpoint']}")
         else:
             lines.append("No API activity logged")
@@ -366,7 +386,7 @@ class ReportFormatter:
         lines.append(f"End of Report - Generated by LabLink Log Report Generator")
         lines.append("=" * 80)
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def format_json(report: Dict[str, Any]) -> str:
@@ -376,9 +396,9 @@ class ReportFormatter:
     @staticmethod
     def format_html(report: Dict[str, Any]) -> str:
         """Format report as HTML."""
-        metadata = report['metadata']
-        summary = report['summary']
-        errors = report['errors']
+        metadata = report["metadata"]
+        summary = report["summary"]
+        errors = report["errors"]
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -428,7 +448,7 @@ class ReportFormatter:
             <tr><th>Count</th><th>Error Message</th></tr>
 """
 
-        for error_msg, count in list(errors['error_types'].items())[:10]:
+        for error_msg, count in list(errors["error_types"].items())[:10]:
             html += f"            <tr><td>{count}</td><td>{error_msg[:100]}</td></tr>\n"
 
         html += """        </table>
@@ -436,13 +456,13 @@ class ReportFormatter:
         <h2>🚨 Anomalies</h2>
 """
 
-        if report['anomalies']:
-            for anomaly in report['anomalies'][:10]:
+        if report["anomalies"]:
+            for anomaly in report["anomalies"][:10]:
                 html += f"""        <div class="anomaly">
             <strong>{anomaly['type'].upper()}</strong> - Severity: {anomaly['severity']}<br>
 """
                 for key, value in anomaly.items():
-                    if key not in ['type', 'severity']:
+                    if key not in ["type", "severity"]:
                         html += f"            {key}: {value}<br>\n"
                 html += "        </div>\n"
         else:
@@ -458,17 +478,21 @@ class ReportFormatter:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='LabLink Automated Log Report Generator',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        description="LabLink Automated Log Report Generator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('--log-dir', default='./logs', help='Log directory path')
-    parser.add_argument('--period', choices=['daily', 'weekly'], help='Report period')
-    parser.add_argument('--custom', action='store_true', help='Custom period')
-    parser.add_argument('--days', type=int, default=7, help='Days for custom period')
-    parser.add_argument('--format', choices=['text', 'json', 'html'], default='text',
-                       help='Output format')
-    parser.add_argument('--output', '-o', help='Output file (default: stdout)')
+    parser.add_argument("--log-dir", default="./logs", help="Log directory path")
+    parser.add_argument("--period", choices=["daily", "weekly"], help="Report period")
+    parser.add_argument("--custom", action="store_true", help="Custom period")
+    parser.add_argument("--days", type=int, default=7, help="Days for custom period")
+    parser.add_argument(
+        "--format",
+        choices=["text", "json", "html"],
+        default="text",
+        help="Output format",
+    )
+    parser.add_argument("--output", "-o", help="Output file (default: stdout)")
 
     args = parser.parse_args()
 
@@ -479,9 +503,9 @@ def main():
     print(f"Generating report from {log_dir}...", file=sys.stderr)
 
     try:
-        if args.period == 'daily':
+        if args.period == "daily":
             report = generator.generate_daily_report()
-        elif args.period == 'weekly':
+        elif args.period == "weekly":
             report = generator.generate_weekly_report()
         elif args.custom:
             report = generator.generate_custom_report(args.days)
@@ -491,9 +515,9 @@ def main():
 
         # Format report
         formatter = ReportFormatter()
-        if args.format == 'json':
+        if args.format == "json":
             output = formatter.format_json(report)
-        elif args.format == 'html':
+        elif args.format == "html":
             output = formatter.format_html(report)
         else:  # text
             output = formatter.format_text(report)
@@ -510,9 +534,10 @@ def main():
     except Exception as e:
         print(f"Error generating report: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

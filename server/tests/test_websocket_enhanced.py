@@ -7,32 +7,26 @@ Tests cover:
 - Backpressure handling
 """
 
-import pytest
 import asyncio
-import json
 import gzip
-import tempfile
+import json
 import shutil
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
-
 # Import the modules we're testing
 import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from websocket.enhanced_features import (
-    StreamRecorder,
-    StreamRecordingConfig,
-    MessageCompressor,
-    CompressionType,
-    BackpressureHandler,
-    BackpressureConfig,
-    PriorityQueue,
-    MessagePriority,
-    RecordingFormat,
-    RateLimiter,
-)
-
+from websocket.enhanced_features import (BackpressureConfig,
+                                         BackpressureHandler, CompressionType,
+                                         MessageCompressor, MessagePriority,
+                                         PriorityQueue, RateLimiter,
+                                         RecordingFormat, StreamRecorder,
+                                         StreamRecordingConfig)
 from websocket.enhanced_manager import EnhancedStreamManager
 
 
@@ -60,10 +54,7 @@ class TestStreamRecorder:
 
     def test_start_recording(self, recorder, temp_dir):
         """Test starting a recording session."""
-        filepath = recorder.start_recording(
-            "test_session",
-            {"test": "metadata"}
-        )
+        filepath = recorder.start_recording("test_session", {"test": "metadata"})
 
         assert filepath.startswith(temp_dir)
         assert "test_session" in filepath
@@ -110,7 +101,7 @@ class TestStreamRecorder:
         recorder.stop_recording("jsonl_test")
 
         # Verify file content
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             lines = f.readlines()
             assert len(lines) == 3
             for i, line in enumerate(lines):
@@ -137,7 +128,7 @@ class TestStreamRecorder:
         recorder.stop_recording("compressed_test")
 
         # Verify compressed file can be read
-        with gzip.open(filepath, 'rt') as f:
+        with gzip.open(filepath, "rt") as f:
             lines = f.readlines()
             assert len(lines) == 10
 
@@ -467,9 +458,7 @@ class TestEnhancedStreamManager:
 
         # Send message
         result = await manager.send_to_client(
-            "test_client",
-            {"type": "test", "data": "hello"},
-            MessagePriority.NORMAL
+            "test_client", {"type": "test", "data": "hello"}, MessagePriority.NORMAL
         )
 
         assert result is True
@@ -489,8 +478,7 @@ class TestEnhancedStreamManager:
 
         # Broadcast message
         await manager.broadcast(
-            {"type": "broadcast", "data": "hello all"},
-            MessagePriority.NORMAL
+            {"type": "broadcast", "data": "hello all"}, MessagePriority.NORMAL
         )
 
         # Both clients should have messages queued
