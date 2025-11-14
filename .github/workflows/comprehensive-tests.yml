@@ -58,7 +58,7 @@ jobs:
           pip install -r server/requirements.txt
           pip install -r requirements-test.txt
           # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler psutil qasync email-validator
+          pip install scipy zeroconf apscheduler psutil qasync email-validator bcrypt
           # Install PyQt6 for GUI tests (requires system libraries in CI)
           pip install PyQt6 || echo "PyQt6 installation failed (expected in headless CI)"
 
@@ -131,7 +131,7 @@ jobs:
           pip install -r server/requirements.txt
           pip install -r requirements-test.txt
           # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler psutil qasync email-validator
+          pip install scipy zeroconf apscheduler psutil qasync email-validator bcrypt
           # Install PyQt6 for GUI tests (requires system libraries in CI)
           pip install PyQt6 || echo "PyQt6 installation failed (expected in headless CI)"
 
@@ -191,7 +191,7 @@ jobs:
           pip install -r server/requirements.txt
           pip install -r requirements-test.txt
           # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler psutil qasync email-validator
+          pip install scipy zeroconf apscheduler psutil qasync email-validator bcrypt
           # Install PyQt6 for GUI tests (requires system libraries in CI)
           pip install PyQt6 || echo "PyQt6 installation failed (expected in headless CI)"
 
@@ -372,7 +372,7 @@ jobs:
           pip install -r server/requirements.txt
           pip install -r requirements-test.txt
           # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler psutil qasync email-validator
+          pip install scipy zeroconf apscheduler psutil qasync email-validator bcrypt
           # Install PyQt6 for GUI tests (requires system libraries in CI)
           pip install PyQt6 || echo "PyQt6 installation failed (expected in headless CI)"
           pip install pytest-benchmark
