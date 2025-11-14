@@ -762,14 +762,16 @@ pytest tests/ -v -s --log-cli-level=DEBUG
 
 ## Test Statistics
 
-Current test coverage (as of v0.10.0):
+Current test coverage (as of v1.0.0):
 
-- **Total tests**: 34+
-- **Unit tests**: 28+ (mock equipment, utilities)
-- **Integration tests**: 6+ (WebSocket, API)
-- **GUI tests**: Available but require display
-- **Hardware tests**: Available but require equipment
-- **Coverage**: ~85% (client/server combined)
+- **Total tests**: 137 passing (core tests)
+- **Unit tests**: Comprehensive coverage of security, database, models
+- **Integration tests**: Cross-module workflows tested
+- **API tests**: REST API endpoints validated
+- **Performance benchmarks**: 10 benchmarks established
+- **GUI tests**: Available but require display (54 skipped)
+- **Hardware tests**: Available but require equipment (163 errors, expected)
+- **Coverage**: 26% overall, 70%+ on critical paths (security, database, models)
 
 ---
 
