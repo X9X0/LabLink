@@ -328,19 +328,25 @@ jobs:
           pip install safety bandit pip-audit
 
       - name: Security audit with pip-audit
-        continue-on-error: true
         run: |
-          pip-audit --desc || echo "⚠️ Security vulnerabilities found in dependencies"
+          # Allow specific known vulnerabilities
+          # - pip 24.0 (GHSA-4xh5-x5gv-qwph): Dev/CI only, trusted sources
+          # - ecdsa 0.19.1 (GHSA-wj6h-64fc-37mp): Orphaned dependency, not used
+          pip-audit --desc --ignore-vuln GHSA-4xh5-x5gv-qwph --ignore-vuln GHSA-wj6h-64fc-37mp || {
+            echo "❌ CRITICAL: Security vulnerabilities found in dependencies"
+            echo "Review docs/security/phase3_security_audit.md for details"
+            exit 1
+          }
 
       - name: Security audit with safety
-        continue-on-error: true
+        continue-on-error: true  # Advisory only - pip-audit is primary gate
         run: |
-          safety check --json || echo "⚠️ Safety check found vulnerabilities"
+          safety check --json || echo "⚠️ Safety check found vulnerabilities (advisory only)"
 
       - name: Security scan with bandit
-        continue-on-error: true
+        continue-on-error: true  # Advisory only - low severity findings don't block
         run: |
-          bandit -r server/ client/ -f json -o bandit-report.json || echo "⚠️ Bandit found security issues"
+          bandit -r server/ client/ -f json -o bandit-report.json || echo "⚠️ Bandit found security issues (advisory only)"
 
       - name: Upload security scan results
         uses: actions/upload-artifact@v4
@@ -456,7 +462,7 @@ jobs:
   all-tests-passed:
     name: All Tests Status
     runs-on: ubuntu-latest
-    needs: [unit-tests, api-tests, integration-tests, code-quality]
+    needs: [unit-tests, api-tests, integration-tests, code-quality, security-scan]
     if: always()
 
     steps:
@@ -470,11 +476,18 @@ jobs:
           echo "API Tests:         ${{ needs.api-tests.result }}"
           echo "Integration Tests: ${{ needs.integration-tests.result }}"
           echo "Code Quality:      ${{ needs.code-quality.result }}"
+          echo "Security Scan:     ${{ needs.security-scan.result }}"
           echo ""
 
-          # Unit tests must pass (code quality is advisory only)
+          # Unit tests and security scans must pass
           if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
             echo "❌ Unit tests failed - BLOCKING"
+            exit 1
+          fi
+
+          if [[ "${{ needs.security-scan.result }}" != "success" ]]; then
+            echo "❌ Security scan failed - BLOCKING"
+            echo "Review docs/security/phase3_security_audit.md for details"
             exit 1
           fi
 

@@ -203,7 +203,7 @@ class User(BaseModel):
     created_by: Optional[str] = None  # user_id of creator
 
     @validator("username")
-    def username_valid(cls, v):
+    def username_valid(cls, v):  # noqa: N805
         """Validate username format."""
         if not v or len(v) < 3:
             raise ValueError("Username must be at least 3 characters")
@@ -226,7 +226,7 @@ class UserCreate(BaseModel):
     must_change_password: bool = False
 
     @validator("password")
-    def password_strength(cls, v):
+    def password_strength(cls, v):  # noqa: N805
         """Validate password strength."""
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
@@ -274,7 +274,7 @@ class PasswordChange(BaseModel):
     new_password: str
 
     @validator("new_password")
-    def password_strength(cls, v):
+    def password_strength(cls, v):  # noqa: N805
         """Validate password strength."""
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
@@ -446,7 +446,7 @@ class APIKeyCreate(BaseModel):
     expires_in_days: Optional[int] = None  # None = no expiration
 
     @validator("expires_in_days")
-    def validate_expiration(cls, v):
+    def validate_expiration(cls, v):  # noqa: N805
         """Validate expiration period."""
         if v is not None and v < 1:
             raise ValueError("Expiration must be at least 1 day")

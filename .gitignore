@@ -52,6 +52,8 @@ config.local.json
 .pytest_cache/
 .coverage
 htmlcov/
+benchmark-results.json
+.benchmarks/
 
 # Local conversation logs
 docs/CONVERSATION_LOG.md

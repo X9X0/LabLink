@@ -4,8 +4,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
-import shutil
 import sys
 import tarfile
 import zipfile
