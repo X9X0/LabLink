@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QColor
 import qasync
 
-from api.client import LabLinkClient
+from client.api.client import LabLinkClient
 
 logger = logging.getLogger(__name__)
 

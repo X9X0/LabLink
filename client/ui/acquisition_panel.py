@@ -14,14 +14,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QEvent, QObject
 
-from api.client import LabLinkClient
+from client.api.client import LabLinkClient
 from models import (
     AcquisitionMode, AcquisitionState, TriggerType, TriggerEdge,
     ExportFormat, AcquisitionConfig, TriggerConfig
 )
 
 try:
-    from ui.widgets.plot_widget import PlotWidget
+    from client.ui.widgets.plot_widget import PlotWidget
     HAS_PLOT_WIDGET = True
 except ImportError:
     HAS_PLOT_WIDGET = False

@@ -2,7 +2,7 @@
 
 import sqlite3
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 

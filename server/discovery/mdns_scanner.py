@@ -22,6 +22,16 @@ try:
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
+
+    # Define dummy classes for when zeroconf is not available
+    class ServiceListener:  # type: ignore
+        """Dummy ServiceListener for when zeroconf is not available."""
+        pass
+
+    Zeroconf = None  # type: ignore
+    ServiceInfo = None  # type: ignore
+    ServiceBrowser = None  # type: ignore
+
     logger.warning(
         "zeroconf library not available - mDNS discovery disabled. "
         "Install with: pip install zeroconf"

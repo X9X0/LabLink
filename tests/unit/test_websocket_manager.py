@@ -60,14 +60,15 @@ class TestWebSocketManager:
     async def test_disconnect(self, manager):
         """Test disconnection."""
         # Mock connection
-        manager._connection = AsyncMock()
-        manager._connection.close = AsyncMock()
+        mock_connection = AsyncMock()
+        mock_connection.close = AsyncMock()
+        manager._connection = mock_connection
         manager.connected = True
 
         await manager.disconnect()
 
         assert manager.connected is False
-        manager._connection.close.assert_called_once()
+        mock_connection.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_send_message(self, manager):

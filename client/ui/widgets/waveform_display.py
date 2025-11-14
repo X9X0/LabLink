@@ -15,6 +15,19 @@ try:
 except ImportError:
     PYQTGRAPH_AVAILABLE = False
     pg = None
+    # Define dummy classes for when PyQt6 is not available
+    class QWidget:  # type: ignore
+        """Dummy QWidget for when PyQt6 is not available."""
+        def __init__(self, parent=None, num_channels: int = 4):
+            pass
+    QVBoxLayout = None  # type: ignore
+    QHBoxLayout = None  # type: ignore
+    QPushButton = None  # type: ignore
+    QLabel = None  # type: ignore
+    QGroupBox = None  # type: ignore
+    QGridLayout = None  # type: ignore
+    QCheckBox = None  # type: ignore
+    Qt = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 

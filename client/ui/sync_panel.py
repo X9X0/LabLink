@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
-from api.client import LabLinkClient
+from client.api.client import LabLinkClient
 from models import SyncState
 
 logger = logging.getLogger(__name__)

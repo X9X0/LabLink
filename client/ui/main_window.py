@@ -12,21 +12,21 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 import qasync
 
-from api.client import LabLinkClient
-from ui.connection_dialog import ConnectionDialog
-from ui.login_dialog import LoginDialog
-from ui.equipment_panel import EquipmentPanel
-from ui.acquisition_panel import AcquisitionPanel
-from ui.alarm_panel import AlarmPanel
-from ui.scheduler_panel import SchedulerPanel
-from ui.diagnostics_panel import DiagnosticsPanel
-from ui.sync_panel import SyncPanel
-from ui.ssh_deploy_wizard import SSHDeployWizard
-from ui.server_selector import ServerSelector
-from ui.sd_card_writer import SDCardWriter
-from ui.pi_image_builder import PiImageBuilderWizard
-from utils.token_storage import get_token_storage
-from utils.server_manager import get_server_manager
+from client.api.client import LabLinkClient
+from client.ui.connection_dialog import ConnectionDialog
+from client.ui.login_dialog import LoginDialog
+from client.ui.equipment_panel import EquipmentPanel
+from client.ui.acquisition_panel import AcquisitionPanel
+from client.ui.alarm_panel import AlarmPanel
+from client.ui.scheduler_panel import SchedulerPanel
+from client.ui.diagnostics_panel import DiagnosticsPanel
+from client.ui.sync_panel import SyncPanel
+from client.ui.ssh_deploy_wizard import SSHDeployWizard
+from client.ui.server_selector import ServerSelector
+from client.ui.sd_card_writer import SDCardWriter
+from client.ui.pi_image_builder import PiImageBuilderWizard
+from client.utils.token_storage import get_token_storage
+from client.utils.server_manager import get_server_manager
 
 logger = logging.getLogger(__name__)
 

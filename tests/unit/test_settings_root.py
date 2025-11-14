@@ -2,14 +2,12 @@
 
 import sys
 import os
-
-# Add paths
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "client"))
+import pytest
 
 try:
     from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel
-    from utils.settings import SettingsManager, get_settings
-    from ui.settings_dialog import SettingsDialog
+    from client.utils.settings import SettingsManager, get_settings
+    from client.ui.settings_dialog import SettingsDialog
     PYQT_AVAILABLE = True
 except ImportError as e:
     print(f"Error: {e}")
@@ -211,8 +209,10 @@ class SettingsTestWindow(QMainWindow):
         self.current_label.setText(settings_text)
 
 
+@pytest.mark.requires_gui
+@pytest.mark.skip(reason="Interactive GUI test - requires display and user interaction")
 def test_settings_dialog():
-    """Test settings dialog UI."""
+    """Test settings dialog UI (interactive test - skipped in CI)."""
     print("\n" + "="*60)
     print("Testing Settings Dialog UI")
     print("="*60)

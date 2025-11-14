@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 import qasync
 
-from api.client import LabLinkClient
+from client.api.client import LabLinkClient
 
 logger = logging.getLogger(__name__)
 

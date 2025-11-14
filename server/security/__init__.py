@@ -59,6 +59,15 @@ from .models import (
     SecurityStatus,
     SessionInfo,
 
+    # MFA models
+    MFASetupRequest,
+    MFASetupResponse,
+    MFAVerifyRequest,
+    MFALoginRequest,
+    MFADisableRequest,
+    BackupCodesResponse,
+    MFAStatusResponse,
+
     # Helper functions
     generate_api_key,
     create_default_admin_role,
@@ -127,6 +136,13 @@ __all__ = [
     "AuditLogQuery",
     "SecurityStatus",
     "SessionInfo",
+    "MFASetupRequest",
+    "MFASetupResponse",
+    "MFAVerifyRequest",
+    "MFALoginRequest",
+    "MFADisableRequest",
+    "BackupCodesResponse",
+    "MFAStatusResponse",
 
     # Auth functions
     "AuthConfig",

@@ -27,6 +27,11 @@ class CircularBuffer:
         self._full = False
         self._count = 0
 
+    @property
+    def count(self) -> int:
+        """Get number of samples in buffer."""
+        return self.size if self._full else self._index
+
     def append(self, timestamp: float, values: np.ndarray):
         """Append a data point.
 
@@ -47,7 +52,7 @@ class CircularBuffer:
             self._index = 0
             self._full = True
 
-    def get_data(self, channel: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+    def get_channel(self, channel: int) -> Tuple[np.ndarray, np.ndarray]:
         """Get data for a channel in chronological order.
 
         Args:
@@ -57,7 +62,7 @@ class CircularBuffer:
             Tuple of (time_array, data_array)
         """
         if channel < 0 or channel >= self.num_channels:
-            raise ValueError(f"Invalid channel: {channel}")
+            raise IndexError(f"Invalid channel: {channel}")
 
         if not self._full:
             # Return only filled portion
@@ -68,18 +73,28 @@ class CircularBuffer:
             channel_data = np.roll(self._data[channel, :], -self._index)
             return time_data, channel_data
 
-    def get_all_data(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_all(self) -> Tuple[np.ndarray, np.ndarray]:
         """Get all channels in chronological order.
 
         Returns:
-            Tuple of (time_array, data_array) where data_array is shape (num_channels, samples)
+            Tuple of (time_array, data_array) where data_array is shape (samples, num_channels)
         """
         if not self._full:
-            return self._time[:self._index].copy(), self._data[:, :self._index].copy()
+            # Return transposed to get (samples, channels) shape
+            return self._time[:self._index].copy(), self._data[:, :self._index].T.copy()
         else:
             time_data = np.roll(self._time, -self._index)
-            data_array = np.roll(self._data, -self._index, axis=1)
+            data_array = np.roll(self._data, -self._index, axis=1).T
             return time_data, data_array
+
+    # Backward compatibility aliases
+    def get_data(self, channel: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+        """Alias for get_channel() for backward compatibility."""
+        return self.get_channel(channel)
+
+    def get_all_data(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Alias for get_all() for backward compatibility."""
+        return self.get_all()
 
     def get_latest(self, n: int = 1) -> Tuple[np.ndarray, np.ndarray]:
         """Get the latest n samples.
@@ -138,31 +153,39 @@ class CircularBuffer:
 class SlidingWindowBuffer:
     """Sliding window buffer that maintains only recent data."""
 
-    def __init__(self, window_size: float, sample_rate: float):
+    def __init__(self, window_size: float, num_channels: int = 1):
         """Initialize sliding window buffer.
 
         Args:
             window_size: Window size in seconds
-            sample_rate: Expected sample rate in Hz
+            num_channels: Number of data channels
         """
         self.window_size = window_size
-        self.sample_rate = sample_rate
+        self.num_channels = num_channels
 
         # Use deque for efficient append/pop
         self._times = deque()
-        self._data = deque()
+        self._data = deque()  # Each element is an array of channel values
 
         self._count = 0
 
-    def append(self, timestamp: float, value: float):
+    @property
+    def count(self) -> int:
+        """Get number of samples in window."""
+        return len(self._times)
+
+    def append(self, timestamp: float, values: np.ndarray):
         """Append a data point.
 
         Args:
             timestamp: Time value
-            value: Data value
+            values: Data values (length must match num_channels)
         """
+        if len(values) != self.num_channels:
+            raise ValueError(f"Expected {self.num_channels} values, got {len(values)}")
+
         self._times.append(timestamp)
-        self._data.append(value)
+        self._data.append(values.copy())
         self._count += 1
 
         # Remove old data outside window
@@ -173,13 +196,39 @@ class SlidingWindowBuffer:
             else:
                 break
 
-    def get_data(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_all(self) -> Tuple[np.ndarray, np.ndarray]:
         """Get all data in window.
+
+        Returns:
+            Tuple of (time_array, data_array) where data_array is shape (samples, num_channels)
+        """
+        if len(self._times) == 0:
+            return np.array([]), np.array([])
+        return np.array(self._times), np.array(list(self._data))
+
+    def get_channel(self, channel: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Get data for a specific channel.
+
+        Args:
+            channel: Channel index (0-indexed)
 
         Returns:
             Tuple of (time_array, data_array)
         """
-        return np.array(self._times), np.array(self._data)
+        if channel < 0 or channel >= self.num_channels:
+            raise IndexError(f"Invalid channel: {channel}")
+
+        if len(self._times) == 0:
+            return np.array([]), np.array([])
+
+        channel_data = [values[channel] for values in self._data]
+        return np.array(self._times), np.array(channel_data)
+
+    def clear(self):
+        """Clear the buffer."""
+        self._times.clear()
+        self._data.clear()
+        self._count = 0
 
     def get_latest(self, n: int = 1) -> Tuple[np.ndarray, np.ndarray]:
         """Get latest n samples.
@@ -199,11 +248,10 @@ class SlidingWindowBuffer:
             np.array(list(self._data)[-n:])
         )
 
-    def clear(self):
-        """Clear the buffer."""
-        self._times.clear()
-        self._data.clear()
-        self._count = 0
+    # Backward compatibility aliases
+    def get_data(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Alias for get_all() for backward compatibility."""
+        return self.get_all()
 
     def get_count(self) -> int:
         """Get number of samples in window.

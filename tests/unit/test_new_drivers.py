@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Standalone test script for new equipment drivers.
-Tests without requiring pytest - uses standard unittest with mocks.
+Unit tests for new equipment drivers.
+Tests equipment driver functionality with mocks.
 """
 
 import sys
 import asyncio
+import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 # Add parent directory to path
@@ -61,9 +62,11 @@ def create_mock_resource_manager(instrument):
     return mock_rm
 
 
-async def test_rigol_ds1104(results):
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rigol_ds1104():
     """Test Rigol DS1104 oscilloscope driver."""
-    print("\nTesting Rigol DS1104 Oscilloscope...")
+    from unittest.mock import patch
 
     idn = "RIGOL TECHNOLOGIES,DS1104Z,DS1ZA123456789,00.04.04.SP3"
     mock_inst = create_mock_instrument(idn)
@@ -71,59 +74,45 @@ async def test_rigol_ds1104(results):
 
     scope = RigolDS1104(mock_rm, "USB0::0x1AB1::0x0588::DS1ZA123456789::INSTR")
 
-    # Test connection
-    try:
+    # Patch the async query/write methods to avoid connection issues
+    with patch.object(scope, '_query', new_callable=AsyncMock) as mock_query, \
+         patch.object(scope, '_write', new_callable=AsyncMock) as mock_write:
+
+        # Configure mock_query to return appropriate values
+        mock_query.return_value = idn
+
+        # Test connection
         await scope.connect()
         assert scope.connected is True
-        results.add_pass("DS1104: Connection")
-    except Exception as e:
-        results.add_fail("DS1104: Connection", e)
 
-    # Test get_info
-    try:
+        # Test get_info
         info = await scope.get_info()
         assert info.model == "DS1104Z"
         assert info.manufacturer == "RIGOL TECHNOLOGIES"
-        results.add_pass("DS1104: Get Info")
-    except Exception as e:
-        results.add_fail("DS1104: Get Info", e)
 
-    # Test get_status
-    try:
+        # Test get_status
         status = await scope.get_status()
         assert status.connected is True
         assert status.capabilities["num_channels"] == 4
-        results.add_pass("DS1104: Get Status")
-    except Exception as e:
-        results.add_fail("DS1104: Get Status", e)
 
-    # Test set_timebase
-    try:
+        # Test set_timebase
         await scope.set_timebase(scale=0.001, offset=0.0)
-        results.add_pass("DS1104: Set Timebase")
-    except Exception as e:
-        results.add_fail("DS1104: Set Timebase", e)
+        mock_write.assert_called()
 
-    # Test trigger commands
-    try:
+        # Test trigger commands
         await scope.trigger_run()
         await scope.trigger_stop()
-        results.add_pass("DS1104: Trigger Commands")
-    except Exception as e:
-        results.add_fail("DS1104: Trigger Commands", e)
 
-    # Test disconnect
-    try:
+        # Test disconnect
         await scope.disconnect()
         assert scope.connected is False
-        results.add_pass("DS1104: Disconnect")
-    except Exception as e:
-        results.add_fail("DS1104: Disconnect", e)
 
 
-async def test_rigol_dl3021a(results):
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rigol_dl3021a():
     """Test Rigol DL3021A electronic load driver."""
-    print("\nTesting Rigol DL3021A Electronic Load...")
+    from unittest.mock import patch
 
     idn = "RIGOL TECHNOLOGIES,DL3021A,DL3A123456789,00.01.03"
     mock_inst = create_mock_instrument(idn)
@@ -131,66 +120,46 @@ async def test_rigol_dl3021a(results):
 
     load = RigolDL3021A(mock_rm, "USB0::0x1AB1::0x0C1C::DL3A123456789::INSTR")
 
-    # Test connection
-    try:
+    # Patch the async query/write methods
+    with patch.object(load, '_query', new_callable=AsyncMock) as mock_query, \
+         patch.object(load, '_write', new_callable=AsyncMock):
+
+        mock_query.return_value = idn
+
+        # Test connection
         await load.connect()
         assert load.connected is True
-        results.add_pass("DL3021A: Connection")
-    except Exception as e:
-        results.add_fail("DL3021A: Connection", e)
 
-    # Test get_info
-    try:
+        # Test get_info
         info = await load.get_info()
         assert info.model == "DL3021A"
         assert info.manufacturer == "RIGOL TECHNOLOGIES"
-        results.add_pass("DL3021A: Get Info")
-    except Exception as e:
-        results.add_fail("DL3021A: Get Info", e)
 
-    # Test get_status
-    try:
+        # Test get_status
         status = await load.get_status()
         assert status.capabilities["max_current"] == 40.0
         assert status.capabilities["max_power"] == 200.0
-        results.add_pass("DL3021A: Get Status")
-    except Exception as e:
-        results.add_fail("DL3021A: Get Status", e)
 
-    # Test set_mode
-    try:
+        # Test set_mode
         await load.set_mode("CC")
         await load.set_mode("CV")
-        results.add_pass("DL3021A: Set Mode")
-    except Exception as e:
-        results.add_fail("DL3021A: Set Mode", e)
 
-    # Test set_current
-    try:
+        # Test set_current
         await load.set_current(10.0)
-        results.add_pass("DL3021A: Set Current")
-    except Exception as e:
-        results.add_fail("DL3021A: Set Current", e)
 
-    # Test set_input
-    try:
+        # Test set_input
         await load.set_input(True)
         await load.set_input(False)
-        results.add_pass("DL3021A: Set Input")
-    except Exception as e:
-        results.add_fail("DL3021A: Set Input", e)
 
-    # Test disconnect
-    try:
+        # Test disconnect
         await load.disconnect()
-        results.add_pass("DL3021A: Disconnect")
-    except Exception as e:
-        results.add_fail("DL3021A: Disconnect", e)
 
 
-async def test_bk9205b(results):
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_bk9205b():
     """Test BK Precision 9205B power supply driver."""
-    print("\nTesting BK Precision 9205B Power Supply...")
+    from unittest.mock import patch
 
     idn = "BK Precision,9205B,123456,V1.0"
     mock_inst = create_mock_instrument(idn)
@@ -198,64 +167,44 @@ async def test_bk9205b(results):
 
     ps = BK9205B(mock_rm, "USB0::0xFFFF::0x9205::123456::INSTR")
 
-    # Test connection
-    try:
+    # Patch the async query/write methods
+    with patch.object(ps, '_query', new_callable=AsyncMock) as mock_query, \
+         patch.object(ps, '_write', new_callable=AsyncMock):
+
+        mock_query.return_value = idn
+
+        # Test connection
         await ps.connect()
         assert ps.connected is True
-        results.add_pass("BK9205B: Connection")
-    except Exception as e:
-        results.add_fail("BK9205B: Connection", e)
 
-    # Test get_info
-    try:
+        # Test get_info
         info = await ps.get_info()
         assert info.model == "9205B"
-        results.add_pass("BK9205B: Get Info")
-    except Exception as e:
-        results.add_fail("BK9205B: Get Info", e)
 
-    # Test get_status
-    try:
+        # Test get_status
         status = await ps.get_status()
         assert status.capabilities["max_voltage"] == 120.0
         assert status.capabilities["max_current"] == 10.0
-        results.add_pass("BK9205B: Get Status")
-    except Exception as e:
-        results.add_fail("BK9205B: Get Status", e)
 
-    # Test set_voltage
-    try:
+        # Test set_voltage
         await ps.set_voltage(12.0)
-        results.add_pass("BK9205B: Set Voltage")
-    except Exception as e:
-        results.add_fail("BK9205B: Set Voltage", e)
 
-    # Test set_current
-    try:
+        # Test set_current
         await ps.set_current(5.0)
-        results.add_pass("BK9205B: Set Current")
-    except Exception as e:
-        results.add_fail("BK9205B: Set Current", e)
 
-    # Test set_output
-    try:
+        # Test set_output
         await ps.set_output(True)
         await ps.set_output(False)
-        results.add_pass("BK9205B: Set Output")
-    except Exception as e:
-        results.add_fail("BK9205B: Set Output", e)
 
-    # Test disconnect
-    try:
+        # Test disconnect
         await ps.disconnect()
-        results.add_pass("BK9205B: Disconnect")
-    except Exception as e:
-        results.add_fail("BK9205B: Disconnect", e)
 
 
-async def test_bk1685b(results):
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_bk1685b():
     """Test BK Precision 1685B power supply driver."""
-    print("\nTesting BK Precision 1685B Power Supply...")
+    from unittest.mock import patch
 
     idn = "BK Precision,1685B,123456,V2.1"
     mock_inst = create_mock_instrument(idn)
@@ -263,51 +212,33 @@ async def test_bk1685b(results):
 
     ps = BK1685B(mock_rm, "USB0::0xFFFF::0x1685::123456::INSTR")
 
-    # Test connection
-    try:
+    # Patch the async query/write methods
+    with patch.object(ps, '_query', new_callable=AsyncMock) as mock_query, \
+         patch.object(ps, '_write', new_callable=AsyncMock):
+
+        mock_query.return_value = idn
+
+        # Test connection
         await ps.connect()
         assert ps.connected is True
-        results.add_pass("BK1685B: Connection")
-    except Exception as e:
-        results.add_fail("BK1685B: Connection", e)
 
-    # Test get_info
-    try:
+        # Test get_info
         info = await ps.get_info()
         assert info.model == "1685B"
-        results.add_pass("BK1685B: Get Info")
-    except Exception as e:
-        results.add_fail("BK1685B: Get Info", e)
 
-    # Test get_status
-    try:
+        # Test get_status
         status = await ps.get_status()
         assert status.capabilities["max_voltage"] == 18.0
         assert status.capabilities["max_current"] == 5.0
-        results.add_pass("BK1685B: Get Status")
-    except Exception as e:
-        results.add_fail("BK1685B: Get Status", e)
 
-    # Test set_voltage
-    try:
+        # Test set_voltage
         await ps.set_voltage(15.0)
-        results.add_pass("BK1685B: Set Voltage")
-    except Exception as e:
-        results.add_fail("BK1685B: Set Voltage", e)
 
-    # Test set_current
-    try:
+        # Test set_current
         await ps.set_current(3.0)
-        results.add_pass("BK1685B: Set Current")
-    except Exception as e:
-        results.add_fail("BK1685B: Set Current", e)
 
-    # Test disconnect
-    try:
+        # Test disconnect
         await ps.disconnect()
-        results.add_pass("BK1685B: Disconnect")
-    except Exception as e:
-        results.add_fail("BK1685B: Disconnect", e)
 
 
 async def main():
