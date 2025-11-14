@@ -3,13 +3,10 @@
 import sys
 import os
 
-# Add paths
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "client"))
-
 try:
     from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel
-    from utils.settings import SettingsManager, get_settings
-    from ui.settings_dialog import SettingsDialog
+    from client.utils.settings import SettingsManager, get_settings
+    from client.ui.settings_dialog import SettingsDialog
     PYQT_AVAILABLE = True
 except ImportError as e:
     print(f"Error: {e}")
