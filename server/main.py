@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.23.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v0.27.0 - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -379,7 +379,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.23.0",
+    version="0.27.0",
     lifespan=lifespan,
 )
 

@@ -178,6 +178,95 @@ Major enhancement to the web dashboard adding real-time WebSocket updates, live 
 
 ---
 
+### v0.25.0 - OAuth2 Authentication Integration (2025-11-13) ✅
+
+**Status**: Complete
+
+Enterprise-grade social login integration with OAuth2 authentication providers for seamless user authentication via Google, GitHub, and Microsoft accounts.
+
+**Key Features:**
+- **OAuth2 Provider Support**: Integration with 3 major OAuth2 providers
+- **Google OAuth2**: Sign in with Google accounts
+- **GitHub OAuth2**: Sign in with GitHub accounts
+- **Microsoft OAuth2**: Sign in with Microsoft/Azure AD accounts
+- **Automatic User Provisioning**: Auto-create user accounts on first OAuth2 login
+- **Account Linking**: Link OAuth2 providers to existing user accounts
+- **Flexible Configuration**: Enable/disable providers independently
+- **Secure Token Exchange**: OAuth2 authorization code flow implementation
+
+**Components Created/Modified:**
+- `server/security/oauth2.py` - OAuth2 manager and provider implementations (400+ lines)
+- Updated `server/security/models.py` - Added OAuth2Provider enum and OAuth2Config/OAuth2State models
+- Updated `server/api/security.py` - Added 8 OAuth2 API endpoints
+- Updated `server/config/settings.py` - Added OAuth2 provider configuration settings
+- Updated `server/main.py` - OAuth2 provider initialization on startup
+- Updated web dashboard templates - OAuth2 login buttons and flows
+
+**OAuth2 API Endpoints (8 new):**
+- `GET /api/security/oauth2/providers` - List enabled OAuth2 providers
+- `GET /api/security/oauth2/{provider}/authorize` - Initiate OAuth2 authorization flow
+- `GET /api/security/oauth2/{provider}/callback` - Handle OAuth2 callback and token exchange
+- `POST /api/security/oauth2/{provider}/link` - Link OAuth2 provider to existing account
+- `DELETE /api/security/oauth2/{provider}/unlink` - Unlink OAuth2 provider from account
+- `GET /api/security/oauth2/linked` - Get user's linked OAuth2 providers
+- `POST /api/security/oauth2/login` - Complete OAuth2 login and issue JWT tokens
+- `GET /api/security/oauth2/config/{provider}` - Get OAuth2 provider configuration
+
+**Configuration Settings (9 new):**
+```bash
+# Enable OAuth2
+LABLINK_ENABLE_OAUTH2=true
+
+# Google OAuth2
+LABLINK_OAUTH2_GOOGLE_ENABLED=true
+LABLINK_OAUTH2_GOOGLE_CLIENT_ID=your-client-id
+LABLINK_OAUTH2_GOOGLE_CLIENT_SECRET=your-client-secret
+
+# GitHub OAuth2
+LABLINK_OAUTH2_GITHUB_ENABLED=true
+LABLINK_OAUTH2_GITHUB_CLIENT_ID=your-client-id
+LABLINK_OAUTH2_GITHUB_CLIENT_SECRET=your-client-secret
+
+# Microsoft OAuth2
+LABLINK_OAUTH2_MICROSOFT_ENABLED=true
+LABLINK_OAUTH2_MICROSOFT_CLIENT_ID=your-client-id
+LABLINK_OAUTH2_MICROSOFT_CLIENT_SECRET=your-client-secret
+```
+
+**Security Features:**
+- OAuth2 authorization code flow (most secure)
+- State parameter for CSRF protection
+- Secure token storage and validation
+- Automatic session creation on OAuth2 login
+- Role assignment on first login (default: viewer role)
+- Account linking with password confirmation
+- Provider-specific user ID tracking
+
+**User Experience:**
+1. User clicks "Sign in with Google/GitHub/Microsoft" on login page
+2. Redirected to provider's authorization page
+3. User grants permissions
+4. Redirected back to LabLink with authorization code
+5. Server exchanges code for access token
+6. Fetches user info from provider
+7. Creates/updates user account
+8. Issues JWT tokens
+9. User logged in automatically
+
+**Benefits:**
+- ✅ Single Sign-On (SSO) experience
+- ✅ No password management for OAuth2 users
+- ✅ Enterprise identity provider integration
+- ✅ Faster onboarding (one-click registration)
+- ✅ Improved security (leverages provider's 2FA)
+- ✅ Familiar login experience
+
+**Dependencies:** Advanced Security System (v0.23.0), Web Dashboard (v0.24.0)
+
+**Total Additions**: ~800 lines of code
+
+---
+
 ### v0.24.0 - MVP Web Dashboard (2025-11-13) ✅
 
 **Status**: Complete
@@ -1960,12 +2049,12 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 
 ---
 
-### 11. Web Dashboard ✅ (MVP) / 💡 (Enhanced)
+### 11. Web Dashboard ✅
 **Priority:** ⭐⭐
-**Effort:** MVP Complete (v0.24.0) / 1-2 weeks for enhanced features
-**Status:** MVP Complete, Enhanced features planned for v0.25.0+
+**Effort:** Complete
+**Status:** MVP Complete (v0.24.0), Enhanced features complete (v0.26.0)
 
-**MVP Features (Complete v0.24.0):**
+**MVP Features (v0.24.0):**
 - [x] Login page with JWT authentication
 - [x] Real-time equipment status display with auto-refresh
 - [x] Quick equipment control (connect/disconnect/commands)
@@ -1973,36 +2062,41 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 - [x] Responsive design (mobile/tablet/desktop)
 - [x] Dark mode with system detection
 
-**Enhanced Features (Planned v0.25.0+):**
-- [ ] Live charts with Chart.js integration
-- [ ] WebSocket real-time streaming (replace polling)
-- [ ] Profile management UI
-- [ ] Configuration editor
-- [ ] User settings and preferences page
-- [ ] Alarm notifications and history
-- [ ] Scheduler management UI
-- [ ] Advanced equipment control panels
-- [ ] Data acquisition dashboard
-- [ ] Historical data visualization
+**Enhanced Features (v0.26.0):**
+- [x] Live charts with Chart.js integration (4 real-time charts)
+- [x] WebSocket real-time streaming (replaced HTTP polling)
+- [x] Profile management UI (complete CRUD operations)
+- [x] User settings and preferences page
+- [x] Alarm notifications panel (real-time with WebSocket)
+- [x] MFA setup interface (added in v0.27.0)
+- [x] OAuth2 social login buttons (added in v0.25.0)
+
+**Future Enhancements (Optional):** 💡
+- [ ] Configuration editor (advanced settings management)
+- [ ] Scheduler management UI (visual job creation/editing)
+- [ ] Advanced equipment control panels (device-specific UIs)
+- [ ] Data acquisition dashboard (waveform visualization)
+- [ ] Historical data visualization (trends and analysis)
 - [ ] Multi-language support (i18n)
 
 **Benefits:**
-- ✅ Remote monitoring (MVP complete)
-- ✅ Quick access (MVP complete)
-- ✅ Multi-platform support (MVP complete)
-- Easy administration (enhanced features)
-- Professional visualization (enhanced features)
+- ✅ Remote monitoring from any device
+- ✅ Real-time updates via WebSocket
+- ✅ Professional data visualization (Chart.js)
+- ✅ Multi-platform support (mobile/tablet/desktop)
+- ✅ Modern, responsive UI
+- ✅ Complete equipment and alarm management
 
-**Dependencies:** None (MVP), WebSocket integration recommended for enhanced features
+**Dependencies:** None (complete and production-ready)
 
 ---
 
-### 12. Advanced Security ✅ / 💡 (OAuth2)
+### 12. Advanced Security ✅
 **Priority:** ⭐⭐⭐
-**Effort:** Complete (v0.23.0) / 1-2 days for OAuth2
-**Status:** Core features complete, OAuth2 planned
+**Effort:** Complete
+**Status:** Complete (v0.23.0 core, v0.25.0 OAuth2, v0.27.0 MFA)
 
-**Features Implemented (v0.23.0):**
+**Core Security Features (v0.23.0):**
 - [x] Role-based access control (admin, operator, viewer)
 - [x] Equipment-specific permissions via RBAC
 - [x] API key management with scopes
@@ -2013,21 +2107,35 @@ This completes the Scheduled Operations feature with full persistence, conflict 
 - [x] Session management and tracking
 - [x] Account lockout protection
 
-**Planned Features (v0.25.0+):**
-- [ ] OAuth2 authentication providers (Google, GitHub, Microsoft)
+**OAuth2 Authentication (v0.25.0):**
+- [x] OAuth2 authentication providers (Google, GitHub, Microsoft)
+- [x] Social login integration
+- [x] Automatic user provisioning
+- [x] Account linking for existing users
+- [x] 8 OAuth2 API endpoints
+
+**Multi-Factor Authentication (v0.27.0):**
+- [x] TOTP-based 2FA (RFC 6238 compliant)
+- [x] QR code generation for authenticator apps
+- [x] 10 one-time backup codes
+- [x] MFA management UI in settings
+- [x] Enhanced login flow with MFA verification
+
+**Future Enhancements (Optional):** 💡
 - [ ] SAML 2.0 support for enterprise SSO
 - [ ] LDAP/Active Directory integration
-- [ ] Multi-factor authentication (MFA/2FA)
 - [ ] Hardware security key support (FIDO2/WebAuthn)
 
 **Benefits:**
-- ✅ Enterprise security (v0.23.0 complete)
-- ✅ Fine-grained access control (v0.23.0 complete)
-- ✅ Compliance support (v0.23.0 complete)
-- ✅ Multi-user safety (v0.23.0 complete)
-- External identity provider support (OAuth2 pending)
+- ✅ Enterprise-grade security
+- ✅ Fine-grained access control (RBAC)
+- ✅ Compliance support (NIST, ISO, FDA, GDPR)
+- ✅ Multi-user safety with session management
+- ✅ Social login (OAuth2) for easy onboarding
+- ✅ Two-factor authentication for enhanced security
+- ✅ Complete audit trail
 
-**Dependencies:** None for core features (complete), Web Dashboard for OAuth2 flows
+**Dependencies:** None (complete and production-ready)
 
 ---
 
