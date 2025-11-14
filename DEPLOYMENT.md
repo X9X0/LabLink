@@ -694,5 +694,5 @@ journalctl -u lablink.service -f
 
 ---
 
-**Last Updated:** 2025-11-13
-**Version:** 0.27.0
+**Last Updated:** 2025-11-14
+**Version:** 1.0.0
