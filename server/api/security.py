@@ -40,6 +40,7 @@ from security import (
     SecurityStatus,
     SessionInfo,
     AuditEventType,
+    OAuth2Provider,
     # MFA Models
     MFASetupResponse,
     MFAVerifyRequest,
