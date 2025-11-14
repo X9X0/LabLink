@@ -60,12 +60,18 @@ class TestPermission:
         """Test all resource types."""
         resources = [
             ResourceType.EQUIPMENT,
-            ResourceType.USER,
-            ResourceType.ROLE,
-            ResourceType.API_KEY,
-            ResourceType.PROFILE,
-            ResourceType.DATA,
-            ResourceType.SYSTEM
+            ResourceType.ACQUISITION,
+            ResourceType.PROFILES,
+            ResourceType.STATES,
+            ResourceType.SAFETY,
+            ResourceType.LOCKS,
+            ResourceType.ALARMS,
+            ResourceType.SCHEDULER,
+            ResourceType.DIAGNOSTICS,
+            ResourceType.PERFORMANCE,
+            ResourceType.BACKUP,
+            ResourceType.DISCOVERY,
+            ResourceType.WAVEFORM
         ]
 
         for resource in resources:
@@ -104,7 +110,7 @@ class TestRole:
         """Test creating a role."""
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[]
         )
 
@@ -121,7 +127,7 @@ class TestRole:
 
         role = Role(
             name="equipment_manager",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms
         )
 
@@ -133,7 +139,7 @@ class TestRole:
         """Test role with description."""
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[],
             description="Test role description"
         )
@@ -263,7 +269,7 @@ class TestPermissionChecking:
         )
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[equipment_perm]
         )
 
@@ -294,7 +300,7 @@ class TestPermissionChecking:
         )
         role = Role(
             name="test_role",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=[read_perm]
         )
 
@@ -359,7 +365,7 @@ class TestCustomRoles:
 
         role = Role(
             name="equipment_operator",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Can read, write, and execute equipment commands"
         )
@@ -371,9 +377,9 @@ class TestCustomRoles:
         """Test creating read-only role for all resources."""
         resources = [
             ResourceType.EQUIPMENT,
-            ResourceType.USER,
-            ResourceType.PROFILE,
-            ResourceType.DATA
+            ResourceType.DIAGNOSTICS,
+            ResourceType.PROFILES,
+            ResourceType.WAVEFORM
         ]
 
         perms = [
@@ -383,7 +389,7 @@ class TestCustomRoles:
 
         role = Role(
             name="readonly_all",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Read-only access to all resources"
         )
@@ -394,14 +400,14 @@ class TestCustomRoles:
     def test_create_data_analyst_role(self):
         """Test creating specialized data analyst role."""
         perms = [
-            Permission(action=PermissionAction.READ, resource=ResourceType.DATA),
+            Permission(action=PermissionAction.READ, resource=ResourceType.WAVEFORM),
             Permission(action=PermissionAction.READ, resource=ResourceType.EQUIPMENT),
-            Permission(action=PermissionAction.EXECUTE, resource=ResourceType.DATA)
+            Permission(action=PermissionAction.EXECUTE, resource=ResourceType.WAVEFORM)
         ]
 
         role = Role(
             name="data_analyst",
-            type=RoleType.CUSTOM,
+            role_type=RoleType.CUSTOM,
             permissions=perms,
             description="Can read equipment and analyze data"
         )
@@ -410,7 +416,7 @@ class TestCustomRoles:
 
         # Can read data and equipment
         can_read_data = any(
-            p.action == PermissionAction.READ and p.resource == ResourceType.DATA
+            p.action == PermissionAction.READ and p.resource == ResourceType.WAVEFORM
             for p in role.permissions
         )
         can_read_equipment = any(

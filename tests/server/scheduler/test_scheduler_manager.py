@@ -442,21 +442,20 @@ class TestJobModels:
     """Test scheduler models."""
 
     def test_scheduled_job_creation(self):
-        """Test creating ScheduledJob model."""
-        job = ScheduledJob(
+        """Test creating ScheduleConfig model."""
+        job = ScheduleConfig(
             job_id="job-123",
             name="Test job",
             schedule_type=ScheduleType.ACQUISITION,
             trigger_type=TriggerType.CRON,
             cron_expression="0 2 * * *",
-            enabled=True,
-            status=JobStatus.ACTIVE,
-            created_at=datetime.utcnow()
+            enabled=True
         )
 
         assert job.job_id == "job-123"
         assert job.schedule_type == ScheduleType.ACQUISITION
         assert job.trigger_type == TriggerType.CRON
+        assert job.enabled == True
 
     def test_job_create_request(self):
         """Test JobCreate request model."""

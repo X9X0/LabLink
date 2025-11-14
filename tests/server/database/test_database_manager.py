@@ -64,7 +64,9 @@ class TestCommandHistory:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 
@@ -139,7 +141,9 @@ class TestMeasurementArchival:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 
@@ -210,7 +214,9 @@ class TestUsageStatistics:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 
@@ -271,7 +277,9 @@ class TestDataQuery:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 
@@ -341,7 +349,9 @@ class TestDatabaseCleanup:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 
@@ -386,7 +396,9 @@ class TestDatabaseHealth:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "test.db")
             try:
-                yield DatabaseManager(db_path=db_path)
+                manager = DatabaseManager(db_path=db_path)
+                manager.initialize()
+                yield manager
             except Exception:
                 pytest.skip("DatabaseManager not implemented")
 

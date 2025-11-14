@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
 from discovery.models import (
     DiscoveredDevice,
     DeviceType,
+    DiscoveryMethod,
     ConnectionHistoryEntry,
     SmartRecommendation,
     DeviceAlias
@@ -411,7 +412,9 @@ class TestDiscoveredDeviceModel:
     def test_discovered_device_creation(self):
         """Test creating DiscoveredDevice."""
         device = DiscoveredDevice(
-            resource_string="TCPIP0::192.168.1.100::inst0::INSTR",
+            device_id="device-001",
+            resource_name="TCPIP0::192.168.1.100::inst0::INSTR",
+            discovery_method=DiscoveryMethod.VISA,
             device_type=DeviceType.OSCILLOSCOPE,
             manufacturer="RIGOL",
             model="DS1104Z",
@@ -421,7 +424,8 @@ class TestDiscoveredDeviceModel:
             discovered_at=datetime.utcnow()
         )
 
-        assert device.resource_string == "TCPIP0::192.168.1.100::inst0::INSTR"
+        assert device.resource_name == "TCPIP0::192.168.1.100::inst0::INSTR"
+        assert device.discovery_method == DiscoveryMethod.VISA
         assert device.device_type == DeviceType.OSCILLOSCOPE
         assert device.manufacturer == "RIGOL"
         assert device.model == "DS1104Z"
