@@ -2,7 +2,7 @@
 
 import numpy as np
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 from scipy import signal, interpolate
 
 from .models import ResampleConfig, ResampleMethod
