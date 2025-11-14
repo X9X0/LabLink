@@ -41,6 +41,7 @@ from security import (
     SessionInfo,
     AuditEventType,
     OAuth2Provider,
+    OAuth2LoginRequest,
     # MFA Models
     MFASetupResponse,
     MFAVerifyRequest,
