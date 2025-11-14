@@ -410,6 +410,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit-tests, api-tests, integration-tests, code-quality, security-scan]
     if: always()
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
 
     steps:
       - name: Checkout code
