@@ -77,8 +77,7 @@ class TestCommandHistory:
                 equipment_id="scope-001",
                 command="*IDN?",
                 response="RIGOL TECHNOLOGIES,DS1104Z,DS1ZA123456789,00.04.04",
-                execution_time_ms=45,
-                status="success"
+                execution_time_ms=45
             )
             db_manager.log_command(record)
             # Should store the command
