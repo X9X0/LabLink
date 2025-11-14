@@ -42,6 +42,7 @@ from security import (
     AuditEventType,
     OAuth2Provider,
     OAuth2LoginRequest,
+    OAuth2LinkResponse,
     # MFA Models
     MFASetupResponse,
     MFAVerifyRequest,
