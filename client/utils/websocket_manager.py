@@ -47,8 +47,14 @@ class MessageType(str, Enum):
 class StreamConfig:
     """Configuration for a data stream."""
     equipment_id: str
-    stream_type: StreamType
+    stream_type: str
     interval_ms: int = 100
+    parameters: Dict[str, Any] = None
+
+    def __post_init__(self):
+        """Initialize default parameters."""
+        if self.parameters is None:
+            self.parameters = {}
 
 
 class WebSocketManager:
@@ -83,6 +89,9 @@ class WebSocketManager:
             MessageType.ACQUISITION_STREAM_STOPPED: [],
             MessageType.PONG: [],
         }
+
+        # Stream data handlers (for convenience)
+        self._stream_data_handlers: List[Callable] = []
 
         # Generic message callback for all messages
         self._generic_callbacks: List[Callable] = []
@@ -265,6 +274,17 @@ class WebSocketManager:
                 except Exception as e:
                     logger.error(f"Error in message handler: {e}")
 
+        # Call stream data handlers for stream_data messages
+        if msg_type == "stream_data":
+            for handler in self._stream_data_handlers:
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(data)
+                    else:
+                        handler(data)
+                except Exception as e:
+                    logger.error(f"Error in stream data handler: {e}")
+
         # Call generic handlers
         for handler in self._generic_callbacks:
             try:
@@ -274,6 +294,14 @@ class WebSocketManager:
                     handler(data)
             except Exception as e:
                 logger.error(f"Error in generic handler: {e}")
+
+    async def _route_message(self, data: Dict[str, Any]):
+        """Alias for _handle_message for backward compatibility.
+
+        Args:
+            data: Parsed message data
+        """
+        await self._handle_message(data)
 
     # ==================== Message Sending ====================
 
@@ -303,59 +331,71 @@ class WebSocketManager:
     async def start_equipment_stream(
         self,
         equipment_id: str,
-        stream_type: StreamType = StreamType.READINGS,
+        stream_type: str = "readings",
         interval_ms: int = 100
     ):
         """Start streaming data from equipment.
 
         Args:
             equipment_id: Equipment ID
-            stream_type: Type of data to stream
+            stream_type: Type of data to stream (string or StreamType enum)
             interval_ms: Update interval in milliseconds
         """
+        # Convert StreamType enum to string if needed
+        if isinstance(stream_type, StreamType):
+            stream_type_str = stream_type.value
+        else:
+            stream_type_str = stream_type
+
         message = {
             "type": MessageType.START_STREAM,
             "equipment_id": equipment_id,
-            "stream_type": stream_type.value,
+            "stream_type": stream_type_str,
             "interval_ms": interval_ms
         }
 
         await self._send_message(message)
 
         # Track active stream
-        stream_key = f"{equipment_id}_{stream_type.value}"
+        stream_key = f"{equipment_id}_{stream_type_str}"
         self._active_streams[stream_key] = StreamConfig(
             equipment_id=equipment_id,
-            stream_type=stream_type,
+            stream_type=stream_type_str,
             interval_ms=interval_ms
         )
 
-        logger.info(f"Started {stream_type.value} stream for {equipment_id}")
+        logger.info(f"Started {stream_type_str} stream for {equipment_id}")
 
     async def stop_equipment_stream(
         self,
         equipment_id: str,
-        stream_type: StreamType = StreamType.READINGS
+        stream_type: str = "readings"
     ):
         """Stop streaming data from equipment.
 
         Args:
             equipment_id: Equipment ID
-            stream_type: Type of data stream to stop
+            stream_type: Type of data stream to stop (string or StreamType enum)
         """
+        # Convert StreamType enum to string if needed
+        if isinstance(stream_type, StreamType):
+            stream_type_str = stream_type.value
+        else:
+            stream_type_str = stream_type
+
         message = {
             "type": MessageType.STOP_STREAM,
             "equipment_id": equipment_id,
-            "stream_type": stream_type.value
+            "stream_type": stream_type_str
         }
 
         await self._send_message(message)
 
         # Remove from active streams
-        stream_key = f"{equipment_id}_{stream_type.value}"
+        stream_key = f"{equipment_id}_{stream_type_str}"
         self._active_streams.pop(stream_key, None)
 
-        logger.info(f"Stopped {stream_type.value} stream for {equipment_id}")
+        logger.info(f"Stopped {stream_type_str} stream for {equipment_id}")
 
     # ==================== Acquisition Streaming ====================
 
@@ -442,6 +482,51 @@ class WebSocketManager:
         except ValueError:
             pass
 
+    # Backward compatibility aliases
+    def register_message_handler(self, message_type: str, handler: Callable):
+        """Register a handler for specific message type (alias for register_handler).
+
+        Args:
+            message_type: Type of message to handle (string)
+            handler: Callback function (can be sync or async)
+        """
+        # Create message type entry if it doesn't exist
+        if message_type not in self._message_handlers:
+            self._message_handlers[message_type] = []
+        self._message_handlers[message_type].append(handler)
+
+    def unregister_message_handler(self, message_type: str, handler: Callable):
+        """Unregister a message handler (alias for unregister_handler).
+
+        Args:
+            message_type: Type of message
+            handler: Callback function to remove
+        """
+        if message_type in self._message_handlers:
+            try:
+                self._message_handlers[message_type].remove(handler)
+            except ValueError:
+                pass
+
+    def register_stream_data_handler(self, handler: Callable):
+        """Register a handler for stream data messages.
+
+        Args:
+            handler: Callback function (can be sync or async)
+        """
+        self._stream_data_handlers.append(handler)
+
+    def unregister_stream_data_handler(self, handler: Callable):
+        """Unregister a stream data handler.
+
+        Args:
+            handler: Callback function to remove
+        """
+        try:
+            self._stream_data_handlers.remove(handler)
+        except ValueError:
+            pass
+
     # ==================== Convenience Methods ====================
 
     def on_stream_data(self, handler: Callable):
@@ -484,7 +569,9 @@ class WebSocketManager:
             "messages_sent": self.messages_sent,
             "errors": self.errors,
             "active_streams": len(self._active_streams),
-            "stream_list": list(self._active_streams.keys())
+            "stream_list": list(self._active_streams.keys()),
+            "message_handlers": len(self._message_handlers),
+            "stream_data_handlers": len(self._stream_data_handlers)
         }
 
     def get_active_streams(self) -> List[str]:

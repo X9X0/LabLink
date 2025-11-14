@@ -2,6 +2,7 @@
 
 import sys
 import os
+import pytest
 
 try:
     from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel
@@ -208,8 +209,10 @@ class SettingsTestWindow(QMainWindow):
         self.current_label.setText(settings_text)
 
 
+@pytest.mark.requires_gui
+@pytest.mark.skip(reason="Interactive GUI test - requires display and user interaction")
 def test_settings_dialog():
-    """Test settings dialog UI."""
+    """Test settings dialog UI (interactive test - skipped in CI)."""
     print("\n" + "="*60)
     print("Testing Settings Dialog UI")
     print("="*60)
