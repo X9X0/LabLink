@@ -1,25 +1,27 @@
 """Power supply and electronic load chart widget."""
 
 import logging
-from typing import Optional, Dict
 import time
+from typing import Dict, Optional
 
 try:
     import pyqtgraph as pg
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-        QLabel, QGroupBox, QGridLayout
-    )
     from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                                 QPushButton, QVBoxLayout, QWidget)
+
     PYQTGRAPH_AVAILABLE = True
 except ImportError:
     PYQTGRAPH_AVAILABLE = False
     pg = None
+
     # Define dummy classes for when PyQt6 is not available
     class QWidget:  # type: ignore
         """Dummy QWidget for when PyQt6 is not available."""
+
         def __init__(self, parent=None):
             pass
+
     QVBoxLayout = None  # type: ignore
     QHBoxLayout = None  # type: ignore
     QPushButton = None  # type: ignore
@@ -29,9 +31,10 @@ except ImportError:
     Qt = None  # type: ignore
     QTimer = None  # type: ignore
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from client.utils.data_buffer import CircularBuffer
 
@@ -41,7 +44,9 @@ logger = logging.getLogger(__name__)
 class PowerChartWidget(QWidget):
     """Real-time chart for power supply or electronic load data."""
 
-    def __init__(self, parent=None, equipment_type: str = "power_supply", buffer_size: int = 500):
+    def __init__(
+        self, parent=None, equipment_type: str = "power_supply", buffer_size: int = 500
+    ):
         """Initialize power chart widget.
 
         Args:
@@ -66,7 +71,7 @@ class PowerChartWidget(QWidget):
             "voltage": 0.0,
             "current": 0.0,
             "power": 0.0,
-            "mode": "Unknown"
+            "mode": "Unknown",
         }
 
         # Statistics
@@ -99,17 +104,23 @@ class PowerChartWidget(QWidget):
         readings_layout = QGridLayout()
 
         self.voltage_label = QLabel("0.000 V")
-        self.voltage_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #FF0000;")
+        self.voltage_label.setStyleSheet(
+            "font-size: 18pt; font-weight: bold; color: #FF0000;"
+        )
         readings_layout.addWidget(QLabel("Voltage:"), 0, 0)
         readings_layout.addWidget(self.voltage_label, 0, 1)
 
         self.current_label = QLabel("0.000 A")
-        self.current_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #00FF00;")
+        self.current_label.setStyleSheet(
+            "font-size: 18pt; font-weight: bold; color: #00FF00;"
+        )
         readings_layout.addWidget(QLabel("Current:"), 1, 0)
         readings_layout.addWidget(self.current_label, 1, 1)
 
         self.power_label = QLabel("0.000 W")
-        self.power_label.setStyleSheet("font-size: 18pt; font-weight: bold; color: #0000FF;")
+        self.power_label.setStyleSheet(
+            "font-size: 18pt; font-weight: bold; color: #0000FF;"
+        )
         readings_layout.addWidget(QLabel("Power:"), 2, 0)
         readings_layout.addWidget(self.power_label, 2, 1)
 
@@ -140,23 +151,20 @@ class PowerChartWidget(QWidget):
 
         # Plot widget
         self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setBackground('w')
+        self.plot_widget.setBackground("w")
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_widget.setLabel('bottom', 'Time', units='s')
+        self.plot_widget.setLabel("bottom", "Time", units="s")
         self.plot_widget.addLegend()
 
         # Create curves
         self.voltage_curve = self.plot_widget.plot(
-            pen=pg.mkPen(color=(255, 0, 0), width=2),
-            name='Voltage (V)'
+            pen=pg.mkPen(color=(255, 0, 0), width=2), name="Voltage (V)"
         )
         self.current_curve = self.plot_widget.plot(
-            pen=pg.mkPen(color=(0, 255, 0), width=2),
-            name='Current (A)'
+            pen=pg.mkPen(color=(0, 255, 0), width=2), name="Current (A)"
         )
         self.power_curve = self.plot_widget.plot(
-            pen=pg.mkPen(color=(0, 0, 255), width=2),
-            name='Power (W)'
+            pen=pg.mkPen(color=(0, 0, 255), width=2), name="Power (W)"
         )
 
         layout.addWidget(self.plot_widget, stretch=1)
@@ -170,17 +178,17 @@ class PowerChartWidget(QWidget):
         if self._paused:
             return
 
-        data = message.get('data', {})
+        data = message.get("data", {})
 
         # Extract values based on equipment type
         if self.equipment_type == "power_supply":
-            voltage = data.get('voltage_actual', 0.0)
-            current = data.get('current_actual', 0.0)
-            output_enabled = data.get('output_enabled', False)
+            voltage = data.get("voltage_actual", 0.0)
+            current = data.get("current_actual", 0.0)
+            output_enabled = data.get("output_enabled", False)
 
             # Determine mode
-            in_cv = data.get('in_cv_mode', False)
-            in_cc = data.get('in_cc_mode', False)
+            in_cv = data.get("in_cv_mode", False)
+            in_cc = data.get("in_cc_mode", False)
 
             if not output_enabled:
                 mode = "OFF"
@@ -192,10 +200,10 @@ class PowerChartWidget(QWidget):
                 mode = "ON"
 
         else:  # electronic_load
-            voltage = data.get('voltage', 0.0)
-            current = data.get('current', 0.0)
-            load_enabled = data.get('load_enabled', False)
-            mode = data.get('mode', 'Unknown')
+            voltage = data.get("voltage", 0.0)
+            current = data.get("current", 0.0)
+            load_enabled = data.get("load_enabled", False)
+            mode = data.get("mode", "Unknown")
 
             if not load_enabled:
                 mode = "OFF"
@@ -207,7 +215,7 @@ class PowerChartWidget(QWidget):
             "voltage": voltage,
             "current": current,
             "power": power,
-            "mode": mode
+            "mode": mode,
         }
 
         # Add to buffer
@@ -282,5 +290,5 @@ class PowerChartWidget(QWidget):
             "updates_received": self.updates_received,
             "buffer_size": self.buffer_size,
             "buffer_count": self._buffer.get_count(),
-            "total_samples": self._buffer.get_total_count()
+            "total_samples": self._buffer.get_total_count(),
         }

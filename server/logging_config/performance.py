@@ -1,11 +1,12 @@
 """Performance monitoring and metrics logging."""
 
-import time
-import logging
 import functools
-import psutil
-from typing import Callable, Any, Optional
+import logging
+import time
 from datetime import datetime
+from typing import Any, Callable, Optional
+
+import psutil
 
 # Performance logger
 performance_logger = logging.getLogger("lablink.performance")
@@ -20,6 +21,7 @@ def log_performance(func: Callable) -> Callable:
         async def my_function():
             ...
     """
+
     @functools.wraps(func)
     async def async_wrapper(*args, **kwargs):
         start_time = time.time()
@@ -49,8 +51,8 @@ def log_performance(func: Callable) -> Callable:
                     "memory_delta_mb": round(memory_delta, 2),
                     "success": success,
                     "error": error,
-                    "timestamp": datetime.now().isoformat()
-                }
+                    "timestamp": datetime.now().isoformat(),
+                },
             )
 
         return result
@@ -84,8 +86,8 @@ def log_performance(func: Callable) -> Callable:
                     "memory_delta_mb": round(memory_delta, 2),
                     "success": success,
                     "error": error,
-                    "timestamp": datetime.now().isoformat()
-                }
+                    "timestamp": datetime.now().isoformat(),
+                },
             )
 
         return result
@@ -112,7 +114,7 @@ class PerformanceMonitor:
         """Log current system performance metrics."""
         cpu_percent = psutil.cpu_percent(interval=0.1)
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
 
         self.logger.info(
             "System performance metrics",
@@ -122,8 +124,8 @@ class PerformanceMonitor:
                 "memory_available_mb": memory.available / 1024 / 1024,
                 "disk_percent": disk.percent,
                 "disk_free_gb": disk.free / 1024 / 1024 / 1024,
-                "timestamp": datetime.now().isoformat()
-            }
+                "timestamp": datetime.now().isoformat(),
+            },
         )
 
     def log_equipment_metrics(self, equipment_id: str, metrics: dict):
@@ -139,11 +141,13 @@ class PerformanceMonitor:
             extra={
                 "equipment_id": equipment_id,
                 "timestamp": datetime.now().isoformat(),
-                **metrics
-            }
+                **metrics,
+            },
         )
 
-    def log_api_metrics(self, endpoint: str, method: str, duration_ms: float, status_code: int):
+    def log_api_metrics(
+        self, endpoint: str, method: str, duration_ms: float, status_code: int
+    ):
         """
         Log API endpoint performance metrics.
 
@@ -160,8 +164,8 @@ class PerformanceMonitor:
                 "method": method,
                 "duration_ms": round(duration_ms, 2),
                 "status_code": status_code,
-                "timestamp": datetime.now().isoformat()
-            }
+                "timestamp": datetime.now().isoformat(),
+            },
         )
 
     def log_acquisition_metrics(
@@ -169,7 +173,7 @@ class PerformanceMonitor:
         acquisition_id: str,
         samples_collected: int,
         buffer_usage_percent: float,
-        sample_rate: float
+        sample_rate: float,
     ):
         """
         Log data acquisition performance metrics.
@@ -187,8 +191,8 @@ class PerformanceMonitor:
                 "samples_collected": samples_collected,
                 "buffer_usage_percent": round(buffer_usage_percent, 2),
                 "sample_rate": round(sample_rate, 2),
-                "timestamp": datetime.now().isoformat()
-            }
+                "timestamp": datetime.now().isoformat(),
+            },
         )
 
 

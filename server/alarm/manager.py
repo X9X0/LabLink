@@ -2,19 +2,12 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
-from .models import (
-    AlarmConfig,
-    AlarmEvent,
-    AlarmState,
-    AlarmSeverity,
-    AlarmCondition,
-    AlarmStatistics,
-    AlarmAcknowledgment
-)
+from .models import (AlarmAcknowledgment, AlarmCondition, AlarmConfig,
+                     AlarmEvent, AlarmSeverity, AlarmState, AlarmStatistics)
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +191,9 @@ class AlarmManager:
             event.acknowledged_by = acknowledgment.acknowledged_by
             event.acknowledgment_note = acknowledgment.note
 
-            logger.info(f"Acknowledged alarm event: {acknowledgment.event_id} by {acknowledgment.acknowledged_by}")
+            logger.info(
+                f"Acknowledged alarm event: {acknowledgment.event_id} by {acknowledgment.acknowledged_by}"
+            )
 
             return True
 
@@ -240,7 +235,7 @@ class AlarmManager:
         state: Optional[AlarmState] = None,
         severity: Optional[AlarmSeverity] = None,
         equipment_id: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> List[AlarmEvent]:
         """
         List alarm events with filtering.
@@ -274,9 +269,13 @@ class AlarmManager:
         active_events = self.list_active_events()
 
         stats = AlarmStatistics(
-            total_active=len([e for e in active_events if e.state == AlarmState.ACTIVE]),
-            total_acknowledged=len([e for e in active_events if e.state == AlarmState.ACKNOWLEDGED]),
-            total_cleared=len(self._event_history)
+            total_active=len(
+                [e for e in active_events if e.state == AlarmState.ACTIVE]
+            ),
+            total_acknowledged=len(
+                [e for e in active_events if e.state == AlarmState.ACKNOWLEDGED]
+            ),
+            total_cleared=len(self._event_history),
         )
 
         # Count by severity
@@ -299,7 +298,9 @@ class AlarmManager:
 
         stats.most_frequent = [
             {"alarm_id": alarm_id, "count": count}
-            for alarm_id, count in sorted(alarm_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            for alarm_id, count in sorted(
+                alarm_counts.items(), key=lambda x: x[1], reverse=True
+            )[:10]
         ]
 
         return stats
@@ -312,7 +313,11 @@ class AlarmManager:
         config = self._alarms[alarm_id]
 
         # Only monitor threshold-based alarms automatically
-        if config.alarm_type in [AlarmType.THRESHOLD, AlarmType.DEVIATION, AlarmType.RATE_OF_CHANGE]:
+        if config.alarm_type in [
+            AlarmType.THRESHOLD,
+            AlarmType.DEVIATION,
+            AlarmType.RATE_OF_CHANGE,
+        ]:
             task = asyncio.create_task(self._monitoring_loop(alarm_id))
             self._monitoring_tasks[alarm_id] = task
 
@@ -339,13 +344,17 @@ class AlarmManager:
                     if equipment:
                         try:
                             # Try to get the parameter value
-                            value = await self._get_parameter_value(equipment, config.parameter)
+                            value = await self._get_parameter_value(
+                                equipment, config.parameter
+                            )
 
                             if value is not None:
                                 await self.check_alarm(alarm_id, value)
 
                         except Exception as e:
-                            logger.error(f"Error reading parameter {config.parameter} from {config.equipment_id}: {e}")
+                            logger.error(
+                                f"Error reading parameter {config.parameter} from {config.equipment_id}: {e}"
+                            )
 
                 # Check every 1 second
                 await asyncio.sleep(1.0)
@@ -361,16 +370,20 @@ class AlarmManager:
         try:
             if parameter in ["voltage", "v", "volt"]:
                 result = await equipment.execute_command("get_voltage", {})
-                return float(result.voltage) if hasattr(result, 'voltage') else None
+                return float(result.voltage) if hasattr(result, "voltage") else None
             elif parameter in ["current", "i", "amp"]:
                 result = await equipment.execute_command("get_current", {})
-                return float(result.current) if hasattr(result, 'current') else None
+                return float(result.current) if hasattr(result, "current") else None
             elif parameter in ["power", "p", "watt"]:
                 result = await equipment.execute_command("get_power", {})
-                return float(result.power) if hasattr(result, 'power') else None
+                return float(result.power) if hasattr(result, "power") else None
             elif parameter in ["temperature", "temp", "t"]:
                 result = await equipment.execute_command("get_temperature", {})
-                return float(result.temperature) if hasattr(result, 'temperature') else None
+                return (
+                    float(result.temperature)
+                    if hasattr(result, "temperature")
+                    else None
+                )
             else:
                 # Try generic get command
                 result = await equipment.execute_command(f"get_{parameter}", {})
@@ -383,7 +396,10 @@ class AlarmManager:
 
     def _evaluate_condition(self, config: AlarmConfig, value: float) -> bool:
         """Evaluate if alarm condition is met."""
-        if config.threshold is None and config.condition not in [AlarmCondition.IN_RANGE, AlarmCondition.OUT_OF_RANGE]:
+        if config.threshold is None and config.condition not in [
+            AlarmCondition.IN_RANGE,
+            AlarmCondition.OUT_OF_RANGE,
+        ]:
             return False
 
         if config.condition == AlarmCondition.GREATER_THAN:
@@ -423,7 +439,7 @@ class AlarmManager:
             equipment_id=config.equipment_id,
             parameter=config.parameter,
             value=value,
-            threshold=config.threshold
+            threshold=config.threshold,
         )
 
         self._events[event.event_id] = event
@@ -469,7 +485,9 @@ class AlarmManager:
                 event.notifications_sent.append(method)
                 event.notification_count += 1
             except Exception as e:
-                logger.error(f"Failed to send {method} notification for alarm {config.alarm_id}: {e}")
+                logger.error(
+                    f"Failed to send {method} notification for alarm {config.alarm_id}: {e}"
+                )
 
 
 # Import here to avoid circular dependency

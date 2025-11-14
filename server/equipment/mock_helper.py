@@ -1,8 +1,9 @@
 """Helper utilities for working with mock equipment."""
 
-import logging
 import asyncio
-from typing import List, Dict, Optional
+import logging
+from typing import Dict, List, Optional
+
 from shared.models.equipment import EquipmentType
 
 logger = logging.getLogger(__name__)
@@ -17,19 +18,19 @@ class MockEquipmentHelper:
             "resource_string": "MOCK::SCOPE::0",
             "type": EquipmentType.OSCILLOSCOPE,
             "model": "MockScope-2000",
-            "name": "Mock Oscilloscope 1"
+            "name": "Mock Oscilloscope 1",
         },
         {
             "resource_string": "MOCK::PSU::0",
             "type": EquipmentType.POWER_SUPPLY,
             "model": "MockPSU-3000",
-            "name": "Mock Power Supply 1"
+            "name": "Mock Power Supply 1",
         },
         {
             "resource_string": "MOCK::LOAD::0",
             "type": EquipmentType.ELECTRONIC_LOAD,
             "model": "MockLoad-1000",
-            "name": "Mock Electronic Load 1"
+            "name": "Mock Electronic Load 1",
         },
     ]
 
@@ -60,10 +61,12 @@ class MockEquipmentHelper:
                 equipment_id = await equipment_manager.connect_device(
                     resource_string=config["resource_string"],
                     equipment_type=config["type"],
-                    model=config["model"]
+                    model=config["model"],
                 )
                 equipment_ids.append(equipment_id)
-                logger.info(f"Registered mock equipment: {config['name']} (ID: {equipment_id})")
+                logger.info(
+                    f"Registered mock equipment: {config['name']} (ID: {equipment_id})"
+                )
             except Exception as e:
                 logger.error(f"Failed to register {config['name']}: {e}")
 
@@ -74,7 +77,7 @@ class MockEquipmentHelper:
         equipment_manager,
         equipment_type: EquipmentType,
         count: int = 1,
-        base_resource_string: Optional[str] = None
+        base_resource_string: Optional[str] = None,
     ) -> List[str]:
         """
         Register one or more mock equipment of a specific type.
@@ -102,15 +105,15 @@ class MockEquipmentHelper:
         type_configs = {
             EquipmentType.OSCILLOSCOPE: {
                 "model": "MockScope-2000",
-                "resource_prefix": base_resource_string or "MOCK::SCOPE::"
+                "resource_prefix": base_resource_string or "MOCK::SCOPE::",
             },
             EquipmentType.POWER_SUPPLY: {
                 "model": "MockPSU-3000",
-                "resource_prefix": base_resource_string or "MOCK::PSU::"
+                "resource_prefix": base_resource_string or "MOCK::PSU::",
             },
             EquipmentType.ELECTRONIC_LOAD: {
                 "model": "MockLoad-1000",
-                "resource_prefix": base_resource_string or "MOCK::LOAD::"
+                "resource_prefix": base_resource_string or "MOCK::LOAD::",
             },
         }
 
@@ -126,12 +129,16 @@ class MockEquipmentHelper:
                 equipment_id = await equipment_manager.connect_device(
                     resource_string=resource_string,
                     equipment_type=equipment_type,
-                    model=config["model"]
+                    model=config["model"],
                 )
                 equipment_ids.append(equipment_id)
-                logger.info(f"Registered mock {equipment_type.value} #{i+1} (ID: {equipment_id})")
+                logger.info(
+                    f"Registered mock {equipment_type.value} #{i+1} (ID: {equipment_id})"
+                )
             except Exception as e:
-                logger.error(f"Failed to register mock {equipment_type.value} #{i+1}: {e}")
+                logger.error(
+                    f"Failed to register mock {equipment_type.value} #{i+1}: {e}"
+                )
 
         return equipment_ids
 
@@ -156,7 +163,9 @@ class MockEquipmentHelper:
         ]
 
     @staticmethod
-    async def configure_mock_oscilloscope(equipment_manager, equipment_id: str, config: Dict) -> None:
+    async def configure_mock_oscilloscope(
+        equipment_manager, equipment_id: str, config: Dict
+    ) -> None:
         """
         Configure a mock oscilloscope with custom waveform parameters.
 
@@ -186,7 +195,7 @@ class MockEquipmentHelper:
         if not equipment:
             raise ValueError(f"Equipment {equipment_id} not found")
 
-        if not hasattr(equipment, 'set_waveform_type'):
+        if not hasattr(equipment, "set_waveform_type"):
             raise ValueError(f"Equipment {equipment_id} is not a mock oscilloscope")
 
         # Apply configuration
@@ -205,6 +214,7 @@ class MockEquipmentHelper:
 
 
 # Convenience functions for common use cases
+
 
 async def setup_demo_lab(equipment_manager) -> Dict[str, str]:
     """
@@ -236,11 +246,11 @@ async def setup_demo_lab(equipment_manager) -> Dict[str, str]:
         if equipment:
             info = await equipment.get_info()
             if info.type == EquipmentType.OSCILLOSCOPE:
-                equipment_map['oscilloscope'] = equipment_id
+                equipment_map["oscilloscope"] = equipment_id
             elif info.type == EquipmentType.POWER_SUPPLY:
-                equipment_map['power_supply'] = equipment_id
+                equipment_map["power_supply"] = equipment_id
             elif info.type == EquipmentType.ELECTRONIC_LOAD:
-                equipment_map['electronic_load'] = equipment_id
+                equipment_map["electronic_load"] = equipment_id
 
     return equipment_map
 
@@ -263,7 +273,5 @@ async def setup_multi_scope_lab(equipment_manager, num_scopes: int = 3) -> List[
     """
     helper = MockEquipmentHelper()
     return await helper.register_mock_equipment(
-        equipment_manager,
-        EquipmentType.OSCILLOSCOPE,
-        count=num_scopes
+        equipment_manager, EquipmentType.OSCILLOSCOPE, count=num_scopes
     )

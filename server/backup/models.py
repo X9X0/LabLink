@@ -1,8 +1,9 @@
 """Backup & Restore system data models."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -43,27 +44,39 @@ class BackupConfig(BaseModel):
 
     # Backup settings
     backup_dir: str = Field("./data/backups", description="Directory to store backups")
-    enable_auto_backup: bool = Field(True, description="Enable automatic scheduled backups")
-    auto_backup_interval_hours: int = Field(24, ge=1, le=168, description="Interval between auto backups (1-168 hours)")
+    enable_auto_backup: bool = Field(
+        True, description="Enable automatic scheduled backups"
+    )
+    auto_backup_interval_hours: int = Field(
+        24, ge=1, le=168, description="Interval between auto backups (1-168 hours)"
+    )
 
     # Retention policy
     retention_days: int = Field(30, ge=1, le=365, description="Days to keep backups")
-    max_backup_count: int = Field(10, ge=1, le=100, description="Maximum number of backups to keep")
+    max_backup_count: int = Field(
+        10, ge=1, le=100, description="Maximum number of backups to keep"
+    )
 
     # Backup content
     include_config: bool = Field(True, description="Include configuration files")
     include_profiles: bool = Field(True, description="Include equipment profiles")
     include_states: bool = Field(True, description="Include saved equipment states")
     include_database: bool = Field(True, description="Include database files")
-    include_acquisitions: bool = Field(False, description="Include acquisition data files")
+    include_acquisitions: bool = Field(
+        False, description="Include acquisition data files"
+    )
     include_logs: bool = Field(False, description="Include log files")
     include_calibration: bool = Field(True, description="Include calibration data")
 
     # Compression
-    compression: CompressionType = Field(CompressionType.TAR_GZ, description="Compression method")
+    compression: CompressionType = Field(
+        CompressionType.TAR_GZ, description="Compression method"
+    )
 
     # Verification
-    verify_after_backup: bool = Field(True, description="Verify backup integrity after creation")
+    verify_after_backup: bool = Field(
+        True, description="Verify backup integrity after creation"
+    )
     calculate_checksums: bool = Field(True, description="Calculate file checksums")
 
 
@@ -100,7 +113,9 @@ class BackupMetadata(BaseModel):
     # Verification
     verified: bool = Field(False, description="Backup has been verified")
     checksum: Optional[str] = Field(None, description="SHA-256 checksum of backup file")
-    verification_time: Optional[datetime] = Field(None, description="When backup was verified")
+    verification_time: Optional[datetime] = Field(
+        None, description="When backup was verified"
+    )
 
     # Version info
     server_version: str = Field(..., description="LabLink server version")
@@ -126,13 +141,19 @@ class BackupInfo(BaseModel):
 class BackupRequest(BaseModel):
     """Request to create a backup."""
 
-    backup_type: BackupType = Field(BackupType.FULL, description="Type of backup to create")
+    backup_type: BackupType = Field(
+        BackupType.FULL, description="Type of backup to create"
+    )
     description: Optional[str] = Field(None, description="Backup description")
     tags: List[str] = Field(default_factory=list, description="Backup tags")
 
     # Override config settings
-    compression: Optional[CompressionType] = Field(None, description="Compression method (overrides config)")
-    verify_after_backup: Optional[bool] = Field(None, description="Verify after creation (overrides config)")
+    compression: Optional[CompressionType] = Field(
+        None, description="Compression method (overrides config)"
+    )
+    verify_after_backup: Optional[bool] = Field(
+        None, description="Verify after creation (overrides config)"
+    )
 
     # Content overrides
     include_config: Optional[bool] = None
@@ -160,8 +181,12 @@ class RestoreRequest(BaseModel):
 
     # Restore options
     overwrite_existing: bool = Field(False, description="Overwrite existing files")
-    create_backup_before_restore: bool = Field(True, description="Create backup before restoring")
-    verify_before_restore: bool = Field(True, description="Verify backup before restoring")
+    create_backup_before_restore: bool = Field(
+        True, description="Create backup before restoring"
+    )
+    verify_before_restore: bool = Field(
+        True, description="Verify backup before restoring"
+    )
 
 
 class RestoreResult(BaseModel):
@@ -262,5 +287,7 @@ class CloudBackupConfig(BaseModel):
 
     # Upload settings
     auto_upload: bool = Field(False, description="Automatically upload backups")
-    upload_after_verification: bool = Field(True, description="Upload only verified backups")
+    upload_after_verification: bool = Field(
+        True, description="Upload only verified backups"
+    )
     retention_days_cloud: int = Field(90, description="Cloud backup retention days")

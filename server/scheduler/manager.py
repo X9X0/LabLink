@@ -2,26 +2,19 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Set
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Set
 
+from apscheduler.executors.asyncio import AsyncIOExecutor
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
-from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.executors.asyncio import AsyncIOExecutor
+from apscheduler.triggers.interval import IntervalTrigger
 
-from .models import (
-    ScheduleConfig,
-    JobExecution,
-    JobHistory,
-    JobStatus,
-    ScheduleType,
-    TriggerType,
-    ScheduleStatistics,
-)
+from .models import (JobExecution, JobHistory, JobStatus, ScheduleConfig,
+                     ScheduleStatistics, ScheduleType, TriggerType)
 from .storage import SchedulerStorage
 
 logger = logging.getLogger(__name__)
@@ -40,25 +33,25 @@ class SchedulerManager:
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._jobs: Dict[str, ScheduleConfig] = {}
         self._executions: Dict[str, JobExecution] = {}
-        self._running_jobs: Set[str] = set()  # Track running jobs for conflict detection
+        self._running_jobs: Set[str] = (
+            set()
+        )  # Track running jobs for conflict detection
         self._storage = SchedulerStorage(db_path)
         self._cleanup_task: Optional[asyncio.Task] = None
 
     async def start(self):
         """Start the scheduler and load persisted jobs."""
         if self._scheduler is None:
-            jobstores = {'default': MemoryJobStore()}
-            executors = {'default': AsyncIOExecutor()}
+            jobstores = {"default": MemoryJobStore()}
+            executors = {"default": AsyncIOExecutor()}
             job_defaults = {
-                'coalesce': True,
-                'max_instances': 3,
-                'misfire_grace_time': 300
+                "coalesce": True,
+                "max_instances": 3,
+                "misfire_grace_time": 300,
             }
 
             self._scheduler = AsyncIOScheduler(
-                jobstores=jobstores,
-                executors=executors,
-                job_defaults=job_defaults
+                jobstores=jobstores, executors=executors, job_defaults=job_defaults
             )
 
             self._scheduler.start()
@@ -223,10 +216,7 @@ class SchedulerManager:
             raise ValueError(f"Job {job_id} not found")
 
         config = self._jobs[job_id]
-        execution = JobExecution(
-            job_id=job_id,
-            scheduled_time=datetime.now()
-        )
+        execution = JobExecution(job_id=job_id, scheduled_time=datetime.now())
 
         self._executions[execution.execution_id] = execution
         await self._execute_job(config, execution)
@@ -258,7 +248,9 @@ class SchedulerManager:
 
         return None
 
-    def list_executions(self, job_id: Optional[str] = None, limit: int = 100) -> List[JobExecution]:
+    def list_executions(
+        self, job_id: Optional[str] = None, limit: int = 100
+    ) -> List[JobExecution]:
         """
         List job executions from storage.
 
@@ -301,16 +293,23 @@ class SchedulerManager:
             total_executions=len(executions),
             successful=len([e for e in executions if e.status == JobStatus.COMPLETED]),
             failed=len([e for e in executions if e.status == JobStatus.FAILED]),
-            cancelled=len([e for e in executions if e.status == JobStatus.CANCELLED])
+            cancelled=len([e for e in executions if e.status == JobStatus.CANCELLED]),
         )
 
         if executions:
             history.last_execution = max(e.scheduled_time for e in executions)
-            history.last_status = next(e.status for e in sorted(executions, key=lambda x: x.scheduled_time, reverse=True))
+            history.last_status = next(
+                e.status
+                for e in sorted(
+                    executions, key=lambda x: x.scheduled_time, reverse=True
+                )
+            )
 
             completed = [e for e in executions if e.duration_seconds is not None]
             if completed:
-                history.average_duration = sum(e.duration_seconds for e in completed) / len(completed)
+                history.average_duration = sum(
+                    e.duration_seconds for e in completed
+                ) / len(completed)
 
         # Get next run time from scheduler
         if self._scheduler:
@@ -332,8 +331,12 @@ class SchedulerManager:
             disabled_jobs=len([j for j in self._jobs.values() if not j.enabled]),
             running_executions=len(self._running_jobs),
             total_executions_today=len(today_executions),
-            successful_today=len([e for e in today_executions if e.status == JobStatus.COMPLETED]),
-            failed_today=len([e for e in today_executions if e.status == JobStatus.FAILED])
+            successful_today=len(
+                [e for e in today_executions if e.status == JobStatus.COMPLETED]
+            ),
+            failed_today=len(
+                [e for e in today_executions if e.status == JobStatus.FAILED]
+            ),
         )
 
         # Count by type
@@ -347,11 +350,17 @@ class SchedulerManager:
             upcoming = []
             for job in self._scheduler.get_jobs():
                 if job.next_run_time:
-                    upcoming.append({
-                        "job_id": job.id,
-                        "job_name": self._jobs[job.id].name if job.id in self._jobs else "Unknown",
-                        "next_run": job.next_run_time.isoformat()
-                    })
+                    upcoming.append(
+                        {
+                            "job_id": job.id,
+                            "job_name": (
+                                self._jobs[job.id].name
+                                if job.id in self._jobs
+                                else "Unknown"
+                            ),
+                            "next_run": job.next_run_time.isoformat(),
+                        }
+                    )
             upcoming.sort(key=lambda x: x["next_run"])
             stats.upcoming_jobs = upcoming[:10]
 
@@ -384,7 +393,9 @@ class SchedulerManager:
             try:
                 await asyncio.sleep(86400)  # Run daily
                 deleted = self._storage.cleanup_old_executions(days=30)
-                logger.info(f"Periodic cleanup: removed {deleted} old execution records")
+                logger.info(
+                    f"Periodic cleanup: removed {deleted} old execution records"
+                )
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -408,7 +419,7 @@ class SchedulerManager:
             max_instances=config.max_instances,
             misfire_grace_time=config.misfire_grace_time,
             coalesce=config.coalesce,
-            replace_existing=True
+            replace_existing=True,
         )
 
     def _create_trigger(self, config: ScheduleConfig):
@@ -421,18 +432,20 @@ class SchedulerManager:
         elif config.trigger_type == TriggerType.INTERVAL:
             kwargs = {}
             if config.interval_seconds:
-                kwargs['seconds'] = config.interval_seconds
+                kwargs["seconds"] = config.interval_seconds
             if config.interval_minutes:
-                kwargs['minutes'] = config.interval_minutes
+                kwargs["minutes"] = config.interval_minutes
             if config.interval_hours:
-                kwargs['hours'] = config.interval_hours
+                kwargs["hours"] = config.interval_hours
             if config.interval_days:
-                kwargs['days'] = config.interval_days
+                kwargs["days"] = config.interval_days
 
             if not kwargs:
                 return None
 
-            return IntervalTrigger(**kwargs, start_date=config.start_date, end_date=config.end_date)
+            return IntervalTrigger(
+                **kwargs, start_date=config.start_date, end_date=config.end_date
+            )
 
         elif config.trigger_type == TriggerType.DATE:
             if not config.run_date:
@@ -442,29 +455,30 @@ class SchedulerManager:
         elif config.trigger_type == TriggerType.DAILY:
             if not config.time_of_day:
                 return None
-            hour, minute, second = map(int, config.time_of_day.split(':'))
+            hour, minute, second = map(int, config.time_of_day.split(":"))
             return CronTrigger(hour=hour, minute=minute, second=second)
 
         elif config.trigger_type == TriggerType.WEEKLY:
             if config.day_of_week is None or not config.time_of_day:
                 return None
-            hour, minute, second = map(int, config.time_of_day.split(':'))
-            return CronTrigger(day_of_week=config.day_of_week, hour=hour, minute=minute, second=second)
+            hour, minute, second = map(int, config.time_of_day.split(":"))
+            return CronTrigger(
+                day_of_week=config.day_of_week, hour=hour, minute=minute, second=second
+            )
 
         elif config.trigger_type == TriggerType.MONTHLY:
             if config.day_of_month is None or not config.time_of_day:
                 return None
-            hour, minute, second = map(int, config.time_of_day.split(':'))
-            return CronTrigger(day=config.day_of_month, hour=hour, minute=minute, second=second)
+            hour, minute, second = map(int, config.time_of_day.split(":"))
+            return CronTrigger(
+                day=config.day_of_month, hour=hour, minute=minute, second=second
+            )
 
         return None
 
     async def _schedule_wrapper(self, config: ScheduleConfig):
         """Wrapper to execute scheduled job with conflict detection."""
-        execution = JobExecution(
-            job_id=config.job_id,
-            scheduled_time=datetime.now()
-        )
+        execution = JobExecution(job_id=config.job_id, scheduled_time=datetime.now())
 
         self._executions[execution.execution_id] = execution
 
@@ -538,7 +552,9 @@ class SchedulerManager:
         finally:
             execution.completed_at = datetime.now()
             if execution.started_at:
-                execution.duration_seconds = (execution.completed_at - execution.started_at).total_seconds()
+                execution.duration_seconds = (
+                    execution.completed_at - execution.started_at
+                ).total_seconds()
 
             # Save to storage
             self._storage.save_execution(execution)
@@ -557,16 +573,20 @@ class SchedulerManager:
             config: Job configuration with profile_id
         """
         try:
-            from equipment.profiles import profile_manager
             from equipment.manager import equipment_manager
+            from equipment.profiles import profile_manager
 
             if not config.equipment_id:
-                logger.warning(f"Cannot apply profile {config.profile_id}: no equipment_id")
+                logger.warning(
+                    f"Cannot apply profile {config.profile_id}: no equipment_id"
+                )
                 return
 
             equipment = equipment_manager.get_equipment(config.equipment_id)
             if not equipment:
-                logger.warning(f"Cannot apply profile: equipment {config.equipment_id} not found")
+                logger.warning(
+                    f"Cannot apply profile: equipment {config.equipment_id} not found"
+                )
                 return
 
             await profile_manager.apply_profile(equipment, config.profile_id)
@@ -596,7 +616,9 @@ class SchedulerManager:
         except ImportError:
             logger.warning("Profile manager not available")
 
-    async def _create_failure_alarm(self, config: ScheduleConfig, execution: JobExecution, error: Exception):
+    async def _create_failure_alarm(
+        self, config: ScheduleConfig, execution: JobExecution, error: Exception
+    ):
         """
         Create an alarm for job failure.
 
@@ -606,7 +628,7 @@ class SchedulerManager:
             error: Exception that caused failure
         """
         try:
-            from alarm import alarm_manager, AlarmSeverity
+            from alarm import AlarmSeverity, alarm_manager
 
             alarm_manager.create_alarm(
                 source=f"scheduler.{config.job_id}",
@@ -620,7 +642,7 @@ class SchedulerManager:
                     "equipment_id": config.equipment_id,
                     "schedule_type": config.schedule_type.value,
                     "scheduled_time": execution.scheduled_time.isoformat(),
-                }
+                },
             )
 
             logger.info(f"Created failure alarm for job {config.job_id}")
@@ -632,7 +654,7 @@ class SchedulerManager:
 
     async def _run_acquisition(self, config: ScheduleConfig) -> dict:
         """Run scheduled acquisition."""
-        from acquisition import acquisition_manager, AcquisitionConfig
+        from acquisition import AcquisitionConfig, acquisition_manager
         from equipment.manager import equipment_manager
 
         acq_config = AcquisitionConfig(**config.parameters)
@@ -658,7 +680,9 @@ class SchedulerManager:
         command = config.parameters.get("command", "get_readings")
         result = await equipment.execute_command(command, {})
 
-        return {"measurement": result.dict() if hasattr(result, 'dict') else str(result)}
+        return {
+            "measurement": result.dict() if hasattr(result, "dict") else str(result)
+        }
 
     async def _execute_command(self, config: ScheduleConfig) -> dict:
         """Execute equipment command."""
@@ -669,7 +693,7 @@ class SchedulerManager:
         params = config.parameters.get("parameters", {})
 
         result = await equipment.execute_command(command, params)
-        return {"result": result.dict() if hasattr(result, 'dict') else str(result)}
+        return {"result": result.dict() if hasattr(result, "dict") else str(result)}
 
     async def _run_equipment_test(self, config: ScheduleConfig) -> dict:
         """Run equipment diagnostic test."""
@@ -679,14 +703,18 @@ class SchedulerManager:
         test_name = config.parameters.get("test_name", "connection")
 
         result = await diagnostics_manager.run_test(equipment_id, test_name)
-        return {"test_result": result.dict() if hasattr(result, 'dict') else str(result)}
+        return {
+            "test_result": result.dict() if hasattr(result, "dict") else str(result)
+        }
 
 
 # Global scheduler manager
 scheduler_manager = SchedulerManager()
 
 
-def initialize_scheduler_manager(db_path: str = "data/scheduler.db") -> SchedulerManager:
+def initialize_scheduler_manager(
+    db_path: str = "data/scheduler.db",
+) -> SchedulerManager:
     """
     Initialize global scheduler manager with custom database path.
 

@@ -1,11 +1,11 @@
 """Multi-server connection management."""
 
+import json
 import logging
-from typing import Dict, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
 from pathlib import Path
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,33 +27,35 @@ class ServerConnection:
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""
         return {
-            'name': self.name,
-            'host': self.host,
-            'api_port': self.api_port,
-            'ws_port': self.ws_port,
-            'last_connected': self.last_connected.isoformat() if self.last_connected else None,
-            'user': self.user,
-            'metadata': self.metadata
+            "name": self.name,
+            "host": self.host,
+            "api_port": self.api_port,
+            "ws_port": self.ws_port,
+            "last_connected": (
+                self.last_connected.isoformat() if self.last_connected else None
+            ),
+            "user": self.user,
+            "metadata": self.metadata,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'ServerConnection':
+    def from_dict(cls, data: Dict) -> "ServerConnection":
         """Create from dictionary."""
         last_connected = None
-        if data.get('last_connected'):
+        if data.get("last_connected"):
             try:
-                last_connected = datetime.fromisoformat(data['last_connected'])
+                last_connected = datetime.fromisoformat(data["last_connected"])
             except:
                 pass
 
         return cls(
-            name=data['name'],
-            host=data['host'],
-            api_port=data['api_port'],
-            ws_port=data['ws_port'],
+            name=data["name"],
+            host=data["host"],
+            api_port=data["api_port"],
+            ws_port=data["ws_port"],
             last_connected=last_connected,
-            user=data.get('user'),
-            metadata=data.get('metadata', {})
+            user=data.get("user"),
+            metadata=data.get("metadata", {}),
         )
 
 
@@ -82,15 +84,15 @@ class ServerManager:
             return
 
         try:
-            with open(self.config_path, 'r') as f:
+            with open(self.config_path, "r") as f:
                 data = json.load(f)
 
             self.servers = {
                 name: ServerConnection.from_dict(server_data)
-                for name, server_data in data.get('servers', {}).items()
+                for name, server_data in data.get("servers", {}).items()
             }
 
-            self.active_server = data.get('active_server')
+            self.active_server = data.get("active_server")
 
             logger.info(f"Loaded {len(self.servers)} server configurations")
 
@@ -104,14 +106,13 @@ class ServerManager:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
             data = {
-                'servers': {
-                    name: server.to_dict()
-                    for name, server in self.servers.items()
+                "servers": {
+                    name: server.to_dict() for name, server in self.servers.items()
                 },
-                'active_server': self.active_server
+                "active_server": self.active_server,
             }
 
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, "w") as f:
                 json.dump(data, f, indent=2)
 
             logger.debug("Server configuration saved")
@@ -119,8 +120,14 @@ class ServerManager:
         except Exception as e:
             logger.error(f"Failed to save server configuration: {e}")
 
-    def add_server(self, name: str, host: str, api_port: int, ws_port: int,
-                   metadata: Optional[Dict] = None) -> ServerConnection:
+    def add_server(
+        self,
+        name: str,
+        host: str,
+        api_port: int,
+        ws_port: int,
+        metadata: Optional[Dict] = None,
+    ) -> ServerConnection:
         """Add a new server.
 
         Args:
@@ -141,7 +148,7 @@ class ServerManager:
             host=host,
             api_port=api_port,
             ws_port=ws_port,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
         self.servers[name] = server
@@ -296,7 +303,9 @@ class ServerManager:
 
         logger.info("All servers disconnected")
 
-    def find_server_by_host(self, host: str, api_port: int) -> Optional[ServerConnection]:
+    def find_server_by_host(
+        self, host: str, api_port: int
+    ) -> Optional[ServerConnection]:
         """Find server by host and port.
 
         Args:

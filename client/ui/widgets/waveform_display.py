@@ -1,25 +1,29 @@
 """Oscilloscope-style waveform display widget."""
 
 import logging
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
+
 import numpy as np
 
 try:
     import pyqtgraph as pg
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-        QLabel, QGroupBox, QGridLayout, QCheckBox
-    )
     from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (QCheckBox, QGridLayout, QGroupBox,
+                                 QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                                 QWidget)
+
     PYQTGRAPH_AVAILABLE = True
 except ImportError:
     PYQTGRAPH_AVAILABLE = False
     pg = None
+
     # Define dummy classes for when PyQt6 is not available
     class QWidget:  # type: ignore
         """Dummy QWidget for when PyQt6 is not available."""
+
         def __init__(self, parent=None, num_channels: int = 4):
             pass
+
     QVBoxLayout = None  # type: ignore
     QHBoxLayout = None  # type: ignore
     QPushButton = None  # type: ignore
@@ -51,15 +55,17 @@ class WaveformDisplay(QWidget):
 
         # Channel data
         self._channel_data: Dict[int, np.ndarray] = {}
-        self._channel_enabled: Dict[int, bool] = {i: True for i in range(1, num_channels + 1)}
+        self._channel_enabled: Dict[int, bool] = {
+            i: True for i in range(1, num_channels + 1)
+        }
         self._channel_curves: Dict[int, pg.PlotDataItem] = {}
 
         # Channel colors (oscilloscope style)
         self._channel_colors = {
-            1: (255, 255, 0),    # Yellow
-            2: (0, 255, 255),    # Cyan
-            3: (255, 0, 255),    # Magenta
-            4: (0, 255, 0),      # Green
+            1: (255, 255, 0),  # Yellow
+            2: (0, 255, 255),  # Cyan
+            3: (255, 0, 255),  # Magenta
+            4: (0, 255, 0),  # Green
         }
 
         # Waveform parameters
@@ -104,14 +110,18 @@ class WaveformDisplay(QWidget):
 
         # Main waveform display
         self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setBackground('k')  # Black background (scope style)
+        self.plot_widget.setBackground("k")  # Black background (scope style)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.5)
-        self.plot_widget.setLabel('bottom', 'Time', units='s')
-        self.plot_widget.setLabel('left', 'Voltage', units='V')
+        self.plot_widget.setLabel("bottom", "Time", units="s")
+        self.plot_widget.setLabel("left", "Voltage", units="V")
 
         # Style the grid to look like an oscilloscope
-        self.plot_widget.getPlotItem().getAxis('bottom').setPen(pg.mkPen(color=(0, 255, 0), width=1))
-        self.plot_widget.getPlotItem().getAxis('left').setPen(pg.mkPen(color=(0, 255, 0), width=1))
+        self.plot_widget.getPlotItem().getAxis("bottom").setPen(
+            pg.mkPen(color=(0, 255, 0), width=1)
+        )
+        self.plot_widget.getPlotItem().getAxis("left").setPen(
+            pg.mkPen(color=(0, 255, 0), width=1)
+        )
 
         layout.addWidget(self.plot_widget, stretch=3)
 
@@ -126,7 +136,9 @@ class WaveformDisplay(QWidget):
         for i in range(1, self.num_channels + 1):
             cb = QCheckBox(f"CH{i}")
             cb.setChecked(True)
-            cb.stateChanged.connect(lambda state, ch=i: self._on_channel_toggled(ch, state))
+            cb.stateChanged.connect(
+                lambda state, ch=i: self._on_channel_toggled(ch, state)
+            )
             channels_layout.addWidget(cb)
             self.channel_checkboxes[i] = cb
 
@@ -143,7 +155,9 @@ class WaveformDisplay(QWidget):
         for i in range(1, min(self.num_channels + 1, 3)):  # Show first 2-3 channels
             # Channel label
             ch_label = QLabel(f"<b>CH{i}</b>")
-            ch_label.setStyleSheet(f"color: rgb{self._channel_colors.get(i, (255, 255, 255))};")
+            ch_label.setStyleSheet(
+                f"color: rgb{self._channel_colors.get(i, (255, 255, 255))};"
+            )
             measurements_layout.addWidget(ch_label, row, 0)
 
             # Frequency
@@ -164,7 +178,7 @@ class WaveformDisplay(QWidget):
             self.measurement_labels[i] = {
                 "freq": freq_label,
                 "vpp": vpp_label,
-                "vrms": vrms_label
+                "vrms": vrms_label,
             }
 
             row += 1
@@ -181,8 +195,12 @@ class WaveformDisplay(QWidget):
             curve = self.plot_widget.plot(pen=pen, name=f"CH{i}")
             self._channel_curves[i] = curve
 
-    def update_waveform(self, channel: int, waveform_data: np.ndarray,
-                       sample_rate: Optional[float] = None):
+    def update_waveform(
+        self,
+        channel: int,
+        waveform_data: np.ndarray,
+        sample_rate: Optional[float] = None,
+    ):
         """Update waveform for a channel.
 
         Args:
@@ -225,13 +243,13 @@ class WaveformDisplay(QWidget):
         Args:
             message: Message dictionary with waveform data
         """
-        data = message.get('data', {})
-        channel = data.get('channel', 1)
+        data = message.get("data", {})
+        channel = data.get("channel", 1)
 
         # For now, generate synthetic waveform based on metadata
         # In real implementation, you'd receive raw binary data separately
-        num_samples = data.get('num_samples', 1000)
-        sample_rate = data.get('sample_rate', 1e9)
+        num_samples = data.get("num_samples", 1000)
+        sample_rate = data.get("sample_rate", 1e9)
 
         # Generate synthetic waveform (replace with actual data reception)
         t = np.linspace(0, num_samples / sample_rate, num_samples)
@@ -258,7 +276,12 @@ class WaveformDisplay(QWidget):
             zero_crossings = np.where(np.diff(np.sign(waveform)))[0]
             if len(zero_crossings) >= 2:
                 # Period = average time between zero crossings * 2
-                period = (zero_crossings[-1] - zero_crossings[0]) / len(zero_crossings) * 2 / self.sample_rate
+                period = (
+                    (zero_crossings[-1] - zero_crossings[0])
+                    / len(zero_crossings)
+                    * 2
+                    / self.sample_rate
+                )
                 freq = 1 / period if period > 0 else 0
             else:
                 freq = 0
@@ -266,11 +289,7 @@ class WaveformDisplay(QWidget):
             freq = 0
 
         # Store measurements
-        self._measurements[channel] = {
-            "freq": freq,
-            "vpp": vpp,
-            "vrms": vrms
-        }
+        self._measurements[channel] = {"freq": freq, "vpp": vpp, "vrms": vrms}
 
         # Update display
         if channel in self.measurement_labels:
@@ -293,7 +312,7 @@ class WaveformDisplay(QWidget):
             channel: Channel number
             state: Checkbox state
         """
-        enabled = (state == Qt.CheckState.Checked.value)
+        enabled = state == Qt.CheckState.Checked.value
         self._channel_enabled[channel] = enabled
 
         # Show/hide curve
@@ -354,7 +373,9 @@ class WaveformDisplay(QWidget):
         """
         return {
             "waveforms_displayed": self.waveforms_displayed,
-            "channels_enabled": sum(1 for enabled in self._channel_enabled.values() if enabled),
+            "channels_enabled": sum(
+                1 for enabled in self._channel_enabled.values() if enabled
+            ),
             "sample_rate": self.sample_rate,
-            "time_scale": self.time_scale
+            "time_scale": self.time_scale,
         }

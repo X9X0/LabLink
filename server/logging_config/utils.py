@@ -5,13 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 from server.config.settings import settings
-from .handlers import (
-    get_rotating_file_handler,
-    get_console_handler,
-    get_performance_handler,
-    get_audit_handler,
-    get_equipment_handler
-)
+
+from .handlers import (get_audit_handler, get_console_handler,
+                       get_equipment_handler, get_performance_handler,
+                       get_rotating_file_handler)
 
 
 def get_logger(name: str, equipment_id: Optional[str] = None) -> logging.Logger:
@@ -50,8 +47,7 @@ def setup_logging():
 
     # Add console handler
     console_handler = get_console_handler(
-        colored=True,
-        level=settings.get_numeric_log_level()
+        colored=True, level=settings.get_numeric_log_level()
     )
     root_logger.addHandler(console_handler)
 
@@ -64,7 +60,7 @@ def setup_logging():
             max_bytes=settings.log_rotation_size_mb * 1024 * 1024,
             backup_count=settings.log_retention_days,
             formatter_type=settings.log_format,
-            compress=True
+            compress=True,
         )
         root_logger.addHandler(main_handler)
 
@@ -116,7 +112,7 @@ def setup_specialized_loggers():
             max_bytes=50 * 1024 * 1024,  # 50 MB
             backup_count=30,
             formatter_type="json",
-            compress=True
+            compress=True,
         )
         access_logger.addHandler(access_handler)
 
@@ -132,7 +128,7 @@ def setup_specialized_loggers():
             max_bytes=50 * 1024 * 1024,  # 50 MB
             backup_count=20,
             formatter_type="json",
-            compress=True
+            compress=True,
         )
         equipment_logger.addHandler(equipment_handler)
 
@@ -159,6 +155,10 @@ def cleanup_old_logs(log_dir: str, retention_days: int):
         if log_file.stat().st_mtime < cutoff_time:
             try:
                 log_file.unlink()
-                logging.getLogger("lablink.logging").info(f"Deleted old log file: {log_file.name}")
+                logging.getLogger("lablink.logging").info(
+                    f"Deleted old log file: {log_file.name}"
+                )
             except Exception as e:
-                logging.getLogger("lablink.logging").error(f"Failed to delete old log file {log_file.name}: {e}")
+                logging.getLogger("lablink.logging").error(
+                    f"Failed to delete old log file {log_file.name}: {e}"
+                )

@@ -1,18 +1,17 @@
 """Equipment control panel for LabLink GUI."""
 
-import logging
 import asyncio
-from typing import Optional, List, Dict, Set
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
-    QListWidget, QListWidgetItem, QGroupBox, QLabel,
-    QPushButton, QMessageBox, QGridLayout, QLineEdit,
-    QTextEdit
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
+import logging
+from typing import Dict, List, Optional, Set
+
+from models.equipment import ConnectionStatus, Equipment
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                             QLineEdit, QListWidget, QListWidgetItem,
+                             QMessageBox, QPushButton, QSplitter, QTextEdit,
+                             QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
-from models.equipment import Equipment, ConnectionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,9 @@ class EquipmentPanel(QWidget):
 
         # WebSocket streaming state
         self.ws_signals = WebSocketSignals()
-        self.streaming_equipment: Set[str] = set()  # Track equipment with active streams
+        self.streaming_equipment: Set[str] = (
+            set()
+        )  # Track equipment with active streams
 
         self._setup_ui()
         self._connect_ws_signals()
@@ -76,7 +77,9 @@ class EquipmentPanel(QWidget):
 
         # List
         self.equipment_list_widget = QListWidget()
-        self.equipment_list_widget.itemSelectionChanged.connect(self._on_equipment_selected)
+        self.equipment_list_widget.itemSelectionChanged.connect(
+            self._on_equipment_selected
+        )
         layout.addWidget(self.equipment_list_widget)
 
         # Buttons
@@ -241,7 +244,10 @@ class EquipmentPanel(QWidget):
             data: Stream data dictionary
         """
         # Only update if this is the selected equipment
-        if self.selected_equipment and self.selected_equipment.equipment_id == equipment_id:
+        if (
+            self.selected_equipment
+            and self.selected_equipment.equipment_id == equipment_id
+        ):
             # Update readings display
             self.readings_display.setPlainText(self._format_readings(data))
 
@@ -283,14 +289,20 @@ class EquipmentPanel(QWidget):
 
         except Exception as e:
             logger.error(f"Error refreshing equipment list: {e}")
-            QMessageBox.warning(self, "Error", f"Failed to refresh equipment list: {str(e)}")
+            QMessageBox.warning(
+                self, "Error", f"Failed to refresh equipment list: {str(e)}"
+            )
 
     def _update_equipment_list_widget(self):
         """Update equipment list widget."""
         self.equipment_list_widget.clear()
 
         for equipment in self.equipment_list:
-            status_icon = "●" if equipment.connection_status == ConnectionStatus.CONNECTED else "○"
+            status_icon = (
+                "●"
+                if equipment.connection_status == ConnectionStatus.CONNECTED
+                else "○"
+            )
             item_text = f"{status_icon} {equipment.name} ({equipment.model})"
 
             item = QListWidgetItem(item_text)
@@ -330,7 +342,9 @@ class EquipmentPanel(QWidget):
         # Update status with color
         status_text = eq.connection_status.value.upper()
         if eq.connection_status == ConnectionStatus.CONNECTED:
-            self.status_label.setText(f"<span style='color: green;'>{status_text}</span>")
+            self.status_label.setText(
+                f"<span style='color: green;'>{status_text}</span>"
+            )
             self.connect_btn.setEnabled(False)
             self.disconnect_btn.setEnabled(True)
         else:
@@ -340,7 +354,9 @@ class EquipmentPanel(QWidget):
 
         # Update readings if available
         if eq.current_readings:
-            self.readings_display.setPlainText(self._format_readings(eq.current_readings))
+            self.readings_display.setPlainText(
+                self._format_readings(eq.current_readings)
+            )
 
     def _format_readings(self, readings: dict) -> str:
         """Format readings for display."""
@@ -355,7 +371,11 @@ class EquipmentPanel(QWidget):
         Args:
             equipment_id: ID of equipment to stream from
         """
-        if not self.client or not self.client.ws_manager or not self.client.ws_manager.connected:
+        if (
+            not self.client
+            or not self.client.ws_manager
+            or not self.client.ws_manager.connected
+        ):
             logger.debug("WebSocket not available - using polling fallback")
             return
 
@@ -364,7 +384,7 @@ class EquipmentPanel(QWidget):
             await self.client.start_equipment_stream(
                 equipment_id=equipment_id,
                 stream_type="readings",
-                interval_ms=500  # 2 Hz update rate
+                interval_ms=500,  # 2 Hz update rate
             )
             self.ws_signals.stream_started.emit(equipment_id)
             logger.info(f"Stream started successfully for {equipment_id}")
@@ -394,20 +414,23 @@ class EquipmentPanel(QWidget):
     def discover_equipment(self):
         """Discover available equipment."""
         if not self.client:
-            QMessageBox.warning(self, "Not Connected", "Please connect to a server first")
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
             return
 
         try:
             # Call discover endpoint
-            response = self.client._session.post(f"{self.client.api_base_url}/equipment/discover")
+            response = self.client._session.post(
+                f"{self.client.api_base_url}/equipment/discover"
+            )
             response.raise_for_status()
 
             data = response.json()
             discovered_count = data.get("discovered_count", 0)
 
             QMessageBox.information(
-                self, "Discovery Complete",
-                f"Discovered {discovered_count} device(s)"
+                self, "Discovery Complete", f"Discovered {discovered_count} device(s)"
             )
 
             self.refresh()
@@ -425,7 +448,9 @@ class EquipmentPanel(QWidget):
             result = self.client.connect_equipment(self.selected_equipment.equipment_id)
 
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Equipment connected successfully")
+                QMessageBox.information(
+                    self, "Success", "Equipment connected successfully"
+                )
                 self.refresh()
                 self._on_equipment_selected()  # Refresh details
 
@@ -433,7 +458,9 @@ class EquipmentPanel(QWidget):
                 equipment_id = self.selected_equipment.equipment_id
                 asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
-                QMessageBox.warning(self, "Failed", result.get("message", "Connection failed"))
+                QMessageBox.warning(
+                    self, "Failed", result.get("message", "Connection failed")
+                )
 
         except Exception as e:
             logger.error(f"Error connecting equipment: {e}")
@@ -454,11 +481,15 @@ class EquipmentPanel(QWidget):
             result = self.client.disconnect_equipment(equipment_id)
 
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Equipment disconnected successfully")
+                QMessageBox.information(
+                    self, "Success", "Equipment disconnected successfully"
+                )
                 self.refresh()
                 self._on_equipment_selected()  # Refresh details
             else:
-                QMessageBox.warning(self, "Failed", result.get("message", "Disconnection failed"))
+                QMessageBox.warning(
+                    self, "Failed", result.get("message", "Disconnection failed")
+                )
 
         except Exception as e:
             logger.error(f"Error disconnecting equipment: {e}")
@@ -494,9 +525,7 @@ class EquipmentPanel(QWidget):
 
         try:
             result = self.client.send_command(
-                self.selected_equipment.equipment_id,
-                command,
-                {}
+                self.selected_equipment.equipment_id, command, {}
             )
 
             if result.get("success"):

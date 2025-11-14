@@ -1,18 +1,17 @@
 """Multi-instrument synchronization panel for LabLink GUI."""
 
 import logging
-from typing import Optional, Dict, List
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
-    QPushButton, QListWidget, QListWidgetItem, QMessageBox,
-    QComboBox, QDoubleSpinBox, QFormLayout, QCheckBox,
-    QLineEdit, QTextEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView
-)
+from typing import Dict, List, Optional
+
+from client.models import SyncState
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
+                             QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+                             QLineEdit, QListWidget, QListWidgetItem,
+                             QMessageBox, QPushButton, QTableWidget,
+                             QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
-from models import SyncState
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,9 @@ class SyncPanel(QWidget):
         self.sync_groups: Dict[str, Dict] = {}  # group_id -> group info
         self.current_group_id: Optional[str] = None
         self.available_equipment: List[Dict] = []
-        self.available_acquisitions: Dict[str, List[str]] = {}  # equipment_id -> [acquisition_ids]
+        self.available_acquisitions: Dict[str, List[str]] = (
+            {}
+        )  # equipment_id -> [acquisition_ids]
 
         # Auto-refresh timer
         self.refresh_timer = QTimer()
@@ -190,7 +191,9 @@ class SyncPanel(QWidget):
         # Equipment/acquisition mapping table
         self.equipment_table = QTableWidget()
         self.equipment_table.setColumnCount(3)
-        self.equipment_table.setHorizontalHeaderLabels(["Equipment ID", "Acquisition ID", "Status"])
+        self.equipment_table.setHorizontalHeaderLabels(
+            ["Equipment ID", "Acquisition ID", "Status"]
+        )
         self.equipment_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(QLabel("Equipment & Acquisitions:"))
         layout.addWidget(self.equipment_table)
@@ -331,8 +334,7 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
             for eq_id, acq_ids in self.available_acquisitions.items():
                 for acq_id in acq_ids:
                     self.add_acq_combo.addItem(
-                        f"{eq_id}: {acq_id[:8]}...",
-                        (eq_id, acq_id)
+                        f"{eq_id}: {acq_id[:8]}...", (eq_id, acq_id)
                     )
 
         except Exception as e:
@@ -380,7 +382,9 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
     def create_sync_group(self):
         """Create new sync group."""
         if not self.client:
-            QMessageBox.warning(self, "Not Connected", "Please connect to a server first")
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
             return
 
         group_id = self.group_id_edit.text().strip()
@@ -391,7 +395,9 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         # Get selected equipment
         selected_items = self.equipment_list.selectedItems()
         if not selected_items:
-            QMessageBox.warning(self, "No Equipment", "Please select at least one equipment")
+            QMessageBox.warning(
+                self, "No Equipment", "Please select at least one equipment"
+            )
             return
 
         equipment_ids = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
@@ -403,11 +409,13 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
                 master_equipment_id=self.master_combo.currentData(),
                 sync_tolerance_ms=self.tolerance_spin.value(),
                 wait_for_all=self.wait_for_all_check.isChecked(),
-                auto_align_timestamps=self.auto_align_check.isChecked()
+                auto_align_timestamps=self.auto_align_check.isChecked(),
             )
 
             if result.get("success"):
-                QMessageBox.information(self, "Success", f"Sync group '{group_id}' created")
+                QMessageBox.information(
+                    self, "Success", f"Sync group '{group_id}' created"
+                )
                 self.sync_group_created.emit(group_id)
                 self.refresh_groups()
                 self.group_id_edit.clear()
@@ -418,7 +426,9 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
     def add_acquisition_to_group(self):
         """Add acquisition to current sync group."""
         if not self.current_group_id:
-            QMessageBox.warning(self, "No Group Selected", "Please select a sync group first")
+            QMessageBox.warning(
+                self, "No Group Selected", "Please select a sync group first"
+            )
             return
 
         data = self.add_acq_combo.currentData()
@@ -430,9 +440,7 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
 
         try:
             result = self.client.add_to_sync_group(
-                self.current_group_id,
-                equipment_id,
-                acquisition_id
+                self.current_group_id, equipment_id, acquisition_id
             )
 
             if result.get("success"):
@@ -511,7 +519,7 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
             self,
             "Confirm Delete",
             f"Delete sync group '{self.current_group_id}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:

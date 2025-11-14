@@ -1,31 +1,22 @@
 """Backup & Restore system manager."""
 
-import os
-import json
+import asyncio
 import hashlib
+import json
+import logging
+import os
 import shutil
+import sys
 import tarfile
 import zipfile
-import logging
-from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
-import sys
-import asyncio
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .models import (
-    BackupConfig,
-    BackupMetadata,
-    BackupRequest,
-    RestoreRequest,
-    RestoreResult,
-    BackupInfo,
-    BackupStatistics,
-    BackupVerificationResult,
-    BackupType,
-    BackupStatus,
-    CompressionType,
-)
+from .models import (BackupConfig, BackupInfo, BackupMetadata, BackupRequest,
+                     BackupStatistics, BackupStatus, BackupType,
+                     BackupVerificationResult, CompressionType, RestoreRequest,
+                     RestoreResult)
 
 logger = logging.getLogger(__name__)
 
@@ -534,9 +525,7 @@ class BackupManager:
                     except Exception as e:
                         logger.error(f"Failed to restore {info.filename}: {e}")
                         result.files_failed += 1
-                        result.errors.append(
-                            f"Failed to restore {info.filename}: {e}"
-                        )
+                        result.errors.append(f"Failed to restore {info.filename}: {e}")
                 else:
                     result.files_skipped += 1
 
@@ -655,7 +644,9 @@ class BackupManager:
                     with zipfile.ZipFile(backup_file, "r") as zf:
                         bad_file = zf.testzip()
                         if bad_file:
-                            result.errors.append(f"Corrupted file in archive: {bad_file}")
+                            result.errors.append(
+                                f"Corrupted file in archive: {bad_file}"
+                            )
                         else:
                             result.compression_valid = True
                             result.files_checked = len(zf.namelist())
@@ -829,7 +820,9 @@ class BackupManager:
 
         # Count backups to cleanup
         cutoff_date = datetime.now() - timedelta(days=self.config.retention_days)
-        to_cleanup = sum(1 for m in self.metadata.values() if m.created_at < cutoff_date)
+        to_cleanup = sum(
+            1 for m in self.metadata.values() if m.created_at < cutoff_date
+        )
 
         return BackupStatistics(
             total_backups=len(self.metadata),

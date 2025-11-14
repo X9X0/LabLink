@@ -6,15 +6,10 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from server.acquisition import (AcquisitionConfig, AcquisitionMode,
+                                ExportFormat, TriggerConfig, TriggerType,
+                                acquisition_manager)
 from server.equipment.manager import equipment_manager
-from server.acquisition import (
-    acquisition_manager,
-    AcquisitionConfig,
-    AcquisitionMode,
-    TriggerType,
-    TriggerConfig,
-    ExportFormat,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +20,10 @@ router = APIRouter(tags=["Data Acquisition"])
 # Request/Response Models
 # ============================================================================
 
+
 class CreateSessionRequest(BaseModel):
     """Request to create acquisition session."""
+
     equipment_id: str
     name: Optional[str] = None
     description: Optional[str] = None
@@ -42,6 +39,7 @@ class CreateSessionRequest(BaseModel):
 
 class ExportDataRequest(BaseModel):
     """Request to export acquisition data."""
+
     acquisition_id: str
     format: ExportFormat = ExportFormat.CSV
     filepath: Optional[str] = None
@@ -50,6 +48,7 @@ class ExportDataRequest(BaseModel):
 # ============================================================================
 # Session Management Endpoints
 # ============================================================================
+
 
 @router.post("/session/create", summary="Create acquisition session")
 async def create_session(request: CreateSessionRequest):
@@ -64,8 +63,7 @@ async def create_session(request: CreateSessionRequest):
         equipment = equipment_manager.get_equipment(request.equipment_id)
         if not equipment:
             raise HTTPException(
-                status_code=404,
-                detail=f"Equipment {request.equipment_id} not found"
+                status_code=404, detail=f"Equipment {request.equipment_id} not found"
             )
 
         config = AcquisitionConfig(
@@ -79,7 +77,7 @@ async def create_session(request: CreateSessionRequest):
             channels=request.channels,
             buffer_size=request.buffer_size,
             auto_export=request.auto_export,
-            export_format=request.export_format
+            export_format=request.export_format,
         )
 
         session = await acquisition_manager.create_session(equipment, config)
@@ -88,7 +86,7 @@ async def create_session(request: CreateSessionRequest):
             "success": True,
             "message": "Acquisition session created",
             "acquisition_id": session.acquisition_id,
-            "state": session.state
+            "state": session.state,
         }
 
     except HTTPException:
@@ -96,8 +94,7 @@ async def create_session(request: CreateSessionRequest):
     except Exception as e:
         logger.error(f"Error creating acquisition session: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create session: {str(e)}"
+            status_code=500, detail=f"Failed to create session: {str(e)}"
         )
 
 
@@ -108,15 +105,13 @@ async def start_acquisition(acquisition_id: str):
         session = acquisition_manager.get_session(acquisition_id)
         if not session:
             raise HTTPException(
-                status_code=404,
-                detail=f"Acquisition {acquisition_id} not found"
+                status_code=404, detail=f"Acquisition {acquisition_id} not found"
             )
 
         equipment = equipment_manager.get_equipment(session.equipment_id)
         if not equipment:
             raise HTTPException(
-                status_code=404,
-                detail=f"Equipment {session.equipment_id} not found"
+                status_code=404, detail=f"Equipment {session.equipment_id} not found"
             )
 
         success = await acquisition_manager.start_acquisition(acquisition_id, equipment)
@@ -124,7 +119,7 @@ async def start_acquisition(acquisition_id: str):
         return {
             "success": success,
             "message": "Acquisition started" if success else "Already running",
-            "acquisition_id": acquisition_id
+            "acquisition_id": acquisition_id,
         }
 
     except HTTPException:
@@ -132,8 +127,7 @@ async def start_acquisition(acquisition_id: str):
     except Exception as e:
         logger.error(f"Error starting acquisition: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to start acquisition: {str(e)}"
+            status_code=500, detail=f"Failed to start acquisition: {str(e)}"
         )
 
 
@@ -146,7 +140,7 @@ async def stop_acquisition(acquisition_id: str):
         return {
             "success": success,
             "message": "Acquisition stopped",
-            "acquisition_id": acquisition_id
+            "acquisition_id": acquisition_id,
         }
 
     except ValueError as e:
@@ -154,8 +148,7 @@ async def stop_acquisition(acquisition_id: str):
     except Exception as e:
         logger.error(f"Error stopping acquisition: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to stop acquisition: {str(e)}"
+            status_code=500, detail=f"Failed to stop acquisition: {str(e)}"
         )
 
 
@@ -168,7 +161,7 @@ async def pause_acquisition(acquisition_id: str):
         return {
             "success": success,
             "message": "Acquisition paused" if success else "Not acquiring",
-            "acquisition_id": acquisition_id
+            "acquisition_id": acquisition_id,
         }
 
     except ValueError as e:
@@ -176,8 +169,7 @@ async def pause_acquisition(acquisition_id: str):
     except Exception as e:
         logger.error(f"Error pausing acquisition: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to pause acquisition: {str(e)}"
+            status_code=500, detail=f"Failed to pause acquisition: {str(e)}"
         )
 
 
@@ -190,7 +182,7 @@ async def resume_acquisition(acquisition_id: str):
         return {
             "success": success,
             "message": "Acquisition resumed" if success else "Not paused",
-            "acquisition_id": acquisition_id
+            "acquisition_id": acquisition_id,
         }
 
     except ValueError as e:
@@ -198,14 +190,14 @@ async def resume_acquisition(acquisition_id: str):
     except Exception as e:
         logger.error(f"Error resuming acquisition: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to resume acquisition: {str(e)}"
+            status_code=500, detail=f"Failed to resume acquisition: {str(e)}"
         )
 
 
 # ============================================================================
 # Data Retrieval Endpoints
 # ============================================================================
+
 
 @router.get("/session/{acquisition_id}/status", summary="Get session status")
 async def get_session_status(acquisition_id: str):
@@ -215,8 +207,7 @@ async def get_session_status(acquisition_id: str):
 
         if not session:
             raise HTTPException(
-                status_code=404,
-                detail=f"Acquisition {acquisition_id} not found"
+                status_code=404, detail=f"Acquisition {acquisition_id} not found"
             )
 
         return {
@@ -226,59 +217,63 @@ async def get_session_status(acquisition_id: str):
             "config": session.config.dict(),
             "stats": session.stats.dict(),
             "created_at": session.created_at.isoformat(),
-            "started_at": session.started_at.isoformat() if session.started_at else None,
-            "stopped_at": session.stopped_at.isoformat() if session.stopped_at else None
+            "started_at": (
+                session.started_at.isoformat() if session.started_at else None
+            ),
+            "stopped_at": (
+                session.stopped_at.isoformat() if session.stopped_at else None
+            ),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting session status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
 @router.get("/session/{acquisition_id}/data", summary="Get acquired data")
 async def get_acquisition_data(
     acquisition_id: str,
-    num_samples: Optional[int] = Query(None, description="Number of samples to retrieve")
+    num_samples: Optional[int] = Query(
+        None, description="Number of samples to retrieve"
+    ),
 ):
     """Get data from acquisition buffer."""
     try:
-        data, timestamps = acquisition_manager.get_buffer_data(acquisition_id, num_samples)
+        data, timestamps = acquisition_manager.get_buffer_data(
+            acquisition_id, num_samples
+        )
 
         session = acquisition_manager.get_session(acquisition_id)
         if not session:
             raise HTTPException(
-                status_code=404,
-                detail=f"Acquisition {acquisition_id} not found"
+                status_code=404, detail=f"Acquisition {acquisition_id} not found"
             )
 
         # Convert to JSON-serializable format
         from datetime import datetime
+
         return {
             "acquisition_id": acquisition_id,
             "channels": session.config.channels,
             "data": {
-                "timestamps": [datetime.fromtimestamp(t).isoformat() for t in timestamps],
+                "timestamps": [
+                    datetime.fromtimestamp(t).isoformat() for t in timestamps
+                ],
                 "values": {
                     channel: data[i, :].tolist()
                     for i, channel in enumerate(session.config.channels)
-                }
+                },
             },
-            "count": len(timestamps)
+            "count": len(timestamps),
         }
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting data: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get data: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get data: {str(e)}")
 
 
 @router.get("/sessions", summary="List all sessions")
@@ -296,18 +291,17 @@ async def list_sessions():
                     "state": s.state,
                     "mode": s.config.mode,
                     "created_at": s.created_at.isoformat(),
-                    "total_samples": s.stats.total_samples
+                    "total_samples": s.stats.total_samples,
                 }
                 for s in sessions
             ],
-            "count": len(sessions)
+            "count": len(sessions),
         }
 
     except Exception as e:
         logger.error(f"Error listing sessions: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list sessions: {str(e)}"
+            status_code=500, detail=f"Failed to list sessions: {str(e)}"
         )
 
 
@@ -315,31 +309,27 @@ async def list_sessions():
 # Export Endpoints
 # ============================================================================
 
+
 @router.post("/export", summary="Export acquisition data")
 async def export_data(request: ExportDataRequest):
     """Export acquired data to file."""
     try:
         filepath = await acquisition_manager.export_data(
-            request.acquisition_id,
-            request.format,
-            request.filepath
+            request.acquisition_id, request.format, request.filepath
         )
 
         return {
             "success": True,
             "message": "Data exported successfully",
             "filepath": filepath,
-            "format": request.format
+            "format": request.format,
         }
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error exporting data: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to export data: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to export data: {str(e)}")
 
 
 @router.delete("/session/{acquisition_id}", summary="Delete session")
@@ -352,12 +342,11 @@ async def delete_session(acquisition_id: str):
             return {
                 "success": True,
                 "message": "Session deleted",
-                "acquisition_id": acquisition_id
+                "acquisition_id": acquisition_id,
             }
         else:
             raise HTTPException(
-                status_code=404,
-                detail=f"Acquisition {acquisition_id} not found"
+                status_code=404, detail=f"Acquisition {acquisition_id} not found"
             )
 
     except HTTPException:
@@ -365,8 +354,7 @@ async def delete_session(acquisition_id: str):
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete session: {str(e)}"
+            status_code=500, detail=f"Failed to delete session: {str(e)}"
         )
 
 
@@ -375,9 +363,7 @@ async def delete_session(acquisition_id: str):
 
 @router.get("/session/{acquisition_id}/stats/rolling", summary="Get rolling statistics")
 async def get_rolling_stats(
-    acquisition_id: str,
-    channel: str,
-    num_samples: Optional[int] = None
+    acquisition_id: str, channel: str, num_samples: Optional[int] = None
 ):
     """
     Get rolling statistics for a channel.
@@ -391,12 +377,14 @@ async def get_rolling_stats(
         Rolling statistics (mean, std, min, max, etc.)
     """
     try:
-        stats = acquisition_manager.compute_rolling_stats(acquisition_id, channel, num_samples)
+        stats = acquisition_manager.compute_rolling_stats(
+            acquisition_id, channel, num_samples
+        )
 
         if stats is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -411,8 +399,8 @@ async def get_rolling_stats(
                 "median": stats.median,
                 "rms": stats.rms,
                 "peak_to_peak": stats.peak_to_peak,
-                "num_samples": stats.num_samples
-            }
+                "num_samples": stats.num_samples,
+            },
         }
 
     except HTTPException:
@@ -420,8 +408,7 @@ async def get_rolling_stats(
     except Exception as e:
         logger.error(f"Error computing rolling stats: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to compute statistics: {str(e)}"
+            status_code=500, detail=f"Failed to compute statistics: {str(e)}"
         )
 
 
@@ -430,7 +417,7 @@ async def get_fft_analysis(
     acquisition_id: str,
     channel: str,
     num_samples: Optional[int] = None,
-    window: str = "hann"
+    window: str = "hann",
 ):
     """
     Get FFT frequency analysis for a channel.
@@ -445,12 +432,14 @@ async def get_fft_analysis(
         FFT analysis with frequencies, magnitudes, dominant frequency, THD, SNR
     """
     try:
-        fft_result = acquisition_manager.compute_fft(acquisition_id, channel, num_samples, window)
+        fft_result = acquisition_manager.compute_fft(
+            acquisition_id, channel, num_samples, window
+        )
 
         if fft_result is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -464,25 +453,20 @@ async def get_fft_analysis(
                 "dominant_frequency": fft_result.dominant_frequency,
                 "fundamental_amplitude": fft_result.fundamental_amplitude,
                 "thd_percent": fft_result.thd,
-                "snr_db": fft_result.snr
-            }
+                "snr_db": fft_result.snr,
+            },
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error computing FFT: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to compute FFT: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to compute FFT: {str(e)}")
 
 
 @router.get("/session/{acquisition_id}/stats/trend", summary="Detect trend")
 async def detect_trend(
-    acquisition_id: str,
-    channel: str,
-    num_samples: Optional[int] = None
+    acquisition_id: str, channel: str, num_samples: Optional[int] = None
 ):
     """
     Detect trend in channel data.
@@ -496,12 +480,14 @@ async def detect_trend(
         Trend analysis (rising, falling, stable, noisy)
     """
     try:
-        trend_result = acquisition_manager.detect_trend(acquisition_id, channel, num_samples)
+        trend_result = acquisition_manager.detect_trend(
+            acquisition_id, channel, num_samples
+        )
 
         if trend_result is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -512,18 +498,15 @@ async def detect_trend(
                 "type": trend_result.trend,
                 "slope": trend_result.slope,
                 "r_squared": trend_result.r_squared,
-                "confidence": trend_result.confidence
-            }
+                "confidence": trend_result.confidence,
+            },
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error detecting trend: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to detect trend: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to detect trend: {str(e)}")
 
 
 @router.get("/session/{acquisition_id}/stats/quality", summary="Assess data quality")
@@ -531,7 +514,7 @@ async def assess_quality(
     acquisition_id: str,
     channel: str,
     num_samples: Optional[int] = None,
-    outlier_threshold: float = 3.0
+    outlier_threshold: float = 3.0,
 ):
     """
     Assess data quality for a channel.
@@ -553,7 +536,7 @@ async def assess_quality(
         if quality is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -565,8 +548,8 @@ async def assess_quality(
                 "stability_score": quality.stability_score,
                 "outlier_count": quality.outlier_count,
                 "missing_count": quality.missing_count,
-                "valid_percentage": quality.valid_percentage
-            }
+                "valid_percentage": quality.valid_percentage,
+            },
         }
 
     except HTTPException:
@@ -574,8 +557,7 @@ async def assess_quality(
     except Exception as e:
         logger.error(f"Error assessing quality: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to assess quality: {str(e)}"
+            status_code=500, detail=f"Failed to assess quality: {str(e)}"
         )
 
 
@@ -586,7 +568,7 @@ async def detect_peaks(
     num_samples: Optional[int] = None,
     prominence: Optional[float] = None,
     distance: Optional[int] = None,
-    height: Optional[float] = None
+    height: Optional[float] = None,
 ):
     """
     Detect peaks in channel data.
@@ -610,7 +592,7 @@ async def detect_peaks(
         if peaks is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -620,27 +602,26 @@ async def detect_peaks(
             "peaks": {
                 "indices": peaks.indices.tolist(),
                 "values": peaks.values.tolist(),
-                "count": peaks.count
-            }
+                "count": peaks.count,
+            },
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error detecting peaks: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to detect peaks: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to detect peaks: {str(e)}")
 
 
-@router.get("/session/{acquisition_id}/stats/crossings", summary="Detect threshold crossings")
+@router.get(
+    "/session/{acquisition_id}/stats/crossings", summary="Detect threshold crossings"
+)
 async def detect_crossings(
     acquisition_id: str,
     channel: str,
     threshold: float,
     direction: str = "both",
-    num_samples: Optional[int] = None
+    num_samples: Optional[int] = None,
 ):
     """
     Detect threshold crossings in channel data.
@@ -659,7 +640,7 @@ async def detect_crossings(
         if direction not in ["rising", "falling", "both"]:
             raise HTTPException(
                 status_code=400,
-                detail="Direction must be 'rising', 'falling', or 'both'"
+                detail="Direction must be 'rising', 'falling', or 'both'",
             )
 
         crossings = acquisition_manager.detect_threshold_crossings(
@@ -669,7 +650,7 @@ async def detect_crossings(
         if crossings is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Session {acquisition_id} not found or channel {channel} invalid"
+                detail=f"Session {acquisition_id} not found or channel {channel} invalid",
             )
 
         return {
@@ -680,8 +661,8 @@ async def detect_crossings(
             "crossings": {
                 "rising": crossings["rising"].tolist(),
                 "falling": crossings["falling"].tolist(),
-                "total": len(crossings["rising"]) + len(crossings["falling"])
-            }
+                "total": len(crossings["rising"]) + len(crossings["falling"]),
+            },
         }
 
     except HTTPException:
@@ -689,8 +670,7 @@ async def detect_crossings(
     except Exception as e:
         logger.error(f"Error detecting crossings: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to detect crossings: {str(e)}"
+            status_code=500, detail=f"Failed to detect crossings: {str(e)}"
         )
 
 
@@ -699,6 +679,7 @@ async def detect_crossings(
 
 class CreateSyncGroupRequest(BaseModel):
     """Request to create a synchronization group."""
+
     group_id: str
     equipment_ids: List[str]
     master_equipment_id: Optional[str] = None
@@ -709,6 +690,7 @@ class CreateSyncGroupRequest(BaseModel):
 
 class AddToSyncGroupRequest(BaseModel):
     """Request to add acquisition to sync group."""
+
     equipment_id: str
     acquisition_id: str
 
@@ -725,7 +707,7 @@ async def create_sync_group(request: CreateSyncGroupRequest):
         Sync group status
     """
     try:
-        from acquisition.synchronization import sync_manager, SyncConfig
+        from acquisition.synchronization import SyncConfig, sync_manager
 
         config = SyncConfig(
             group_id=request.group_id,
@@ -733,7 +715,7 @@ async def create_sync_group(request: CreateSyncGroupRequest):
             master_equipment_id=request.master_equipment_id,
             sync_tolerance_ms=request.sync_tolerance_ms,
             wait_for_all=request.wait_for_all,
-            auto_align_timestamps=request.auto_align_timestamps
+            auto_align_timestamps=request.auto_align_timestamps,
         )
 
         group = await sync_manager.create_sync_group(config)
@@ -746,8 +728,8 @@ async def create_sync_group(request: CreateSyncGroupRequest):
                 "state": group.state,
                 "equipment_count": len(group.config.equipment_ids),
                 "equipment_ids": group.config.equipment_ids,
-                "master": group.config.master_equipment_id
-            }
+                "master": group.config.master_equipment_id,
+            },
         }
 
     except ValueError as e:
@@ -755,8 +737,7 @@ async def create_sync_group(request: CreateSyncGroupRequest):
     except Exception as e:
         logger.error(f"Error creating sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create sync group: {str(e)}"
+            status_code=500, detail=f"Failed to create sync group: {str(e)}"
         )
 
 
@@ -769,8 +750,7 @@ async def add_to_sync_group(group_id: str, request: AddToSyncGroupRequest):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         await group.add_acquisition(request.equipment_id, request.acquisition_id)
@@ -782,8 +762,8 @@ async def add_to_sync_group(group_id: str, request: AddToSyncGroupRequest):
                 "group_id": group_id,
                 "state": group.state,
                 "ready_count": len(group.ready_equipment),
-                "total_count": len(group.config.equipment_ids)
-            }
+                "total_count": len(group.config.equipment_ids),
+            },
         }
 
     except ValueError as e:
@@ -791,8 +771,7 @@ async def add_to_sync_group(group_id: str, request: AddToSyncGroupRequest):
     except Exception as e:
         logger.error(f"Error adding to sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to add to sync group: {str(e)}"
+            status_code=500, detail=f"Failed to add to sync group: {str(e)}"
         )
 
 
@@ -805,8 +784,7 @@ async def start_sync_group(group_id: str):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         success = await group.start_synchronized(acquisition_manager)
@@ -814,7 +792,7 @@ async def start_sync_group(group_id: str):
         if not success:
             raise HTTPException(
                 status_code=400,
-                detail=f"Failed to start sync group: {group.sync_errors}"
+                detail=f"Failed to start sync group: {group.sync_errors}",
             )
 
         return {
@@ -823,9 +801,11 @@ async def start_sync_group(group_id: str):
             "status": {
                 "group_id": group_id,
                 "state": group.state,
-                "start_time": group.start_time.isoformat() if group.start_time else None,
-                "acquisition_ids": group.acquisition_ids
-            }
+                "start_time": (
+                    group.start_time.isoformat() if group.start_time else None
+                ),
+                "acquisition_ids": group.acquisition_ids,
+            },
         }
 
     except HTTPException:
@@ -833,8 +813,7 @@ async def start_sync_group(group_id: str):
     except Exception as e:
         logger.error(f"Error starting sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to start sync group: {str(e)}"
+            status_code=500, detail=f"Failed to start sync group: {str(e)}"
         )
 
 
@@ -847,31 +826,24 @@ async def stop_sync_group(group_id: str):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         success = await group.stop_synchronized(acquisition_manager)
 
         if not success:
             raise HTTPException(
-                status_code=400,
-                detail="Sync group not in running state"
+                status_code=400, detail="Sync group not in running state"
             )
 
-        return {
-            "success": True,
-            "message": "Sync group stopped",
-            "group_id": group_id
-        }
+        return {"success": True, "message": "Sync group stopped", "group_id": group_id}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error stopping sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to stop sync group: {str(e)}"
+            status_code=500, detail=f"Failed to stop sync group: {str(e)}"
         )
 
 
@@ -884,31 +856,24 @@ async def pause_sync_group(group_id: str):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         success = await group.pause_synchronized(acquisition_manager)
 
         if not success:
             raise HTTPException(
-                status_code=400,
-                detail="Sync group not in running state"
+                status_code=400, detail="Sync group not in running state"
             )
 
-        return {
-            "success": True,
-            "message": "Sync group paused",
-            "group_id": group_id
-        }
+        return {"success": True, "message": "Sync group paused", "group_id": group_id}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error pausing sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to pause sync group: {str(e)}"
+            status_code=500, detail=f"Failed to pause sync group: {str(e)}"
         )
 
 
@@ -921,31 +886,24 @@ async def resume_sync_group(group_id: str):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         success = await group.resume_synchronized(acquisition_manager)
 
         if not success:
             raise HTTPException(
-                status_code=400,
-                detail="Sync group not in paused state"
+                status_code=400, detail="Sync group not in paused state"
             )
 
-        return {
-            "success": True,
-            "message": "Sync group resumed",
-            "group_id": group_id
-        }
+        return {"success": True, "message": "Sync group resumed", "group_id": group_id}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error resuming sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to resume sync group: {str(e)}"
+            status_code=500, detail=f"Failed to resume sync group: {str(e)}"
         )
 
 
@@ -959,8 +917,7 @@ async def get_sync_group_status(group_id: str):
 
         if status is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
         return {
@@ -972,19 +929,18 @@ async def get_sync_group_status(group_id: str):
                 "ready_count": status.ready_count,
                 "running_count": status.running_count,
                 "acquisition_ids": status.acquisition_ids,
-                "start_time": status.start_time.isoformat() if status.start_time else None,
-                "sync_errors": status.sync_errors
-            }
+                "start_time": (
+                    status.start_time.isoformat() if status.start_time else None
+                ),
+                "sync_errors": status.sync_errors,
+            },
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting sync group status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
 @router.get("/sync/group/{group_id}/data", summary="Get synchronized data")
@@ -996,34 +952,28 @@ async def get_sync_group_data(group_id: str, num_samples: Optional[int] = None):
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
-        synchronized_data = await group.get_synchronized_data(acquisition_manager, num_samples)
+        synchronized_data = await group.get_synchronized_data(
+            acquisition_manager, num_samples
+        )
 
         # Convert to JSON-serializable format
         response_data = {}
         for equipment_id, data_dict in synchronized_data.items():
             response_data[equipment_id] = {
                 "data": data_dict["data"].tolist(),
-                "timestamps": data_dict["timestamps"].tolist()
+                "timestamps": data_dict["timestamps"].tolist(),
             }
 
-        return {
-            "success": True,
-            "group_id": group_id,
-            "data": response_data
-        }
+        return {"success": True, "group_id": group_id, "data": response_data}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting sync group data: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get data: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get data: {str(e)}")
 
 
 @router.get("/sync/groups", summary="List all sync groups")
@@ -1043,17 +993,16 @@ async def list_sync_groups():
                     "state": status.state,
                     "equipment_count": status.equipment_count,
                     "ready_count": status.ready_count,
-                    "running_count": status.running_count
+                    "running_count": status.running_count,
                 }
                 for status in groups
-            ]
+            ],
         }
 
     except Exception as e:
         logger.error(f"Error listing sync groups: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list sync groups: {str(e)}"
+            status_code=500, detail=f"Failed to list sync groups: {str(e)}"
         )
 
 
@@ -1067,15 +1016,10 @@ async def delete_sync_group(group_id: str):
 
         if not success:
             raise HTTPException(
-                status_code=404,
-                detail=f"Sync group {group_id} not found"
+                status_code=404, detail=f"Sync group {group_id} not found"
             )
 
-        return {
-            "success": True,
-            "message": "Sync group deleted",
-            "group_id": group_id
-        }
+        return {"success": True, "message": "Sync group deleted", "group_id": group_id}
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1084,6 +1028,5 @@ async def delete_sync_group(group_id: str):
     except Exception as e:
         logger.error(f"Error deleting sync group: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete sync group: {str(e)}"
+            status_code=500, detail=f"Failed to delete sync group: {str(e)}"
         )

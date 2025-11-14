@@ -1,23 +1,24 @@
 """Power supply-specific control panel."""
 
+import asyncio
 import logging
 from typing import Optional
-import asyncio
 
 try:
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
-        QPushButton, QDoubleSpinBox, QCheckBox, QFormLayout,
-        QTabWidget, QSlider, QSpinBox
-    )
     from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtWidgets import (QCheckBox, QDoubleSpinBox, QFormLayout,
+                                 QGroupBox, QHBoxLayout, QLabel, QPushButton,
+                                 QSlider, QSpinBox, QTabWidget, QVBoxLayout,
+                                 QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from client.api.client import LabLinkClient
 from client.ui.widgets.power_chart_widget import PowerChartWidget
@@ -130,7 +131,9 @@ class PowerSupplyPanel(QWidget):
         v_readback_layout.addWidget(QLabel("Actual:"))
 
         self.voltage_actual_label = QLabel("0.000 V")
-        self.voltage_actual_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #FF0000;")
+        self.voltage_actual_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #FF0000;"
+        )
         v_readback_layout.addWidget(self.voltage_actual_label)
 
         v_readback_layout.addStretch()
@@ -170,7 +173,9 @@ class PowerSupplyPanel(QWidget):
         i_readback_layout.addWidget(QLabel("Actual:"))
 
         self.current_actual_label = QLabel("0.000 A")
-        self.current_actual_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;")
+        self.current_actual_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #00FF00;"
+        )
         i_readback_layout.addWidget(self.current_actual_label)
 
         i_readback_layout.addStretch()
@@ -184,7 +189,9 @@ class PowerSupplyPanel(QWidget):
         power_layout.addWidget(QLabel("<b>Power:</b>"))
 
         self.power_label = QLabel("0.000 W")
-        self.power_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #0000FF;")
+        self.power_label.setStyleSheet(
+            "font-size: 16pt; font-weight: bold; color: #0000FF;"
+        )
         power_layout.addWidget(self.power_label)
 
         power_layout.addStretch()
@@ -205,7 +212,9 @@ class PowerSupplyPanel(QWidget):
         actions_layout = QHBoxLayout()
 
         self.apply_btn = QPushButton("Apply Settings")
-        self.apply_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
+        self.apply_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;"
+        )
         self.apply_btn.clicked.connect(self._on_apply_settings)
         self.apply_btn.setEnabled(False)
         actions_layout.addWidget(self.apply_btn)
@@ -257,15 +266,17 @@ class PowerSupplyPanel(QWidget):
         self.equipment_id = equipment_id
 
         # Update info
-        model = info.get('model', 'Unknown')
-        manufacturer = info.get('manufacturer', 'Unknown')
-        self.info_label.setText(f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})")
+        model = info.get("model", "Unknown")
+        manufacturer = info.get("manufacturer", "Unknown")
+        self.info_label.setText(
+            f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})"
+        )
 
         # Get capabilities
-        capabilities = info.get('capabilities', {})
-        num_channels = capabilities.get('num_channels', 1)
-        max_voltage = capabilities.get('max_voltage', 60)
-        max_current = capabilities.get('max_current', 10)
+        capabilities = info.get("capabilities", {})
+        num_channels = capabilities.get("num_channels", 1)
+        max_voltage = capabilities.get("max_voltage", 60)
+        max_current = capabilities.get("max_current", 10)
 
         self.num_channels = num_channels
         self.channel_selector.setMaximum(num_channels)
@@ -318,7 +329,7 @@ class PowerSupplyPanel(QWidget):
 
     def _on_output_changed(self, state: int):
         """Handle output checkbox change."""
-        enabled = (state == Qt.CheckState.Checked.value)
+        enabled = state == Qt.CheckState.Checked.value
         logger.info(f"Output changed: {enabled}")
 
     def _on_apply_settings(self):
@@ -331,32 +342,38 @@ class PowerSupplyPanel(QWidget):
         channel = self.channel_selector.value()
         output_enabled = self.output_checkbox.isChecked()
 
-        logger.info(f"Applying: V={voltage}V, I={current}A, CH={channel}, OUT={output_enabled}")
+        logger.info(
+            f"Applying: V={voltage}V, I={current}A, CH={channel}, OUT={output_enabled}"
+        )
 
-        asyncio.create_task(self._apply_settings_async(voltage, current, channel, output_enabled))
+        asyncio.create_task(
+            self._apply_settings_async(voltage, current, channel, output_enabled)
+        )
 
-    async def _apply_settings_async(self, voltage: float, current: float, channel: int, output_enabled: bool):
+    async def _apply_settings_async(
+        self, voltage: float, current: float, channel: int, output_enabled: bool
+    ):
         """Apply settings asynchronously."""
         try:
             # Set voltage
             await self.client.send_command(
                 equipment_id=self.equipment_id,
                 command="set_voltage",
-                parameters={"voltage": voltage, "channel": channel}
+                parameters={"voltage": voltage, "channel": channel},
             )
 
             # Set current
             await self.client.send_command(
                 equipment_id=self.equipment_id,
                 command="set_current",
-                parameters={"current": current, "channel": channel}
+                parameters={"current": current, "channel": channel},
             )
 
             # Set output
             await self.client.send_command(
                 equipment_id=self.equipment_id,
                 command="set_output",
-                parameters={"enabled": output_enabled, "channel": channel}
+                parameters={"enabled": output_enabled, "channel": channel},
             )
 
             self.status_label.setText("Status: Settings applied")
@@ -387,9 +404,7 @@ class PowerSupplyPanel(QWidget):
         """Start streaming (async)."""
         try:
             await self.client.start_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="readings",
-                interval_ms=200
+                equipment_id=self.equipment_id, stream_type="readings", interval_ms=200
             )
 
             self.streaming = True
@@ -409,8 +424,7 @@ class PowerSupplyPanel(QWidget):
         """Stop streaming (async)."""
         try:
             await self.client.stop_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="readings"
+                equipment_id=self.equipment_id, stream_type="readings"
             )
 
             self.streaming = False
@@ -424,17 +438,17 @@ class PowerSupplyPanel(QWidget):
 
     def _on_readings_data(self, message: dict):
         """Handle incoming readings data."""
-        if message.get('equipment_id') != self.equipment_id:
+        if message.get("equipment_id") != self.equipment_id:
             return
 
-        if message.get('stream_type') != 'readings':
+        if message.get("stream_type") != "readings":
             return
 
-        data = message.get('data', {})
+        data = message.get("data", {})
 
         # Update displays
-        voltage = data.get('voltage_actual', 0.0)
-        current = data.get('current_actual', 0.0)
+        voltage = data.get("voltage_actual", 0.0)
+        current = data.get("current_actual", 0.0)
         power = voltage * current
 
         self.voltage_actual_label.setText(f"{voltage:.3f} V")
@@ -442,15 +456,19 @@ class PowerSupplyPanel(QWidget):
         self.power_label.setText(f"{power:.3f} W")
 
         # Update mode
-        in_cv = data.get('in_cv_mode', False)
-        in_cc = data.get('in_cc_mode', False)
+        in_cv = data.get("in_cv_mode", False)
+        in_cc = data.get("in_cc_mode", False)
 
         if in_cv:
             self.mode_label.setText("Mode: CV (Constant Voltage)")
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #FF0000;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #FF0000;"
+            )
         elif in_cc:
             self.mode_label.setText("Mode: CC (Constant Current)")
-            self.mode_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #00FF00;")
+            self.mode_label.setStyleSheet(
+                "font-weight: bold; font-size: 12pt; color: #00FF00;"
+            )
         else:
             self.mode_label.setText("Mode: ---")
 

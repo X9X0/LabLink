@@ -2,9 +2,10 @@
 
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 from server.config.settings import settings
@@ -17,17 +18,25 @@ class EquipmentProfile(BaseModel):
 
     name: str = Field(..., description="Profile name")
     description: Optional[str] = Field(None, description="Profile description")
-    equipment_type: str = Field(..., description="Equipment type (oscilloscope, power_supply, etc.)")
+    equipment_type: str = Field(
+        ..., description="Equipment type (oscilloscope, power_supply, etc.)"
+    )
     model: str = Field(..., description="Equipment model")
-    settings: Dict[str, Any] = Field(default_factory=dict, description="Equipment settings")
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
-    modified_at: datetime = Field(default_factory=datetime.now, description="Last modification timestamp")
-    tags: List[str] = Field(default_factory=list, description="Profile tags for categorization")
+    settings: Dict[str, Any] = Field(
+        default_factory=dict, description="Equipment settings"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.now, description="Creation timestamp"
+    )
+    modified_at: datetime = Field(
+        default_factory=datetime.now, description="Last modification timestamp"
+    )
+    tags: List[str] = Field(
+        default_factory=list, description="Profile tags for categorization"
+    )
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class ProfileManager:
@@ -43,8 +52,10 @@ class ProfileManager:
     def _get_profile_path(self, profile_name: str) -> Path:
         """Get path for a profile file."""
         # Sanitize profile name
-        safe_name = "".join(c for c in profile_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_name = safe_name.replace(' ', '_')
+        safe_name = "".join(
+            c for c in profile_name if c.isalnum() or c in (" ", "-", "_")
+        ).strip()
+        safe_name = safe_name.replace(" ", "_")
         return self.profile_dir / f"{safe_name}.json"
 
     def save_profile(self, profile: EquipmentProfile) -> bool:
@@ -65,7 +76,7 @@ class ProfileManager:
             profile.modified_at = datetime.now()
             profile_path = self._get_profile_path(profile.name)
 
-            with open(profile_path, 'w') as f:
+            with open(profile_path, "w") as f:
                 json.dump(profile.dict(), f, indent=2, default=str)
 
             self._profiles_cache[profile.name] = profile
@@ -101,7 +112,7 @@ class ProfileManager:
                 logger.warning(f"Profile '{profile_name}' not found at {profile_path}")
                 return None
 
-            with open(profile_path, 'r') as f:
+            with open(profile_path, "r") as f:
                 data = json.load(f)
 
             profile = EquipmentProfile(**data)
@@ -113,7 +124,9 @@ class ProfileManager:
             logger.error(f"Failed to load profile '{profile_name}': {e}")
             return None
 
-    def list_profiles(self, equipment_type: Optional[str] = None) -> List[EquipmentProfile]:
+    def list_profiles(
+        self, equipment_type: Optional[str] = None
+    ) -> List[EquipmentProfile]:
         """
         List all available profiles.
 
@@ -131,11 +144,14 @@ class ProfileManager:
         try:
             for profile_file in self.profile_dir.glob("*.json"):
                 try:
-                    with open(profile_file, 'r') as f:
+                    with open(profile_file, "r") as f:
                         data = json.load(f)
                     profile = EquipmentProfile(**data)
 
-                    if equipment_type is None or profile.equipment_type == equipment_type:
+                    if (
+                        equipment_type is None
+                        or profile.equipment_type == equipment_type
+                    ):
                         profiles.append(profile)
 
                 except Exception as e:
@@ -196,12 +212,14 @@ class ProfileManager:
 
         try:
             # Verify equipment type matches
-            if hasattr(equipment, 'model') and equipment.model != profile.model:
+            if hasattr(equipment, "model") and equipment.model != profile.model:
                 logger.warning(
                     f"Profile model '{profile.model}' doesn't match equipment model '{equipment.model}'"
                 )
 
-            logger.info(f"Applying profile '{profile_name}' to equipment {equipment.cached_info.id if equipment.cached_info else 'unknown'}")
+            logger.info(
+                f"Applying profile '{profile_name}' to equipment {equipment.cached_info.id if equipment.cached_info else 'unknown'}"
+            )
 
             # Apply settings
             # This is a placeholder - actual implementation depends on equipment driver structure
@@ -221,7 +239,7 @@ class ProfileManager:
         equipment,
         profile_name: str,
         description: Optional[str] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Optional[EquipmentProfile]:
         """
         Create a profile from current equipment settings.
@@ -243,10 +261,14 @@ class ProfileManager:
             profile = EquipmentProfile(
                 name=profile_name,
                 description=description or f"Profile for {equipment.model}",
-                equipment_type=equipment.cached_info.type.value if equipment.cached_info else "unknown",
+                equipment_type=(
+                    equipment.cached_info.type.value
+                    if equipment.cached_info
+                    else "unknown"
+                ),
                 model=equipment.model,
                 settings=current_settings,
-                tags=tags or []
+                tags=tags or [],
             )
 
             if self.save_profile(profile):
@@ -279,11 +301,11 @@ def create_default_profiles():
             model="generic",
             settings={
                 "timebase_scale": 0.001,  # 1ms/div
-                "channel_1_scale": 1.0,    # 1V/div
+                "channel_1_scale": 1.0,  # 1V/div
                 "channel_1_coupling": "AC",
-                "trigger_mode": "auto"
+                "trigger_mode": "auto",
             },
-            tags=["debug", "quick", "default"]
+            tags=["debug", "quick", "default"],
         ),
         EquipmentProfile(
             name="Oscilloscope - Power Analysis",
@@ -292,12 +314,12 @@ def create_default_profiles():
             model="generic",
             settings={
                 "timebase_scale": 0.00001,  # 10us/div
-                "channel_1_scale": 5.0,      # 5V/div
+                "channel_1_scale": 5.0,  # 5V/div
                 "channel_1_coupling": "DC",
-                "trigger_mode": "normal"
+                "trigger_mode": "normal",
             },
-            tags=["power", "analysis"]
-        )
+            tags=["power", "analysis"],
+        ),
     ]
 
     # Power supply default profiles
@@ -307,37 +329,25 @@ def create_default_profiles():
             description="5V @ 1A for digital logic circuits",
             equipment_type="power_supply",
             model="generic",
-            settings={
-                "voltage": 5.0,
-                "current_limit": 1.0,
-                "output_enabled": False
-            },
-            tags=["5v", "logic", "default"]
+            settings={"voltage": 5.0, "current_limit": 1.0, "output_enabled": False},
+            tags=["5v", "logic", "default"],
         ),
         EquipmentProfile(
             name="Power Supply - 3.3V MCU",
             description="3.3V @ 500mA for microcontrollers",
             equipment_type="power_supply",
             model="generic",
-            settings={
-                "voltage": 3.3,
-                "current_limit": 0.5,
-                "output_enabled": False
-            },
-            tags=["3v3", "mcu", "default"]
+            settings={"voltage": 3.3, "current_limit": 0.5, "output_enabled": False},
+            tags=["3v3", "mcu", "default"],
         ),
         EquipmentProfile(
             name="Power Supply - 12V Standard",
             description="12V @ 2A for general use",
             equipment_type="power_supply",
             model="generic",
-            settings={
-                "voltage": 12.0,
-                "current_limit": 2.0,
-                "output_enabled": False
-            },
-            tags=["12v", "standard"]
-        )
+            settings={"voltage": 12.0, "current_limit": 2.0, "output_enabled": False},
+            tags=["12v", "standard"],
+        ),
     ]
 
     # Electronic load default profiles
@@ -347,25 +357,17 @@ def create_default_profiles():
             description="Constant current mode for battery discharge testing",
             equipment_type="electronic_load",
             model="generic",
-            settings={
-                "mode": "CC",
-                "current": 1.0,
-                "load_enabled": False
-            },
-            tags=["battery", "discharge", "test"]
+            settings={"mode": "CC", "current": 1.0, "load_enabled": False},
+            tags=["battery", "discharge", "test"],
         ),
         EquipmentProfile(
             name="Electronic Load - Power Supply Test",
             description="Constant resistance mode for power supply testing",
             equipment_type="electronic_load",
             model="generic",
-            settings={
-                "mode": "CR",
-                "resistance": 10.0,
-                "load_enabled": False
-            },
-            tags=["power_supply", "test"]
-        )
+            settings={"mode": "CR", "resistance": 10.0, "load_enabled": False},
+            tags=["power_supply", "test"],
+        ),
     ]
 
     # Save all default profiles

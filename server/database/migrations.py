@@ -1,10 +1,10 @@
 """Database migration system for LabLink."""
 
-import sqlite3
 import logging
-from typing import List, Dict, Any, Optional
+import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +64,15 @@ class MigrationManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version INTEGER PRIMARY KEY,
                 description TEXT NOT NULL,
                 applied_at TEXT NOT NULL
             )
-        """)
+        """
+        )
 
         conn.commit()
         conn.close()
@@ -115,7 +117,9 @@ class MigrationManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT version, description, applied_at FROM schema_migrations ORDER BY version")
+        cursor.execute(
+            "SELECT version, description, applied_at FROM schema_migrations ORDER BY version"
+        )
         rows = cursor.fetchall()
 
         conn.close()
@@ -155,7 +159,9 @@ class MigrationManager:
 
         for migration in pending:
             try:
-                logger.info(f"Applying migration {migration.version}: {migration.description}")
+                logger.info(
+                    f"Applying migration {migration.version}: {migration.description}"
+                )
 
                 # Apply migration
                 migration.up(conn)
@@ -164,7 +170,11 @@ class MigrationManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     "INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
-                    (migration.version, migration.description, datetime.now().isoformat()),
+                    (
+                        migration.version,
+                        migration.description,
+                        datetime.now().isoformat(),
+                    ),
                 )
 
                 conn.commit()
@@ -192,7 +202,8 @@ class MigrationManager:
 
         # Get migrations to rollback (in reverse order)
         to_rollback = [
-            m for m in reversed(self.migrations)
+            m
+            for m in reversed(self.migrations)
             if target_version < m.version <= current_version
         ]
 
@@ -204,14 +215,19 @@ class MigrationManager:
 
         for migration in to_rollback:
             try:
-                logger.info(f"Rolling back migration {migration.version}: {migration.description}")
+                logger.info(
+                    f"Rolling back migration {migration.version}: {migration.description}"
+                )
 
                 # Rollback migration
                 migration.down(conn)
 
                 # Remove migration record
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM schema_migrations WHERE version = ?", (migration.version,))
+                cursor.execute(
+                    "DELETE FROM schema_migrations WHERE version = ?",
+                    (migration.version,),
+                )
 
                 conn.commit()
 

@@ -1,13 +1,14 @@
 """Equipment data models for GUI client."""
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class EquipmentType(str, Enum):
     """Equipment type enumeration."""
+
     OSCILLOSCOPE = "oscilloscope"
     POWER_SUPPLY = "power_supply"
     ELECTRONIC_LOAD = "electronic_load"
@@ -18,6 +19,7 @@ class EquipmentType(str, Enum):
 
 class ConnectionStatus(str, Enum):
     """Connection status enumeration."""
+
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
@@ -27,6 +29,7 @@ class ConnectionStatus(str, Enum):
 @dataclass
 class Equipment:
     """Equipment model."""
+
     equipment_id: str
     name: str
     equipment_type: EquipmentType
@@ -45,7 +48,7 @@ class Equipment:
             self.capabilities = []
 
     @classmethod
-    def from_api_dict(cls, data: Dict[str, Any]) -> 'Equipment':
+    def from_api_dict(cls, data: Dict[str, Any]) -> "Equipment":
         """Create Equipment from API response dictionary."""
         return cls(
             equipment_id=data.get("equipment_id", ""),
@@ -60,7 +63,7 @@ class Equipment:
             idn=data.get("idn"),
             capabilities=data.get("capabilities", []),
             current_readings=data.get("readings"),
-            last_update=datetime.now()
+            last_update=datetime.now(),
         )
 
     def update_from_api(self, data: Dict[str, Any]):
@@ -77,6 +80,7 @@ class Equipment:
 @dataclass
 class EquipmentCommand:
     """Equipment command model."""
+
     command: str
     label: str
     description: str

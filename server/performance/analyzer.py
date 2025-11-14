@@ -7,19 +7,12 @@ Analyzes performance trends, detects degradation, and generates reports.
 
 import logging
 import statistics
-from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from .models import (
-    PerformanceMetric,
-    PerformanceTrend,
-    PerformanceReport,
-    PerformanceBaseline,
-    PerformanceAlert,
-    TrendDirection,
-    PerformanceStatus,
-    MetricType,
-)
+from .models import (MetricType, PerformanceAlert, PerformanceBaseline,
+                     PerformanceMetric, PerformanceReport, PerformanceStatus,
+                     PerformanceTrend, TrendDirection)
 from .monitor import get_performance_monitor
 
 logger = logging.getLogger(__name__)
@@ -45,7 +38,7 @@ class PerformanceAnalyzer:
         equipment_id: Optional[str],
         component: str,
         metric_type: MetricType,
-        hours: float = 24.0
+        hours: float = 24.0,
     ) -> Optional[PerformanceTrend]:
         """
         Analyze performance trend over specified period.
@@ -69,11 +62,13 @@ class PerformanceAnalyzer:
             equipment_id=equipment_id,
             component=component,
             metric_type=metric_type,
-            start_time=start_time
+            start_time=start_time,
         )
 
         if len(metrics) < 10:
-            logger.warning(f"Insufficient data for trend analysis (need 10+, got {len(metrics)})")
+            logger.warning(
+                f"Insufficient data for trend analysis (need 10+, got {len(metrics)})"
+            )
             return None
 
         # Sort by timestamp
@@ -81,7 +76,9 @@ class PerformanceAnalyzer:
 
         # Extract values and timestamps
         values = [m.value for m in metrics]
-        timestamps = [(m.timestamp - metrics[0].timestamp).total_seconds() / 3600 for m in metrics]
+        timestamps = [
+            (m.timestamp - metrics[0].timestamp).total_seconds() / 3600 for m in metrics
+        ]
 
         # Calculate statistics
         mean = statistics.mean(values)
@@ -141,7 +138,7 @@ class PerformanceAnalyzer:
             deviation_from_baseline=deviation_from_baseline,
             predicted_value_1h=predicted_1h,
             predicted_value_24h=predicted_24h,
-            time_to_threshold=time_to_threshold
+            time_to_threshold=time_to_threshold,
         )
 
         return trend
@@ -179,11 +176,7 @@ class PerformanceAnalyzer:
         return slope, correlation
 
     def _determine_trend_direction(
-        self,
-        slope: float,
-        correlation: float,
-        std_dev: float,
-        mean: float
+        self, slope: float, correlation: float, std_dev: float, mean: float
     ) -> TrendDirection:
         """Determine trend direction from statistics."""
         # Require minimum correlation for trend confidence
@@ -216,9 +209,7 @@ class PerformanceAnalyzer:
     # ==================== Performance Status ====================
 
     async def get_performance_status(
-        self,
-        equipment_id: Optional[str],
-        component: str
+        self, equipment_id: Optional[str], component: str
     ) -> PerformanceStatus:
         """
         Determine overall performance status for component.
@@ -239,7 +230,7 @@ class PerformanceAnalyzer:
             equipment_id=equipment_id,
             component=component,
             start_time=datetime.now() - timedelta(hours=1),
-            limit=100
+            limit=100,
         )
 
         if not metrics:
@@ -251,7 +242,9 @@ class PerformanceAnalyzer:
             return PerformanceStatus.UNKNOWN
 
         # Calculate average deviation from baseline
-        deviations = [m.deviation_percent for m in metrics if m.deviation_percent is not None]
+        deviations = [
+            m.deviation_percent for m in metrics if m.deviation_percent is not None
+        ]
         if not deviations:
             return PerformanceStatus.UNKNOWN
 
@@ -275,7 +268,7 @@ class PerformanceAnalyzer:
         self,
         equipment_ids: Optional[List[str]] = None,
         components: Optional[List[str]] = None,
-        hours: float = 24.0
+        hours: float = 24.0,
     ) -> PerformanceReport:
         """
         Generate comprehensive performance report.
@@ -303,7 +296,7 @@ class PerformanceAnalyzer:
 
         if components:
             for component in components:
-                for equipment_id in (equipment_ids or [None]):
+                for equipment_id in equipment_ids or [None]:
                     # Analyze latency trend
                     latency_trend = await self.analyze_trend(
                         equipment_id, component, MetricType.LATENCY, hours
@@ -317,7 +310,11 @@ class PerformanceAnalyzer:
                     key = f"{equipment_id}:{component}" if equipment_id else component
                     component_performance[key] = {
                         "status": status.value,
-                        "latency_trend": latency_trend.direction.value if latency_trend else "unknown"
+                        "latency_trend": (
+                            latency_trend.direction.value
+                            if latency_trend
+                            else "unknown"
+                        ),
                     }
 
                     if status == PerformanceStatus.DEGRADED:
@@ -333,9 +330,11 @@ class PerformanceAnalyzer:
                 PerformanceStatus.DEGRADED: 65,
                 PerformanceStatus.POOR: 40,
                 PerformanceStatus.CRITICAL: 20,
-                PerformanceStatus.UNKNOWN: 50
+                PerformanceStatus.UNKNOWN: 50,
             }
-            statuses = [PerformanceStatus(v["status"]) for v in component_performance.values()]
+            statuses = [
+                PerformanceStatus(v["status"]) for v in component_performance.values()
+            ]
             health_score = statistics.mean([status_scores[s] for s in statuses])
         else:
             health_score = 50.0
@@ -370,16 +369,13 @@ class PerformanceAnalyzer:
             recommendations=recommendations,
             component_performance=component_performance,
             trend_analyses=trend_analyses,
-            alerts=active_alerts
+            alerts=active_alerts,
         )
 
         return report
 
     def _generate_recommendations(
-        self,
-        degraded: List[str],
-        critical: List[str],
-        alerts: List[PerformanceAlert]
+        self, degraded: List[str], critical: List[str], alerts: List[PerformanceAlert]
     ) -> List[str]:
         """Generate performance improvement recommendations."""
         recommendations = []
@@ -396,10 +392,14 @@ class PerformanceAnalyzer:
                 f"{len(degraded)} component(s) showing performance degradation"
             )
             recommendations.append("Monitor trends closely for further degradation")
-            recommendations.append("Consider baseline recalibration if changes are expected")
+            recommendations.append(
+                "Consider baseline recalibration if changes are expected"
+            )
 
         if len(alerts) > 5:
-            recommendations.append("High number of performance alerts - review system health")
+            recommendations.append(
+                "High number of performance alerts - review system health"
+            )
 
         if not recommendations:
             recommendations.append("Performance within expected parameters")

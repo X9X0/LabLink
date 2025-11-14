@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 # Color codes for terminal output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
 
 
 def print_header(text: str):
@@ -51,8 +51,8 @@ class ASTVisitor(ast.NodeVisitor):
         """Visit class definition."""
         self.current_class = node.name
         self.classes[node.name] = {
-            'methods': [],
-            'bases': [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
+            "methods": [],
+            "bases": [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
         }
         self.generic_visit(node)
         self.current_class = None
@@ -60,7 +60,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         """Visit function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -68,7 +68,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node):
         """Visit async function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -77,7 +77,7 @@ class ASTVisitor(ast.NodeVisitor):
 def parse_python_file(filepath: Path):
     """Parse a Python file and extract structure information."""
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             tree = ast.parse(f.read())
         visitor = ASTVisitor()
         visitor.visit(tree)
@@ -110,7 +110,7 @@ def verify_models():
         "AlarmEvent",
         "AlarmAcknowledgment",
         "AlarmStatistics",
-        "NotificationConfig"
+        "NotificationConfig",
     ]
 
     missing_classes = [cls for cls in required_classes if cls not in visitor.classes]
@@ -159,7 +159,7 @@ def verify_manager():
         "get_event",
         "list_active_events",
         "list_events",
-        "get_statistics"
+        "get_statistics",
     ]
 
     manager_methods = visitor.classes.get("AlarmManager", {}).get("methods", [])
@@ -200,7 +200,7 @@ def verify_notifications():
         "send_notification",
         "_send_email",
         "_send_sms",
-        "_send_websocket"
+        "_send_websocket",
     ]
 
     manager_methods = visitor.classes.get("NotificationManager", {}).get("methods", [])
@@ -245,7 +245,7 @@ def verify_api():
         "clear_alarm",
         "get_alarm_statistics",
         "configure_notifications",
-        "get_notification_config"
+        "get_notification_config",
     ]
 
     found_endpoints = [ep for ep in required_endpoints if ep in visitor.functions]
@@ -308,7 +308,7 @@ def verify_module_init():
         "AlarmConfig",
         "AlarmEvent",
         "alarm_manager",
-        "notification_manager"
+        "notification_manager",
     ]
 
     missing_exports = [exp for exp in required_exports if exp not in content]
@@ -333,7 +333,7 @@ def main():
         ("Notification Manager", verify_notifications),
         ("API Endpoints", verify_api),
         ("Module Exports", verify_module_init),
-        ("Integration", verify_integration)
+        ("Integration", verify_integration),
     ]
 
     results = []

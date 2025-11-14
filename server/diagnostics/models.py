@@ -1,14 +1,16 @@
 """Diagnostics data models."""
 
-from enum import Enum
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-from pydantic import BaseModel, Field
 import uuid
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class DiagnosticStatus(str, Enum):
     """Diagnostic test status."""
+
     UNKNOWN = "unknown"
     PASS = "pass"
     FAIL = "fail"
@@ -20,6 +22,7 @@ class DiagnosticStatus(str, Enum):
 
 class DiagnosticCategory(str, Enum):
     """Category of diagnostic test."""
+
     CONNECTION = "connection"
     COMMUNICATION = "communication"
     PERFORMANCE = "performance"
@@ -31,6 +34,7 @@ class DiagnosticCategory(str, Enum):
 
 class HealthStatus(str, Enum):
     """Overall equipment health status."""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     WARNING = "warning"
@@ -41,6 +45,7 @@ class HealthStatus(str, Enum):
 
 class DiagnosticTest(BaseModel):
     """A single diagnostic test configuration."""
+
     test_id: str = Field(default_factory=lambda: f"test_{uuid.uuid4().hex[:8]}")
     name: str = Field(..., description="Test name")
     description: Optional[str] = Field(None, description="Test description")
@@ -61,6 +66,7 @@ class DiagnosticTest(BaseModel):
 
 class DiagnosticResult(BaseModel):
     """Result of a diagnostic test execution."""
+
     result_id: str = Field(default_factory=lambda: f"result_{uuid.uuid4().hex[:8]}")
     test_id: str = Field(..., description="Associated test ID")
     equipment_id: Optional[str] = Field(None, description="Equipment ID")
@@ -78,15 +84,20 @@ class DiagnosticResult(BaseModel):
 
     # Details
     message: Optional[str] = Field(None, description="Result message")
-    details: Dict[str, Any] = Field(default_factory=dict, description="Additional details")
+    details: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional details"
+    )
     error: Optional[str] = Field(None, description="Error message if failed")
 
     # Recommendations
-    recommendations: List[str] = Field(default_factory=list, description="Recommendations")
+    recommendations: List[str] = Field(
+        default_factory=list, description="Recommendations"
+    )
 
 
 class ConnectionDiagnostics(BaseModel):
     """Connection diagnostic results."""
+
     equipment_id: str
     is_connected: bool
     connection_time: Optional[datetime] = None
@@ -107,6 +118,7 @@ class ConnectionDiagnostics(BaseModel):
 
 class CommunicationDiagnostics(BaseModel):
     """Communication diagnostic results."""
+
     equipment_id: str
 
     # Command statistics
@@ -133,6 +145,7 @@ class CommunicationDiagnostics(BaseModel):
 
 class PerformanceBenchmark(BaseModel):
     """Performance benchmark results."""
+
     benchmark_id: str = Field(default_factory=lambda: f"bench_{uuid.uuid4().hex[:8]}")
     equipment_id: str
     timestamp: datetime = Field(default_factory=datetime.now)
@@ -157,6 +170,7 @@ class PerformanceBenchmark(BaseModel):
 
 class EquipmentHealth(BaseModel):
     """Overall equipment health assessment."""
+
     equipment_id: str
     timestamp: datetime = Field(default_factory=datetime.now)
 
@@ -189,6 +203,7 @@ class EquipmentHealth(BaseModel):
 
 class DiagnosticReport(BaseModel):
     """Comprehensive diagnostic report."""
+
     report_id: str = Field(default_factory=lambda: f"report_{uuid.uuid4().hex[:8]}")
     timestamp: datetime = Field(default_factory=datetime.now)
 
@@ -219,6 +234,7 @@ class DiagnosticReport(BaseModel):
 
 class SystemDiagnostics(BaseModel):
     """System-wide diagnostics."""
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
     # Equipment overview

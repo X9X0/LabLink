@@ -1,15 +1,17 @@
 """Data models for automated test sequences."""
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Any, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-import uuid
 
 
 class TestStatus(str, Enum):
     """Test execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     PASSED = "passed"
@@ -20,6 +22,7 @@ class TestStatus(str, Enum):
 
 class StepType(str, Enum):
     """Type of test step."""
+
     SETUP = "setup"  # Equipment setup/configuration
     COMMAND = "command"  # Send command to equipment
     MEASUREMENT = "measurement"  # Take measurement
@@ -33,6 +36,7 @@ class StepType(str, Enum):
 
 class ValidationOperator(str, Enum):
     """Validation comparison operators."""
+
     EQUAL = "=="
     NOT_EQUAL = "!="
     LESS_THAN = "<"
@@ -45,6 +49,7 @@ class ValidationOperator(str, Enum):
 
 class TestStep(BaseModel):
     """Single step in a test sequence."""
+
     step_id: str = Field(default_factory=lambda: f"step_{uuid.uuid4().hex[:8]}")
     step_number: int = Field(..., description="Step number in sequence")
     step_type: StepType
@@ -104,6 +109,7 @@ class TestStep(BaseModel):
 
 class ParameterSweep(BaseModel):
     """Parameter sweep configuration."""
+
     sweep_id: str = Field(default_factory=lambda: f"sweep_{uuid.uuid4().hex[:8]}")
     parameter_name: str = Field(..., description="Parameter to sweep")
     start_value: float
@@ -129,19 +135,13 @@ class ParameterSweep(BaseModel):
                 points = np.logspace(
                     np.log10(self.start_value),
                     np.log10(self.stop_value),
-                    self.num_points
+                    self.num_points,
                 )
             else:
-                points = np.linspace(
-                    self.start_value,
-                    self.stop_value,
-                    self.num_points
-                )
+                points = np.linspace(self.start_value, self.stop_value, self.num_points)
         elif self.step_size:
             points = np.arange(
-                self.start_value,
-                self.stop_value + self.step_size,
-                self.step_size
+                self.start_value, self.stop_value + self.step_size, self.step_size
             )
         else:
             raise ValueError("Must specify either num_points or step_size")
@@ -152,13 +152,16 @@ class ParameterSweep(BaseModel):
 
 class TestSequence(BaseModel):
     """Complete automated test sequence."""
+
     sequence_id: str = Field(default_factory=lambda: f"seq_{uuid.uuid4().hex[:12]}")
     name: str = Field(..., description="Test sequence name")
     version: str = Field(default="1.0")
     description: Optional[str] = None
 
     # Equipment
-    equipment_ids: List[str] = Field(default_factory=list, description="Equipment used in test")
+    equipment_ids: List[str] = Field(
+        default_factory=list, description="Equipment used in test"
+    )
 
     # Steps
     steps: List[TestStep] = Field(default_factory=list)
@@ -184,6 +187,7 @@ class TestSequence(BaseModel):
 
 class TestExecution(BaseModel):
     """Test sequence execution instance."""
+
     execution_id: str = Field(default_factory=lambda: f"exec_{uuid.uuid4().hex[:12]}")
     sequence_id: str
     sequence_name: str
@@ -237,6 +241,7 @@ class TestExecution(BaseModel):
 
 class TestResult(BaseModel):
     """Test result summary for archival."""
+
     result_id: str = Field(default_factory=lambda: f"result_{uuid.uuid4().hex[:12]}")
     execution_id: str
     sequence_id: str
@@ -294,6 +299,7 @@ class TestResult(BaseModel):
 
 class TestReport(BaseModel):
     """Comprehensive test report."""
+
     report_id: str = Field(default_factory=lambda: f"report_{uuid.uuid4().hex[:12]}")
     title: str
 

@@ -2,11 +2,11 @@
 
 import logging
 from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
-from shared.models.commands import DataStreamConfig
-
 from server.equipment.manager import equipment_manager
+from shared.models.commands import DataStreamConfig
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ async def get_data_snapshot(equipment_id: str, data_type: str = "readings"):
         elif data_type == "measurements":
             result = await equipment.execute_command("get_measurements", {"channel": 1})
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown data type: {data_type}")
+            raise HTTPException(
+                status_code=400, detail=f"Unknown data type: {data_type}"
+            )
 
         return result
     except HTTPException:

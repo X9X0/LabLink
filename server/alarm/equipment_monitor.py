@@ -10,8 +10,8 @@ enabling alarms to automatically trigger based on equipment status changes.
 
 import asyncio
 import logging
-from typing import Dict, Optional, Set
 from datetime import datetime
+from typing import Dict, Optional, Set
 
 from shared.models.equipment import EquipmentStatus
 
@@ -101,7 +101,9 @@ class EquipmentAlarmIntegrator:
             while self._running:
                 try:
                     # Get equipment status
-                    status = await self.equipment_manager.get_device_status(equipment_id)
+                    status = await self.equipment_manager.get_device_status(
+                        equipment_id
+                    )
 
                     if status:
                         # Check alarms for this equipment
@@ -128,7 +130,8 @@ class EquipmentAlarmIntegrator:
         # Get all alarms for this equipment
         alarms = await self.alarm_manager.list_alarms()
         equipment_alarms = [
-            alarm for alarm in alarms
+            alarm
+            for alarm in alarms
             if alarm.equipment_id == equipment_id and alarm.enabled
         ]
 
@@ -164,28 +167,28 @@ class EquipmentAlarmIntegrator:
         readings = {}
 
         # Extract common parameters
-        if hasattr(status, 'voltage') and status.voltage is not None:
-            readings['voltage'] = float(status.voltage)
-            readings['v'] = float(status.voltage)
-            readings['volt'] = float(status.voltage)
+        if hasattr(status, "voltage") and status.voltage is not None:
+            readings["voltage"] = float(status.voltage)
+            readings["v"] = float(status.voltage)
+            readings["volt"] = float(status.voltage)
 
-        if hasattr(status, 'current') and status.current is not None:
-            readings['current'] = float(status.current)
-            readings['i'] = float(status.current)
-            readings['amp'] = float(status.current)
+        if hasattr(status, "current") and status.current is not None:
+            readings["current"] = float(status.current)
+            readings["i"] = float(status.current)
+            readings["amp"] = float(status.current)
 
-        if hasattr(status, 'power') and status.power is not None:
-            readings['power'] = float(status.power)
-            readings['p'] = float(status.power)
-            readings['watt'] = float(status.power)
+        if hasattr(status, "power") and status.power is not None:
+            readings["power"] = float(status.power)
+            readings["p"] = float(status.power)
+            readings["watt"] = float(status.power)
 
-        if hasattr(status, 'temperature') and status.temperature is not None:
-            readings['temperature'] = float(status.temperature)
-            readings['temp'] = float(status.temperature)
-            readings['t'] = float(status.temperature)
+        if hasattr(status, "temperature") and status.temperature is not None:
+            readings["temperature"] = float(status.temperature)
+            readings["temp"] = float(status.temperature)
+            readings["t"] = float(status.temperature)
 
         # Extract custom parameters from status_info dict
-        if hasattr(status, 'status_info') and isinstance(status.status_info, dict):
+        if hasattr(status, "status_info") and isinstance(status.status_info, dict):
             for key, value in status.status_info.items():
                 if isinstance(value, (int, float)):
                     readings[key.lower()] = float(value)
@@ -201,7 +204,9 @@ class EquipmentAlarmIntegrator:
         """
         if self._running:
             await self._start_equipment_monitoring(equipment_id)
-            logger.info(f"Started alarm monitoring for connected equipment: {equipment_id}")
+            logger.info(
+                f"Started alarm monitoring for connected equipment: {equipment_id}"
+            )
 
     async def on_equipment_disconnected(self, equipment_id: str):
         """
@@ -218,7 +223,9 @@ class EquipmentAlarmIntegrator:
             if alarm.equipment_id == equipment_id:
                 await self.alarm_manager.clear_alarm(alarm.alarm_id)
 
-        logger.info(f"Stopped alarm monitoring for disconnected equipment: {equipment_id}")
+        logger.info(
+            f"Stopped alarm monitoring for disconnected equipment: {equipment_id}"
+        )
 
     async def check_equipment_now(self, equipment_id: str):
         """
@@ -256,7 +263,7 @@ class EquipmentAlarmIntegrator:
             "running": self._running,
             "monitored_equipment": list(self._monitoring_tasks.keys()),
             "check_interval": self._check_interval,
-            "active_tasks": len(self._monitoring_tasks)
+            "active_tasks": len(self._monitoring_tasks),
         }
 
 
@@ -281,5 +288,7 @@ def initialize_integrator(equipment_manager, alarm_manager) -> EquipmentAlarmInt
         Initialized integrator instance
     """
     global equipment_alarm_integrator
-    equipment_alarm_integrator = EquipmentAlarmIntegrator(equipment_manager, alarm_manager)
+    equipment_alarm_integrator = EquipmentAlarmIntegrator(
+        equipment_manager, alarm_manager
+    )
     return equipment_alarm_integrator

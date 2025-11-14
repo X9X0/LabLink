@@ -1,16 +1,13 @@
 """Statistical Process Control (SPC) analysis module."""
 
-import numpy as np
 import logging
-from typing import Tuple, List, Dict, Optional
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 from scipy import stats
 
-from .models import (
-    SPCChartType,
-    SPCChartConfig,
-    SPCChartResult,
-    CapabilityResult,
-)
+from .models import (CapabilityResult, SPCChartConfig, SPCChartResult,
+                     SPCChartType)
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +85,7 @@ class SPCAnalyzer:
         else:
             raise ValueError(f"Unsupported chart type: {chart_type}")
 
-    def _xbar_r_chart(
-        self, data: np.ndarray, config: SPCChartConfig
-    ) -> SPCChartResult:
+    def _xbar_r_chart(self, data: np.ndarray, config: SPCChartConfig) -> SPCChartResult:
         """Generate X-bar and R control chart.
 
         Args:
@@ -104,7 +99,9 @@ class SPCAnalyzer:
 
         # Reshape data into subgroups
         num_subgroups = len(data) // subgroup_size
-        subgroups = data[: num_subgroups * subgroup_size].reshape(num_subgroups, subgroup_size)
+        subgroups = data[: num_subgroups * subgroup_size].reshape(
+            num_subgroups, subgroup_size
+        )
 
         # Calculate subgroup means and ranges
         xbar_values = np.mean(subgroups, axis=1)
@@ -140,15 +137,15 @@ class SPCAnalyzer:
             violations=violations,
         )
 
-    def _xbar_s_chart(
-        self, data: np.ndarray, config: SPCChartConfig
-    ) -> SPCChartResult:
+    def _xbar_s_chart(self, data: np.ndarray, config: SPCChartConfig) -> SPCChartResult:
         """Generate X-bar and S (standard deviation) control chart."""
         subgroup_size = config.subgroup_size
 
         # Reshape data into subgroups
         num_subgroups = len(data) // subgroup_size
-        subgroups = data[: num_subgroups * subgroup_size].reshape(num_subgroups, subgroup_size)
+        subgroups = data[: num_subgroups * subgroup_size].reshape(
+            num_subgroups, subgroup_size
+        )
 
         # Calculate subgroup means and standard deviations
         xbar_values = np.mean(subgroups, axis=1)
@@ -417,6 +414,8 @@ class SPCAnalyzer:
             result.capability_assessment = assessment
 
         else:
-            result.capability_assessment = "Specification limits required for capability analysis"
+            result.capability_assessment = (
+                "Specification limits required for capability analysis"
+            )
 
         return result

@@ -1,20 +1,12 @@
 """API endpoints for Equipment Discovery system."""
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import List, Optional
 
-from discovery import (
-    get_discovery_manager,
-    DiscoveryScanRequest,
-    DiscoveryScanResult,
-    DiscoveredDevice,
-    DiscoveryStatus,
-    SmartRecommendation,
-    DeviceAlias,
-    ConnectionStatistics,
-    ConnectionHistoryEntry,
-    LastKnownGood,
-)
+from discovery import (ConnectionHistoryEntry, ConnectionStatistics,
+                       DeviceAlias, DiscoveredDevice, DiscoveryScanRequest,
+                       DiscoveryScanResult, DiscoveryStatus, LastKnownGood,
+                       SmartRecommendation, get_discovery_manager)
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/discovery", tags=["discovery"])
 

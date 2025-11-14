@@ -1,22 +1,28 @@
 """Reusable real-time plot widget using pyqtgraph."""
 
 import logging
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
+
 import numpy as np
 
 try:
     import pyqtgraph as pg
-    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
     from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                                 QWidget)
+
     PYQTGRAPH_AVAILABLE = True
 except ImportError:
     PYQTGRAPH_AVAILABLE = False
     pg = None
+
     # Define dummy classes for when PyQt6 is not available
     class QWidget:  # type: ignore
         """Dummy QWidget for when PyQt6 is not available."""
+
         def __init__(self, parent=None):
             pass
+
     QVBoxLayout = None  # type: ignore
     QHBoxLayout = None  # type: ignore
     QPushButton = None  # type: ignore
@@ -53,12 +59,12 @@ class RealTimePlotWidget(QWidget):
         # Plot curves
         self._curves: Dict[str, pg.PlotDataItem] = {}
         self._colors = [
-            (255, 0, 0),      # Red
-            (0, 255, 0),      # Green
-            (0, 0, 255),      # Blue
-            (255, 255, 0),    # Yellow
-            (255, 0, 255),    # Magenta
-            (0, 255, 255),    # Cyan
+            (255, 0, 0),  # Red
+            (0, 255, 0),  # Green
+            (0, 0, 255),  # Blue
+            (255, 255, 0),  # Yellow
+            (255, 0, 255),  # Magenta
+            (0, 255, 255),  # Cyan
         ]
         self._next_color_index = 0
 
@@ -94,9 +100,9 @@ class RealTimePlotWidget(QWidget):
 
         # Create plot widget
         self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setBackground('w')
+        self.plot_widget.setBackground("w")
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_widget.setLabel('bottom', 'Time', units='s')
+        self.plot_widget.setLabel("bottom", "Time", units="s")
 
         layout.addWidget(self.plot_widget)
 
@@ -192,7 +198,7 @@ class RealTimePlotWidget(QWidget):
             end_idx = self.buffer_size
         else:
             # Use only filled portion
-            time_data = self._time_buffer[:self._buffer_index]
+            time_data = self._time_buffer[: self._buffer_index]
             start_idx = 0
             end_idx = self._buffer_index
 
@@ -207,14 +213,16 @@ class RealTimePlotWidget(QWidget):
             if self._buffer_full:
                 channel_data = np.roll(buffer, -self._buffer_index)
             else:
-                channel_data = buffer[:self._buffer_index]
+                channel_data = buffer[: self._buffer_index]
 
             self._curves[channel].setData(time_data, channel_data)
 
         self.update_count += 1
 
         # Update stats
-        self.stats_label.setText(f"Points: {self.points_plotted} | Updates: {self.update_count}")
+        self.stats_label.setText(
+            f"Points: {self.points_plotted} | Updates: {self.update_count}"
+        )
 
     def clear_data(self):
         """Clear all data from the plot."""
@@ -239,8 +247,14 @@ class RealTimePlotWidget(QWidget):
         else:
             self.pause_btn.setText("Pause")
 
-    def set_labels(self, title: str = "", x_label: str = "Time", y_label: str = "Value",
-                   x_units: str = "s", y_units: str = ""):
+    def set_labels(
+        self,
+        title: str = "",
+        x_label: str = "Time",
+        y_label: str = "Value",
+        x_units: str = "s",
+        y_units: str = "",
+    ):
         """Set plot labels.
 
         Args:
@@ -252,8 +266,8 @@ class RealTimePlotWidget(QWidget):
         """
         if title:
             self.plot_widget.setTitle(title)
-        self.plot_widget.setLabel('bottom', x_label, units=x_units)
-        self.plot_widget.setLabel('left', y_label, units=y_units)
+        self.plot_widget.setLabel("bottom", x_label, units=x_units)
+        self.plot_widget.setLabel("left", y_label, units=y_units)
 
     def set_y_range(self, min_val: float, max_val: float):
         """Set Y-axis range.
@@ -287,5 +301,7 @@ class RealTimePlotWidget(QWidget):
             "update_count": self.update_count,
             "buffer_size": self.buffer_size,
             "channels": len(self._data_buffers),
-            "buffer_usage": self._buffer_index if not self._buffer_full else self.buffer_size
+            "buffer_usage": (
+                self._buffer_index if not self._buffer_full else self.buffer_size
+            ),
         }

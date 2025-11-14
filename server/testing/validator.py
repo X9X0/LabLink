@@ -1,7 +1,8 @@
 """Test validation and pass/fail criteria."""
 
 import logging
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from .models import ValidationOperator
 
 logger = logging.getLogger(__name__)

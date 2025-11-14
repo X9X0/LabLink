@@ -1,16 +1,11 @@
 """API endpoints for automated test sequences."""
 
-from fastapi import APIRouter, HTTPException
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from testing import (
-    get_test_executor,
-    TestSequence,
-    TestStep,
-    TestExecution,
-    TestStatus,
-)
+from fastapi import APIRouter, HTTPException
+from testing import (TestExecution, TestSequence, TestStatus, TestStep,
+                     get_test_executor)
 from testing.templates import TestTemplateLibrary
 
 router = APIRouter(prefix="/api/testing", tags=["testing"])
@@ -52,13 +47,19 @@ async def create_from_template(
         if template_name == "voltage_accuracy":
             if not test_points:
                 raise ValueError("test_points required for voltage_accuracy template")
-            sequence = TestTemplateLibrary.voltage_accuracy_test(equipment_id, test_points)
+            sequence = TestTemplateLibrary.voltage_accuracy_test(
+                equipment_id, test_points
+            )
         elif template_name == "frequency_response":
             if not start_freq or not stop_freq:
                 raise ValueError("start_freq and stop_freq required")
-            sequence = TestTemplateLibrary.frequency_response_sweep(equipment_id, start_freq, stop_freq)
+            sequence = TestTemplateLibrary.frequency_response_sweep(
+                equipment_id, start_freq, stop_freq
+            )
         else:
-            raise HTTPException(status_code=404, detail=f"Template not found: {template_name}")
+            raise HTTPException(
+                status_code=404, detail=f"Template not found: {template_name}"
+            )
 
         return sequence
     except Exception as e:
@@ -70,9 +71,7 @@ async def create_from_template(
 
 @router.post("/execute")
 async def execute_test_sequence(
-    sequence: TestSequence,
-    executed_by: str,
-    environment: Optional[dict] = None
+    sequence: TestSequence, executed_by: str, environment: Optional[dict] = None
 ):
     """Execute a test sequence."""
     try:
@@ -133,11 +132,18 @@ async def get_testing_info():
             "templates": "Pre-built templates for common tests",
             "sweeps": "Parameter sweeping for characterization",
             "validation": "Pass/fail criteria validation",
-            "archival": "Test result archival and trending"
+            "archival": "Test result archival and trending",
         },
         "step_types": [
-            "setup", "command", "measurement", "delay",
-            "validation", "sweep", "conditional", "loop", "cleanup"
+            "setup",
+            "command",
+            "measurement",
+            "delay",
+            "validation",
+            "sweep",
+            "conditional",
+            "loop",
+            "cleanup",
         ],
         "templates": TestTemplateLibrary.get_all_templates(),
     }

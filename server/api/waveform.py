@@ -1,24 +1,16 @@
 """API endpoints for advanced waveform capture and analysis."""
 
-from fastapi import APIRouter, HTTPException, Query, Body
-from typing import Optional, List
-from pydantic import BaseModel, Field
+from typing import List, Optional
 
-from waveform.models import (
-    ExtendedWaveformData,
-    EnhancedMeasurements,
-    CursorData,
-    CursorType,
-    MathChannelConfig,
-    MathChannelResult,
-    WaveformCaptureConfig,
-    PersistenceConfig,
-    PersistenceMode,
-    HistogramData,
-    XYPlotData,
-)
-from waveform.manager import WaveformManager
+from fastapi import APIRouter, Body, HTTPException, Query
+from pydantic import BaseModel, Field
 from waveform.analyzer import WaveformAnalyzer
+from waveform.manager import WaveformManager
+from waveform.models import (CursorData, CursorType, EnhancedMeasurements,
+                             ExtendedWaveformData, HistogramData,
+                             MathChannelConfig, MathChannelResult,
+                             PersistenceConfig, PersistenceMode,
+                             WaveformCaptureConfig, XYPlotData)
 
 router = APIRouter(prefix="/api/waveform", tags=["waveform"])
 
@@ -37,12 +29,14 @@ def init_waveform_api(manager: WaveformManager):
 # Request/Response models
 class CaptureRequest(BaseModel):
     """Waveform capture request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     config: WaveformCaptureConfig = Field(..., description="Capture configuration")
 
 
 class MeasurementsRequest(BaseModel):
     """Enhanced measurements request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     channel: int = Field(..., description="Channel number")
     use_cached: bool = Field(True, description="Use cached waveform if available")
@@ -50,6 +44,7 @@ class MeasurementsRequest(BaseModel):
 
 class CursorRequest(BaseModel):
     """Cursor measurement request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     channel: int = Field(..., description="Channel number")
     cursor_type: CursorType = Field(..., description="Cursor type")
@@ -59,13 +54,17 @@ class CursorRequest(BaseModel):
 
 class MathRequest(BaseModel):
     """Math channel request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     config: MathChannelConfig = Field(..., description="Math configuration")
-    channel2: Optional[int] = Field(None, description="Secondary channel for binary ops")
+    channel2: Optional[int] = Field(
+        None, description="Secondary channel for binary ops"
+    )
 
 
 class PersistenceRequest(BaseModel):
     """Persistence mode request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     channel: int = Field(..., description="Channel number")
     config: PersistenceConfig = Field(..., description="Persistence configuration")
@@ -73,6 +72,7 @@ class PersistenceRequest(BaseModel):
 
 class HistogramRequest(BaseModel):
     """Histogram request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     channel: int = Field(..., description="Channel number")
     histogram_type: str = Field("voltage", description="Type: 'voltage' or 'time'")
@@ -81,6 +81,7 @@ class HistogramRequest(BaseModel):
 
 class XYPlotRequest(BaseModel):
     """XY plot request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     x_channel: int = Field(..., description="X-axis channel")
     y_channel: int = Field(..., description="Y-axis channel")
@@ -88,6 +89,7 @@ class XYPlotRequest(BaseModel):
 
 class ContinuousAcquisitionRequest(BaseModel):
     """Continuous acquisition request."""
+
     equipment_id: str = Field(..., description="Equipment ID")
     channel: int = Field(..., description="Channel number")
     rate_hz: float = Field(10.0, description="Acquisition rate in Hz")
@@ -95,11 +97,13 @@ class ContinuousAcquisitionRequest(BaseModel):
 
 class AcquisitionResponse(BaseModel):
     """Continuous acquisition response."""
+
     task_id: str = Field(..., description="Acquisition task ID")
     message: str = Field(..., description="Status message")
 
 
 # === Waveform Capture Endpoints ===
+
 
 @router.post("/capture", response_model=ExtendedWaveformData)
 async def capture_waveform(request: CaptureRequest):
@@ -148,6 +152,7 @@ async def clear_waveform_cache(equipment_id: Optional[str] = None):
 
 # === Enhanced Measurements Endpoints ===
 
+
 @router.post("/measurements", response_model=EnhancedMeasurements)
 async def get_enhanced_measurements(request: MeasurementsRequest):
     """Get comprehensive automatic measurements (30+ types).
@@ -192,7 +197,9 @@ async def get_enhanced_measurements(request: MeasurementsRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/measurements/{equipment_id}/{channel}", response_model=EnhancedMeasurements)
+@router.get(
+    "/measurements/{equipment_id}/{channel}", response_model=EnhancedMeasurements
+)
 async def get_measurements_for_channel(equipment_id: str, channel: int):
     """Get enhanced measurements for cached waveform."""
     request = MeasurementsRequest(
@@ -204,6 +211,7 @@ async def get_measurements_for_channel(equipment_id: str, channel: int):
 
 
 # === Cursor Measurement Endpoints ===
+
 
 @router.post("/cursor", response_model=CursorData)
 async def calculate_cursor_measurements(request: CursorRequest):
@@ -224,7 +232,9 @@ async def calculate_cursor_measurements(request: CursorRequest):
             request.equipment_id, request.channel
         )
         if not waveform:
-            raise HTTPException(status_code=404, detail="No waveform cached. Capture first.")
+            raise HTTPException(
+                status_code=404, detail="No waveform cached. Capture first."
+            )
 
         # Calculate cursor measurements
         cursor_data = waveform_analyzer.calculate_cursor_measurements(
@@ -240,6 +250,7 @@ async def calculate_cursor_measurements(request: CursorRequest):
 
 
 # === Math Channel Endpoints ===
+
 
 @router.post("/math", response_model=MathChannelResult)
 async def apply_math_operation(request: MathRequest):
@@ -291,6 +302,7 @@ async def apply_math_operation(request: MathRequest):
 
 # === Persistence Mode Endpoints ===
 
+
 @router.post("/persistence/enable")
 async def enable_persistence(request: PersistenceRequest):
     """Enable persistence mode for a channel.
@@ -322,7 +334,9 @@ async def disable_persistence(equipment_id: str = Body(...), channel: int = Body
     return {"message": "Persistence disabled"}
 
 
-@router.get("/persistence/{equipment_id}/{channel}", response_model=ExtendedWaveformData)
+@router.get(
+    "/persistence/{equipment_id}/{channel}", response_model=ExtendedWaveformData
+)
 async def get_persistence_data(equipment_id: str, channel: int):
     """Get accumulated persistence data."""
     if not waveform_manager:
@@ -336,6 +350,7 @@ async def get_persistence_data(equipment_id: str, channel: int):
 
 
 # === Histogram Endpoints ===
+
 
 @router.post("/histogram", response_model=HistogramData)
 async def calculate_histogram(request: HistogramRequest):
@@ -355,7 +370,9 @@ async def calculate_histogram(request: HistogramRequest):
             request.equipment_id, request.channel
         )
         if not waveform:
-            raise HTTPException(status_code=404, detail="No waveform cached. Capture first.")
+            raise HTTPException(
+                status_code=404, detail="No waveform cached. Capture first."
+            )
 
         # Calculate histogram
         histogram = waveform_analyzer.calculate_histogram(
@@ -368,6 +385,7 @@ async def calculate_histogram(request: HistogramRequest):
 
 
 # === XY Plot Endpoints ===
+
 
 @router.post("/xy-plot", response_model=XYPlotData)
 async def create_xy_plot(request: XYPlotRequest):
@@ -389,6 +407,7 @@ async def create_xy_plot(request: XYPlotRequest):
 
 
 # === Continuous Acquisition Endpoints ===
+
 
 @router.post("/continuous/start", response_model=AcquisitionResponse)
 async def start_continuous_acquisition(request: ContinuousAcquisitionRequest):
@@ -436,6 +455,7 @@ async def list_continuous_acquisitions():
 
 
 # === Statistics and Info Endpoints ===
+
 
 @router.get("/info")
 async def get_waveform_info():

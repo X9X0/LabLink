@@ -1,13 +1,13 @@
 """Batch processing engine for parallel data analysis."""
 
 import asyncio
+import json
 import logging
 import uuid
-from typing import List, Dict, Any, Callable
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
-import json
+from typing import Any, Callable, Dict, List
 
 from .models import BatchJobConfig, BatchJobResult, BatchJobStatus
 
@@ -100,7 +100,9 @@ class BatchProcessor:
         else:
             job_result.status = BatchJobStatus.FAILED
 
-        logger.info(f"Batch job {job_id} completed: {job_result.completed_files}/{job_result.total_files} successful")
+        logger.info(
+            f"Batch job {job_id} completed: {job_result.completed_files}/{job_result.total_files} successful"
+        )
 
     async def _process_sequential(self, job_id: str, config: BatchJobConfig):
         """Process files sequentially.
@@ -141,7 +143,9 @@ class BatchProcessor:
         else:
             job_result.status = BatchJobStatus.FAILED
 
-        logger.info(f"Batch job {job_id} completed: {job_result.completed_files}/{job_result.total_files} successful")
+        logger.info(
+            f"Batch job {job_id} completed: {job_result.completed_files}/{job_result.total_files} successful"
+        )
 
     def _process_file(
         self,

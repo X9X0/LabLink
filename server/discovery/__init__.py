@@ -1,24 +1,15 @@
 """Equipment discovery system for LabLink server."""
 
-from .models import (
-    DiscoveryMethod,
-    DeviceType,
-    ConnectionStatus,
-    DiscoveredDevice,
-    ConnectionHistoryEntry,
-    LastKnownGood,
-    SmartRecommendation,
-    DeviceAlias,
-    ConnectionStatistics,
-    DiscoveryConfig,
-    DiscoveryStatus,
-    DiscoveryScanRequest,
-    DiscoveryScanResult,
-)
-from .manager import DiscoveryManager, initialize_discovery_manager, get_discovery_manager
-from .visa_scanner import VISAScanner
-from .mdns_scanner import MDNSScanner
 from .history import ConnectionHistoryTracker
+from .manager import (DiscoveryManager, get_discovery_manager,
+                      initialize_discovery_manager)
+from .mdns_scanner import MDNSScanner
+from .models import (ConnectionHistoryEntry, ConnectionStatistics,
+                     ConnectionStatus, DeviceAlias, DeviceType,
+                     DiscoveredDevice, DiscoveryConfig, DiscoveryMethod,
+                     DiscoveryScanRequest, DiscoveryScanResult,
+                     DiscoveryStatus, LastKnownGood, SmartRecommendation)
+from .visa_scanner import VISAScanner
 
 __all__ = [
     # Enums

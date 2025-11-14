@@ -10,20 +10,22 @@ Provides data models for:
 - Security audit logging
 """
 
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-from enum import Enum
-from pydantic import BaseModel, Field, EmailStr, validator
 import secrets
 import string
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, EmailStr, Field, validator
 
 # ============================================================================
 # Enumerations
 # ============================================================================
 
+
 class RoleType(str, Enum):
     """Predefined system roles."""
+
     ADMIN = "admin"  # Full access to all resources
     OPERATOR = "operator"  # Can control equipment, view data
     VIEWER = "viewer"  # Read-only access
@@ -32,6 +34,7 @@ class RoleType(str, Enum):
 
 class PermissionAction(str, Enum):
     """Permission actions."""
+
     READ = "read"
     WRITE = "write"
     DELETE = "delete"
@@ -41,6 +44,7 @@ class PermissionAction(str, Enum):
 
 class ResourceType(str, Enum):
     """Resources that can be protected."""
+
     EQUIPMENT = "equipment"
     ACQUISITION = "acquisition"
     PROFILES = "profiles"
@@ -67,6 +71,7 @@ class ResourceType(str, Enum):
 
 class AuthMethod(str, Enum):
     """Authentication methods."""
+
     PASSWORD = "password"
     API_KEY = "api_key"
     JWT = "jwt"
@@ -75,6 +80,7 @@ class AuthMethod(str, Enum):
 
 class OAuth2Provider(str, Enum):
     """Supported OAuth2 providers."""
+
     GOOGLE = "google"
     GITHUB = "github"
     MICROSOFT = "microsoft"
@@ -83,6 +89,7 @@ class OAuth2Provider(str, Enum):
 
 class AuditEventType(str, Enum):
     """Security audit event types."""
+
     LOGIN_SUCCESS = "login_success"
     LOGIN_FAILED = "login_failed"
     LOGOUT = "logout"
@@ -106,8 +113,10 @@ class AuditEventType(str, Enum):
 # Permission Models
 # ============================================================================
 
+
 class Permission(BaseModel):
     """A specific permission for a resource and action."""
+
     permission_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     resource: ResourceType
     action: PermissionAction
@@ -115,7 +124,9 @@ class Permission(BaseModel):
     resource_id: Optional[str] = None  # Specific resource instance (e.g., equipment_id)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    def matches(self, resource: str, action: str, resource_id: Optional[str] = None) -> bool:
+    def matches(
+        self, resource: str, action: str, resource_id: Optional[str] = None
+    ) -> bool:
         """Check if this permission matches the requested access."""
         # Check resource match
         if self.resource.value != resource:
@@ -138,6 +149,7 @@ class Permission(BaseModel):
 
 class Role(BaseModel):
     """A role groups permissions together."""
+
     role_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     name: str  # e.g., "admin", "operator", "viewer", "custom_lab_tech"
     role_type: RoleType
@@ -147,10 +159,7 @@ class Role(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     def has_permission(
-        self,
-        resource: str,
-        action: str,
-        resource_id: Optional[str] = None
+        self, resource: str, action: str, resource_id: Optional[str] = None
     ) -> bool:
         """Check if this role has a specific permission."""
         for perm in self.permissions:
@@ -163,8 +172,10 @@ class Role(BaseModel):
 # User Models
 # ============================================================================
 
+
 class User(BaseModel):
     """User account."""
+
     user_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     username: str  # Unique username
     email: EmailStr  # User email
@@ -179,7 +190,9 @@ class User(BaseModel):
     locked_until: Optional[datetime] = None  # Account lockout
     last_login: Optional[datetime] = None
     last_login_ip: Optional[str] = None
-    oauth2_providers: Dict[str, str] = Field(default_factory=dict)  # provider -> external_id
+    oauth2_providers: Dict[str, str] = Field(
+        default_factory=dict
+    )  # provider -> external_id
     # Multi-Factor Authentication
     mfa_enabled: bool = False  # Whether MFA is enabled for this user
     mfa_secret: Optional[str] = None  # TOTP secret (encrypted)
@@ -195,12 +208,15 @@ class User(BaseModel):
         if not v or len(v) < 3:
             raise ValueError("Username must be at least 3 characters")
         if not v.replace("_", "").replace("-", "").isalnum():
-            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
+            raise ValueError(
+                "Username can only contain letters, numbers, underscores, and hyphens"
+            )
         return v
 
 
 class UserCreate(BaseModel):
     """Request to create a new user."""
+
     username: str
     email: EmailStr
     password: str
@@ -225,6 +241,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     """Request to update user information."""
+
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     roles: Optional[List[str]] = None
@@ -235,6 +252,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(BaseModel):
     """User information for API responses (excludes sensitive data)."""
+
     user_id: str
     username: str
     email: EmailStr
@@ -251,6 +269,7 @@ class UserResponse(BaseModel):
 
 class PasswordChange(BaseModel):
     """Request to change password."""
+
     old_password: str
     new_password: str
 
@@ -270,6 +289,7 @@ class PasswordChange(BaseModel):
 
 class PasswordReset(BaseModel):
     """Request to reset password (admin only)."""
+
     user_id: str
     new_password: str
     must_change_password: bool = True
@@ -279,8 +299,10 @@ class PasswordReset(BaseModel):
 # Authentication Models
 # ============================================================================
 
+
 class LoginRequest(BaseModel):
     """Login request."""
+
     username: str
     password: str
     mfa_token: Optional[str] = None  # TOTP token or backup code for MFA
@@ -288,6 +310,7 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     """JWT token response."""
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int  # seconds
@@ -297,6 +320,7 @@ class TokenResponse(BaseModel):
 
 class TokenPayload(BaseModel):
     """JWT token payload."""
+
     sub: str  # user_id
     username: str
     roles: List[str]
@@ -308,6 +332,7 @@ class TokenPayload(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """Request to refresh access token."""
+
     refresh_token: str
 
 
@@ -315,13 +340,16 @@ class RefreshTokenRequest(BaseModel):
 # Multi-Factor Authentication Models
 # ============================================================================
 
+
 class MFASetupRequest(BaseModel):
     """Request to set up MFA for a user."""
+
     user_id: str
 
 
 class MFASetupResponse(BaseModel):
     """Response containing MFA setup information."""
+
     secret: str  # Base32 encoded TOTP secret
     qr_code: str  # Data URI for QR code image
     backup_codes: List[str]  # Plain text backup codes (show only once)
@@ -330,12 +358,14 @@ class MFASetupResponse(BaseModel):
 
 class MFAVerifyRequest(BaseModel):
     """Request to verify TOTP token."""
+
     token: str  # 6-digit TOTP code
     backup_code: Optional[str] = None  # Alternative: backup code
 
 
 class MFALoginRequest(BaseModel):
     """Login request with MFA token."""
+
     username: str
     password: str
     mfa_token: Optional[str] = None  # 6-digit TOTP code or backup code
@@ -343,17 +373,20 @@ class MFALoginRequest(BaseModel):
 
 class MFADisableRequest(BaseModel):
     """Request to disable MFA."""
+
     password: str  # Require password confirmation
     mfa_token: Optional[str] = None  # TOTP token or backup code
 
 
 class BackupCodesResponse(BaseModel):
     """Response containing new backup codes."""
+
     backup_codes: List[str]  # Plain text backup codes
 
 
 class MFAStatusResponse(BaseModel):
     """MFA status for a user."""
+
     mfa_enabled: bool
     backup_codes_remaining: int
 
@@ -362,15 +395,19 @@ class MFAStatusResponse(BaseModel):
 # API Key Models
 # ============================================================================
 
+
 class APIKey(BaseModel):
     """API key for programmatic access."""
+
     key_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     key: str = Field(default_factory=lambda: "lablink_" + secrets.token_urlsafe(32))
     key_prefix: str = ""  # First 8 chars for display
     user_id: str
     name: str  # Descriptive name for the key
     description: Optional[str] = None
-    scopes: List[str] = Field(default_factory=list)  # Specific permissions (resource:action)
+    scopes: List[str] = Field(
+        default_factory=list
+    )  # Specific permissions (resource:action)
     permissions: List[Permission] = Field(default_factory=list)  # Direct permissions
     is_active: bool = True
     expires_at: Optional[datetime] = None
@@ -402,6 +439,7 @@ class APIKey(BaseModel):
 
 class APIKeyCreate(BaseModel):
     """Request to create API key."""
+
     name: str
     description: Optional[str] = None
     scopes: List[str] = Field(default_factory=list)
@@ -419,6 +457,7 @@ class APIKeyCreate(BaseModel):
 
 class APIKeyResponse(BaseModel):
     """API key response (includes full key only on creation)."""
+
     key_id: str
     key: Optional[str] = None  # Only returned on creation
     key_prefix: str
@@ -436,8 +475,10 @@ class APIKeyResponse(BaseModel):
 # IP Whitelisting Models
 # ============================================================================
 
+
 class IPWhitelistEntry(BaseModel):
     """IP whitelist/blacklist entry."""
+
     entry_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     ip_address: str  # Can be single IP or CIDR range
     is_whitelist: bool = True  # True = whitelist, False = blacklist
@@ -449,6 +490,7 @@ class IPWhitelistEntry(BaseModel):
 
 class IPWhitelistCreate(BaseModel):
     """Request to add IP to whitelist."""
+
     ip_address: str
     is_whitelist: bool = True
     description: Optional[str] = None
@@ -459,8 +501,10 @@ class IPWhitelistCreate(BaseModel):
 # OAuth2 Models
 # ============================================================================
 
+
 class OAuth2Config(BaseModel):
     """OAuth2 provider configuration."""
+
     provider: OAuth2Provider
     client_id: str
     client_secret: str
@@ -473,6 +517,7 @@ class OAuth2Config(BaseModel):
 
 class OAuth2LoginRequest(BaseModel):
     """OAuth2 login/link request."""
+
     provider: OAuth2Provider
     code: str  # Authorization code
     redirect_uri: str
@@ -481,6 +526,7 @@ class OAuth2LoginRequest(BaseModel):
 
 class OAuth2LinkResponse(BaseModel):
     """Response after linking OAuth2 account."""
+
     success: bool
     provider: OAuth2Provider
     external_id: str
@@ -491,8 +537,10 @@ class OAuth2LinkResponse(BaseModel):
 # Audit Logging Models
 # ============================================================================
 
+
 class AuditLogEntry(BaseModel):
     """Security audit log entry."""
+
     entry_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     event_type: AuditEventType
@@ -510,6 +558,7 @@ class AuditLogEntry(BaseModel):
 
 class AuditLogQuery(BaseModel):
     """Query parameters for audit log."""
+
     user_id: Optional[str] = None
     username: Optional[str] = None
     event_type: Optional[AuditEventType] = None
@@ -525,8 +574,10 @@ class AuditLogQuery(BaseModel):
 # Security Status Models
 # ============================================================================
 
+
 class SecurityStatus(BaseModel):
     """Overall security system status."""
+
     enabled: bool
     authentication_required: bool
     ip_whitelisting_enabled: bool
@@ -544,6 +595,7 @@ class SecurityStatus(BaseModel):
 
 class SessionInfo(BaseModel):
     """Information about an active session."""
+
     session_id: str
     user_id: str
     username: str
@@ -558,10 +610,11 @@ class SessionInfo(BaseModel):
 # Helper Functions
 # ============================================================================
 
+
 def generate_api_key() -> str:
     """Generate a secure API key."""
     alphabet = string.ascii_letters + string.digits
-    key = ''.join(secrets.choice(alphabet) for _ in range(40))
+    key = "".join(secrets.choice(alphabet) for _ in range(40))
     return f"lablink_{key}"
 
 
@@ -569,17 +622,19 @@ def create_default_admin_role() -> Role:
     """Create the default admin role with all permissions."""
     permissions = []
     for resource in ResourceType:
-        permissions.append(Permission(
-            resource=resource,
-            action=PermissionAction.ADMIN,
-            description=f"Full admin access to {resource.value}"
-        ))
+        permissions.append(
+            Permission(
+                resource=resource,
+                action=PermissionAction.ADMIN,
+                description=f"Full admin access to {resource.value}",
+            )
+        )
 
     return Role(
         name="admin",
         role_type=RoleType.ADMIN,
         description="Administrator with full system access",
-        permissions=permissions
+        permissions=permissions,
     )
 
 
@@ -590,40 +645,31 @@ def create_default_operator_role() -> Role:
         Permission(resource=ResourceType.EQUIPMENT, action=PermissionAction.READ),
         Permission(resource=ResourceType.EQUIPMENT, action=PermissionAction.WRITE),
         Permission(resource=ResourceType.EQUIPMENT, action=PermissionAction.EXECUTE),
-
         # Acquisition
         Permission(resource=ResourceType.ACQUISITION, action=PermissionAction.READ),
         Permission(resource=ResourceType.ACQUISITION, action=PermissionAction.WRITE),
         Permission(resource=ResourceType.ACQUISITION, action=PermissionAction.EXECUTE),
-
         # Profiles
         Permission(resource=ResourceType.PROFILES, action=PermissionAction.READ),
         Permission(resource=ResourceType.PROFILES, action=PermissionAction.WRITE),
-
         # States
         Permission(resource=ResourceType.STATES, action=PermissionAction.READ),
         Permission(resource=ResourceType.STATES, action=PermissionAction.WRITE),
-
         # Safety (read/write but not delete)
         Permission(resource=ResourceType.SAFETY, action=PermissionAction.READ),
         Permission(resource=ResourceType.SAFETY, action=PermissionAction.WRITE),
-
         # Locks
         Permission(resource=ResourceType.LOCKS, action=PermissionAction.READ),
         Permission(resource=ResourceType.LOCKS, action=PermissionAction.WRITE),
-
         # Diagnostics
         Permission(resource=ResourceType.DIAGNOSTICS, action=PermissionAction.READ),
         Permission(resource=ResourceType.DIAGNOSTICS, action=PermissionAction.EXECUTE),
-
         # Waveform
         Permission(resource=ResourceType.WAVEFORM, action=PermissionAction.READ),
         Permission(resource=ResourceType.WAVEFORM, action=PermissionAction.WRITE),
-
         # Analysis
         Permission(resource=ResourceType.ANALYSIS, action=PermissionAction.READ),
         Permission(resource=ResourceType.ANALYSIS, action=PermissionAction.WRITE),
-
         # Discovery
         Permission(resource=ResourceType.DISCOVERY, action=PermissionAction.READ),
         Permission(resource=ResourceType.DISCOVERY, action=PermissionAction.EXECUTE),
@@ -633,7 +679,7 @@ def create_default_operator_role() -> Role:
         name="operator",
         role_type=RoleType.OPERATOR,
         description="Equipment operator with control access",
-        permissions=permissions
+        permissions=permissions,
     )
 
 
@@ -641,16 +687,23 @@ def create_default_viewer_role() -> Role:
     """Create the default viewer role (read-only)."""
     permissions = []
     for resource in ResourceType:
-        if resource not in [ResourceType.USERS, ResourceType.ROLES, ResourceType.API_KEYS, ResourceType.SETTINGS]:
-            permissions.append(Permission(
-                resource=resource,
-                action=PermissionAction.READ,
-                description=f"Read-only access to {resource.value}"
-            ))
+        if resource not in [
+            ResourceType.USERS,
+            ResourceType.ROLES,
+            ResourceType.API_KEYS,
+            ResourceType.SETTINGS,
+        ]:
+            permissions.append(
+                Permission(
+                    resource=resource,
+                    action=PermissionAction.READ,
+                    description=f"Read-only access to {resource.value}",
+                )
+            )
 
     return Role(
         name="viewer",
         role_type=RoleType.VIEWER,
         description="Read-only access to equipment and data",
-        permissions=permissions
+        permissions=permissions,
     )

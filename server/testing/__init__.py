@@ -8,18 +8,11 @@ This module provides comprehensive test automation capabilities including:
 - Template library for common tests
 """
 
-from .models import (
-    TestSequence,
-    TestStep,
-    TestResult,
-    TestExecution,
-    ParameterSweep,
-    TestStatus,
-    StepType,
-)
 from .executor import TestExecutor
-from .validator import TestValidator
+from .models import (ParameterSweep, StepType, TestExecution, TestResult,
+                     TestSequence, TestStatus, TestStep)
 from .templates import TestTemplateLibrary
+from .validator import TestValidator
 
 __all__ = [
     "TestSequence",
@@ -65,5 +58,7 @@ def get_test_executor() -> TestExecutor:
         RuntimeError: If test executor not initialized
     """
     if _test_executor is None:
-        raise RuntimeError("Test executor not initialized. Call initialize_test_executor() first.")
+        raise RuntimeError(
+            "Test executor not initialized. Call initialize_test_executor() first."
+        )
     return _test_executor

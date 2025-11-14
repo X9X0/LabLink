@@ -1,19 +1,14 @@
 """API endpoints for alarm management."""
 
 import logging
-from typing import Optional, List
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.alarm import (
-    alarm_manager,
-    notification_manager,
-    AlarmConfig,
-    AlarmAcknowledgment,
-    AlarmSeverity,
-    AlarmState,
-    NotificationConfig
-)
+from server.alarm import (AlarmAcknowledgment, AlarmConfig, AlarmSeverity,
+                          AlarmState, NotificationConfig, alarm_manager,
+                          notification_manager)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +20,7 @@ router = APIRouter()
 
 class CreateAlarmRequest(BaseModel):
     """Request to create an alarm."""
+
     name: str
     description: Optional[str] = None
     equipment_id: Optional[str] = None
@@ -45,6 +41,7 @@ class CreateAlarmRequest(BaseModel):
 
 class UpdateAlarmRequest(BaseModel):
     """Request to update an alarm."""
+
     name: Optional[str] = None
     description: Optional[str] = None
     parameter: Optional[str] = None
@@ -60,6 +57,7 @@ class UpdateAlarmRequest(BaseModel):
 
 class AcknowledgeAlarmRequest(BaseModel):
     """Request to acknowledge an alarm."""
+
     event_id: str
     acknowledged_by: str
     note: Optional[str] = None
@@ -67,6 +65,7 @@ class AcknowledgeAlarmRequest(BaseModel):
 
 class CheckAlarmRequest(BaseModel):
     """Request to manually check an alarm."""
+
     alarm_id: str
     value: float
 
@@ -94,7 +93,7 @@ async def create_alarm(request: CreateAlarmRequest):
             auto_clear=request.auto_clear,
             enabled=request.enabled,
             notifications=request.notifications,
-            tags=request.tags
+            tags=request.tags,
         )
 
         result = await alarm_manager.create_alarm(config)
@@ -102,7 +101,7 @@ async def create_alarm(request: CreateAlarmRequest):
         return {
             "success": True,
             "alarm_id": result.alarm_id,
-            "message": "Alarm created successfully"
+            "message": "Alarm created successfully",
         }
 
     except ValueError as e:
@@ -120,16 +119,12 @@ async def get_alarm(alarm_id: str):
     if alarm is None:
         raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
 
-    return {
-        "success": True,
-        "alarm": alarm.dict()
-    }
+    return {"success": True, "alarm": alarm.dict()}
 
 
 @router.get("/alarms", summary="List alarms")
 async def list_alarms(
-    equipment_id: Optional[str] = None,
-    enabled: Optional[bool] = None
+    equipment_id: Optional[str] = None, enabled: Optional[bool] = None
 ):
     """List all alarm configurations."""
     alarms = alarm_manager.list_alarms()
@@ -140,11 +135,7 @@ async def list_alarms(
     if enabled is not None:
         alarms = [a for a in alarms if a.enabled == enabled]
 
-    return {
-        "success": True,
-        "count": len(alarms),
-        "alarms": [a.dict() for a in alarms]
-    }
+    return {"success": True, "count": len(alarms), "alarms": [a.dict() for a in alarms]}
 
 
 @router.put("/alarms/{alarm_id}", summary="Update alarm")
@@ -185,7 +176,7 @@ async def update_alarm(alarm_id: str, request: UpdateAlarmRequest):
         return {
             "success": True,
             "message": "Alarm updated successfully",
-            "alarm": result.dict()
+            "alarm": result.dict(),
         }
 
     except ValueError as e:
@@ -206,10 +197,7 @@ async def delete_alarm(alarm_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
 
-        return {
-            "success": True,
-            "message": "Alarm deleted successfully"
-        }
+        return {"success": True, "message": "Alarm deleted successfully"}
 
     except HTTPException:
         raise
@@ -227,10 +215,7 @@ async def enable_alarm(alarm_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
 
-        return {
-            "success": True,
-            "message": "Alarm enabled"
-        }
+        return {"success": True, "message": "Alarm enabled"}
 
     except HTTPException:
         raise
@@ -248,16 +233,15 @@ async def disable_alarm(alarm_id: str):
         if not success:
             raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
 
-        return {
-            "success": True,
-            "message": "Alarm disabled"
-        }
+        return {"success": True, "message": "Alarm disabled"}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error disabling alarm: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to disable alarm: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to disable alarm: {str(e)}"
+        )
 
 
 @router.post("/alarms/check", summary="Check alarm")
@@ -269,7 +253,7 @@ async def check_alarm(request: CheckAlarmRequest):
         return {
             "success": True,
             "triggered": event is not None,
-            "event": event.dict() if event else None
+            "event": event.dict() if event else None,
         }
 
     except Exception as e:
@@ -285,11 +269,7 @@ async def list_active_alarms():
     """List all active alarm events."""
     events = alarm_manager.list_active_events()
 
-    return {
-        "success": True,
-        "count": len(events),
-        "events": [e.dict() for e in events]
-    }
+    return {"success": True, "count": len(events), "events": [e.dict() for e in events]}
 
 
 @router.get("/alarms/events", summary="List alarm events")
@@ -297,7 +277,7 @@ async def list_alarm_events(
     state: Optional[str] = None,
     severity: Optional[str] = None,
     equipment_id: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
 ):
     """List alarm events with filtering."""
     try:
@@ -309,13 +289,13 @@ async def list_alarm_events(
             state=state_filter,
             severity=severity_filter,
             equipment_id=equipment_id,
-            limit=limit
+            limit=limit,
         )
 
         return {
             "success": True,
             "count": len(events),
-            "events": [e.dict() for e in events]
+            "events": [e.dict() for e in events],
         }
 
     except ValueError as e:
@@ -333,10 +313,7 @@ async def get_alarm_event(event_id: str):
     if event is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
 
-    return {
-        "success": True,
-        "event": event.dict()
-    }
+    return {"success": True, "event": event.dict()}
 
 
 @router.post("/alarms/events/acknowledge", summary="Acknowledge alarm")
@@ -346,24 +323,26 @@ async def acknowledge_alarm(request: AcknowledgeAlarmRequest):
         ack = AlarmAcknowledgment(
             event_id=request.event_id,
             acknowledged_by=request.acknowledged_by,
-            note=request.note
+            note=request.note,
         )
 
         success = await alarm_manager.acknowledge_alarm(ack)
 
         if not success:
-            raise HTTPException(status_code=404, detail=f"Event {request.event_id} not found or already acknowledged")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Event {request.event_id} not found or already acknowledged",
+            )
 
-        return {
-            "success": True,
-            "message": "Alarm acknowledged"
-        }
+        return {"success": True, "message": "Alarm acknowledged"}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error acknowledging alarm: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to acknowledge alarm: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to acknowledge alarm: {str(e)}"
+        )
 
 
 @router.post("/alarms/{alarm_id}/clear", summary="Clear alarm")
@@ -373,12 +352,11 @@ async def clear_alarm(alarm_id: str):
         success = await alarm_manager.clear_alarm(alarm_id)
 
         if not success:
-            raise HTTPException(status_code=404, detail=f"No active alarm for {alarm_id}")
+            raise HTTPException(
+                status_code=404, detail=f"No active alarm for {alarm_id}"
+            )
 
-        return {
-            "success": True,
-            "message": "Alarm cleared"
-        }
+        return {"success": True, "message": "Alarm cleared"}
 
     except HTTPException:
         raise
@@ -396,14 +374,13 @@ async def get_alarm_statistics():
     try:
         stats = alarm_manager.get_statistics()
 
-        return {
-            "success": True,
-            "statistics": stats.dict()
-        }
+        return {"success": True, "statistics": stats.dict()}
 
     except Exception as e:
         logger.error(f"Error getting statistics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get statistics: {str(e)}"
+        )
 
 
 # ==================== Notification Configuration Endpoints ====================
@@ -415,20 +392,16 @@ async def configure_notifications(config: NotificationConfig):
     try:
         notification_manager.configure(config)
 
-        return {
-            "success": True,
-            "message": "Notification configuration updated"
-        }
+        return {"success": True, "message": "Notification configuration updated"}
 
     except Exception as e:
         logger.error(f"Error configuring notifications: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to configure notifications: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to configure notifications: {str(e)}"
+        )
 
 
 @router.get("/alarms/notifications/config", summary="Get notification configuration")
 async def get_notification_config():
     """Get current notification configuration."""
-    return {
-        "success": True,
-        "config": notification_manager.config.dict()
-    }
+    return {"success": True, "config": notification_manager.config.dict()}

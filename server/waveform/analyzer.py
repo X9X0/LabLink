@@ -1,21 +1,15 @@
 """Waveform analysis engine for measurements and math operations."""
 
-import numpy as np
 import logging
-from typing import List, Tuple, Optional, Dict
-from scipy import signal, fft, integrate
-from scipy.stats import skew, kurtosis
+from typing import Dict, List, Optional, Tuple
 
-from .models import (
-    ExtendedWaveformData,
-    EnhancedMeasurements,
-    CursorData,
-    CursorType,
-    MathChannelConfig,
-    MathOperation,
-    MathChannelResult,
-    HistogramData,
-)
+import numpy as np
+from scipy import fft, integrate, signal
+from scipy.stats import kurtosis, skew
+
+from .models import (CursorData, CursorType, EnhancedMeasurements,
+                     ExtendedWaveformData, HistogramData, MathChannelConfig,
+                     MathChannelResult, MathOperation)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +51,9 @@ class WaveformAnalyzer:
             measurements.vpp = measurements.vmax - measurements.vmin
             measurements.vavg = float(np.mean(voltage))
             measurements.vrms = float(np.sqrt(np.mean(voltage**2)))
-            measurements.vac_rms = float(np.sqrt(np.mean((voltage - measurements.vavg)**2)))
+            measurements.vac_rms = float(
+                np.sqrt(np.mean((voltage - measurements.vavg) ** 2))
+            )
             measurements.std_dev = float(np.std(voltage))
             measurements.variance = float(np.var(voltage))
 
@@ -80,19 +76,21 @@ class WaveformAnalyzer:
             measurements.vmid = (measurements.vtop + measurements.vbase) / 2
 
             # Time measurements (if periodic signal)
-            measurements.period, measurements.frequency = self._calculate_period_frequency(
-                time, voltage
+            measurements.period, measurements.frequency = (
+                self._calculate_period_frequency(time, voltage)
             )
 
             if measurements.frequency and measurements.frequency > 0:
                 # Rise/fall time
-                measurements.rise_time, measurements.fall_time = self._calculate_edge_times(
-                    time, voltage, measurements.vbase, measurements.vtop
+                measurements.rise_time, measurements.fall_time = (
+                    self._calculate_edge_times(
+                        time, voltage, measurements.vbase, measurements.vtop
+                    )
                 )
 
                 # Pulse widths
-                measurements.positive_width, measurements.negative_width = self._calculate_pulse_widths(
-                    time, voltage, measurements.vmid
+                measurements.positive_width, measurements.negative_width = (
+                    self._calculate_pulse_widths(time, voltage, measurements.vmid)
                 )
 
                 # Duty cycle
@@ -102,8 +100,12 @@ class WaveformAnalyzer:
                     )
 
                 # Edge counts
-                measurements.positive_edges = self._count_edges(voltage, measurements.vmid, rising=True)
-                measurements.negative_edges = self._count_edges(voltage, measurements.vmid, rising=False)
+                measurements.positive_edges = self._count_edges(
+                    voltage, measurements.vmid, rising=True
+                )
+                measurements.negative_edges = self._count_edges(
+                    voltage, measurements.vmid, rising=False
+                )
 
                 # Pulse count and rate
                 measurements.pulse_count = measurements.positive_edges
@@ -131,13 +133,17 @@ class WaveformAnalyzer:
                         )
 
             # Slew rate
-            measurements.slew_rate_rising, measurements.slew_rate_falling = self._calculate_slew_rate(
-                time, voltage, measurements.vbase, measurements.vtop
+            measurements.slew_rate_rising, measurements.slew_rate_falling = (
+                self._calculate_slew_rate(
+                    time, voltage, measurements.vbase, measurements.vtop
+                )
             )
 
             # Signal quality (if applicable)
             measurements.snr = self._calculate_snr(voltage, measurements.vavg)
-            measurements.thd = self._calculate_thd(voltage, measurements.frequency, waveform.sample_rate)
+            measurements.thd = self._calculate_thd(
+                voltage, measurements.frequency, waveform.sample_rate
+            )
 
         except Exception as e:
             logger.error(f"Error calculating enhanced measurements: {e}")
@@ -183,7 +189,9 @@ class WaveformAnalyzer:
             idx2 = np.argmin(np.abs(time - cursor2_pos))
             cursor_data.cursor1_value = float(voltage[idx1])
             cursor_data.cursor2_value = float(voltage[idx2])
-            cursor_data.delta_voltage = abs(cursor_data.cursor2_value - cursor_data.cursor1_value)
+            cursor_data.delta_voltage = abs(
+                cursor_data.cursor2_value - cursor_data.cursor1_value
+            )
 
         else:  # VERTICAL
             # Voltage cursors
@@ -199,7 +207,9 @@ class WaveformAnalyzer:
                 cursor_data.cursor2_value = float(time[crossings2[0]])
 
             if cursor_data.cursor1_value and cursor_data.cursor2_value:
-                cursor_data.delta_time = abs(cursor_data.cursor2_value - cursor_data.cursor1_value)
+                cursor_data.delta_time = abs(
+                    cursor_data.cursor2_value - cursor_data.cursor1_value
+                )
 
         return cursor_data
 
@@ -226,8 +236,12 @@ class WaveformAnalyzer:
         source_channels = [waveform1.channel]
 
         # Binary operations
-        if operation in [MathOperation.ADD, MathOperation.SUBTRACT,
-                         MathOperation.MULTIPLY, MathOperation.DIVIDE]:
+        if operation in [
+            MathOperation.ADD,
+            MathOperation.SUBTRACT,
+            MathOperation.MULTIPLY,
+            MathOperation.DIVIDE,
+        ]:
             if waveform2 is None:
                 raise ValueError(f"Operation {operation} requires two waveforms")
 
@@ -283,7 +297,7 @@ class WaveformAnalyzer:
         elif operation == MathOperation.AVERAGE:
             # Simple moving average (in practice, would accumulate multiple acquisitions)
             window = config.average_count or 10
-            result = np.convolve(v1, np.ones(window) / window, mode='same')
+            result = np.convolve(v1, np.ones(window) / window, mode="same")
 
         elif operation == MathOperation.ENVELOPE:
             # Signal envelope using Hilbert transform
@@ -361,8 +375,8 @@ class WaveformAnalyzer:
             voltage_ac = voltage - np.mean(voltage)
 
             # Autocorrelation
-            corr = np.correlate(voltage_ac, voltage_ac, mode='full')
-            corr = corr[len(corr) // 2:]
+            corr = np.correlate(voltage_ac, voltage_ac, mode="full")
+            corr = corr[len(corr) // 2 :]
 
             # Find peaks in autocorrelation
             peaks, _ = signal.find_peaks(corr, height=np.max(corr) * 0.5)
@@ -458,13 +472,19 @@ class WaveformAnalyzer:
             logger.debug(f"Could not calculate pulse widths: {e}")
             return None, None
 
-    def _count_edges(self, voltage: np.ndarray, threshold: float, rising: bool = True) -> int:
+    def _count_edges(
+        self, voltage: np.ndarray, threshold: float, rising: bool = True
+    ) -> int:
         """Count rising or falling edges."""
         try:
             if rising:
-                edges = np.where((voltage[:-1] < threshold) & (voltage[1:] >= threshold))[0]
+                edges = np.where(
+                    (voltage[:-1] < threshold) & (voltage[1:] >= threshold)
+                )[0]
             else:
-                edges = np.where((voltage[:-1] > threshold) & (voltage[1:] <= threshold))[0]
+                edges = np.where(
+                    (voltage[:-1] > threshold) & (voltage[1:] <= threshold)
+                )[0]
             return len(edges)
         except Exception:
             return 0
@@ -547,7 +567,9 @@ class WaveformAnalyzer:
         except Exception:
             return None, None
 
-    def _calculate_snr(self, voltage: np.ndarray, signal_level: float) -> Optional[float]:
+    def _calculate_snr(
+        self, voltage: np.ndarray, signal_level: float
+    ) -> Optional[float]:
         """Calculate signal-to-noise ratio."""
         try:
             signal_power = signal_level**2
@@ -580,7 +602,7 @@ class WaveformAnalyzer:
 
             # Find fundamental and harmonics
             fundamental_idx = np.argmin(np.abs(freqs - fundamental_freq))
-            fundamental_power = magnitude[fundamental_idx]**2
+            fundamental_power = magnitude[fundamental_idx] ** 2
 
             # Sum harmonics (2nd through 5th)
             harmonics_power = 0
@@ -588,7 +610,7 @@ class WaveformAnalyzer:
                 harmonic_freq = n * fundamental_freq
                 if harmonic_freq < sample_rate / 2:
                     harmonic_idx = np.argmin(np.abs(freqs - harmonic_freq))
-                    harmonics_power += magnitude[harmonic_idx]**2
+                    harmonics_power += magnitude[harmonic_idx] ** 2
 
             if fundamental_power > 0:
                 thd = 100 * np.sqrt(harmonics_power / fundamental_power)

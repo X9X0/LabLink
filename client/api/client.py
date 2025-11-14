@@ -1,19 +1,20 @@
 """API client for LabLink server communication."""
 
-import logging
 import asyncio
-from typing import Optional, Dict, List, Any, Callable
-from datetime import datetime
-import sys
+import logging
 import os
+import sys
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import requests
 
 try:
-    from utils.websocket_manager import WebSocketManager, StreamType, MessageType
+    from utils.websocket_manager import (MessageType, StreamType,
+                                         WebSocketManager)
 except ImportError:
     # Fallback if utils not found
     WebSocketManager = None
@@ -26,7 +27,9 @@ logger = logging.getLogger(__name__)
 class LabLinkClient:
     """Client for communicating with LabLink server."""
 
-    def __init__(self, host: str = "localhost", api_port: int = 8000, ws_port: int = 8001):
+    def __init__(
+        self, host: str = "localhost", api_port: int = 8000, ws_port: int = 8001
+    ):
         """Initialize LabLink client.
 
         Args:
@@ -66,10 +69,14 @@ class LabLinkClient:
             True if connection successful
         """
         try:
-            response = self._session.get(f"http://{self.host}:{self.api_port}/health", timeout=5)
+            response = self._session.get(
+                f"http://{self.host}:{self.api_port}/health", timeout=5
+            )
             if response.status_code == 200:
                 self.connected = True
-                logger.info(f"Connected to LabLink server at {self.host}:{self.api_port}")
+                logger.info(
+                    f"Connected to LabLink server at {self.host}:{self.api_port}"
+                )
                 return True
         except Exception as e:
             logger.error(f"Failed to connect to server: {e}")
@@ -106,7 +113,7 @@ class LabLinkClient:
             response = self._session.post(
                 f"{self.api_base_url}/security/login",
                 json={"username": username, "password": password},
-                timeout=10
+                timeout=10,
             )
 
             if response.status_code == 200:
@@ -141,8 +148,7 @@ class LabLinkClient:
             if self.authenticated and self.access_token:
                 # Call logout endpoint
                 response = self._session.post(
-                    f"{self.api_base_url}/security/logout",
-                    timeout=5
+                    f"{self.api_base_url}/security/logout", timeout=5
                 )
 
                 if response.status_code == 200:
@@ -172,7 +178,7 @@ class LabLinkClient:
             response = self._session.post(
                 f"{self.api_base_url}/security/refresh",
                 json={"refresh_token": self.refresh_token},
-                timeout=10
+                timeout=10,
             )
 
             if response.status_code == 200:
@@ -198,9 +204,9 @@ class LabLinkClient:
     def _update_auth_header(self):
         """Update session headers with current access token."""
         if self.access_token:
-            self._session.headers.update({
-                "Authorization": f"Bearer {self.access_token}"
-            })
+            self._session.headers.update(
+                {"Authorization": f"Bearer {self.access_token}"}
+            )
 
     def _clear_auth(self):
         """Clear authentication state."""
@@ -264,10 +270,7 @@ class LabLinkClient:
         return await self.ws_manager.connect()
 
     async def start_equipment_stream(
-        self,
-        equipment_id: str,
-        stream_type: str = "readings",
-        interval_ms: int = 100
+        self, equipment_id: str, stream_type: str = "readings", interval_ms: int = 100
     ):
         """Start streaming data from equipment.
 
@@ -284,15 +287,11 @@ class LabLinkClient:
             stream_type = StreamType(stream_type)
 
         await self.ws_manager.start_equipment_stream(
-            equipment_id=equipment_id,
-            stream_type=stream_type,
-            interval_ms=interval_ms
+            equipment_id=equipment_id, stream_type=stream_type, interval_ms=interval_ms
         )
 
     async def stop_equipment_stream(
-        self,
-        equipment_id: str,
-        stream_type: str = "readings"
+        self, equipment_id: str, stream_type: str = "readings"
     ):
         """Stop streaming data from equipment.
 
@@ -308,15 +307,11 @@ class LabLinkClient:
             stream_type = StreamType(stream_type)
 
         await self.ws_manager.stop_equipment_stream(
-            equipment_id=equipment_id,
-            stream_type=stream_type
+            equipment_id=equipment_id, stream_type=stream_type
         )
 
     async def start_acquisition_stream(
-        self,
-        acquisition_id: str,
-        interval_ms: int = 100,
-        num_samples: int = 100
+        self, acquisition_id: str, interval_ms: int = 100, num_samples: int = 100
     ):
         """Start streaming acquisition data.
 
@@ -331,7 +326,7 @@ class LabLinkClient:
         await self.ws_manager.start_acquisition_stream(
             acquisition_id=acquisition_id,
             interval_ms=interval_ms,
-            num_samples=num_samples
+            num_samples=num_samples,
         )
 
     async def stop_acquisition_stream(self, acquisition_id: str):
@@ -423,7 +418,9 @@ class LabLinkClient:
         Returns:
             Response dictionary
         """
-        response = self._session.post(f"{self.api_base_url}/equipment/{equipment_id}/connect")
+        response = self._session.post(
+            f"{self.api_base_url}/equipment/{equipment_id}/connect"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -436,11 +433,15 @@ class LabLinkClient:
         Returns:
             Response dictionary
         """
-        response = self._session.post(f"{self.api_base_url}/equipment/{equipment_id}/disconnect")
+        response = self._session.post(
+            f"{self.api_base_url}/equipment/{equipment_id}/disconnect"
+        )
         response.raise_for_status()
         return response.json()
 
-    def send_command(self, equipment_id: str, command: str, parameters: Optional[Dict] = None) -> Dict[str, Any]:
+    def send_command(
+        self, equipment_id: str, command: str, parameters: Optional[Dict] = None
+    ) -> Dict[str, Any]:
         """Send command to equipment.
 
         Args:
@@ -451,13 +452,9 @@ class LabLinkClient:
         Returns:
             Command result
         """
-        payload = {
-            "command": command,
-            "parameters": parameters or {}
-        }
+        payload = {"command": command, "parameters": parameters or {}}
         response = self._session.post(
-            f"{self.api_base_url}/equipment/{equipment_id}/command",
-            json=payload
+            f"{self.api_base_url}/equipment/{equipment_id}/command", json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -471,7 +468,9 @@ class LabLinkClient:
         Returns:
             Readings dictionary
         """
-        response = self._session.get(f"{self.api_base_url}/equipment/{equipment_id}/readings")
+        response = self._session.get(
+            f"{self.api_base_url}/equipment/{equipment_id}/readings"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -479,7 +478,9 @@ class LabLinkClient:
 
     # Session Management
 
-    def create_acquisition_session(self, equipment_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    def create_acquisition_session(
+        self, equipment_id: str, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Create data acquisition session.
 
         Args:
@@ -491,8 +492,7 @@ class LabLinkClient:
         """
         payload = {"equipment_id": equipment_id, **config}
         response = self._session.post(
-            f"{self.api_base_url}/acquisition/session/create",
-            json=payload
+            f"{self.api_base_url}/acquisition/session/create", json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -578,7 +578,7 @@ class LabLinkClient:
         channel: Optional[str] = None,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        max_points: Optional[int] = None
+        max_points: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get acquired data.
 
@@ -604,12 +604,14 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/data",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
 
-    def list_acquisition_sessions(self, equipment_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_acquisition_sessions(
+        self, equipment_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """List all acquisition sessions.
 
         Args:
@@ -620,17 +622,13 @@ class LabLinkClient:
         """
         params = {"equipment_id": equipment_id} if equipment_id else {}
         response = self._session.get(
-            f"{self.api_base_url}/acquisition/sessions",
-            params=params
+            f"{self.api_base_url}/acquisition/sessions", params=params
         )
         response.raise_for_status()
         return response.json().get("sessions", [])
 
     def export_acquisition_data(
-        self,
-        acquisition_id: str,
-        format: str = "csv",
-        filepath: Optional[str] = None
+        self, acquisition_id: str, format: str = "csv", filepath: Optional[str] = None
     ) -> Dict[str, Any]:
         """Export acquisition data to file.
 
@@ -642,16 +640,12 @@ class LabLinkClient:
         Returns:
             Export result with filepath
         """
-        payload = {
-            "acquisition_id": acquisition_id,
-            "format": format
-        }
+        payload = {"acquisition_id": acquisition_id, "format": format}
         if filepath:
             payload["filepath"] = filepath
 
         response = self._session.post(
-            f"{self.api_base_url}/acquisition/export",
-            json=payload
+            f"{self.api_base_url}/acquisition/export", json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -674,10 +668,7 @@ class LabLinkClient:
     # Statistics
 
     def get_acquisition_rolling_stats(
-        self,
-        acquisition_id: str,
-        channel: Optional[str] = None,
-        window_size: int = 100
+        self, acquisition_id: str, channel: Optional[str] = None, window_size: int = 100
     ) -> Dict[str, Any]:
         """Get rolling statistics for acquisition data.
 
@@ -695,7 +686,7 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/rolling",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -705,7 +696,7 @@ class LabLinkClient:
         acquisition_id: str,
         channel: Optional[str] = None,
         window: str = "hann",
-        detrend: bool = True
+        detrend: bool = True,
     ) -> Dict[str, Any]:
         """Get FFT analysis of acquisition data.
 
@@ -724,7 +715,7 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/fft",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -733,7 +724,7 @@ class LabLinkClient:
         self,
         acquisition_id: str,
         channel: Optional[str] = None,
-        sensitivity: float = 0.1
+        sensitivity: float = 0.1,
     ) -> Dict[str, Any]:
         """Detect trend in acquisition data.
 
@@ -751,15 +742,13 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/trend",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
 
     def get_acquisition_quality(
-        self,
-        acquisition_id: str,
-        channel: Optional[str] = None
+        self, acquisition_id: str, channel: Optional[str] = None
     ) -> Dict[str, Any]:
         """Assess data quality of acquisition.
 
@@ -776,7 +765,7 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/quality",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -786,7 +775,7 @@ class LabLinkClient:
         acquisition_id: str,
         channel: Optional[str] = None,
         min_height: Optional[float] = None,
-        min_distance: int = 1
+        min_distance: int = 1,
     ) -> Dict[str, Any]:
         """Detect peaks in acquisition data.
 
@@ -807,7 +796,7 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/peaks",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -817,7 +806,7 @@ class LabLinkClient:
         acquisition_id: str,
         threshold: float,
         channel: Optional[str] = None,
-        direction: str = "both"
+        direction: str = "both",
     ) -> Dict[str, Any]:
         """Detect threshold crossings in acquisition data.
 
@@ -836,7 +825,7 @@ class LabLinkClient:
 
         response = self._session.get(
             f"{self.api_base_url}/acquisition/session/{acquisition_id}/stats/crossings",
-            params=params
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -850,7 +839,7 @@ class LabLinkClient:
         master_equipment_id: Optional[str] = None,
         sync_tolerance_ms: float = 10.0,
         wait_for_all: bool = True,
-        auto_align_timestamps: bool = True
+        auto_align_timestamps: bool = True,
     ) -> Dict[str, Any]:
         """Create a multi-instrument synchronization group.
 
@@ -871,20 +860,16 @@ class LabLinkClient:
             "master_equipment_id": master_equipment_id,
             "sync_tolerance_ms": sync_tolerance_ms,
             "wait_for_all": wait_for_all,
-            "auto_align_timestamps": auto_align_timestamps
+            "auto_align_timestamps": auto_align_timestamps,
         }
         response = self._session.post(
-            f"{self.api_base_url}/acquisition/sync/group/create",
-            json=payload
+            f"{self.api_base_url}/acquisition/sync/group/create", json=payload
         )
         response.raise_for_status()
         return response.json()
 
     def add_to_sync_group(
-        self,
-        group_id: str,
-        equipment_id: str,
-        acquisition_id: str
+        self, group_id: str, equipment_id: str, acquisition_id: str
     ) -> Dict[str, Any]:
         """Add acquisition session to sync group.
 
@@ -896,13 +881,9 @@ class LabLinkClient:
         Returns:
             Sync group status
         """
-        payload = {
-            "equipment_id": equipment_id,
-            "acquisition_id": acquisition_id
-        }
+        payload = {"equipment_id": equipment_id, "acquisition_id": acquisition_id}
         response = self._session.post(
-            f"{self.api_base_url}/acquisition/sync/group/{group_id}/add",
-            json=payload
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/add", json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -986,7 +967,7 @@ class LabLinkClient:
         self,
         group_id: str,
         start_time: Optional[str] = None,
-        end_time: Optional[str] = None
+        end_time: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get synchronized data from all equipment in group.
 
@@ -1005,8 +986,7 @@ class LabLinkClient:
             params["end_time"] = end_time
 
         response = self._session.get(
-            f"{self.api_base_url}/acquisition/sync/group/{group_id}/data",
-            params=params
+            f"{self.api_base_url}/acquisition/sync/group/{group_id}/data", params=params
         )
         response.raise_for_status()
         return response.json()
@@ -1017,9 +997,7 @@ class LabLinkClient:
         Returns:
             List of sync groups
         """
-        response = self._session.get(
-            f"{self.api_base_url}/acquisition/sync/groups"
-        )
+        response = self._session.get(f"{self.api_base_url}/acquisition/sync/groups")
         response.raise_for_status()
         return response.json().get("groups", [])
 
@@ -1039,11 +1017,15 @@ class LabLinkClient:
         return response.json()
 
     # Legacy compatibility methods (deprecated, use new methods above)
-    def create_acquisition(self, equipment_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    def create_acquisition(
+        self, equipment_id: str, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Legacy method - use create_acquisition_session instead."""
         return self.create_acquisition_session(equipment_id, config)
 
-    def list_acquisitions(self, equipment_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_acquisitions(
+        self, equipment_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Legacy method - use list_acquisition_sessions instead."""
         return self.list_acquisition_sessions(equipment_id)
 
@@ -1084,7 +1066,7 @@ class LabLinkClient:
         """
         response = self._session.post(
             f"{self.api_base_url}/alarms/events/acknowledge",
-            json={"event_id": event_id}
+            json={"event_id": event_id},
         )
         response.raise_for_status()
         return response.json()
@@ -1094,7 +1076,7 @@ class LabLinkClient:
         limit: Optional[int] = None,
         severity: Optional[str] = None,
         equipment_id: Optional[str] = None,
-        acknowledged: Optional[bool] = None
+        acknowledged: Optional[bool] = None,
     ) -> List[Dict[str, Any]]:
         """Get alarm event history.
 
@@ -1118,8 +1100,7 @@ class LabLinkClient:
             params["acknowledged"] = acknowledged
 
         response = self._session.get(
-            f"{self.api_base_url}/alarms/events",
-            params=params
+            f"{self.api_base_url}/alarms/events", params=params
         )
         response.raise_for_status()
         return response.json()["events"]
@@ -1146,7 +1127,9 @@ class LabLinkClient:
             List of jobs
         """
         params = {"enabled": enabled} if enabled is not None else {}
-        response = self._session.get(f"{self.api_base_url}/scheduler/jobs", params=params)
+        response = self._session.get(
+            f"{self.api_base_url}/scheduler/jobs", params=params
+        )
         response.raise_for_status()
         return response.json()["jobs"]
 
@@ -1160,8 +1143,7 @@ class LabLinkClient:
             Created job details
         """
         response = self._session.post(
-            f"{self.api_base_url}/scheduler/jobs/create",
-            json=job_config
+            f"{self.api_base_url}/scheduler/jobs/create", json=job_config
         )
         response.raise_for_status()
         return response.json()
@@ -1175,7 +1157,9 @@ class LabLinkClient:
         Returns:
             Execution details
         """
-        response = self._session.post(f"{self.api_base_url}/scheduler/jobs/{job_id}/run")
+        response = self._session.post(
+            f"{self.api_base_url}/scheduler/jobs/{job_id}/run"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -1211,7 +1195,9 @@ class LabLinkClient:
         Returns:
             Response dictionary
         """
-        response = self._session.post(f"{self.api_base_url}/scheduler/jobs/{job_id}/pause")
+        response = self._session.post(
+            f"{self.api_base_url}/scheduler/jobs/{job_id}/pause"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -1224,7 +1210,9 @@ class LabLinkClient:
         Returns:
             Response dictionary
         """
-        response = self._session.post(f"{self.api_base_url}/scheduler/jobs/{job_id}/resume")
+        response = self._session.post(
+            f"{self.api_base_url}/scheduler/jobs/{job_id}/resume"
+        )
         response.raise_for_status()
         return response.json()
 
@@ -1239,7 +1227,9 @@ class LabLinkClient:
         Returns:
             Equipment health details
         """
-        response = self._session.get(f"{self.api_base_url}/diagnostics/health/{equipment_id}")
+        response = self._session.get(
+            f"{self.api_base_url}/diagnostics/health/{equipment_id}"
+        )
         response.raise_for_status()
         return response.json()["health"]
 
@@ -1262,14 +1252,16 @@ class LabLinkClient:
         Returns:
             Benchmark results
         """
-        response = self._session.post(f"{self.api_base_url}/diagnostics/benchmark/{equipment_id}")
+        response = self._session.post(
+            f"{self.api_base_url}/diagnostics/benchmark/{equipment_id}"
+        )
         response.raise_for_status()
         return response.json()["benchmark"]
 
     def generate_diagnostic_report(
         self,
         equipment_ids: Optional[List[str]] = None,
-        categories: Optional[List[str]] = None
+        categories: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Generate diagnostic report.
 
@@ -1287,8 +1279,7 @@ class LabLinkClient:
             payload["categories"] = categories
 
         response = self._session.post(
-            f"{self.api_base_url}/diagnostics/report",
-            json=payload
+            f"{self.api_base_url}/diagnostics/report", json=payload
         )
         response.raise_for_status()
         return response.json()["report"]
@@ -1305,7 +1296,9 @@ class LabLinkClient:
 
     # ==================== State Management API ====================
 
-    def capture_state(self, equipment_id: str, name: str, description: Optional[str] = None) -> Dict[str, Any]:
+    def capture_state(
+        self, equipment_id: str, name: str, description: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Capture equipment state.
 
         Args:
@@ -1316,14 +1309,13 @@ class LabLinkClient:
         Returns:
             Captured state details
         """
-        payload = {
-            "equipment_id": equipment_id,
-            "name": name
-        }
+        payload = {"equipment_id": equipment_id, "name": name}
         if description:
             payload["description"] = description
 
-        response = self._session.post(f"{self.api_base_url}/state/capture", json=payload)
+        response = self._session.post(
+            f"{self.api_base_url}/state/capture", json=payload
+        )
         response.raise_for_status()
         return response.json()
 

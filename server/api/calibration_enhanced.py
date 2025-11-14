@@ -1,17 +1,15 @@
 """API endpoints for enhanced calibration management."""
 
-from fastapi import APIRouter, HTTPException
-from typing import List, Optional
 from datetime import datetime, timedelta
+from typing import List, Optional
 
-from equipment.calibration_enhanced import (
-    get_enhanced_calibration_manager,
-    CalibrationProcedure,
-    ProcedureExecution,
-    CalibrationCertificate,
-    CalibrationCorrection,
-    ReferenceStandard,
-)
+from equipment.calibration_enhanced import (CalibrationCertificate,
+                                            CalibrationCorrection,
+                                            CalibrationProcedure,
+                                            ProcedureExecution,
+                                            ReferenceStandard,
+                                            get_enhanced_calibration_manager)
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/calibration", tags=["calibration-enhanced"])
 
@@ -28,7 +26,10 @@ async def create_calibration_procedure(procedure: CalibrationProcedure):
     try:
         manager = get_enhanced_calibration_manager()
         procedure_id = manager.create_procedure(procedure)
-        return {"procedure_id": procedure_id, "message": "Procedure created successfully"}
+        return {
+            "procedure_id": procedure_id,
+            "message": "Procedure created successfully",
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -59,15 +60,18 @@ async def get_calibration_procedure(procedure_id: str):
 
 @router.post("/executions/start")
 async def start_procedure_execution(
-    procedure_id: str,
-    equipment_id: str,
-    performed_by: str
+    procedure_id: str, equipment_id: str, performed_by: str
 ):
     """Start executing a calibration procedure."""
     try:
         manager = get_enhanced_calibration_manager()
-        execution = manager.start_procedure_execution(procedure_id, equipment_id, performed_by)
-        return {"execution_id": execution.execution_id, "message": "Procedure execution started"}
+        execution = manager.start_procedure_execution(
+            procedure_id, equipment_id, performed_by
+        )
+        return {
+            "execution_id": execution.execution_id,
+            "message": "Procedure execution started",
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -80,7 +84,7 @@ async def complete_procedure_step(
     step_number: int,
     measured_value: Optional[float] = None,
     passed: bool = True,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
 ):
     """Complete a step in a procedure execution."""
     try:
@@ -120,7 +124,10 @@ async def create_calibration_certificate(certificate: CalibrationCertificate):
     try:
         manager = get_enhanced_calibration_manager()
         certificate_id = manager.create_certificate(certificate)
-        return {"certificate_id": certificate_id, "message": "Certificate created successfully"}
+        return {
+            "certificate_id": certificate_id,
+            "message": "Certificate created successfully",
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -181,9 +188,7 @@ async def get_equipment_corrections(equipment_id: str):
 
 @router.post("/corrections/apply")
 async def apply_calibration_corrections(
-    equipment_id: str,
-    parameter: str,
-    value: float
+    equipment_id: str, parameter: str, value: float
 ):
     """Apply calibration corrections to a measured value.
 
@@ -197,7 +202,7 @@ async def apply_calibration_corrections(
             "parameter": parameter,
             "raw_value": value,
             "corrected_value": corrected_value,
-            "correction_applied": abs(corrected_value - value) > 1e-10
+            "correction_applied": abs(corrected_value - value) > 1e-10,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -265,11 +270,7 @@ async def get_due_standards(days: int = 30):
     try:
         manager = get_enhanced_calibration_manager()
         due_standards = manager.get_due_standards(days)
-        return {
-            "days": days,
-            "count": len(due_standards),
-            "standards": due_standards
-        }
+        return {"days": days, "count": len(due_standards), "standards": due_standards}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -285,9 +286,15 @@ async def get_calibration_info():
             "procedures": "Step-by-step calibration workflows",
             "certificates": "Digital calibration certificates with traceability",
             "corrections": "Mathematical corrections for systematic errors",
-            "standards": "Reference standards management and tracking"
+            "standards": "Reference standards management and tracking",
         },
         "correction_types": ["linear", "polynomial", "lookup_table", "custom"],
-        "procedure_step_types": ["setup", "measurement", "adjustment", "verification", "documentation"],
+        "procedure_step_types": [
+            "setup",
+            "measurement",
+            "adjustment",
+            "verification",
+            "documentation",
+        ],
         "certificate_types": ["accredited", "non_accredited", "in_house", "factory"],
     }

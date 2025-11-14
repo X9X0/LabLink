@@ -1,23 +1,24 @@
 """Oscilloscope-specific control panel."""
 
+import asyncio
 import logging
 from typing import Optional
-import asyncio
 
 try:
-    from PyQt6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
-        QPushButton, QComboBox, QDoubleSpinBox, QCheckBox,
-        QFormLayout, QGridLayout, QTabWidget
-    )
     from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
+                                 QFormLayout, QGridLayout, QGroupBox,
+                                 QHBoxLayout, QLabel, QPushButton, QTabWidget,
+                                 QVBoxLayout, QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from client.api.client import LabLinkClient
 from client.ui.widgets.waveform_display import WaveformDisplay
@@ -105,18 +106,40 @@ class OscilloscopePanel(QWidget):
         timebase_layout = QFormLayout()
 
         self.timebase_combo = QComboBox()
-        self.timebase_combo.addItems([
-            "1 ns/div", "2 ns/div", "5 ns/div",
-            "10 ns/div", "20 ns/div", "50 ns/div",
-            "100 ns/div", "200 ns/div", "500 ns/div",
-            "1 µs/div", "2 µs/div", "5 µs/div",
-            "10 µs/div", "20 µs/div", "50 µs/div",
-            "100 µs/div", "200 µs/div", "500 µs/div",
-            "1 ms/div", "2 ms/div", "5 ms/div",
-            "10 ms/div", "20 ms/div", "50 ms/div",
-            "100 ms/div", "200 ms/div", "500 ms/div",
-            "1 s/div", "2 s/div", "5 s/div"
-        ])
+        self.timebase_combo.addItems(
+            [
+                "1 ns/div",
+                "2 ns/div",
+                "5 ns/div",
+                "10 ns/div",
+                "20 ns/div",
+                "50 ns/div",
+                "100 ns/div",
+                "200 ns/div",
+                "500 ns/div",
+                "1 µs/div",
+                "2 µs/div",
+                "5 µs/div",
+                "10 µs/div",
+                "20 µs/div",
+                "50 µs/div",
+                "100 µs/div",
+                "200 µs/div",
+                "500 µs/div",
+                "1 ms/div",
+                "2 ms/div",
+                "5 ms/div",
+                "10 ms/div",
+                "20 ms/div",
+                "50 ms/div",
+                "100 ms/div",
+                "200 ms/div",
+                "500 ms/div",
+                "1 s/div",
+                "2 s/div",
+                "5 s/div",
+            ]
+        )
         self.timebase_combo.setCurrentText("1 ms/div")
         timebase_layout.addRow("Scale:", self.timebase_combo)
 
@@ -141,39 +164,49 @@ class OscilloscopePanel(QWidget):
         for i in range(1, 5):
             # Channel label
             ch_label = QLabel(f"<b>CH{i}</b>")
-            channels_layout.addWidget(ch_label, i-1, 0)
+            channels_layout.addWidget(ch_label, i - 1, 0)
 
             # Enable checkbox
             enable_cb = QCheckBox("Enable")
             enable_cb.setChecked(i <= 2)
-            channels_layout.addWidget(enable_cb, i-1, 1)
+            channels_layout.addWidget(enable_cb, i - 1, 1)
 
             # Scale combo
             scale_combo = QComboBox()
-            scale_combo.addItems([
-                "1 mV/div", "2 mV/div", "5 mV/div",
-                "10 mV/div", "20 mV/div", "50 mV/div",
-                "100 mV/div", "200 mV/div", "500 mV/div",
-                "1 V/div", "2 V/div", "5 V/div",
-                "10 V/div"
-            ])
+            scale_combo.addItems(
+                [
+                    "1 mV/div",
+                    "2 mV/div",
+                    "5 mV/div",
+                    "10 mV/div",
+                    "20 mV/div",
+                    "50 mV/div",
+                    "100 mV/div",
+                    "200 mV/div",
+                    "500 mV/div",
+                    "1 V/div",
+                    "2 V/div",
+                    "5 V/div",
+                    "10 V/div",
+                ]
+            )
             scale_combo.setCurrentText("1 V/div")
-            channels_layout.addWidget(scale_combo, i-1, 2)
+            channels_layout.addWidget(scale_combo, i - 1, 2)
 
             # Coupling combo
             coupling_combo = QComboBox()
             coupling_combo.addItems(["DC", "AC", "GND"])
-            channels_layout.addWidget(coupling_combo, i-1, 3)
+            channels_layout.addWidget(coupling_combo, i - 1, 3)
 
             # Apply button
             apply_btn = QPushButton("Apply")
             apply_btn.clicked.connect(lambda checked, ch=i: self._on_apply_channel(ch))
-            channels_layout.addWidget(apply_btn, i-1, 4)
+            channels_layout.addWidget(apply_btn, i - 1, 4)
 
             self.channel_controls[i] = {
                 "enable": enable_cb,
                 "scale": scale_combo,
-                "coupling": coupling_combo
+                "coupling": coupling_combo,
             }
 
         channels_group.setLayout(channels_layout)
@@ -270,7 +303,7 @@ class OscilloscopePanel(QWidget):
             ("Vavg", "Average"),
             ("Vrms", "RMS"),
             ("Freq", "Frequency"),
-            ("Period", "Period")
+            ("Period", "Period"),
         ]
 
         for i, (key, label) in enumerate(meas_names):
@@ -301,9 +334,11 @@ class OscilloscopePanel(QWidget):
         self.equipment_id = equipment_id
 
         # Update info label
-        model = info.get('model', 'Unknown')
-        manufacturer = info.get('manufacturer', 'Unknown')
-        self.info_label.setText(f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})")
+        model = info.get("model", "Unknown")
+        manufacturer = info.get("manufacturer", "Unknown")
+        self.info_label.setText(
+            f"<b>Connected:</b> {manufacturer} {model} ({equipment_id})"
+        )
 
         # Enable streaming button
         self.start_stream_btn.setEnabled(True)
@@ -325,9 +360,7 @@ class OscilloscopePanel(QWidget):
         """Start streaming (async)."""
         try:
             await self.client.start_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="waveform",
-                interval_ms=100
+                equipment_id=self.equipment_id, stream_type="waveform", interval_ms=100
             )
 
             self.streaming = True
@@ -349,8 +382,7 @@ class OscilloscopePanel(QWidget):
         """Stop streaming (async)."""
         try:
             await self.client.stop_equipment_stream(
-                equipment_id=self.equipment_id,
-                stream_type="waveform"
+                equipment_id=self.equipment_id, stream_type="waveform"
             )
 
             self.streaming = False
@@ -365,10 +397,10 @@ class OscilloscopePanel(QWidget):
 
     def _on_waveform_data(self, message: dict):
         """Handle incoming waveform data."""
-        if message.get('equipment_id') != self.equipment_id:
+        if message.get("equipment_id") != self.equipment_id:
             return
 
-        if message.get('stream_type') != 'waveform':
+        if message.get("stream_type") != "waveform":
             return
 
         # Update display
@@ -398,7 +430,9 @@ class OscilloscopePanel(QWidget):
         scale_text = controls["scale"].currentText()
         coupling = controls["coupling"].currentText()
 
-        logger.info(f"Apply CH{channel}: enabled={enabled}, scale={scale_text}, coupling={coupling}")
+        logger.info(
+            f"Apply CH{channel}: enabled={enabled}, scale={scale_text}, coupling={coupling}"
+        )
 
         # Would send command to equipment
 
@@ -448,7 +482,7 @@ class OscilloscopePanel(QWidget):
                 self.meas_labels["vavg"].setText(f"{measurements.get('vavg', 0):.3f} V")
                 self.meas_labels["vrms"].setText(f"{measurements['vrms']:.3f} V")
 
-                freq = measurements['freq']
+                freq = measurements["freq"]
                 if freq > 1e6:
                     self.meas_labels["freq"].setText(f"{freq/1e6:.3f} MHz")
                 elif freq > 1e3:
@@ -456,7 +490,7 @@ class OscilloscopePanel(QWidget):
                 else:
                     self.meas_labels["freq"].setText(f"{freq:.3f} Hz")
 
-                period = 1/freq if freq > 0 else 0
+                period = 1 / freq if freq > 0 else 0
                 if period > 1:
                     self.meas_labels["period"].setText(f"{period:.3f} s")
                 elif period > 1e-3:

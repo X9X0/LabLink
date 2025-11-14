@@ -1,14 +1,16 @@
 """Mock electronic load driver for testing without hardware."""
 
+import asyncio
 import logging
 import uuid
-import asyncio
-import numpy as np
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+import numpy as np
+
 from shared.models.data import ElectronicLoadData
+from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                     EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +253,7 @@ class MockElectronicLoad:
                 # No source resistance
                 current = P / v_source if v_source > 0 else 0.0
             else:
-                discriminant = b**2 - 4*a*c
+                discriminant = b**2 - 4 * a * c
                 if discriminant < 0:
                     # Can't achieve requested power
                     current = v_source / (2 * r_source)

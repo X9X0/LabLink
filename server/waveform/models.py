@@ -1,20 +1,23 @@
 """Waveform data models for advanced oscilloscope features."""
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+from pydantic import BaseModel, Field
 
 
 class CursorType(str, Enum):
     """Cursor type enumeration."""
+
     HORIZONTAL = "horizontal"  # Time cursors
     VERTICAL = "vertical"  # Voltage cursors
 
 
 class MathOperation(str, Enum):
     """Math channel operations."""
+
     ADD = "add"  # Ch1 + Ch2
     SUBTRACT = "subtract"  # Ch1 - Ch2
     MULTIPLY = "multiply"  # Ch1 * Ch2
@@ -34,6 +37,7 @@ class MathOperation(str, Enum):
 
 class PersistenceMode(str, Enum):
     """Persistence display modes."""
+
     OFF = "off"  # No persistence
     INFINITE = "infinite"  # Accumulate all waveforms
     VARIABLE = "variable"  # Variable persistence with decay
@@ -42,9 +46,12 @@ class PersistenceMode(str, Enum):
 
 class ExtendedWaveformData(BaseModel):
     """Extended waveform data with actual voltage and time arrays."""
+
     equipment_id: str = Field(..., description="Source equipment ID")
     channel: int = Field(..., description="Channel number")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Capture timestamp")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Capture timestamp"
+    )
     sample_rate: float = Field(..., description="Sample rate in Hz")
     time_scale: float = Field(..., description="Time per division in seconds")
     voltage_scale: float = Field(..., description="Voltage per division in volts")
@@ -53,12 +60,18 @@ class ExtendedWaveformData(BaseModel):
     data_id: str = Field(..., description="Unique data identifier")
 
     # Actual waveform data (serialized as lists for JSON)
-    time_data: List[float] = Field(default_factory=list, description="Time values in seconds")
-    voltage_data: List[float] = Field(default_factory=list, description="Voltage values in volts")
+    time_data: List[float] = Field(
+        default_factory=list, description="Time values in seconds"
+    )
+    voltage_data: List[float] = Field(
+        default_factory=list, description="Voltage values in volts"
+    )
 
     # Acquisition metadata
     trigger_time: Optional[float] = Field(None, description="Trigger time in seconds")
-    pre_trigger_samples: Optional[int] = Field(None, description="Number of pre-trigger samples")
+    pre_trigger_samples: Optional[int] = Field(
+        None, description="Number of pre-trigger samples"
+    )
 
     class Config:
         json_encoders = {
@@ -68,52 +81,76 @@ class ExtendedWaveformData(BaseModel):
 
 class CursorData(BaseModel):
     """Cursor measurement data."""
-    cursor_type: CursorType = Field(..., description="Cursor type (horizontal/vertical)")
+
+    cursor_type: CursorType = Field(
+        ..., description="Cursor type (horizontal/vertical)"
+    )
     cursor1_position: float = Field(..., description="Position of cursor 1")
     cursor2_position: float = Field(..., description="Position of cursor 2")
     delta: float = Field(..., description="Delta between cursors")
 
     # For horizontal cursors (time)
     delta_time: Optional[float] = Field(None, description="Time difference (seconds)")
-    frequency: Optional[float] = Field(None, description="Frequency from delta time (Hz)")
+    frequency: Optional[float] = Field(
+        None, description="Frequency from delta time (Hz)"
+    )
 
     # For vertical cursors (voltage)
     delta_voltage: Optional[float] = Field(None, description="Voltage difference (V)")
 
     # Values at cursor positions
-    cursor1_value: Optional[float] = Field(None, description="Waveform value at cursor 1")
-    cursor2_value: Optional[float] = Field(None, description="Waveform value at cursor 2")
+    cursor1_value: Optional[float] = Field(
+        None, description="Waveform value at cursor 1"
+    )
+    cursor2_value: Optional[float] = Field(
+        None, description="Waveform value at cursor 2"
+    )
 
 
 class MathChannelConfig(BaseModel):
     """Math channel configuration."""
+
     operation: MathOperation = Field(..., description="Math operation")
     source_channel1: int = Field(..., description="Primary source channel")
-    source_channel2: Optional[int] = Field(None, description="Secondary source channel (for binary ops)")
+    source_channel2: Optional[int] = Field(
+        None, description="Secondary source channel (for binary ops)"
+    )
     scale: float = Field(1.0, description="Output scale factor")
     offset: float = Field(0.0, description="Output offset")
 
     # FFT-specific parameters
     fft_window: Optional[str] = Field("hann", description="FFT window function")
-    fft_mode: Optional[str] = Field("magnitude", description="FFT mode (magnitude/phase/real/imag)")
+    fft_mode: Optional[str] = Field(
+        "magnitude", description="FFT mode (magnitude/phase/real/imag)"
+    )
 
     # Average-specific parameters
-    average_count: Optional[int] = Field(10, description="Number of waveforms to average")
+    average_count: Optional[int] = Field(
+        10, description="Number of waveforms to average"
+    )
 
     # Filter parameters
-    filter_cutoff: Optional[float] = Field(None, description="Filter cutoff frequency (Hz)")
+    filter_cutoff: Optional[float] = Field(
+        None, description="Filter cutoff frequency (Hz)"
+    )
 
 
 class PersistenceConfig(BaseModel):
     """Persistence mode configuration."""
+
     mode: PersistenceMode = Field(..., description="Persistence mode")
-    decay_time: Optional[float] = Field(1.0, description="Decay time for variable persistence (seconds)")
-    max_waveforms: Optional[int] = Field(100, description="Maximum waveforms to accumulate")
+    decay_time: Optional[float] = Field(
+        1.0, description="Decay time for variable persistence (seconds)"
+    )
+    max_waveforms: Optional[int] = Field(
+        100, description="Maximum waveforms to accumulate"
+    )
     color_grading: bool = Field(True, description="Use color grading for intensity")
 
 
 class HistogramData(BaseModel):
     """Histogram data for voltage or time distribution."""
+
     histogram_type: str = Field(..., description="Type: 'voltage' or 'time'")
     bins: List[float] = Field(..., description="Histogram bin edges")
     counts: List[int] = Field(..., description="Counts per bin")
@@ -132,8 +169,11 @@ class HistogramData(BaseModel):
 
 class XYPlotData(BaseModel):
     """XY plot data (channel vs channel)."""
+
     equipment_id: str = Field(..., description="Source equipment ID")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Capture timestamp")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Capture timestamp"
+    )
     x_channel: int = Field(..., description="X-axis channel")
     y_channel: int = Field(..., description="Y-axis channel")
     x_data: List[float] = Field(..., description="X-axis data points")
@@ -143,9 +183,12 @@ class XYPlotData(BaseModel):
 
 class EnhancedMeasurements(BaseModel):
     """Enhanced automatic measurements."""
+
     equipment_id: str = Field(..., description="Source equipment ID")
     channel: int = Field(..., description="Channel number")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Measurement timestamp")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Measurement timestamp"
+    )
 
     # Voltage measurements
     vpp: Optional[float] = Field(None, description="Peak-to-peak voltage (V)")
@@ -168,8 +211,12 @@ class EnhancedMeasurements(BaseModel):
     frequency: Optional[float] = Field(None, description="Frequency (Hz)")
     rise_time: Optional[float] = Field(None, description="Rise time 10%-90% (s)")
     fall_time: Optional[float] = Field(None, description="Fall time 90%-10% (s)")
-    positive_width: Optional[float] = Field(None, description="Positive pulse width (s)")
-    negative_width: Optional[float] = Field(None, description="Negative pulse width (s)")
+    positive_width: Optional[float] = Field(
+        None, description="Positive pulse width (s)"
+    )
+    negative_width: Optional[float] = Field(
+        None, description="Negative pulse width (s)"
+    )
     duty_cycle: Optional[float] = Field(None, description="Duty cycle (%)")
 
     # Phase and delay
@@ -185,8 +232,12 @@ class EnhancedMeasurements(BaseModel):
     cycle_area: Optional[float] = Field(None, description="Single cycle area (V*s)")
 
     # Advanced measurements
-    slew_rate_rising: Optional[float] = Field(None, description="Slew rate on rising edge (V/s)")
-    slew_rate_falling: Optional[float] = Field(None, description="Slew rate on falling edge (V/s)")
+    slew_rate_rising: Optional[float] = Field(
+        None, description="Slew rate on rising edge (V/s)"
+    )
+    slew_rate_falling: Optional[float] = Field(
+        None, description="Slew rate on falling edge (V/s)"
+    )
 
     # Signal quality
     snr: Optional[float] = Field(None, description="Signal-to-noise ratio (dB)")
@@ -207,6 +258,7 @@ class EnhancedMeasurements(BaseModel):
 
 class WaveformCaptureConfig(BaseModel):
     """Configuration for waveform capture."""
+
     channel: int = Field(..., description="Channel to capture")
     num_averages: int = Field(1, description="Number of waveforms to average")
     high_resolution: bool = Field(False, description="Enable high-resolution mode")
@@ -216,14 +268,19 @@ class WaveformCaptureConfig(BaseModel):
     single_shot: bool = Field(False, description="Single-shot acquisition")
 
     # Advanced options
-    reduce_points: Optional[int] = Field(None, description="Reduce to N points (decimation)")
+    reduce_points: Optional[int] = Field(
+        None, description="Reduce to N points (decimation)"
+    )
     apply_smoothing: bool = Field(False, description="Apply smoothing filter")
 
 
 class MathChannelResult(BaseModel):
     """Result from math channel operation."""
+
     equipment_id: str = Field(..., description="Source equipment ID")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Calculation timestamp")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="Calculation timestamp"
+    )
     operation: MathOperation = Field(..., description="Math operation performed")
     source_channels: List[int] = Field(..., description="Source channel numbers")
     result_data: List[float] = Field(..., description="Result waveform data")
@@ -231,6 +288,10 @@ class MathChannelResult(BaseModel):
     sample_rate: float = Field(..., description="Sample rate of result (Hz)")
 
     # For FFT results
-    frequency_data: Optional[List[float]] = Field(None, description="Frequency data (for FFT)")
-    magnitude_data: Optional[List[float]] = Field(None, description="Magnitude data (for FFT)")
+    frequency_data: Optional[List[float]] = Field(
+        None, description="Frequency data (for FFT)"
+    )
+    magnitude_data: Optional[List[float]] = Field(
+        None, description="Magnitude data (for FFT)"
+    )
     phase_data: Optional[List[float]] = Field(None, description="Phase data (for FFT)")

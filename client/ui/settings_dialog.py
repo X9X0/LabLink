@@ -4,19 +4,20 @@ import logging
 from typing import Optional
 
 try:
-    from PyQt6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
-        QLabel, QLineEdit, QSpinBox, QCheckBox, QPushButton,
-        QGroupBox, QFormLayout, QComboBox, QFileDialog, QMessageBox
-    )
     from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
+                                 QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+                                 QLineEdit, QMessageBox, QPushButton, QSpinBox,
+                                 QTabWidget, QVBoxLayout, QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from client.utils.settings import SettingsManager
 
@@ -324,13 +325,15 @@ class SettingsDialog(QDialog):
             "Reset Settings",
             "Reset all settings to defaults?\n\nThis cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
             self.settings.clear_all()
             self._load_settings()
-            QMessageBox.information(self, "Reset Complete", "Settings reset to defaults.")
+            QMessageBox.information(
+                self, "Reset Complete", "Settings reset to defaults."
+            )
 
     def _on_clear_recent_clicked(self):
         """Handle clear recent servers button."""
@@ -341,9 +344,7 @@ class SettingsDialog(QDialog):
     def _on_browse_export_dir(self):
         """Handle browse export directory button."""
         directory = QFileDialog.getExistingDirectory(
-            self,
-            "Select Export Directory",
-            self.export_dir_edit.text()
+            self, "Select Export Directory", self.export_dir_edit.text()
         )
 
         if directory:
@@ -352,17 +353,16 @@ class SettingsDialog(QDialog):
     def _on_import_clicked(self):
         """Handle import button click."""
         filepath, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import Settings",
-            "",
-            "JSON Files (*.json);;All Files (*)"
+            self, "Import Settings", "", "JSON Files (*.json);;All Files (*)"
         )
 
         if filepath:
             try:
                 self.settings.import_settings(filepath)
                 self._load_settings()
-                QMessageBox.information(self, "Success", "Settings imported successfully.")
+                QMessageBox.information(
+                    self, "Success", "Settings imported successfully."
+                )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to import settings:\n{e}")
 
@@ -372,13 +372,15 @@ class SettingsDialog(QDialog):
             self,
             "Export Settings",
             "lablink_settings.json",
-            "JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)",
         )
 
         if filepath:
             try:
                 self.settings.export_settings(filepath)
-                QMessageBox.information(self, "Success", f"Settings exported to:\n{filepath}")
+                QMessageBox.information(
+                    self, "Success", f"Settings exported to:\n{filepath}"
+                )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to export settings:\n{e}")
 
@@ -394,7 +396,7 @@ class SettingsDialog(QDialog):
             "Clear All Settings",
             "This will permanently delete ALL settings!\n\nAre you sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:

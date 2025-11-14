@@ -5,12 +5,13 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
 import numpy as np
+from pydantic import BaseModel, Field
 
 
 class AcquisitionMode(str, Enum):
     """Data acquisition modes."""
+
     CONTINUOUS = "continuous"  # Acquire continuously until stopped
     SINGLE_SHOT = "single_shot"  # Acquire N samples then stop
     TRIGGERED = "triggered"  # Wait for trigger, then acquire
@@ -18,6 +19,7 @@ class AcquisitionMode(str, Enum):
 
 class AcquisitionState(str, Enum):
     """Acquisition session states."""
+
     IDLE = "idle"
     WAITING_TRIGGER = "waiting_trigger"
     ACQUIRING = "acquiring"
@@ -28,6 +30,7 @@ class AcquisitionState(str, Enum):
 
 class TriggerType(str, Enum):
     """Trigger types for acquisition."""
+
     IMMEDIATE = "immediate"  # Start immediately
     LEVEL = "level"  # Trigger when value crosses threshold
     EDGE = "edge"  # Trigger on rising/falling edge
@@ -37,6 +40,7 @@ class TriggerType(str, Enum):
 
 class TriggerEdge(str, Enum):
     """Trigger edge types."""
+
     RISING = "rising"
     FALLING = "falling"
     EITHER = "either"
@@ -44,6 +48,7 @@ class TriggerEdge(str, Enum):
 
 class ExportFormat(str, Enum):
     """Data export formats."""
+
     CSV = "csv"
     HDF5 = "hdf5"
     NUMPY = "npy"
@@ -52,6 +57,7 @@ class ExportFormat(str, Enum):
 
 class TriggerConfig(BaseModel):
     """Trigger configuration."""
+
     trigger_type: TriggerType = TriggerType.IMMEDIATE
     level: Optional[float] = None  # For level/edge triggers
     edge: Optional[TriggerEdge] = None  # For edge triggers
@@ -75,7 +81,9 @@ class AcquisitionConfig(BaseModel):
     duration_seconds: Optional[float] = Field(None, gt=0, description="Max duration")
 
     # Channels
-    channels: List[str] = Field(default_factory=lambda: ["CH1"], description="Channels to acquire")
+    channels: List[str] = Field(
+        default_factory=lambda: ["CH1"], description="Channels to acquire"
+    )
 
     # Trigger settings
     trigger_config: TriggerConfig = Field(default_factory=TriggerConfig)
@@ -94,6 +102,7 @@ class AcquisitionConfig(BaseModel):
 
 class DataPoint(BaseModel):
     """Single data point with timestamp."""
+
     timestamp: datetime = Field(default_factory=datetime.now)
     channel: str
     value: float
@@ -101,13 +110,12 @@ class DataPoint(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class AcquisitionStats(BaseModel):
     """Statistics for acquisition session."""
+
     total_samples: int = 0
     samples_per_channel: Dict[str, int] = Field(default_factory=dict)
     start_time: Optional[datetime] = None
@@ -120,13 +128,12 @@ class AcquisitionStats(BaseModel):
     mean_values: Dict[str, float] = Field(default_factory=dict)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class AcquisitionSession(BaseModel):
     """Active acquisition session information."""
+
     acquisition_id: str
     equipment_id: str
     state: AcquisitionState = AcquisitionState.IDLE
@@ -138,9 +145,7 @@ class AcquisitionSession(BaseModel):
     error_message: Optional[str] = None
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class CircularBuffer:
@@ -218,10 +223,9 @@ class CircularBuffer:
                 indices = np.arange(start_idx, end_idx)
             else:
                 # Wrapped around
-                indices = np.concatenate([
-                    np.arange(start_idx, self.size),
-                    np.arange(0, end_idx)
-                ])
+                indices = np.concatenate(
+                    [np.arange(start_idx, self.size), np.arange(0, end_idx)]
+                )
 
         return self.data[:, indices], self.timestamps[indices]
 
@@ -245,7 +249,7 @@ class CircularBuffer:
                 "size": self.size,
                 "count": 0,
                 "overruns": self.overruns,
-                "utilization": 0.0
+                "utilization": 0.0,
             }
 
         data, _ = self.get_all()
@@ -258,5 +262,5 @@ class CircularBuffer:
             "min": data.min(axis=1).tolist(),
             "max": data.max(axis=1).tolist(),
             "mean": data.mean(axis=1).tolist(),
-            "std": data.std(axis=1).tolist()
+            "std": data.std(axis=1).tolist(),
         }

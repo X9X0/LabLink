@@ -8,14 +8,14 @@ without requiring actual equipment or external dependencies.
 import ast
 import sys
 from pathlib import Path
-from typing import Set, Dict, List
+from typing import Dict, List, Set
 
 # Color codes for terminal output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
 
 
 def print_header(text: str):
@@ -53,9 +53,9 @@ class ASTVisitor(ast.NodeVisitor):
         """Visit class definition."""
         self.current_class = node.name
         self.classes[node.name] = {
-            'methods': [],
-            'bases': [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
-            'attributes': []
+            "methods": [],
+            "bases": [b.id if isinstance(b, ast.Name) else str(b) for b in node.bases],
+            "attributes": [],
         }
         self.generic_visit(node)
         self.current_class = None
@@ -63,7 +63,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         """Visit function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -71,7 +71,7 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node):
         """Visit async function definition."""
         if self.current_class:
-            self.classes[self.current_class]['methods'].append(node.name)
+            self.classes[self.current_class]["methods"].append(node.name)
         else:
             self.functions.append(node.name)
         self.generic_visit(node)
@@ -90,7 +90,7 @@ class ASTVisitor(ast.NodeVisitor):
 def parse_python_file(filepath: Path) -> ASTVisitor:
     """Parse a Python file and extract structure information."""
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             tree = ast.parse(f.read())
         visitor = ASTVisitor()
         visitor.visit(tree)
@@ -123,7 +123,7 @@ def verify_models():
         "CircularBuffer",
         "AcquisitionSession",
         "AcquisitionStats",
-        "DataPoint"
+        "DataPoint",
     ]
 
     missing_classes = [cls for cls in required_classes if cls not in visitor.classes]
@@ -181,7 +181,7 @@ def verify_manager():
         "detect_trend",
         "assess_data_quality",
         "detect_peaks",
-        "detect_threshold_crossings"
+        "detect_threshold_crossings",
     ]
 
     manager_methods = visitor.classes["AcquisitionManager"]["methods"]
@@ -194,9 +194,15 @@ def verify_manager():
     print_success(f"All {len(required_methods)} required methods found")
 
     # Check for global instance
-    if "acquisition_manager" not in visitor.functions and "acquisition_manager" not in [
-        line for line in open(filepath).read().split('\n') if 'acquisition_manager' in line
-    ]:
+    if (
+        "acquisition_manager" not in visitor.functions
+        and "acquisition_manager"
+        not in [
+            line
+            for line in open(filepath).read().split("\n")
+            if "acquisition_manager" in line
+        ]
+    ):
         print_warning("Global acquisition_manager instance may be missing")
     else:
         print_success("Global acquisition_manager instance found")
@@ -225,7 +231,7 @@ def verify_statistics():
         "TrendAnalysis",
         "DataQuality",
         "PeakInfo",
-        "StatisticsEngine"
+        "StatisticsEngine",
     ]
 
     missing_classes = [cls for cls in required_classes if cls not in visitor.classes]
@@ -242,7 +248,7 @@ def verify_statistics():
         "detect_trend",
         "assess_data_quality",
         "detect_peaks",
-        "detect_threshold_crossings"
+        "detect_threshold_crossings",
     ]
 
     engine_methods = visitor.classes.get("StatisticsEngine", {}).get("methods", [])
@@ -255,7 +261,9 @@ def verify_statistics():
     print_success(f"StatisticsEngine has all {len(required_methods)} required methods")
 
     # Check for scipy imports
-    if "scipy" in str(visitor.imports) or any("scipy" in imp for imp in visitor.imports):
+    if "scipy" in str(visitor.imports) or any(
+        "scipy" in imp for imp in visitor.imports
+    ):
         print_success("SciPy imports found for FFT/signal processing")
     else:
         print_warning("SciPy imports not detected - FFT may not work")
@@ -282,7 +290,7 @@ def verify_synchronization():
         "SyncConfig",
         "SyncStatus",
         "SynchronizationGroup",
-        "SynchronizationManager"
+        "SynchronizationManager",
     ]
 
     missing_classes = [cls for cls in required_classes if cls not in visitor.classes]
@@ -301,34 +309,44 @@ def verify_synchronization():
         "pause_synchronized",
         "resume_synchronized",
         "get_status",
-        "get_synchronized_data"
+        "get_synchronized_data",
     ]
 
     group_methods = visitor.classes.get("SynchronizationGroup", {}).get("methods", [])
     missing_methods = [m for m in required_group_methods if m not in group_methods]
 
     if missing_methods:
-        print_error(f"SynchronizationGroup missing methods: {', '.join(missing_methods)}")
+        print_error(
+            f"SynchronizationGroup missing methods: {', '.join(missing_methods)}"
+        )
         return False
 
-    print_success(f"SynchronizationGroup has all {len(required_group_methods)} required methods")
+    print_success(
+        f"SynchronizationGroup has all {len(required_group_methods)} required methods"
+    )
 
     # Check SynchronizationManager methods
     required_manager_methods = [
         "create_sync_group",
         "get_sync_group",
         "delete_sync_group",
-        "list_sync_groups"
+        "list_sync_groups",
     ]
 
-    manager_methods = visitor.classes.get("SynchronizationManager", {}).get("methods", [])
+    manager_methods = visitor.classes.get("SynchronizationManager", {}).get(
+        "methods", []
+    )
     missing_methods = [m for m in required_manager_methods if m not in manager_methods]
 
     if missing_methods:
-        print_error(f"SynchronizationManager missing methods: {', '.join(missing_methods)}")
+        print_error(
+            f"SynchronizationManager missing methods: {', '.join(missing_methods)}"
+        )
         return False
 
-    print_success(f"SynchronizationManager has all {len(required_manager_methods)} required methods")
+    print_success(
+        f"SynchronizationManager has all {len(required_manager_methods)} required methods"
+    )
 
     return True
 
@@ -357,7 +375,7 @@ def verify_api():
         "get_acquisition_data",
         "list_sessions",
         "export_data",
-        "delete_session"
+        "delete_session",
     ]
 
     # Check statistics endpoints
@@ -367,7 +385,7 @@ def verify_api():
         "detect_trend",
         "assess_quality",
         "detect_peaks",
-        "detect_crossings"
+        "detect_crossings",
     ]
 
     # Check sync endpoints
@@ -381,7 +399,7 @@ def verify_api():
         "get_sync_group_status",
         "get_sync_group_data",
         "list_sync_groups",
-        "delete_sync_group"
+        "delete_sync_group",
     ]
 
     all_endpoints = basic_endpoints + stats_endpoints + sync_endpoints
@@ -418,13 +436,15 @@ def verify_websocket():
         "start_acquisition_stream",
         "stop_acquisition_stream",
         "start_acquisition_stream",  # message handler
-        "stop_acquisition_stream"    # message handler
+        "stop_acquisition_stream",  # message handler
     ]
 
     found = sum(1 for feature in required_features if feature in content)
 
     if found >= 3:
-        print_success(f"WebSocket acquisition streaming integrated ({found}/5 features found)")
+        print_success(
+            f"WebSocket acquisition streaming integrated ({found}/5 features found)"
+        )
         return True
     else:
         print_error(f"WebSocket integration incomplete ({found}/5 features)")
@@ -450,7 +470,7 @@ def verify_init():
         "AcquisitionMode",
         "AcquisitionState",
         "StatisticsEngine",
-        "SynchronizationManager"
+        "SynchronizationManager",
     ]
 
     missing_exports = [exp for exp in required_exports if exp not in content]
@@ -475,7 +495,7 @@ def main():
         ("Synchronization", verify_synchronization),
         ("API Endpoints", verify_api),
         ("WebSocket Integration", verify_websocket),
-        ("Module Exports", verify_init)
+        ("Module Exports", verify_init),
     ]
 
     results = []
@@ -502,7 +522,9 @@ def main():
     print(f"\n{BLUE}{'=' * 70}{RESET}")
     if passed == total:
         print(f"{GREEN}All {total} verification tests passed!{RESET}")
-        print(f"{GREEN}The Data Acquisition & Logging System is properly implemented.{RESET}")
+        print(
+            f"{GREEN}The Data Acquisition & Logging System is properly implemented.{RESET}"
+        )
     else:
         print(f"{YELLOW}{passed}/{total} tests passed{RESET}")
         print(f"{RED}{total - passed} tests failed{RESET}")

@@ -27,3 +27,7 @@ python-dateutil==2.8.2
 # Testing
 pytest==7.4.4
 pytest-asyncio==0.23.3
+
+# Security - Explicit minimum versions (critical for production)
+cryptography>=46.0.0  # CVE fixes: PYSEC-2024-225, GHSA-3ww4-gg4f-jr7f, GHSA-9v9h-cgj8-h64p, GHSA-h4gh-qq45-vh27
+setuptools>=78.1.1    # CVE fixes: PYSEC-2025-49 (RCE), GHSA-cx63-2mw6-8hw5 (RCE)

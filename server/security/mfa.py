@@ -9,22 +9,20 @@ Provides TOTP-based two-factor authentication with:
 - Support for popular authenticator apps (Google Authenticator, Authy, etc.)
 """
 
-import secrets
-import string
 import base64
 import io
-from typing import List, Tuple, Optional
 import logging
-
-# TOTP implementation
-import pyotp
-
-# QR code generation
-import qrcode
-from qrcode.image.pil import PilImage
+import secrets
+import string
+from typing import List, Optional, Tuple
 
 # Password hashing for backup codes
 import bcrypt
+# TOTP implementation
+import pyotp
+# QR code generation
+import qrcode
+from qrcode.image.pil import PilImage
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +45,7 @@ BACKUP_CODE_LENGTH = 8  # Length of each backup code
 # TOTP Functions
 # ============================================================================
 
+
 def generate_totp_secret() -> str:
     """
     Generate a new TOTP secret (base32 encoded).
@@ -59,7 +58,9 @@ def generate_totp_secret() -> str:
     return secret
 
 
-def generate_provisioning_uri(secret: str, username: str, issuer: str = TOTP_ISSUER) -> str:
+def generate_provisioning_uri(
+    secret: str, username: str, issuer: str = TOTP_ISSUER
+) -> str:
     """
     Generate a provisioning URI for QR code.
 
@@ -101,9 +102,9 @@ def generate_qr_code(provisioning_uri: str) -> str:
 
     # Convert to data URI
     buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
+    img.save(buffer, format="PNG")
     img_bytes = buffer.getvalue()
-    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
     data_uri = f"data:image/png;base64,{img_base64}"
 
     logger.info("Generated QR code for TOTP setup")
@@ -156,6 +157,7 @@ def get_current_totp_token(secret: str) -> str:
 # Backup Codes Functions
 # ============================================================================
 
+
 def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> List[str]:
     """
     Generate a list of backup codes.
@@ -169,8 +171,10 @@ def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> List[str]:
     codes = []
     for _ in range(count):
         # Generate random alphanumeric code
-        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits)
-                      for _ in range(BACKUP_CODE_LENGTH))
+        code = "".join(
+            secrets.choice(string.ascii_uppercase + string.digits)
+            for _ in range(BACKUP_CODE_LENGTH)
+        )
         # Format with hyphen in the middle for readability
         formatted_code = f"{code[:4]}-{code[4:]}"
         codes.append(formatted_code)
@@ -190,8 +194,8 @@ def hash_backup_code(code: str) -> str:
         Bcrypt hashed code
     """
     salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(code.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
+    hashed = bcrypt.hashpw(code.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_backup_code(plain_code: str, hashed_code: str) -> bool:
@@ -207,11 +211,10 @@ def verify_backup_code(plain_code: str, hashed_code: str) -> bool:
     """
     try:
         # Remove hyphen if present
-        plain_code = plain_code.replace('-', '').upper()
+        plain_code = plain_code.replace("-", "").upper()
 
         is_valid = bcrypt.checkpw(
-            plain_code.encode('utf-8'),
-            hashed_code.encode('utf-8')
+            plain_code.encode("utf-8"), hashed_code.encode("utf-8")
         )
 
         if is_valid:
@@ -241,6 +244,7 @@ def hash_backup_codes(codes: List[str]) -> List[str]:
 # ============================================================================
 # MFA Setup Functions
 # ============================================================================
+
 
 def setup_mfa(username: str) -> Tuple[str, str, List[str], str]:
     """
@@ -273,10 +277,9 @@ def setup_mfa(username: str) -> Tuple[str, str, List[str], str]:
 # MFA Verification Functions
 # ============================================================================
 
+
 def verify_mfa_token(
-    secret: str,
-    token: str,
-    backup_codes: Optional[List[str]] = None
+    secret: str, token: str, backup_codes: Optional[List[str]] = None
 ) -> Tuple[bool, bool]:
     """
     Verify an MFA token (TOTP or backup code).
@@ -308,6 +311,7 @@ def verify_mfa_token(
 # Utility Functions
 # ============================================================================
 
+
 def format_backup_codes_for_display(codes: List[str]) -> str:
     """
     Format backup codes for user-friendly display.
@@ -321,4 +325,4 @@ def format_backup_codes_for_display(codes: List[str]) -> str:
     lines = []
     for i, code in enumerate(codes, 1):
         lines.append(f"{i:2d}. {code}")
-    return '\n'.join(lines)
+    return "\n".join(lines)

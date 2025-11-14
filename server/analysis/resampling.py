@@ -1,9 +1,10 @@
 """Data resampling and interpolation module."""
 
-import numpy as np
 import logging
 from typing import Optional, Tuple
-from scipy import signal, interpolate
+
+import numpy as np
+from scipy import interpolate, signal
 
 from .models import ResampleConfig, ResampleMethod
 
@@ -37,7 +38,9 @@ class DataResampler:
         """
         if config.target_points:
             # Resample to specific number of points
-            return self._resample_to_points(x_data, y_data, config.target_points, config.method)
+            return self._resample_to_points(
+                x_data, y_data, config.target_points, config.method
+            )
 
         elif config.target_rate and original_rate:
             # Resample to specific rate
@@ -49,7 +52,11 @@ class DataResampler:
             raise ValueError("Must specify either target_points or target_rate")
 
     def _resample_to_points(
-        self, x_data: np.ndarray, y_data: np.ndarray, num_points: int, method: ResampleMethod
+        self,
+        x_data: np.ndarray,
+        y_data: np.ndarray,
+        num_points: int,
+        method: ResampleMethod,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Resample to specific number of points.
 
@@ -120,7 +127,7 @@ class DataResampler:
         if target_rate < original_rate and config.anti_alias:
             # Apply low-pass filter before downsampling
             from .filters import SignalFilter
-            from .models import FilterConfig, FilterType, FilterMethod
+            from .models import FilterConfig, FilterMethod, FilterType
 
             filter_config = FilterConfig(
                 filter_type=FilterType.LOWPASS,
@@ -178,16 +185,16 @@ class DataResampler:
             tck = interpolate.splrep(valid_x, valid_y, s=0)
             interp_func = lambda x: interpolate.splev(x, tck)
         else:
-            raise ValueError(f"Unsupported method for missing point interpolation: {method}")
+            raise ValueError(
+                f"Unsupported method for missing point interpolation: {method}"
+            )
 
         # Interpolate all points
         interpolated_y = interp_func(x_data)
 
         return x_data, interpolated_y
 
-    def decimate(
-        self, data: np.ndarray, factor: int, ftype: str = "iir"
-    ) -> np.ndarray:
+    def decimate(self, data: np.ndarray, factor: int, ftype: str = "iir") -> np.ndarray:
         """Decimate signal by integer factor with anti-aliasing.
 
         Args:
@@ -273,12 +280,16 @@ class DataResampler:
         # Align signals
         if shift > 0:
             # signal2 is ahead, shift signal1 forward
-            aligned_signal1 = np.pad(signal1, (shift, 0), mode="constant")[: len(signal1)]
+            aligned_signal1 = np.pad(signal1, (shift, 0), mode="constant")[
+                : len(signal1)
+            ]
             aligned_signal2 = signal2
         elif shift < 0:
             # signal1 is ahead, shift signal2 forward
             aligned_signal1 = signal1
-            aligned_signal2 = np.pad(signal2, (-shift, 0), mode="constant")[: len(signal2)]
+            aligned_signal2 = np.pad(signal2, (-shift, 0), mode="constant")[
+                : len(signal2)
+            ]
         else:
             aligned_signal1 = signal1
             aligned_signal2 = signal2

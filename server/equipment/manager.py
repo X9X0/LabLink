@@ -1,20 +1,22 @@
 """Equipment manager for handling multiple lab instruments."""
 
+import asyncio
 import logging
 from typing import Dict, List, Optional
-import asyncio
+
 from pyvisa import ResourceManager
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
+from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
+                                     EquipmentType)
 
 from .base import BaseEquipment
-from .rigol_scope import RigolMSO2072A, RigolDS1104, RigolDS1102D
-from .rigol_electronic_load import RigolDL3021A
-from .bk_power_supply import BK9206B, BK9205B, BK9130B, BK1685B
 from .bk_electronic_load import BK1902B
+from .bk_power_supply import BK1685B, BK9130B, BK9205B, BK9206B
+from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_oscilloscope import MockOscilloscope
 from .mock.mock_power_supply import MockPowerSupply
-from .mock.mock_electronic_load import MockElectronicLoad
+from .rigol_electronic_load import RigolDL3021A
+from .rigol_scope import RigolDS1102D, RigolDS1104, RigolMSO2072A
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +66,16 @@ class EquipmentManager:
             logger.error(f"Error discovering devices: {e}")
             return []
 
-    async def connect_device(self, resource_string: str, equipment_type: EquipmentType, model: str) -> str:
+    async def connect_device(
+        self, resource_string: str, equipment_type: EquipmentType, model: str
+    ) -> str:
         """Connect to a device and add it to the manager."""
         async with self._lock:
             try:
                 # Create appropriate equipment instance based on model
-                equipment = self._create_equipment_instance(resource_string, equipment_type, model)
+                equipment = self._create_equipment_instance(
+                    resource_string, equipment_type, model
+                )
 
                 if equipment is None:
                     raise ValueError(f"Unsupported equipment model: {model}")
@@ -84,7 +90,9 @@ class EquipmentManager:
                 # Store equipment
                 self.equipment[equipment_id] = equipment
 
-                logger.info(f"Connected to {model} at {resource_string} with ID {equipment_id}")
+                logger.info(
+                    f"Connected to {model} at {resource_string} with ID {equipment_id}"
+                )
                 return equipment_id
 
             except Exception as e:
@@ -99,11 +107,21 @@ class EquipmentManager:
 
         # Mock equipment (doesn't require resource_manager)
         if "MOCK" in model_upper or "MOCK::" in resource_string.upper():
-            if "SCOPE" in model_upper or "OSCILLOSCOPE" in model_upper or equipment_type == EquipmentType.OSCILLOSCOPE:
+            if (
+                "SCOPE" in model_upper
+                or "OSCILLOSCOPE" in model_upper
+                or equipment_type == EquipmentType.OSCILLOSCOPE
+            ):
                 return MockOscilloscope(None, resource_string)
-            elif "PSU" in model_upper or "POWER" in model_upper or equipment_type == EquipmentType.POWER_SUPPLY:
+            elif (
+                "PSU" in model_upper
+                or "POWER" in model_upper
+                or equipment_type == EquipmentType.POWER_SUPPLY
+            ):
                 return MockPowerSupply(None, resource_string)
-            elif "LOAD" in model_upper or equipment_type == EquipmentType.ELECTRONIC_LOAD:
+            elif (
+                "LOAD" in model_upper or equipment_type == EquipmentType.ELECTRONIC_LOAD
+            ):
                 return MockElectronicLoad(None, resource_string)
 
         # Real equipment requires resource_manager
@@ -146,22 +164,27 @@ class EquipmentManager:
 
                 # Safe state on disconnect - disable outputs
                 from config.settings import settings
+
                 if settings.safe_state_on_disconnect:
                     try:
-                        logger.info(f"Putting {equipment_id} into safe state before disconnect")
+                        logger.info(
+                            f"Putting {equipment_id} into safe state before disconnect"
+                        )
 
                         # Try to disable output based on equipment type
-                        if hasattr(equipment, 'set_output'):
+                        if hasattr(equipment, "set_output"):
                             # Power supply
                             await equipment.set_output(False)
                             logger.info(f"Disabled output for {equipment_id}")
-                        elif hasattr(equipment, 'set_input'):
+                        elif hasattr(equipment, "set_input"):
                             # Electronic load
                             await equipment.set_input(False)
                             logger.info(f"Disabled input for {equipment_id}")
 
                     except Exception as e:
-                        logger.error(f"Error putting {equipment_id} into safe state: {e}")
+                        logger.error(
+                            f"Error putting {equipment_id} into safe state: {e}"
+                        )
 
                 await equipment.disconnect()
                 del self.equipment[equipment_id]
@@ -173,7 +196,11 @@ class EquipmentManager:
 
     def get_connected_devices(self) -> List[EquipmentInfo]:
         """Get list of all connected devices."""
-        return [equipment.cached_info for equipment in self.equipment.values() if equipment.cached_info]
+        return [
+            equipment.cached_info
+            for equipment in self.equipment.values()
+            if equipment.cached_info
+        ]
 
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""

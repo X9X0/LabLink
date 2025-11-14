@@ -1,32 +1,31 @@
 """Main window for LabLink GUI client."""
 
-import logging
 import asyncio
+import logging
 from typing import Optional
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox,
-    QDockWidget, QLabel, QPushButton
-)
+
+import qasync
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
-import qasync
+from PyQt6.QtWidgets import (QDockWidget, QHBoxLayout, QLabel, QMainWindow,
+                             QMenu, QMenuBar, QMessageBox, QPushButton,
+                             QStatusBar, QTabWidget, QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
-from client.ui.connection_dialog import ConnectionDialog
-from client.ui.login_dialog import LoginDialog
-from client.ui.equipment_panel import EquipmentPanel
 from client.ui.acquisition_panel import AcquisitionPanel
 from client.ui.alarm_panel import AlarmPanel
-from client.ui.scheduler_panel import SchedulerPanel
+from client.ui.connection_dialog import ConnectionDialog
 from client.ui.diagnostics_panel import DiagnosticsPanel
-from client.ui.sync_panel import SyncPanel
-from client.ui.ssh_deploy_wizard import SSHDeployWizard
-from client.ui.server_selector import ServerSelector
-from client.ui.sd_card_writer import SDCardWriter
+from client.ui.equipment_panel import EquipmentPanel
+from client.ui.login_dialog import LoginDialog
 from client.ui.pi_image_builder import PiImageBuilderWizard
-from client.utils.token_storage import get_token_storage
+from client.ui.scheduler_panel import SchedulerPanel
+from client.ui.sd_card_writer import SDCardWriter
+from client.ui.server_selector import ServerSelector
+from client.ui.ssh_deploy_wizard import SSHDeployWizard
+from client.ui.sync_panel import SyncPanel
 from client.utils.server_manager import get_server_manager
+from client.utils.token_storage import get_token_storage
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +69,9 @@ class MainWindow(QMainWindow):
         toolbar_layout.setContentsMargins(5, 5, 5, 5)
 
         self.server_selector = ServerSelector()
-        self.server_selector.connect_requested.connect(self._on_server_connect_requested)
+        self.server_selector.connect_requested.connect(
+            self._on_server_connect_requested
+        )
         self.server_selector.server_changed.connect(self._on_server_changed)
         toolbar_layout.addWidget(self.server_selector)
 
@@ -216,7 +217,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Missing Dependencies",
                 f"SSH deployment requires additional packages:\n{e}\n\n"
-                "Please install: pip install paramiko scp"
+                "Please install: pip install paramiko scp",
             )
 
     def show_pi_image_builder(self):
@@ -250,7 +251,9 @@ class MainWindow(QMainWindow):
 
             if self.client and self.client.connected:
                 # Mark as connected
-                username = self.client.username if hasattr(self.client, 'username') else None
+                username = (
+                    self.client.username if hasattr(self.client, "username") else None
+                )
                 self.server_manager.mark_connected(server_name, self.client, username)
                 self.server_manager.set_active_server(server_name)
                 self.server_selector.refresh()
@@ -264,7 +267,9 @@ class MainWindow(QMainWindow):
         server = self.server_manager.get_server(server_name)
         if server and server.connected:
             # Update status bar
-            self.connection_label.setText(f"Connected to: {server.name} ({server.host})")
+            self.connection_label.setText(
+                f"Connected to: {server.name} ({server.host})"
+            )
 
     def connect_to_server(self, host: str, api_port: int, ws_port: int):
         """Connect to LabLink server.
@@ -283,7 +288,8 @@ class MainWindow(QMainWindow):
 
                 self.status_bar.showMessage(
                     f"Connected to {server_info.get('name', 'LabLink')} "
-                    f"v{server_info.get('version', 'unknown')}", 3000
+                    f"v{server_info.get('version', 'unknown')}",
+                    3000,
                 )
 
                 self.connection_label.setText(f"Connected: {host}:{api_port}")
@@ -322,8 +328,7 @@ class MainWindow(QMainWindow):
                     # Save tokens if login successful
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token,
-                            self.client.refresh_token
+                            self.client.access_token, self.client.refresh_token
                         )
                         self.token_storage.save_user_data(user_data)
 
@@ -336,15 +341,15 @@ class MainWindow(QMainWindow):
 
             else:
                 QMessageBox.warning(
-                    self, "Connection Failed",
-                    f"Could not connect to server at {host}:{api_port}"
+                    self,
+                    "Connection Failed",
+                    f"Could not connect to server at {host}:{api_port}",
                 )
 
         except Exception as e:
             logger.error(f"Connection error: {e}")
             QMessageBox.critical(
-                self, "Connection Error",
-                f"Error connecting to server: {str(e)}"
+                self, "Connection Error", f"Error connecting to server: {str(e)}"
             )
 
     def _complete_connection(self):
@@ -386,7 +391,9 @@ class MainWindow(QMainWindow):
         WebSocket connection is optional - REST API will continue to work if it fails.
         """
         if not self.client or not self.client.ws_manager:
-            logger.warning("Cannot connect WebSocket: client or ws_manager not available")
+            logger.warning(
+                "Cannot connect WebSocket: client or ws_manager not available"
+            )
             return
 
         try:
@@ -395,12 +402,16 @@ class MainWindow(QMainWindow):
 
             if success:
                 self.ws_connected = True
-                self.status_bar.showMessage("WebSocket connected - real-time updates enabled", 3000)
+                self.status_bar.showMessage(
+                    "WebSocket connected - real-time updates enabled", 3000
+                )
                 logger.info("WebSocket connected successfully")
             else:
                 self.ws_connected = False
                 logger.warning("WebSocket connection failed - using polling fallback")
-                self.status_bar.showMessage("WebSocket unavailable - using polling mode", 3000)
+                self.status_bar.showMessage(
+                    "WebSocket unavailable - using polling mode", 3000
+                )
 
         except Exception as e:
             self.ws_connected = False
@@ -448,8 +459,7 @@ class MainWindow(QMainWindow):
                     # Save tokens
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token,
-                            self.client.refresh_token
+                            self.client.access_token, self.client.refresh_token
                         )
                         self.token_storage.save_user_data(user_data)
 
@@ -469,7 +479,9 @@ class MainWindow(QMainWindow):
             connected: True if connected, False if disconnected
         """
         # Update UI state based on connection
-        logger.info(f"Connection state changed: {'connected' if connected else 'disconnected'}")
+        logger.info(
+            f"Connection state changed: {'connected' if connected else 'disconnected'}"
+        )
 
     # ==================== Data Refresh ====================
 
@@ -496,7 +508,7 @@ class MainWindow(QMainWindow):
         current_widget = self.tab_widget.currentWidget()
 
         try:
-            if hasattr(current_widget, 'refresh'):
+            if hasattr(current_widget, "refresh"):
                 current_widget.refresh()
         except Exception as e:
             logger.error(f"Error in periodic refresh: {e}")
@@ -506,7 +518,9 @@ class MainWindow(QMainWindow):
     def run_diagnostics(self):
         """Run diagnostics on all equipment."""
         if not self.client or not self.client.connected:
-            QMessageBox.warning(self, "Not Connected", "Please connect to a server first")
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
             return
 
         # Switch to diagnostics tab
@@ -532,17 +546,18 @@ class MainWindow(QMainWindow):
             "<li>Job scheduling and automation</li>"
             "<li>Equipment diagnostics and health monitoring</li>"
             "</ul>"
-            "<p>© 2024 LabLink Project</p>"
+            "<p>© 2024 LabLink Project</p>",
         )
 
     def closeEvent(self, event):
         """Handle window close event."""
         if self.client and self.client.connected:
             reply = QMessageBox.question(
-                self, "Confirm Exit",
+                self,
+                "Confirm Exit",
                 "Are you sure you want to exit? Active connections will be closed.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.No,
             )
 
             if reply == QMessageBox.StandardButton.Yes:

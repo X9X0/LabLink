@@ -1,12 +1,12 @@
 """API endpoints for database queries and management."""
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
 from datetime import datetime, timedelta
-from pydantic import BaseModel, Field
+from typing import List, Optional
 
 from database import get_database_manager
-from database.models import CommandStatus, SessionStatus, QueryResult
+from database.models import CommandStatus, QueryResult, SessionStatus
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/database", tags=["database"])
 
@@ -48,7 +48,9 @@ class UsageStatisticsQuery(BaseModel):
 class CleanupRequest(BaseModel):
     """Database cleanup request."""
 
-    retention_days: Optional[int] = Field(None, ge=1, le=365, description="Days to keep")
+    retention_days: Optional[int] = Field(
+        None, ge=1, le=365, description="Days to keep"
+    )
 
 
 # === Command History Endpoints ===
@@ -297,8 +299,8 @@ async def get_measurement_trend(
         )
 
         # Aggregate by time intervals
-        from collections import defaultdict
         import statistics
+        from collections import defaultdict
 
         interval_seconds = interval_minutes * 60
         buckets = defaultdict(list)
@@ -316,14 +318,16 @@ async def get_measurement_trend(
         trend_data = []
         for bucket_time in sorted(buckets.keys()):
             values = buckets[bucket_time]
-            trend_data.append({
-                "timestamp": bucket_time.isoformat(),
-                "count": len(values),
-                "average": statistics.mean(values),
-                "minimum": min(values),
-                "maximum": max(values),
-                "std_dev": statistics.stdev(values) if len(values) > 1 else 0.0,
-            })
+            trend_data.append(
+                {
+                    "timestamp": bucket_time.isoformat(),
+                    "count": len(values),
+                    "average": statistics.mean(values),
+                    "minimum": min(values),
+                    "maximum": max(values),
+                    "std_dev": statistics.stdev(values) if len(values) > 1 else 0.0,
+                }
+            )
 
         return {
             "equipment_id": equipment_id,
@@ -402,6 +406,7 @@ async def get_usage_summary(
         # Get statistics for all equipment (no equipment_id filter)
         # This requires a custom query
         import sqlite3
+
         conn = sqlite3.connect(db.db_path)
         cursor = conn.cursor()
 
@@ -426,16 +431,18 @@ async def get_usage_summary(
 
         results = []
         for row in cursor.fetchall():
-            results.append({
-                "equipment_id": row[0],
-                "equipment_type": row[1],
-                "session_count": row[2],
-                "total_duration_seconds": row[3] or 0.0,
-                "average_duration_seconds": row[4] or 0.0,
-                "total_commands": row[5] or 0,
-                "total_measurements": row[6] or 0,
-                "total_errors": row[7] or 0,
-            })
+            results.append(
+                {
+                    "equipment_id": row[0],
+                    "equipment_type": row[1],
+                    "session_count": row[2],
+                    "total_duration_seconds": row[3] or 0.0,
+                    "average_duration_seconds": row[4] or 0.0,
+                    "total_commands": row[5] or 0,
+                    "total_measurements": row[6] or 0,
+                    "total_errors": row[7] or 0,
+                }
+            )
 
         conn.close()
 
@@ -524,14 +531,20 @@ async def get_database_health():
 
         # Check database size
         if stats["database_size_mb"] > db.config.max_db_size_mb * 0.9:
-            warnings.append(f"Database size ({stats['database_size_mb']:.1f} MB) approaching limit ({db.config.max_db_size_mb} MB)")
+            warnings.append(
+                f"Database size ({stats['database_size_mb']:.1f} MB) approaching limit ({db.config.max_db_size_mb} MB)"
+            )
 
         # Check large table counts
         if stats["command_count"] > 1000000:
-            warnings.append(f"Large number of command records ({stats['command_count']:,}). Consider cleanup.")
+            warnings.append(
+                f"Large number of command records ({stats['command_count']:,}). Consider cleanup."
+            )
 
         if stats["measurement_count"] > 1000000:
-            warnings.append(f"Large number of measurement records ({stats['measurement_count']:,}). Consider cleanup.")
+            warnings.append(
+                f"Large number of measurement records ({stats['measurement_count']:,}). Consider cleanup."
+            )
 
         return {
             "healthy": len(warnings) == 0,

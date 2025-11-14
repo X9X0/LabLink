@@ -2,10 +2,11 @@
 
 import logging
 import socket
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 try:
-    from zeroconf import Zeroconf, ServiceInfo
+    from zeroconf import ServiceInfo, Zeroconf
+
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -26,7 +27,7 @@ class LabLinkMDNSService:
         port: int = 8000,
         ws_port: int = 8001,
         server_name: Optional[str] = None,
-        server_version: str = "1.0.0"
+        server_version: str = "1.0.0",
     ):
         """
         Initialize mDNS service.
@@ -86,10 +87,10 @@ class LabLinkMDNSService:
 
             # Service properties
             properties = {
-                'version': self.server_version,
-                'api_port': str(self.port),
-                'ws_port': str(self.ws_port),
-                'hostname': self.server_name,
+                "version": self.server_version,
+                "api_port": str(self.port),
+                "ws_port": str(self.ws_port),
+                "hostname": self.server_name,
             }
 
             # Create service info
@@ -99,7 +100,7 @@ class LabLinkMDNSService:
                 addresses=[socket.inet_aton(local_ip)],
                 port=self.port,
                 properties=properties,
-                server=f"{self.server_name}.local."
+                server=f"{self.server_name}.local.",
             )
 
             # Register service
@@ -179,10 +180,10 @@ class LabLinkMDNSService:
 
             try:
                 # Connect to a remote address (doesn't actually send data)
-                s.connect(('10.255.255.255', 1))
+                s.connect(("10.255.255.255", 1))
                 local_ip = s.getsockname()[0]
             except Exception:
-                local_ip = '127.0.0.1'
+                local_ip = "127.0.0.1"
             finally:
                 s.close()
 
@@ -190,7 +191,7 @@ class LabLinkMDNSService:
 
         except Exception as e:
             logger.warning(f"Failed to get local IP: {e}, using 127.0.0.1")
-            return '127.0.0.1'
+            return "127.0.0.1"
 
     def get_service_info(self) -> Dict[str, Any]:
         """
@@ -200,12 +201,12 @@ class LabLinkMDNSService:
             Dictionary with service info
         """
         return {
-            'running': self.running,
-            'server_name': self.server_name,
-            'port': self.port,
-            'ws_port': self.ws_port,
-            'version': self.server_version,
-            'service_type': self.SERVICE_TYPE,
+            "running": self.running,
+            "server_name": self.server_name,
+            "port": self.port,
+            "ws_port": self.ws_port,
+            "version": self.server_version,
+            "service_type": self.SERVICE_TYPE,
         }
 
     def __enter__(self):

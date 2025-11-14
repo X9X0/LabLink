@@ -1,17 +1,13 @@
 """Connection history tracking."""
 
-import sqlite3
 import logging
-from typing import List, Optional
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import List, Optional
 
-from .models import (
-    ConnectionHistoryEntry,
-    LastKnownGood,
-    ConnectionStatistics,
-    DiscoveryConfig,
-)
+from .models import (ConnectionHistoryEntry, ConnectionStatistics,
+                     DiscoveryConfig, LastKnownGood)
 
 logger = logging.getLogger(__name__)
 

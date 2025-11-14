@@ -1,21 +1,21 @@
 """SD Card Writer - Write Raspberry Pi images to SD cards."""
 
+import hashlib
 import logging
+import os
 import platform
 import subprocess
-import os
 from pathlib import Path
-from typing import List, Optional, Dict
-import hashlib
+from typing import Dict, List, Optional
 
 try:
-    from PyQt6.QtWidgets import (
-        QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QComboBox, QProgressBar, QTextEdit, QFileDialog, QMessageBox,
-        QGroupBox, QFormLayout, QCheckBox
-    )
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QFont
+    from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
+                                 QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+                                 QMessageBox, QProgressBar, QPushButton,
+                                 QTextEdit, QVBoxLayout, QWidget)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
@@ -97,15 +97,19 @@ class ImageWriterThread(QThread):
         """Unmount device partitions."""
         try:
             if platform.system() == "Darwin":  # macOS
-                subprocess.run(["diskutil", "unmountDisk", self.device_path],
-                             check=False, capture_output=True)
+                subprocess.run(
+                    ["diskutil", "unmountDisk", self.device_path],
+                    check=False,
+                    capture_output=True,
+                )
             elif platform.system() == "Linux":
                 # Unmount all partitions
                 result = subprocess.run(
                     ["lsblk", "-ln", "-o", "NAME", self.device_path],
-                    capture_output=True, text=True
+                    capture_output=True,
+                    text=True,
                 )
-                for line in result.stdout.strip().split('\n')[1:]:  # Skip device itself
+                for line in result.stdout.strip().split("\n")[1:]:  # Skip device itself
                     part = f"/dev/{line.strip()}"
                     subprocess.run(["umount", part], check=False, capture_output=True)
 
@@ -117,10 +121,10 @@ class ImageWriterThread(QThread):
         """Write image on Linux/macOS using dd."""
         try:
             # Decompress if needed
-            if self.image_path.endswith('.xz'):
+            if self.image_path.endswith(".xz"):
                 self.progress.emit(20, "Decompressing image...")
                 cmd = f"xz -dc '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
-            elif self.image_path.endswith('.gz'):
+            elif self.image_path.endswith(".gz"):
                 cmd = f"gunzip -c '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
             else:
                 cmd = f"sudo dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
@@ -131,7 +135,7 @@ class ImageWriterThread(QThread):
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
             )
 
             # Monitor progress
@@ -150,7 +154,9 @@ class ImageWriterThread(QThread):
                     try:
                         bytes_written = int(line.split()[0])
                         percent = min(int((bytes_written / image_size) * 70) + 20, 90)
-                        self.progress.emit(percent, f"Writing: {bytes_written / (1024**3):.2f} GB")
+                        self.progress.emit(
+                            percent, f"Writing: {bytes_written / (1024**3):.2f} GB"
+                        )
                     except:
                         pass
 
@@ -180,7 +186,7 @@ class ImageWriterThread(QThread):
             "- Raspberry Pi Imager (recommended)\n"
             "- balenaEtcher\n"
             "- Win32 Disk Imager\n\n"
-            f"Image file: {self.image_path}"
+            f"Image file: {self.image_path}",
         )
         return False
 
@@ -191,8 +197,8 @@ class ImageWriterThread(QThread):
             block_size = 4096
             blocks_to_verify = 1000  # Verify first ~4MB
 
-            with open(self.image_path, 'rb') as img_file:
-                with open(self.device_path, 'rb') as dev_file:
+            with open(self.image_path, "rb") as img_file:
+                with open(self.device_path, "rb") as dev_file:
                     for i in range(blocks_to_verify):
                         if self._stop_requested:
                             return False
@@ -249,51 +255,54 @@ def get_removable_drives() -> List[Dict[str, str]]:
                 ["lsblk", "-d", "-n", "-o", "NAME,SIZE,RM,TYPE,VENDOR,MODEL"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
 
-            for line in result.stdout.strip().split('\n'):
+            for line in result.stdout.strip().split("\n"):
                 parts = line.split()
-                if len(parts) >= 3 and parts[2] == '1':  # Removable
-                    drives.append({
-                        'device': f"/dev/{parts[0]}",
-                        'name': f"{parts[0]} - {parts[1]}",
-                        'size': parts[1],
-                        'vendor': ' '.join(parts[4:]) if len(parts) > 4 else 'Unknown'
-                    })
+                if len(parts) >= 3 and parts[2] == "1":  # Removable
+                    drives.append(
+                        {
+                            "device": f"/dev/{parts[0]}",
+                            "name": f"{parts[0]} - {parts[1]}",
+                            "size": parts[1],
+                            "vendor": (
+                                " ".join(parts[4:]) if len(parts) > 4 else "Unknown"
+                            ),
+                        }
+                    )
 
         elif platform.system() == "Darwin":  # macOS
             result = subprocess.run(
                 ["diskutil", "list", "-plist"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
 
             # Parse diskutil output
             result = subprocess.run(
-                ["diskutil", "list"],
-                capture_output=True,
-                text=True,
-                check=True
+                ["diskutil", "list"], capture_output=True, text=True, check=True
             )
 
             # Simple parsing for /dev/diskN
-            for line in result.stdout.split('\n'):
-                if '/dev/disk' in line and 'external' in line.lower():
+            for line in result.stdout.split("\n"):
+                if "/dev/disk" in line and "external" in line.lower():
                     parts = line.split()
                     device = parts[0]
-                    drives.append({
-                        'device': device,
-                        'name': device,
-                        'size': 'Unknown',
-                        'vendor': 'Removable'
-                    })
+                    drives.append(
+                        {
+                            "device": device,
+                            "name": device,
+                            "size": "Unknown",
+                            "vendor": "Removable",
+                        }
+                    )
 
         elif platform.system() == "Windows":
             # Windows drive detection
-            import string
             import ctypes
+            import string
 
             kernel32 = ctypes.windll.kernel32
             for letter in string.ascii_uppercase:
@@ -302,12 +311,14 @@ def get_removable_drives() -> List[Dict[str, str]]:
 
                 # DRIVE_REMOVABLE = 2
                 if drive_type == 2:
-                    drives.append({
-                        'device': f"\\\\.\\PhysicalDrive{ord(letter) - ord('A')}",
-                        'name': f"{letter}: (Removable)",
-                        'size': 'Unknown',
-                        'vendor': 'Removable'
-                    })
+                    drives.append(
+                        {
+                            "device": f"\\\\.\\PhysicalDrive{ord(letter) - ord('A')}",
+                            "name": f"{letter}: (Removable)",
+                            "size": "Unknown",
+                            "vendor": "Removable",
+                        }
+                    )
 
     except Exception as e:
         logger.error(f"Failed to list drives: {e}")
@@ -346,7 +357,9 @@ class SDCardWriter(QDialog):
         warning = QLabel(
             "⚠️ <b>WARNING:</b> This will erase ALL data on the selected device!"
         )
-        warning.setStyleSheet("QLabel { color: red; background-color: #fff3cd; padding: 10px; }")
+        warning.setStyleSheet(
+            "QLabel { color: red; background-color: #fff3cd; padding: 10px; }"
+        )
         warning.setWordWrap(True)
         layout.addWidget(warning)
 
@@ -424,7 +437,9 @@ class SDCardWriter(QDialog):
         self.write_btn = QPushButton("Write Image")
         self.write_btn.clicked.connect(self._write_image)
         self.write_btn.setEnabled(False)
-        self.write_btn.setStyleSheet("QPushButton { font-weight: bold; padding: 10px; }")
+        self.write_btn.setStyleSheet(
+            "QPushButton { font-weight: bold; padding: 10px; }"
+        )
         button_layout.addWidget(self.write_btn)
 
         self.cancel_btn = QPushButton("Cancel")
@@ -443,7 +458,7 @@ class SDCardWriter(QDialog):
             self,
             "Select Raspberry Pi Image",
             str(Path.home()),
-            "Image Files (*.img *.img.xz *.img.gz);;All Files (*)"
+            "Image Files (*.img *.img.xz *.img.gz);;All Files (*)",
         )
 
         if filename:
@@ -465,7 +480,7 @@ class SDCardWriter(QDialog):
             self.device_info_label.setText("<i>No removable drives detected</i>")
         else:
             for drive in drives:
-                self.device_combo.addItem(drive['name'], drive)
+                self.device_combo.addItem(drive["name"], drive)
 
             self._log(f"Found {len(drives)} removable drive(s)")
             self._on_device_changed()
@@ -477,7 +492,7 @@ class SDCardWriter(QDialog):
         """Handle device selection change."""
         drive = self.device_combo.currentData()
         if drive:
-            self.device_path = drive['device']
+            self.device_path = drive["device"]
             info = f"Device: {drive['device']}\nSize: {drive['size']}\nVendor: {drive['vendor']}"
             self.device_info_label.setText(info)
         else:
@@ -489,9 +504,9 @@ class SDCardWriter(QDialog):
     def _update_write_button(self):
         """Update write button state."""
         can_write = (
-            self.image_path is not None and
-            self.device_path is not None and
-            self.device_combo.currentData() is not None
+            self.image_path is not None
+            and self.device_path is not None
+            and self.device_combo.currentData() is not None
         )
         self.write_btn.setEnabled(can_write)
 
@@ -521,7 +536,7 @@ class SDCardWriter(QDialog):
             f"Image: {Path(self.image_path).name}\n\n"
             f"Are you absolutely sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -534,7 +549,7 @@ class SDCardWriter(QDialog):
                 "Insufficient Privileges",
                 "SD card writing requires administrator/root privileges.\n\n"
                 "Please run the LabLink client with sudo:\n"
-                "sudo python main.py"
+                "sudo python main.py",
             )
             return
 
@@ -545,9 +560,7 @@ class SDCardWriter(QDialog):
         self._log("=" * 60)
 
         self.writer_thread = ImageWriterThread(
-            self.image_path,
-            self.device_path,
-            self.verify_check.isChecked()
+            self.image_path, self.device_path, self.verify_check.isChecked()
         )
         self.writer_thread.progress.connect(self._on_progress)
         self.writer_thread.finished.connect(self._on_finished)
@@ -564,7 +577,7 @@ class SDCardWriter(QDialog):
                 self,
                 "Cancel Write",
                 "Are you sure you want to cancel the write operation?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
 
             if reply == QMessageBox.StandardButton.Yes:
@@ -596,14 +609,10 @@ class SDCardWriter(QDialog):
                 self,
                 "Success",
                 "Image written successfully!\n\n"
-                "You can now remove the SD card and insert it into your Raspberry Pi."
+                "You can now remove the SD card and insert it into your Raspberry Pi.",
             )
         else:
-            QMessageBox.critical(
-                self,
-                "Failed",
-                f"Image write failed:\n\n{message}"
-            )
+            QMessageBox.critical(self, "Failed", f"Image write failed:\n\n{message}")
 
     def _log(self, message: str):
         """Add message to log output."""

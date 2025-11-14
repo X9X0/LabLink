@@ -8,26 +8,19 @@ Provides JWT-based authentication with:
 - Session management
 """
 
+import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Tuple
-import logging
+from typing import Dict, Optional, Tuple
 
 # Password hashing
 import bcrypt
-
 # JWT tokens
 import jwt
 from jwt import PyJWTError
 
-from .models import (
-    User,
-    TokenPayload,
-    TokenResponse,
-    UserResponse,
-    AuthMethod,
-    SessionInfo,
-)
+from .models import (AuthMethod, SessionInfo, TokenPayload, TokenResponse,
+                     User, UserResponse)
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +29,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ============================================================================
 
+
 class AuthConfig:
     """Authentication configuration."""
+
     def __init__(
         self,
         secret_key: str,
@@ -63,6 +58,7 @@ class AuthConfig:
 # Password Hashing
 # ============================================================================
 
+
 def hash_password(password: str) -> str:
     """
     Hash a password using bcrypt.
@@ -74,8 +70,8 @@ def hash_password(password: str) -> str:
         Hashed password
     """
     salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -91,8 +87,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     try:
         return bcrypt.checkpw(
-            plain_password.encode('utf-8'),
-            hashed_password.encode('utf-8')
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
         )
     except Exception as e:
         logger.error(f"Password verification error: {e}")
@@ -102,6 +97,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ============================================================================
 # JWT Token Management
 # ============================================================================
+
 
 def create_access_token(
     user: User,
@@ -132,11 +128,7 @@ def create_access_token(
         auth_method=auth_method,
     )
 
-    token = jwt.encode(
-        payload.dict(),
-        config.secret_key,
-        algorithm=config.algorithm
-    )
+    token = jwt.encode(payload.dict(), config.secret_key, algorithm=config.algorithm)
 
     return token
 
@@ -163,11 +155,7 @@ def create_refresh_token(user_id: str, config: AuthConfig) -> str:
         "jti": secrets.token_urlsafe(16),  # Unique token ID
     }
 
-    token = jwt.encode(
-        payload,
-        config.secret_key,
-        algorithm=config.algorithm
-    )
+    token = jwt.encode(payload, config.secret_key, algorithm=config.algorithm)
 
     return token
 
@@ -184,11 +172,7 @@ def decode_token(token: str, config: AuthConfig) -> Optional[TokenPayload]:
         TokenPayload if valid, None otherwise
     """
     try:
-        payload = jwt.decode(
-            token,
-            config.secret_key,
-            algorithms=[config.algorithm]
-        )
+        payload = jwt.decode(token, config.secret_key, algorithms=[config.algorithm])
 
         # Check if it's a refresh token
         if payload.get("type") == "refresh":
@@ -216,11 +200,7 @@ def decode_refresh_token(token: str, config: AuthConfig) -> Optional[str]:
         User ID if valid, None otherwise
     """
     try:
-        payload = jwt.decode(
-            token,
-            config.secret_key,
-            algorithms=[config.algorithm]
-        )
+        payload = jwt.decode(token, config.secret_key, algorithms=[config.algorithm])
 
         # Verify it's a refresh token
         if payload.get("type") != "refresh":
@@ -239,6 +219,7 @@ def decode_refresh_token(token: str, config: AuthConfig) -> Optional[str]:
 # ============================================================================
 # Session Management
 # ============================================================================
+
 
 class SessionManager:
     """Manages active user sessions."""
@@ -347,6 +328,7 @@ class SessionManager:
 # Login Attempt Tracking
 # ============================================================================
 
+
 class LoginAttemptTracker:
     """Tracks failed login attempts for account lockout."""
 
@@ -370,10 +352,7 @@ class LoginAttemptTracker:
 
         # Clean old attempts (older than lockout duration)
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
-        self._attempts[username] = [
-            t for t in self._attempts[username]
-            if t > cutoff
-        ]
+        self._attempts[username] = [t for t in self._attempts[username] if t > cutoff]
 
         return len(self._attempts[username])
 
@@ -391,10 +370,7 @@ class LoginAttemptTracker:
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
 
         # Filter recent attempts
-        recent_attempts = [
-            t for t in self._attempts[username]
-            if t > cutoff
-        ]
+        recent_attempts = [t for t in self._attempts[username] if t > cutoff]
 
         self._attempts[username] = recent_attempts
         return len(recent_attempts)
@@ -429,6 +405,7 @@ class LoginAttemptTracker:
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def generate_secure_secret_key(length: int = 64) -> str:
     """Generate a secure secret key for JWT signing."""

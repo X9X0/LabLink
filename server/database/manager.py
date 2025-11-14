@@ -1,23 +1,16 @@
 """Database manager for centralized data storage."""
 
-import sqlite3
-import logging
 import json
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any, Tuple
-from pathlib import Path
+import logging
+import sqlite3
 import threading
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from .models import (
-    CommandRecord,
-    MeasurementRecord,
-    EquipmentUsageRecord,
-    DataSessionRecord,
-    QueryResult,
-    CommandStatus,
-    SessionStatus,
-    DatabaseConfig,
-)
+from .models import (CommandRecord, CommandStatus, DatabaseConfig,
+                     DataSessionRecord, EquipmentUsageRecord,
+                     MeasurementRecord, QueryResult, SessionStatus)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +25,9 @@ class DatabaseManager:
     - Data acquisition sessions
     """
 
-    def __init__(self, db_path: str = "data/lablink.db", config: Optional[DatabaseConfig] = None):
+    def __init__(
+        self, db_path: str = "data/lablink.db", config: Optional[DatabaseConfig] = None
+    ):
         """Initialize database manager.
 
         Args:
@@ -72,7 +67,8 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Command history table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS command_history (
                     record_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT NOT NULL,
@@ -86,7 +82,8 @@ class DatabaseManager:
                     user_id TEXT,
                     session_id TEXT
                 )
-            """)
+            """
+            )
 
             # Create indices for command history
             cursor.execute(
@@ -100,7 +97,8 @@ class DatabaseManager:
             )
 
             # Measurements table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS measurements (
                     record_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT NOT NULL,
@@ -115,7 +113,8 @@ class DatabaseManager:
                     session_id TEXT,
                     user_id TEXT
                 )
-            """)
+            """
+            )
 
             # Create indices for measurements
             cursor.execute(
@@ -129,7 +128,8 @@ class DatabaseManager:
             )
 
             # Equipment usage table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS equipment_usage (
                     record_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     equipment_id TEXT NOT NULL,
@@ -143,7 +143,8 @@ class DatabaseManager:
                     user_id TEXT,
                     disconnect_reason TEXT
                 )
-            """)
+            """
+            )
 
             # Create indices for equipment usage
             cursor.execute(
@@ -154,7 +155,8 @@ class DatabaseManager:
             )
 
             # Data sessions table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS data_sessions (
                     session_id TEXT PRIMARY KEY,
                     equipment_ids TEXT NOT NULL,
@@ -171,7 +173,8 @@ class DatabaseManager:
                     user_id TEXT,
                     error_message TEXT
                 )
-            """)
+            """
+            )
 
             # Create indices for data sessions
             cursor.execute(
@@ -283,7 +286,9 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Get total count
-            cursor.execute(f"SELECT COUNT(*) FROM command_history WHERE {where_clause}", params)
+            cursor.execute(
+                f"SELECT COUNT(*) FROM command_history WHERE {where_clause}", params
+            )
             total_count = cursor.fetchone()[0]
 
             # Get records
@@ -404,7 +409,9 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Get total count
-            cursor.execute(f"SELECT COUNT(*) FROM measurements WHERE {where_clause}", params)
+            cursor.execute(
+                f"SELECT COUNT(*) FROM measurements WHERE {where_clause}", params
+            )
             total_count = cursor.fetchone()[0]
 
             # Get records
@@ -499,7 +506,10 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Get session start time
-            cursor.execute("SELECT session_start FROM equipment_usage WHERE record_id = ?", (record_id,))
+            cursor.execute(
+                "SELECT session_start FROM equipment_usage WHERE record_id = ?",
+                (record_id,),
+            )
             row = cursor.fetchone()
             if not row:
                 conn.close()
@@ -618,7 +628,11 @@ class DatabaseManager:
                     record.start_time.isoformat(),
                     record.status.value,
                     record.mode,
-                    json.dumps(record.trigger_config) if record.trigger_config else None,
+                    (
+                        json.dumps(record.trigger_config)
+                        if record.trigger_config
+                        else None
+                    ),
                     record.user_id,
                 ),
             )
@@ -653,7 +667,11 @@ class DatabaseManager:
         if status:
             updates.append("status = ?")
             params.append(status.value)
-            if status in (SessionStatus.COMPLETED, SessionStatus.CANCELLED, SessionStatus.FAILED):
+            if status in (
+                SessionStatus.COMPLETED,
+                SessionStatus.CANCELLED,
+                SessionStatus.FAILED,
+            ):
                 updates.append("end_time = ?")
                 params.append(datetime.now().isoformat())
 
@@ -685,8 +703,15 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Calculate duration if ending session
-            if status and status in (SessionStatus.COMPLETED, SessionStatus.CANCELLED, SessionStatus.FAILED):
-                cursor.execute("SELECT start_time FROM data_sessions WHERE session_id = ?", (session_id,))
+            if status and status in (
+                SessionStatus.COMPLETED,
+                SessionStatus.CANCELLED,
+                SessionStatus.FAILED,
+            ):
+                cursor.execute(
+                    "SELECT start_time FROM data_sessions WHERE session_id = ?",
+                    (session_id,),
+                )
                 row = cursor.fetchone()
                 if row:
                     start_time = datetime.fromisoformat(row[0])
@@ -789,7 +814,9 @@ class DatabaseManager:
             session_count = cursor.fetchone()[0]
 
             # Get database file size
-            cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            cursor.execute(
+                "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()"
+            )
             db_size_bytes = cursor.fetchone()[0]
 
             conn.close()

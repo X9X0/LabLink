@@ -7,15 +7,16 @@ Extends the base calibration system with:
 - Reference standards tracking
 """
 
+import json
 import logging
-from typing import Dict, List, Optional, Any, Callable
+import uuid
 from datetime import datetime, timedelta
 from enum import Enum
-from pydantic import BaseModel, Field
-import uuid
-import numpy as np
 from pathlib import Path
-import json
+from typing import Any, Callable, Dict, List, Optional
+
+import numpy as np
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class ProcedureStepType(str, Enum):
     """Type of procedure step."""
+
     SETUP = "setup"
     MEASUREMENT = "measurement"
     ADJUSTMENT = "adjustment"
@@ -34,6 +36,7 @@ class ProcedureStepType(str, Enum):
 
 class ProcedureStepStatus(str, Enum):
     """Status of procedure step."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -43,6 +46,7 @@ class ProcedureStepStatus(str, Enum):
 
 class CalibrationProcedureStep(BaseModel):
     """Single step in a calibration procedure."""
+
     step_id: str = Field(default_factory=lambda: f"step_{uuid.uuid4().hex[:8]}")
     step_number: int = Field(..., description="Step number in sequence")
     step_type: ProcedureStepType
@@ -67,6 +71,7 @@ class CalibrationProcedureStep(BaseModel):
 
 class CalibrationProcedure(BaseModel):
     """Complete calibration procedure with steps."""
+
     procedure_id: str = Field(default_factory=lambda: f"proc_{uuid.uuid4().hex[:8]}")
     name: str = Field(..., description="Procedure name")
     version: str = Field(default="1.0", description="Procedure version")
@@ -94,6 +99,7 @@ class CalibrationProcedure(BaseModel):
 
 class ProcedureExecution(BaseModel):
     """Execution instance of a calibration procedure."""
+
     execution_id: str = Field(default_factory=lambda: f"exec_{uuid.uuid4().hex[:12]}")
     procedure_id: str
     equipment_id: str
@@ -101,7 +107,9 @@ class ProcedureExecution(BaseModel):
     # Execution state
     started_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
-    status: str = Field(default="in_progress")  # in_progress, completed, failed, aborted
+    status: str = Field(
+        default="in_progress"
+    )  # in_progress, completed, failed, aborted
 
     # Steps (copy of procedure steps with execution data)
     steps: List[CalibrationProcedureStep] = Field(default_factory=list)
@@ -118,6 +126,7 @@ class ProcedureExecution(BaseModel):
 
 class CertificateType(str, Enum):
     """Type of calibration certificate."""
+
     ACCREDITED = "accredited"  # ISO/IEC 17025 accredited
     NON_ACCREDITED = "non_accredited"
     IN_HOUSE = "in_house"
@@ -126,6 +135,7 @@ class CertificateType(str, Enum):
 
 class CalibrationCertificate(BaseModel):
     """Digital calibration certificate."""
+
     certificate_id: str = Field(default_factory=lambda: f"cert_{uuid.uuid4().hex[:12]}")
     certificate_number: str = Field(..., description="Official certificate number")
     certificate_type: CertificateType
@@ -172,6 +182,7 @@ class CalibrationCertificate(BaseModel):
 
 class CorrectionType(str, Enum):
     """Type of calibration correction."""
+
     LINEAR = "linear"  # y = mx + b
     POLYNOMIAL = "polynomial"  # y = a0 + a1*x + a2*x^2 + ...
     LOOKUP_TABLE = "lookup_table"  # Interpolated from table
@@ -180,9 +191,12 @@ class CorrectionType(str, Enum):
 
 class CalibrationCorrection(BaseModel):
     """Calibration correction to apply to measurements."""
+
     correction_id: str = Field(default_factory=lambda: f"corr_{uuid.uuid4().hex[:8]}")
     equipment_id: str
-    parameter: str = Field(..., description="Parameter to correct (e.g., 'voltage', 'current')")
+    parameter: str = Field(
+        ..., description="Parameter to correct (e.g., 'voltage', 'current')"
+    )
 
     # Correction method
     correction_type: CorrectionType
@@ -221,10 +235,14 @@ class CalibrationCorrection(BaseModel):
 
         # Check range
         if self.range_min is not None and value < self.range_min:
-            logger.warning(f"Value {value} below correction range [{self.range_min}, {self.range_max}]")
+            logger.warning(
+                f"Value {value} below correction range [{self.range_min}, {self.range_max}]"
+            )
             return value
         if self.range_max is not None and value > self.range_max:
-            logger.warning(f"Value {value} above correction range [{self.range_min}, {self.range_max}]")
+            logger.warning(
+                f"Value {value} above correction range [{self.range_min}, {self.range_max}]"
+            )
             return value
 
         if self.correction_type == CorrectionType.LINEAR:
@@ -236,7 +254,7 @@ class CalibrationCorrection(BaseModel):
         elif self.correction_type == CorrectionType.POLYNOMIAL:
             corrected = 0.0
             for i, coeff in enumerate(self.coefficients):
-                corrected += coeff * (value ** i)
+                corrected += coeff * (value**i)
             return corrected
 
         elif self.correction_type == CorrectionType.LOOKUP_TABLE:
@@ -275,6 +293,7 @@ class CalibrationCorrection(BaseModel):
 
 class StandardStatus(str, Enum):
     """Status of reference standard."""
+
     CURRENT = "current"
     DUE_SOON = "due_soon"
     OVERDUE = "overdue"
@@ -283,6 +302,7 @@ class StandardStatus(str, Enum):
 
 class ReferenceStandard(BaseModel):
     """Reference standard used for calibration."""
+
     standard_id: str = Field(default_factory=lambda: f"std_{uuid.uuid4().hex[:8]}")
     name: str = Field(..., description="Standard name/designation")
     standard_type: str = Field(..., description="Type (e.g., 'voltage', 'resistance')")
@@ -359,7 +379,9 @@ class EnhancedCalibrationManager:
         self.procedures: Dict[str, CalibrationProcedure] = {}
         self.executions: Dict[str, ProcedureExecution] = {}
         self.certificates: Dict[str, CalibrationCertificate] = {}
-        self.corrections: Dict[str, List[CalibrationCorrection]] = {}  # equipment_id -> corrections
+        self.corrections: Dict[str, List[CalibrationCorrection]] = (
+            {}
+        )  # equipment_id -> corrections
         self.standards: Dict[str, ReferenceStandard] = {}
 
         # Load data
@@ -377,10 +399,7 @@ class EnhancedCalibrationManager:
         return procedure.procedure_id
 
     def start_procedure_execution(
-        self,
-        procedure_id: str,
-        equipment_id: str,
-        performed_by: str
+        self, procedure_id: str, equipment_id: str, performed_by: str
     ) -> ProcedureExecution:
         """Start executing a calibration procedure."""
         if procedure_id not in self.procedures:
@@ -393,7 +412,7 @@ class EnhancedCalibrationManager:
             procedure_id=procedure_id,
             equipment_id=equipment_id,
             performed_by=performed_by,
-            steps=[step.copy() for step in procedure.steps]  # Copy steps
+            steps=[step.copy() for step in procedure.steps],  # Copy steps
         )
 
         self.executions[execution.execution_id] = execution
@@ -408,7 +427,7 @@ class EnhancedCalibrationManager:
         step_number: int,
         measured_value: Optional[float] = None,
         passed: bool = True,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
     ):
         """Complete a procedure step."""
         if execution_id not in self.executions:
@@ -453,7 +472,9 @@ class EnhancedCalibrationManager:
         self._save_corrections(equipment_id)
         logger.info(f"Added correction for {equipment_id}: {correction.parameter}")
 
-    def apply_corrections(self, equipment_id: str, parameter: str, value: float) -> float:
+    def apply_corrections(
+        self, equipment_id: str, parameter: str, value: float
+    ) -> float:
         """Apply all applicable corrections to a measured value."""
         if equipment_id not in self.corrections:
             return value
@@ -463,9 +484,11 @@ class EnhancedCalibrationManager:
 
         for correction in self.corrections[equipment_id]:
             # Check if correction is applicable
-            if (correction.parameter == parameter and
-                correction.enabled and
-                correction.valid_from <= now <= correction.valid_until):
+            if (
+                correction.parameter == parameter
+                and correction.enabled
+                and correction.valid_from <= now <= correction.valid_until
+            ):
                 corrected_value = correction.apply_correction(corrected_value)
 
         return corrected_value
@@ -507,28 +530,30 @@ class EnhancedCalibrationManager:
         """Save procedure to storage."""
         path = self.storage_path / "procedures" / f"{procedure_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(self.procedures[procedure_id].dict(), f, indent=2, default=str)
 
     def _save_execution(self, execution_id: str):
         """Save execution to storage."""
         path = self.storage_path / "executions" / f"{execution_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(self.executions[execution_id].dict(), f, indent=2, default=str)
 
     def _save_certificate(self, certificate_id: str):
         """Save certificate to storage."""
         path = self.storage_path / "certificates" / f"{certificate_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
-            json.dump(self.certificates[certificate_id].dict(), f, indent=2, default=str)
+        with open(path, "w") as f:
+            json.dump(
+                self.certificates[certificate_id].dict(), f, indent=2, default=str
+            )
 
     def _save_corrections(self, equipment_id: str):
         """Save corrections to storage."""
         path = self.storage_path / "corrections" / f"{equipment_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             corrections_data = [c.dict() for c in self.corrections[equipment_id]]
             json.dump(corrections_data, f, indent=2, default=str)
 
@@ -536,7 +561,7 @@ class EnhancedCalibrationManager:
         """Save standard to storage."""
         path = self.storage_path / "standards" / f"{standard_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(self.standards[standard_id].dict(), f, indent=2, default=str)
 
 
@@ -544,7 +569,9 @@ class EnhancedCalibrationManager:
 _enhanced_calibration_manager = None
 
 
-def initialize_enhanced_calibration_manager(storage_path: str = "data/calibration_enhanced") -> EnhancedCalibrationManager:
+def initialize_enhanced_calibration_manager(
+    storage_path: str = "data/calibration_enhanced",
+) -> EnhancedCalibrationManager:
     """Initialize the global enhanced calibration manager."""
     global _enhanced_calibration_manager
     _enhanced_calibration_manager = EnhancedCalibrationManager(storage_path)

@@ -4,12 +4,11 @@ import logging
 from typing import Optional
 
 try:
-    from PyQt6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-        QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
-        QMessageBox, QProgressBar
-    )
     from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+    from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QHeaderView, QLabel,
+                                 QMessageBox, QProgressBar, QPushButton,
+                                 QTableWidget, QTableWidgetItem, QVBoxLayout)
+
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
@@ -73,11 +72,15 @@ class DiscoveryDialog(QDialog):
         # Servers table
         self.servers_table = QTableWidget()
         self.servers_table.setColumnCount(5)
-        self.servers_table.setHorizontalHeaderLabels([
-            "Server Name", "IP Address", "API Port", "WS Port", "Version"
-        ])
-        self.servers_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.servers_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.servers_table.setHorizontalHeaderLabels(
+            ["Server Name", "IP Address", "API Port", "WS Port", "Version"]
+        )
+        self.servers_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.servers_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self.servers_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.servers_table.itemDoubleClicked.connect(self._on_server_double_clicked)
         layout.addWidget(self.servers_table)
@@ -94,7 +97,9 @@ class DiscoveryDialog(QDialog):
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(self._on_connect)
         self.connect_btn.setEnabled(False)
-        self.connect_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
+        self.connect_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;"
+        )
         button_layout.addWidget(self.connect_btn)
 
         cancel_btn = QPushButton("Cancel")
@@ -116,13 +121,14 @@ class DiscoveryDialog(QDialog):
     def _check_zeroconf(self):
         """Check if zeroconf is available."""
         try:
-            from client.utils.mdns_discovery import LabLinkDiscovery, ZEROCONF_AVAILABLE
+            from client.utils.mdns_discovery import (ZEROCONF_AVAILABLE,
+                                                     LabLinkDiscovery)
 
             if not ZEROCONF_AVAILABLE:
                 self._show_error(
                     "Zeroconf not available",
                     "mDNS/Zeroconf discovery requires the 'zeroconf' package.\n\n"
-                    "Install with: pip install zeroconf"
+                    "Install with: pip install zeroconf",
                 )
                 return
 
@@ -131,7 +137,9 @@ class DiscoveryDialog(QDialog):
             self.discovery.register_callback(self._on_server_discovered)
             self.discovery.start()
 
-            self.status_label.setText(f"Discovering servers... (timeout: {self.timeout}s)")
+            self.status_label.setText(
+                f"Discovering servers... (timeout: {self.timeout}s)"
+            )
             self.timeout_timer.start(int(self.timeout * 1000))
 
         except Exception as e:
@@ -168,7 +176,7 @@ class DiscoveryDialog(QDialog):
             self.servers_table.setItem(i, 3, QTableWidgetItem(str(server.ws_port)))
 
             # Version
-            version = server.properties.get('version', 'Unknown')
+            version = server.properties.get("version", "Unknown")
             self.servers_table.setItem(i, 4, QTableWidgetItem(version))
 
         # Update status
@@ -192,10 +200,12 @@ class DiscoveryDialog(QDialog):
                     self,
                     "No Servers Found",
                     "No LabLink servers were found on the network.\n\n"
-                    "Make sure the server is running and mDNS is enabled."
+                    "Make sure the server is running and mDNS is enabled.",
                 )
             else:
-                self.status_label.setText(f"Discovery complete. Found {len(servers)} server(s).")
+                self.status_label.setText(
+                    f"Discovery complete. Found {len(servers)} server(s)."
+                )
 
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)

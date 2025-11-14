@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 
 class LockMode(str, Enum):
     """Equipment lock modes."""
+
     EXCLUSIVE = "exclusive"  # Full control, blocks all other access
-    OBSERVER = "observer"    # Read-only, doesn't block other observers
+    OBSERVER = "observer"  # Read-only, doesn't block other observers
 
 
 class LockStatus(str, Enum):
     """Lock status states."""
+
     LOCKED = "locked"
     UNLOCKED = "unlocked"
     QUEUED = "queued"
@@ -81,7 +83,12 @@ class LockQueueEntry(BaseModel):
 class LockViolation(Exception):
     """Raised when attempting an operation that violates lock rules."""
 
-    def __init__(self, message: str, equipment_id: str, current_lock: Optional[EquipmentLock] = None):
+    def __init__(
+        self,
+        message: str,
+        equipment_id: str,
+        current_lock: Optional[EquipmentLock] = None,
+    ):
         self.equipment_id = equipment_id
         self.current_lock = current_lock
         super().__init__(message)
@@ -92,7 +99,9 @@ class LockManager:
 
     def __init__(self):
         self._locks: Dict[str, EquipmentLock] = {}  # equipment_id -> lock
-        self._observer_locks: Dict[str, Set[str]] = {}  # equipment_id -> set of session_ids
+        self._observer_locks: Dict[str, Set[str]] = (
+            {}
+        )  # equipment_id -> set of session_ids
         self._lock_queue: Dict[str, List[LockQueueEntry]] = {}  # equipment_id -> queue
         self._cleanup_task: Optional[asyncio.Task] = None
         self._lock_events: Dict[str, List[dict]] = {}  # equipment_id -> event history
@@ -131,16 +140,23 @@ class LockManager:
 
         for equipment_id, lock in list(self._locks.items()):
             if lock.is_expired():
-                logger.info(f"Lock expired for equipment {equipment_id}, session {lock.session_id}")
+                logger.info(
+                    f"Lock expired for equipment {equipment_id}, session {lock.session_id}"
+                )
                 expired_equipment.append(equipment_id)
 
                 # Log event
-                self._log_event(equipment_id, {
-                    "event": "lock_expired",
-                    "session_id": lock.session_id,
-                    "lock_id": lock.lock_id,
-                    "duration_seconds": (datetime.now() - lock.acquired_at).total_seconds()
-                })
+                self._log_event(
+                    equipment_id,
+                    {
+                        "event": "lock_expired",
+                        "session_id": lock.session_id,
+                        "lock_id": lock.lock_id,
+                        "duration_seconds": (
+                            datetime.now() - lock.acquired_at
+                        ).total_seconds(),
+                    },
+                )
 
         # Release expired locks and process queue
         for equipment_id in expired_equipment:
@@ -170,7 +186,7 @@ class LockManager:
         session_id: str,
         lock_mode: LockMode = LockMode.EXCLUSIVE,
         timeout_seconds: int = 300,
-        queue_if_busy: bool = False
+        queue_if_busy: bool = False,
     ) -> dict:
         """
         Acquire a lock on equipment.
@@ -196,22 +212,27 @@ class LockManager:
                 existing_lock.update_activity()
                 existing_lock.timeout_seconds = timeout_seconds
 
-                self._log_event(equipment_id, {
-                    "event": "lock_refreshed",
-                    "session_id": session_id,
-                    "lock_id": existing_lock.lock_id,
-                    "new_timeout": timeout_seconds
-                })
+                self._log_event(
+                    equipment_id,
+                    {
+                        "event": "lock_refreshed",
+                        "session_id": session_id,
+                        "lock_id": existing_lock.lock_id,
+                        "new_timeout": timeout_seconds,
+                    },
+                )
 
                 return {
                     "success": True,
                     "status": "refreshed",
-                    "lock": existing_lock.dict()
+                    "lock": existing_lock.dict(),
                 }
 
         # Handle observer mode
         if lock_mode == LockMode.OBSERVER:
-            return await self._acquire_observer_lock(equipment_id, session_id, timeout_seconds)
+            return await self._acquire_observer_lock(
+                equipment_id, session_id, timeout_seconds
+            )
 
         # Handle exclusive mode
         if equipment_id in self._locks:
@@ -220,19 +241,21 @@ class LockManager:
 
             if queue_if_busy:
                 # Add to queue
-                queue_entry = await self._add_to_queue(equipment_id, session_id, lock_mode)
+                queue_entry = await self._add_to_queue(
+                    equipment_id, session_id, lock_mode
+                )
                 return {
                     "success": False,
                     "status": "queued",
                     "message": f"Equipment locked by session {current_lock.session_id}",
                     "current_lock": current_lock.dict(),
-                    "queue_entry": queue_entry.dict()
+                    "queue_entry": queue_entry.dict(),
                 }
             else:
                 raise LockViolation(
                     f"Equipment {equipment_id} is locked by session {current_lock.session_id}",
                     equipment_id=equipment_id,
-                    current_lock=current_lock
+                    current_lock=current_lock,
                 )
 
         # Check if there are observer locks
@@ -240,35 +263,40 @@ class LockManager:
             # Clear observer locks when acquiring exclusive lock
             observer_count = len(self._observer_locks[equipment_id])
             self._observer_locks[equipment_id].clear()
-            logger.info(f"Cleared {observer_count} observer locks for equipment {equipment_id}")
+            logger.info(
+                f"Cleared {observer_count} observer locks for equipment {equipment_id}"
+            )
 
         # Acquire lock
         lock = EquipmentLock(
             equipment_id=equipment_id,
             session_id=session_id,
             lock_mode=lock_mode,
-            timeout_seconds=timeout_seconds
+            timeout_seconds=timeout_seconds,
         )
 
         self._locks[equipment_id] = lock
 
-        self._log_event(equipment_id, {
-            "event": "lock_acquired",
-            "session_id": session_id,
-            "lock_id": lock.lock_id,
-            "lock_mode": lock_mode,
-            "timeout_seconds": timeout_seconds
-        })
+        self._log_event(
+            equipment_id,
+            {
+                "event": "lock_acquired",
+                "session_id": session_id,
+                "lock_id": lock.lock_id,
+                "lock_mode": lock_mode,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
 
-        logger.info(f"Lock acquired: equipment={equipment_id}, session={session_id}, mode={lock_mode}")
+        logger.info(
+            f"Lock acquired: equipment={equipment_id}, session={session_id}, mode={lock_mode}"
+        )
 
-        return {
-            "success": True,
-            "status": "locked",
-            "lock": lock.dict()
-        }
+        return {"success": True, "status": "locked", "lock": lock.dict()}
 
-    async def _acquire_observer_lock(self, equipment_id: str, session_id: str, timeout_seconds: int) -> dict:
+    async def _acquire_observer_lock(
+        self, equipment_id: str, session_id: str, timeout_seconds: int
+    ) -> dict:
         """Acquire an observer (read-only) lock."""
         # Check if equipment has exclusive lock
         if equipment_id in self._locks:
@@ -277,7 +305,7 @@ class LockManager:
                 raise LockViolation(
                     f"Equipment {equipment_id} has exclusive lock by session {current_lock.session_id}",
                     equipment_id=equipment_id,
-                    current_lock=current_lock
+                    current_lock=current_lock,
                 )
 
         # Add to observer set
@@ -286,21 +314,28 @@ class LockManager:
 
         self._observer_locks[equipment_id].add(session_id)
 
-        self._log_event(equipment_id, {
-            "event": "observer_lock_acquired",
-            "session_id": session_id,
-            "timeout_seconds": timeout_seconds
-        })
+        self._log_event(
+            equipment_id,
+            {
+                "event": "observer_lock_acquired",
+                "session_id": session_id,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
 
-        logger.info(f"Observer lock acquired: equipment={equipment_id}, session={session_id}")
+        logger.info(
+            f"Observer lock acquired: equipment={equipment_id}, session={session_id}"
+        )
 
         return {
             "success": True,
             "status": "observer",
-            "observer_count": len(self._observer_locks[equipment_id])
+            "observer_count": len(self._observer_locks[equipment_id]),
         }
 
-    async def release_lock(self, equipment_id: str, session_id: str, force: bool = False) -> dict:
+    async def release_lock(
+        self, equipment_id: str, session_id: str, force: bool = False
+    ) -> dict:
         """
         Release a lock on equipment.
 
@@ -320,45 +355,46 @@ class LockManager:
                 raise LockViolation(
                     f"Cannot release lock: owned by session {lock.session_id}",
                     equipment_id=equipment_id,
-                    current_lock=lock
+                    current_lock=lock,
                 )
 
             await self._release_lock_internal(equipment_id)
 
-            self._log_event(equipment_id, {
-                "event": "lock_released" if not force else "lock_force_released",
-                "session_id": session_id,
-                "lock_id": lock.lock_id,
-                "duration_seconds": (datetime.now() - lock.acquired_at).total_seconds()
-            })
+            self._log_event(
+                equipment_id,
+                {
+                    "event": "lock_released" if not force else "lock_force_released",
+                    "session_id": session_id,
+                    "lock_id": lock.lock_id,
+                    "duration_seconds": (
+                        datetime.now() - lock.acquired_at
+                    ).total_seconds(),
+                },
+            )
 
             # Process queue
             await self._process_queue(equipment_id)
 
-            return {
-                "success": True,
-                "status": "released",
-                "was_forced": force
-            }
+            return {"success": True, "status": "released", "was_forced": force}
 
         # Check observer lock
-        if equipment_id in self._observer_locks and session_id in self._observer_locks[equipment_id]:
+        if (
+            equipment_id in self._observer_locks
+            and session_id in self._observer_locks[equipment_id]
+        ):
             self._observer_locks[equipment_id].remove(session_id)
 
-            self._log_event(equipment_id, {
-                "event": "observer_lock_released",
-                "session_id": session_id
-            })
+            self._log_event(
+                equipment_id,
+                {"event": "observer_lock_released", "session_id": session_id},
+            )
 
-            return {
-                "success": True,
-                "status": "observer_released"
-            }
+            return {"success": True, "status": "observer_released"}
 
         return {
             "success": False,
             "status": "not_locked",
-            "message": f"No lock found for session {session_id}"
+            "message": f"No lock found for session {session_id}",
         }
 
     async def _release_lock_internal(self, equipment_id: str):
@@ -367,7 +403,9 @@ class LockManager:
             del self._locks[equipment_id]
             logger.info(f"Lock released for equipment {equipment_id}")
 
-    async def _add_to_queue(self, equipment_id: str, session_id: str, lock_mode: LockMode) -> LockQueueEntry:
+    async def _add_to_queue(
+        self, equipment_id: str, session_id: str, lock_mode: LockMode
+    ) -> LockQueueEntry:
         """Add session to lock queue."""
         if equipment_id not in self._lock_queue:
             self._lock_queue[equipment_id] = []
@@ -382,19 +420,24 @@ class LockManager:
             equipment_id=equipment_id,
             session_id=session_id,
             lock_mode=lock_mode,
-            position=position
+            position=position,
         )
 
         self._lock_queue[equipment_id].append(entry)
 
-        self._log_event(equipment_id, {
-            "event": "queued",
-            "session_id": session_id,
-            "queue_id": entry.queue_id,
-            "position": position
-        })
+        self._log_event(
+            equipment_id,
+            {
+                "event": "queued",
+                "session_id": session_id,
+                "queue_id": entry.queue_id,
+                "position": position,
+            },
+        )
 
-        logger.info(f"Session {session_id} added to queue for equipment {equipment_id} at position {position}")
+        logger.info(
+            f"Session {session_id} added to queue for equipment {equipment_id} at position {position}"
+        )
 
         return entry
 
@@ -412,7 +455,7 @@ class LockManager:
                 equipment_id=next_entry.equipment_id,
                 session_id=next_entry.session_id,
                 lock_mode=next_entry.lock_mode,
-                timeout_seconds=300  # Default timeout
+                timeout_seconds=300,  # Default timeout
             )
 
             # Remove from queue
@@ -422,14 +465,19 @@ class LockManager:
             for i, entry in enumerate(self._lock_queue[equipment_id]):
                 entry.position = i
 
-            self._log_event(equipment_id, {
-                "event": "queue_processed",
-                "session_id": next_entry.session_id,
-                "queue_id": next_entry.queue_id,
-                "result": "lock_acquired"
-            })
+            self._log_event(
+                equipment_id,
+                {
+                    "event": "queue_processed",
+                    "session_id": next_entry.session_id,
+                    "queue_id": next_entry.queue_id,
+                    "result": "lock_acquired",
+                },
+            )
 
-            logger.info(f"Queue processed: lock granted to session {next_entry.session_id}")
+            logger.info(
+                f"Queue processed: lock granted to session {next_entry.session_id}"
+            )
 
         except Exception as e:
             logger.error(f"Error processing queue for equipment {equipment_id}: {e}")
@@ -446,7 +494,7 @@ class LockManager:
                 "lock_id": lock.lock_id,
                 "acquired_at": lock.acquired_at.isoformat(),
                 "time_remaining": lock.time_remaining(),
-                "queue_length": len(self._lock_queue.get(equipment_id, []))
+                "queue_length": len(self._lock_queue.get(equipment_id, [])),
             }
 
         # Check observer locks
@@ -455,12 +503,12 @@ class LockManager:
                 "locked": False,
                 "observer_count": len(self._observer_locks[equipment_id]),
                 "observer_sessions": list(self._observer_locks[equipment_id]),
-                "queue_length": len(self._lock_queue.get(equipment_id, []))
+                "queue_length": len(self._lock_queue.get(equipment_id, [])),
             }
 
         return {
             "locked": False,
-            "queue_length": len(self._lock_queue.get(equipment_id, []))
+            "queue_length": len(self._lock_queue.get(equipment_id, [])),
         }
 
     def get_queue_status(self, equipment_id: str) -> List[LockQueueEntry]:
@@ -543,9 +591,17 @@ class LockManager:
     def get_all_locks(self) -> dict:
         """Get all current locks."""
         return {
-            "exclusive_locks": {eq_id: lock.dict() for eq_id, lock in self._locks.items()},
-            "observer_locks": {eq_id: list(sessions) for eq_id, sessions in self._observer_locks.items()},
-            "queues": {eq_id: [entry.dict() for entry in queue] for eq_id, queue in self._lock_queue.items()}
+            "exclusive_locks": {
+                eq_id: lock.dict() for eq_id, lock in self._locks.items()
+            },
+            "observer_locks": {
+                eq_id: list(sessions)
+                for eq_id, sessions in self._observer_locks.items()
+            },
+            "queues": {
+                eq_id: [entry.dict() for entry in queue]
+                for eq_id, queue in self._lock_queue.items()
+            },
         }
 
 

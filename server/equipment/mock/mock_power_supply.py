@@ -1,14 +1,16 @@
 """Mock power supply driver for testing without hardware."""
 
+import asyncio
 import logging
 import uuid
-import asyncio
-import numpy as np
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType, ConnectionType
+import numpy as np
+
 from shared.models.data import PowerSupplyData
+from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                     EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +86,10 @@ class MockPowerSupply:
                 "channels": {
                     f"ch{i}": {
                         "max_voltage": f"{self.max_voltage[i]}V",
-                        "max_current": f"{self.max_current[i]}A"
+                        "max_current": f"{self.max_current[i]}A",
                     }
                     for i in range(1, self.num_channels + 1)
-                }
+                },
             }
 
             return EquipmentStatus(
@@ -163,7 +165,7 @@ class MockPowerSupply:
             Dict with 'value' key containing the output voltage reading
         """
         # Parse channel number from string (handle 'CH1' or '1' format)
-        channel_num = int(channel.replace('CH', '').replace('ch', ''))
+        channel_num = int(channel.replace("CH", "").replace("ch", ""))
 
         if channel_num < 1 or channel_num > self.num_channels:
             raise ValueError(f"Invalid channel: {channel}")
@@ -196,7 +198,9 @@ class MockPowerSupply:
             load_resistance = self.load_resistance[channel]
 
             # Calculate what current would flow at set voltage
-            ideal_current = voltage_set / load_resistance if load_resistance > 0 else 999.0
+            ideal_current = (
+                voltage_set / load_resistance if load_resistance > 0 else 999.0
+            )
 
             # Determine mode based on current limit
             if ideal_current <= current_set:

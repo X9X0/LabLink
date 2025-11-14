@@ -2,12 +2,12 @@
 
 import logging
 from typing import Optional
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
-)
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QMessageBox,
+                             QPushButton, QTableWidget, QTableWidgetItem,
+                             QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
 
@@ -36,10 +36,19 @@ class DiagnosticsPanel(QWidget):
         # Health table
         self.health_table = QTableWidget()
         self.health_table.setColumnCount(6)
-        self.health_table.setHorizontalHeaderLabels([
-            "Equipment", "Health Status", "Score", "Connection", "Communication", "Performance"
-        ])
-        self.health_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.health_table.setHorizontalHeaderLabels(
+            [
+                "Equipment",
+                "Health Status",
+                "Score",
+                "Connection",
+                "Communication",
+                "Performance",
+            ]
+        )
+        self.health_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.health_table)
 
         # Buttons
@@ -96,9 +105,15 @@ class DiagnosticsPanel(QWidget):
                 self.health_table.setItem(row, 2, QTableWidgetItem(f"{score:.1f}"))
 
                 # Component statuses
-                self.health_table.setItem(row, 3, QTableWidgetItem(health.get("connection_status", "")))
-                self.health_table.setItem(row, 4, QTableWidgetItem(health.get("communication_status", "")))
-                self.health_table.setItem(row, 5, QTableWidgetItem(health.get("performance_status", "")))
+                self.health_table.setItem(
+                    row, 3, QTableWidgetItem(health.get("connection_status", ""))
+                )
+                self.health_table.setItem(
+                    row, 4, QTableWidgetItem(health.get("communication_status", ""))
+                )
+                self.health_table.setItem(
+                    row, 5, QTableWidgetItem(health.get("performance_status", ""))
+                )
 
                 row += 1
 
@@ -108,7 +123,9 @@ class DiagnosticsPanel(QWidget):
     def run_full_diagnostics(self):
         """Run full diagnostic report."""
         if not self.client:
-            QMessageBox.warning(self, "Not Connected", "Please connect to a server first")
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
             return
 
         try:
@@ -122,7 +139,9 @@ class DiagnosticsPanel(QWidget):
 
             message = f"Diagnostic Report:\n\n"
             message += f"Overall Health: {overall_health}\n"
-            message += f"Tests: {passed_tests}/{total_tests} passed, {failed_tests} failed\n\n"
+            message += (
+                f"Tests: {passed_tests}/{total_tests} passed, {failed_tests} failed\n\n"
+            )
 
             if report.get("critical_issues"):
                 message += "Critical Issues:\n"
@@ -140,4 +159,6 @@ class DiagnosticsPanel(QWidget):
     def run_benchmark(self):
         """Run performance benchmark on selected equipment."""
         # TODO: Implement benchmark functionality
-        QMessageBox.information(self, "Info", "Benchmark functionality not yet fully implemented")
+        QMessageBox.information(
+            self, "Info", "Benchmark functionality not yet fully implemented"
+        )

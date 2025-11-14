@@ -1,20 +1,13 @@
 """Test sequence execution engine."""
 
-import logging
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, Optional
+import logging
 import time
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from .models import (
-    TestSequence,
-    TestStep,
-    TestExecution,
-    TestResult,
-    TestStatus,
-    StepType,
-    ParameterSweep,
-)
+from .models import (ParameterSweep, StepType, TestExecution, TestResult,
+                     TestSequence, TestStatus, TestStep)
 from .validator import TestValidator
 
 logger = logging.getLogger(__name__)
@@ -46,7 +39,7 @@ class TestExecutor:
         self,
         sequence: TestSequence,
         executed_by: str,
-        environment: Optional[Dict[str, Any]] = None
+        environment: Optional[Dict[str, Any]] = None,
     ) -> TestExecution:
         """Execute a test sequence.
 
@@ -71,7 +64,9 @@ class TestExecutor:
         self.executions[execution.execution_id] = execution
         self.abort_flags[execution.execution_id] = False
 
-        logger.info(f"Starting test sequence: {sequence.name} (ID: {execution.execution_id})")
+        logger.info(
+            f"Starting test sequence: {sequence.name} (ID: {execution.execution_id})"
+        )
 
         execution.status = TestStatus.RUNNING
         execution.started_at = datetime.now()
@@ -172,7 +167,9 @@ class TestExecutor:
             if response != step.expected_response:
                 step.status = TestStatus.FAILED
                 step.passed = False
-                step.error_message = f"Expected '{step.expected_response}', got '{response}'"
+                step.error_message = (
+                    f"Expected '{step.expected_response}', got '{response}'"
+                )
             else:
                 step.status = TestStatus.PASSED
                 step.passed = True
@@ -183,7 +180,9 @@ class TestExecutor:
     async def _execute_measurement_step(self, step: TestStep, execution: TestExecution):
         """Execute a measurement step."""
         if not step.equipment_id or not step.measurement_type:
-            raise ValueError("Measurement step requires equipment_id and measurement_type")
+            raise ValueError(
+                "Measurement step requires equipment_id and measurement_type"
+            )
 
         equipment = self.equipment_manager.get_equipment(step.equipment_id)
         if not equipment:
@@ -259,7 +258,9 @@ class TestExecutor:
         # Generate sweep points
         points = sweep.generate_sweep_points()
 
-        logger.info(f"Parameter sweep: {sweep.parameter_name} from {step.sweep_start} to {step.sweep_stop} ({len(points)} points)")
+        logger.info(
+            f"Parameter sweep: {sweep.parameter_name} from {step.sweep_start} to {step.sweep_stop} ({len(points)} points)"
+        )
 
         equipment = self.equipment_manager.get_equipment(step.equipment_id)
         if not equipment:
@@ -283,7 +284,7 @@ class TestExecutor:
                     sweep.measured_values.append(value)
                 except ValueError:
                     logger.error(f"Could not parse measurement at {point}: {response}")
-                    sweep.measured_values.append(float('nan'))
+                    sweep.measured_values.append(float("nan"))
 
         # Store sweep results
         execution.sweep_results.append(sweep)

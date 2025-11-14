@@ -8,7 +8,7 @@ AST parsing to check code structure without requiring dependencies.
 import ast
 import sys
 from pathlib import Path
-from typing import List, Set, Dict
+from typing import Dict, List, Set
 
 
 class SchedulerVerifier:
@@ -78,11 +78,18 @@ class SchedulerVerifier:
 
         # Required classes
         required_classes = {
-            "ScheduleType", "JobStatus", "TriggerType",
-            "ScheduleConfig", "JobExecution", "JobHistory", "ScheduleStatistics"
+            "ScheduleType",
+            "JobStatus",
+            "TriggerType",
+            "ScheduleConfig",
+            "JobExecution",
+            "JobHistory",
+            "ScheduleStatistics",
         }
 
-        found_classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+        found_classes = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        }
         missing = required_classes - found_classes
 
         if missing:
@@ -95,7 +102,9 @@ class SchedulerVerifier:
                 # Look for field annotations
                 annotations = []
                 for item in node.body:
-                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    if isinstance(item, ast.AnnAssign) and isinstance(
+                        item.target, ast.Name
+                    ):
                         annotations.append(item.target.id)
 
                 required_fields = {"job_id", "name", "schedule_type", "trigger_type"}
@@ -129,13 +138,28 @@ class SchedulerVerifier:
 
         # Required methods
         required_methods = {
-            "start", "shutdown", "create_job", "update_job", "delete_job",
-            "pause_job", "resume_job", "run_job_now",
-            "get_job", "list_jobs", "get_execution", "list_executions",
-            "get_job_history", "get_statistics"
+            "start",
+            "shutdown",
+            "create_job",
+            "update_job",
+            "delete_job",
+            "pause_job",
+            "resume_job",
+            "run_job_now",
+            "get_job",
+            "list_jobs",
+            "get_execution",
+            "list_executions",
+            "get_job_history",
+            "get_statistics",
         }
 
-        found_methods = {node.name for node in manager_class.body if isinstance(node, ast.AsyncFunctionDef) or isinstance(node, ast.FunctionDef)}
+        found_methods = {
+            node.name
+            for node in manager_class.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            or isinstance(node, ast.FunctionDef)
+        }
         missing = required_methods - found_methods
 
         if missing:
@@ -176,18 +200,33 @@ class SchedulerVerifier:
             if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
                 for decorator in node.decorator_list:
                     if isinstance(decorator, ast.Attribute):
-                        if isinstance(decorator.value, ast.Name) and decorator.value.id == "router":
+                        if (
+                            isinstance(decorator.value, ast.Name)
+                            and decorator.value.id == "router"
+                        ):
                             endpoints.append(node.name)
-                    elif isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute):
-                        if isinstance(decorator.func.value, ast.Name) and decorator.func.value.id == "router":
+                    elif isinstance(decorator, ast.Call) and isinstance(
+                        decorator.func, ast.Attribute
+                    ):
+                        if (
+                            isinstance(decorator.func.value, ast.Name)
+                            and decorator.func.value.id == "router"
+                        ):
                             endpoints.append(node.name)
 
         # Required endpoints
         required_endpoints = {
-            "create_job", "get_job", "list_jobs", "delete_job",
-            "pause_job", "resume_job", "run_job_now",
-            "get_execution", "list_executions", "get_job_history",
-            "get_statistics"
+            "create_job",
+            "get_job",
+            "list_jobs",
+            "delete_job",
+            "pause_job",
+            "resume_job",
+            "run_job_now",
+            "get_execution",
+            "list_executions",
+            "get_job_history",
+            "get_statistics",
         }
 
         missing = required_endpoints - set(endpoints)
@@ -208,9 +247,13 @@ class SchedulerVerifier:
             content = f.read()
 
         required_exports = {
-            "ScheduleType", "JobStatus", "TriggerType",
-            "ScheduleConfig", "JobExecution", "JobHistory",
-            "scheduler_manager"
+            "ScheduleType",
+            "JobStatus",
+            "TriggerType",
+            "ScheduleConfig",
+            "JobExecution",
+            "JobHistory",
+            "scheduler_manager",
         }
 
         for export in required_exports:
@@ -236,7 +279,7 @@ class SchedulerVerifier:
             return False
 
         # Check router included
-        if 'app.include_router(scheduler_router' not in content:
+        if "app.include_router(scheduler_router" not in content:
             self.errors.append("scheduler_router not added to app")
             return False
 

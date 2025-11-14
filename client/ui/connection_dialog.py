@@ -1,11 +1,9 @@
 """Connection dialog for LabLink server."""
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QSpinBox, QPushButton,
-    QDialogButtonBox, QGroupBox
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QSpinBox, QVBoxLayout)
 
 
 class ConnectionDialog(QDialog):
@@ -54,11 +52,15 @@ class ConnectionDialog(QDialog):
         quick_layout = QHBoxLayout()
 
         localhost_btn = QPushButton("Localhost")
-        localhost_btn.clicked.connect(lambda: self.set_connection("localhost", 8000, 8001))
+        localhost_btn.clicked.connect(
+            lambda: self.set_connection("localhost", 8000, 8001)
+        )
         quick_layout.addWidget(localhost_btn)
 
         pi_btn = QPushButton("Raspberry Pi")
-        pi_btn.clicked.connect(lambda: self.set_connection("raspberrypi.local", 8000, 8001))
+        pi_btn.clicked.connect(
+            lambda: self.set_connection("raspberrypi.local", 8000, 8001)
+        )
         quick_layout.addWidget(pi_btn)
 
         quick_group.setLayout(quick_layout)

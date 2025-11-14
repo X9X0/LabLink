@@ -10,20 +10,16 @@ This module provides an enhanced WebSocket server with:
 import asyncio
 import json
 import logging
-from typing import Optional
 from datetime import datetime
-from fastapi import WebSocket, WebSocketDisconnect
+from typing import Optional
 
-from equipment.manager import equipment_manager
-from websocket.enhanced_manager import EnhancedStreamManager
-from websocket.enhanced_features import (
-    StreamRecordingConfig,
-    BackpressureConfig,
-    MessagePriority,
-    CompressionType,
-    RecordingFormat,
-)
 from config.settings import settings
+from equipment.manager import equipment_manager
+from fastapi import WebSocket, WebSocketDisconnect
+from websocket.enhanced_features import (BackpressureConfig, CompressionType,
+                                         MessagePriority, RecordingFormat,
+                                         StreamRecordingConfig)
+from websocket.enhanced_manager import EnhancedStreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +31,8 @@ def create_enhanced_stream_manager() -> EnhancedStreamManager:
     # Recording configuration
     recording_config = StreamRecordingConfig(
         enabled=getattr(settings, "ws_recording_enabled", False),
-        format=RecordingFormat(
-            getattr(settings, "ws_recording_format", "jsonl")
-        ),
-        output_dir=getattr(
-            settings, "ws_recording_dir", "./data/ws_recordings"
-        ),
+        format=RecordingFormat(getattr(settings, "ws_recording_format", "jsonl")),
+        output_dir=getattr(settings, "ws_recording_dir", "./data/ws_recordings"),
         max_file_size_mb=getattr(settings, "ws_recording_max_size_mb", 100),
         include_timestamps=getattr(settings, "ws_recording_timestamps", True),
         include_metadata=getattr(settings, "ws_recording_metadata", True),
@@ -54,9 +46,7 @@ def create_enhanced_stream_manager() -> EnhancedStreamManager:
         warning_threshold=getattr(settings, "ws_queue_warning_threshold", 750),
         drop_low_priority=getattr(settings, "ws_drop_low_priority", True),
         rate_limit_enabled=getattr(settings, "ws_rate_limit_enabled", True),
-        max_messages_per_second=getattr(
-            settings, "ws_max_messages_per_second", 100
-        ),
+        max_messages_per_second=getattr(settings, "ws_max_messages_per_second", 100),
         burst_size=getattr(settings, "ws_burst_size", 50),
     )
 
@@ -70,7 +60,9 @@ def create_enhanced_stream_manager() -> EnhancedStreamManager:
 enhanced_stream_manager = create_enhanced_stream_manager()
 
 
-async def handle_websocket_enhanced(websocket: WebSocket, client_id: Optional[str] = None):
+async def handle_websocket_enhanced(
+    websocket: WebSocket, client_id: Optional[str] = None
+):
     """Handle enhanced WebSocket connection with advanced features.
 
     Args:
@@ -80,6 +72,7 @@ async def handle_websocket_enhanced(websocket: WebSocket, client_id: Optional[st
     # Generate client ID if not provided
     if client_id is None:
         import uuid
+
         client_id = f"client_{uuid.uuid4().hex[:8]}"
 
     # Connect with metadata
@@ -130,7 +123,7 @@ async def handle_websocket_enhanced(websocket: WebSocket, client_id: Optional[st
                 await enhanced_stream_manager.send_to_client(
                     client_id,
                     {"type": "pong", "timestamp": datetime.now().isoformat()},
-                    MessagePriority.HIGH
+                    MessagePriority.HIGH,
                 )
 
             else:
@@ -160,8 +153,12 @@ async def handle_start_stream(client_id: str, message: dict):
 
     task = asyncio.create_task(
         stream_equipment_data(
-            client_id, equipment_id, stream_type, interval_ms,
-            priority_enum, compression_enum
+            client_id,
+            equipment_id,
+            stream_type,
+            interval_ms,
+            priority_enum,
+            compression_enum,
         )
     )
 
@@ -174,7 +171,7 @@ async def handle_start_stream(client_id: str, message: dict):
             "equipment_id": equipment_id,
             "stream_type": stream_type,
         },
-        MessagePriority.HIGH
+        MessagePriority.HIGH,
     )
 
 
@@ -196,7 +193,7 @@ async def handle_stop_stream(client_id: str, message: dict):
                 "equipment_id": equipment_id,
                 "stream_type": stream_type,
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
 
 
@@ -215,8 +212,12 @@ async def handle_start_acquisition_stream(client_id: str, message: dict):
 
     task = asyncio.create_task(
         stream_acquisition_data(
-            client_id, acquisition_id, interval_ms, num_samples,
-            priority_enum, compression_enum
+            client_id,
+            acquisition_id,
+            interval_ms,
+            num_samples,
+            priority_enum,
+            compression_enum,
         )
     )
 
@@ -228,7 +229,7 @@ async def handle_start_acquisition_stream(client_id: str, message: dict):
             "type": "acquisition_stream_started",
             "acquisition_id": acquisition_id,
         },
-        MessagePriority.HIGH
+        MessagePriority.HIGH,
     )
 
 
@@ -248,7 +249,7 @@ async def handle_stop_acquisition_stream(client_id: str, message: dict):
                 "type": "acquisition_stream_stopped",
                 "acquisition_id": acquisition_id,
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
 
 
@@ -267,7 +268,7 @@ async def handle_start_recording(client_id: str, message: dict):
                 "session_id": session_id,
                 "filepath": filepath,
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
     except Exception as e:
         await enhanced_stream_manager.send_to_client(
@@ -276,7 +277,7 @@ async def handle_start_recording(client_id: str, message: dict):
                 "type": "error",
                 "error": f"Failed to start recording: {str(e)}",
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
 
 
@@ -294,7 +295,7 @@ async def handle_stop_recording(client_id: str, message: dict):
                 "session_id": session_id,
                 "stats": stats,
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
     else:
         await enhanced_stream_manager.send_to_client(
@@ -303,7 +304,7 @@ async def handle_stop_recording(client_id: str, message: dict):
                 "type": "error",
                 "error": f"Recording session {session_id} not found",
             },
-            MessagePriority.HIGH
+            MessagePriority.HIGH,
         )
 
 
@@ -313,7 +314,9 @@ async def handle_set_compression(client_id: str, message: dict):
 
     # Store compression preference in metadata
     if client_id in enhanced_stream_manager.connection_metadata:
-        enhanced_stream_manager.connection_metadata[client_id]["compression"] = compression
+        enhanced_stream_manager.connection_metadata[client_id][
+            "compression"
+        ] = compression
 
     await enhanced_stream_manager.send_to_client(
         client_id,
@@ -321,7 +324,7 @@ async def handle_set_compression(client_id: str, message: dict):
             "type": "compression_set",
             "compression": compression,
         },
-        MessagePriority.HIGH
+        MessagePriority.HIGH,
     )
 
 
@@ -339,7 +342,7 @@ async def handle_set_priority(client_id: str, message: dict):
             "type": "priority_set",
             "priority": priority,
         },
-        MessagePriority.HIGH
+        MessagePriority.HIGH,
     )
 
 
@@ -355,7 +358,7 @@ async def handle_get_stats(client_id: str):
             "connection": connection_stats,
             "global": global_stats,
         },
-        MessagePriority.HIGH
+        MessagePriority.HIGH,
     )
 
 
@@ -365,7 +368,7 @@ async def stream_equipment_data(
     stream_type: str,
     interval_ms: int,
     priority: MessagePriority,
-    compression: CompressionType
+    compression: CompressionType,
 ):
     """Stream equipment data to client."""
     interval_sec = interval_ms / 1000.0
@@ -374,18 +377,14 @@ async def stream_equipment_data(
         try:
             equipment = equipment_manager.get_equipment(equipment_id)
             if equipment is None:
-                logger.warning(
-                    f"Equipment {equipment_id} not found, stopping stream"
-                )
+                logger.warning(f"Equipment {equipment_id} not found, stopping stream")
                 break
 
             # Get data based on stream type
             if stream_type == "readings":
                 data = await equipment.execute_command("get_readings", {})
             elif stream_type == "waveform":
-                data = await equipment.execute_command(
-                    "get_waveform", {"channel": 1}
-                )
+                data = await equipment.execute_command("get_waveform", {"channel": 1})
             elif stream_type == "measurements":
                 data = await equipment.execute_command(
                     "get_measurements", {"channel": 1}
@@ -419,9 +418,7 @@ async def stream_equipment_data(
             await asyncio.sleep(interval_sec)
 
         except asyncio.CancelledError:
-            logger.info(
-                f"Streaming task cancelled for {equipment_id}/{stream_type}"
-            )
+            logger.info(f"Streaming task cancelled for {equipment_id}/{stream_type}")
             break
         except Exception as e:
             logger.error(f"Error in streaming task: {e}")
@@ -434,7 +431,7 @@ async def stream_acquisition_data(
     interval_ms: int,
     num_samples: int,
     priority: MessagePriority,
-    compression: CompressionType
+    compression: CompressionType,
 ):
     """Stream acquisition data to client."""
     from acquisition import acquisition_manager
@@ -475,8 +472,7 @@ async def stream_acquisition_data(
                     "stats": session.stats.dict(),
                     "data": {
                         "timestamps": [
-                            datetime.fromtimestamp(t).isoformat()
-                            for t in timestamps
+                            datetime.fromtimestamp(t).isoformat() for t in timestamps
                         ],
                         "values": {
                             channel: data[i, :].tolist()
@@ -495,9 +491,7 @@ async def stream_acquisition_data(
             await asyncio.sleep(interval_sec)
 
         except asyncio.CancelledError:
-            logger.info(
-                f"Acquisition streaming task cancelled for {acquisition_id}"
-            )
+            logger.info(f"Acquisition streaming task cancelled for {acquisition_id}")
             break
         except Exception as e:
             logger.error(f"Error in acquisition streaming task: {e}")

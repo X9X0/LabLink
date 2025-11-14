@@ -2,10 +2,10 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Set
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional, Set
 
 from .models import AcquisitionConfig, AcquisitionState
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class SyncState(str, Enum):
     """Synchronization group state."""
+
     IDLE = "idle"
     PREPARING = "preparing"
     READY = "ready"
@@ -26,6 +27,7 @@ class SyncState(str, Enum):
 @dataclass
 class SyncConfig:
     """Configuration for synchronized acquisition."""
+
     group_id: str
     equipment_ids: List[str]
     master_equipment_id: Optional[str] = None  # Device that controls timing
@@ -37,12 +39,15 @@ class SyncConfig:
 @dataclass
 class SyncStatus:
     """Status of synchronization group."""
+
     group_id: str
     state: SyncState
     equipment_count: int
     ready_count: int
     running_count: int
-    acquisition_ids: Dict[str, str] = field(default_factory=dict)  # equipment_id -> acquisition_id
+    acquisition_ids: Dict[str, str] = field(
+        default_factory=dict
+    )  # equipment_id -> acquisition_id
     start_time: Optional[datetime] = None
     sync_errors: List[str] = field(default_factory=list)
 
@@ -66,7 +71,10 @@ class SynchronizationGroup:
         self._lock = asyncio.Lock()
 
         # Use first equipment as master if not specified
-        if self.config.master_equipment_id is None and len(self.config.equipment_ids) > 0:
+        if (
+            self.config.master_equipment_id is None
+            and len(self.config.equipment_ids) > 0
+        ):
             self.config.master_equipment_id = self.config.equipment_ids[0]
 
     async def add_acquisition(self, equipment_id: str, acquisition_id: str):
@@ -84,12 +92,16 @@ class SynchronizationGroup:
             self.acquisition_ids[equipment_id] = acquisition_id
             self.ready_equipment.add(equipment_id)
 
-            logger.info(f"Added acquisition {acquisition_id} for {equipment_id} to sync group {self.config.group_id}")
+            logger.info(
+                f"Added acquisition {acquisition_id} for {equipment_id} to sync group {self.config.group_id}"
+            )
 
             # Check if all ready
             if len(self.ready_equipment) == len(self.config.equipment_ids):
                 self.state = SyncState.READY
-                logger.info(f"Sync group {self.config.group_id} is ready ({len(self.ready_equipment)} devices)")
+                logger.info(
+                    f"Sync group {self.config.group_id} is ready ({len(self.ready_equipment)} devices)"
+                )
 
     async def remove_acquisition(self, equipment_id: str):
         """Remove an acquisition from the sync group."""
@@ -141,18 +153,24 @@ class SynchronizationGroup:
 
             # Check for errors
             failed = []
-            for i, (equipment_id, result) in enumerate(zip(self.acquisition_ids.keys(), results)):
+            for i, (equipment_id, result) in enumerate(
+                zip(self.acquisition_ids.keys(), results)
+            ):
                 if isinstance(result, Exception):
                     failed.append(equipment_id)
                     self.sync_errors.append(f"{equipment_id}: {str(result)}")
 
             if failed:
-                logger.error(f"Failed to start sync group {self.config.group_id}: {failed}")
+                logger.error(
+                    f"Failed to start sync group {self.config.group_id}: {failed}"
+                )
                 self.state = SyncState.ERROR
                 return False
 
             self.state = SyncState.RUNNING
-            logger.info(f"Sync group {self.config.group_id} started successfully at {self.start_time}")
+            logger.info(
+                f"Sync group {self.config.group_id} started successfully at {self.start_time}"
+            )
 
             return True
 
@@ -230,10 +248,12 @@ class SynchronizationGroup:
             running_count=len(self.acquisition_ids),
             acquisition_ids=self.acquisition_ids.copy(),
             start_time=self.start_time,
-            sync_errors=self.sync_errors.copy()
+            sync_errors=self.sync_errors.copy(),
         )
 
-    async def get_synchronized_data(self, acquisition_manager, num_samples: Optional[int] = None):
+    async def get_synchronized_data(
+        self, acquisition_manager, num_samples: Optional[int] = None
+    ):
         """
         Get synchronized data from all acquisitions.
 
@@ -247,11 +267,10 @@ class SynchronizationGroup:
         synchronized_data = {}
 
         for equipment_id, acquisition_id in self.acquisition_ids.items():
-            data, timestamps = acquisition_manager.get_buffer_data(acquisition_id, num_samples)
-            synchronized_data[equipment_id] = {
-                "data": data,
-                "timestamps": timestamps
-            }
+            data, timestamps = acquisition_manager.get_buffer_data(
+                acquisition_id, num_samples
+            )
+            synchronized_data[equipment_id] = {"data": data, "timestamps": timestamps}
 
         # Align timestamps if requested
         if self.config.auto_align_timestamps and self.start_time is not None:
@@ -291,7 +310,9 @@ class SynchronizationManager:
             group = SynchronizationGroup(config)
             self._sync_groups[config.group_id] = group
 
-            logger.info(f"Created sync group {config.group_id} with {len(config.equipment_ids)} devices")
+            logger.info(
+                f"Created sync group {config.group_id} with {len(config.equipment_ids)} devices"
+            )
 
             return group
 
@@ -317,7 +338,9 @@ class SynchronizationManager:
 
             # Can only delete if stopped or idle
             if group.state not in [SyncState.IDLE, SyncState.STOPPED, SyncState.ERROR]:
-                raise ValueError(f"Cannot delete active sync group (state: {group.state})")
+                raise ValueError(
+                    f"Cannot delete active sync group (state: {group.state})"
+                )
 
             del self._sync_groups[group_id]
             logger.info(f"Deleted sync group {group_id}")

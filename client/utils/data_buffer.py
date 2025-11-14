@@ -1,8 +1,9 @@
 """Circular data buffer for real-time plotting."""
 
-import numpy as np
-from typing import Optional, Tuple
 from collections import deque
+from typing import Optional, Tuple
+
+import numpy as np
 
 
 class CircularBuffer:
@@ -66,7 +67,10 @@ class CircularBuffer:
 
         if not self._full:
             # Return only filled portion
-            return self._time[:self._index].copy(), self._data[channel, :self._index].copy()
+            return (
+                self._time[: self._index].copy(),
+                self._data[channel, : self._index].copy(),
+            )
         else:
             # Reorder to chronological
             time_data = np.roll(self._time, -self._index)
@@ -81,7 +85,10 @@ class CircularBuffer:
         """
         if not self._full:
             # Return transposed to get (samples, channels) shape
-            return self._time[:self._index].copy(), self._data[:, :self._index].T.copy()
+            return (
+                self._time[: self._index].copy(),
+                self._data[:, : self._index].T.copy(),
+            )
         else:
             time_data = np.roll(self._time, -self._index)
             data_array = np.roll(self._data, -self._index, axis=1).T
@@ -111,7 +118,10 @@ class CircularBuffer:
 
         if not self._full:
             start_idx = max(0, self._index - n)
-            return self._time[start_idx:self._index].copy(), self._data[:, start_idx:self._index].copy()
+            return (
+                self._time[start_idx : self._index].copy(),
+                self._data[:, start_idx : self._index].copy(),
+            )
         else:
             # Get last n samples wrapping around
             indices = [(self._index - n + i) % self.size for i in range(n)]
@@ -243,10 +253,7 @@ class SlidingWindowBuffer:
         if n == 0:
             return np.array([]), np.array([])
 
-        return (
-            np.array(list(self._times)[-n:]),
-            np.array(list(self._data)[-n:])
-        )
+        return (np.array(list(self._times)[-n:]), np.array(list(self._data)[-n:]))
 
     # Backward compatibility aliases
     def get_data(self) -> Tuple[np.ndarray, np.ndarray]:

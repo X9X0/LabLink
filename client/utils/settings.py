@@ -1,11 +1,12 @@
 """Settings manager for LabLink client using QSettings."""
 
 import logging
-from typing import Any, Dict, List, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 try:
     from PyQt6.QtCore import QSettings
+
     QSETTINGS_AVAILABLE = True
 except ImportError:
     QSETTINGS_AVAILABLE = False
@@ -16,7 +17,9 @@ logger = logging.getLogger(__name__)
 class SettingsManager:
     """Manages application settings using QSettings."""
 
-    def __init__(self, organization: str = "LabLink", application: str = "LabLinkClient"):
+    def __init__(
+        self, organization: str = "LabLink", application: str = "LabLinkClient"
+    ):
         """Initialize settings manager.
 
         Args:
@@ -107,7 +110,7 @@ class SettingsManager:
                 "host": self.settings.value("host", "localhost", type=str),
                 "api_port": self.settings.value("api_port", 8000, type=int),
                 "ws_port": self.settings.value("ws_port", 8001, type=int),
-                "name": self.settings.value("name", "", type=str)
+                "name": self.settings.value("name", "", type=str),
             }
             servers.append(server)
 
@@ -131,15 +134,19 @@ class SettingsManager:
             "host": host,
             "api_port": api_port,
             "ws_port": ws_port,
-            "name": name
+            "name": name,
         }
 
         # Remove if already exists
-        servers = [s for s in servers if not (
-            s["host"] == host and
-            s["api_port"] == api_port and
-            s["ws_port"] == ws_port
-        )]
+        servers = [
+            s
+            for s in servers
+            if not (
+                s["host"] == host
+                and s["api_port"] == api_port
+                and s["ws_port"] == ws_port
+            )
+        ]
 
         # Add to front
         servers.insert(0, new_server)
@@ -463,7 +470,8 @@ class SettingsManager:
 
         # Write to file
         import json
-        with open(filepath, 'w') as f:
+
+        with open(filepath, "w") as f:
             json.dump(all_settings, f, indent=2, default=str)
 
         logger.info(f"Settings exported to {filepath}")
@@ -475,7 +483,8 @@ class SettingsManager:
             filepath: Import file path
         """
         import json
-        with open(filepath, 'r') as f:
+
+        with open(filepath, "r") as f:
             all_settings = json.load(f)
 
         # Set all settings

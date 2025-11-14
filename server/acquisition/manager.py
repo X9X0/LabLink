@@ -1,26 +1,18 @@
 """Data acquisition manager for coordinating data collection."""
 
 import asyncio
+import csv
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-import csv
-import json
 
 import numpy as np
 
-from .models import (
-    AcquisitionConfig,
-    AcquisitionSession,
-    AcquisitionState,
-    AcquisitionMode,
-    TriggerType,
-    TriggerEdge,
-    CircularBuffer,
-    DataPoint,
-    ExportFormat,
-)
+from .models import (AcquisitionConfig, AcquisitionMode, AcquisitionSession,
+                     AcquisitionState, CircularBuffer, DataPoint, ExportFormat,
+                     TriggerEdge, TriggerType)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +33,7 @@ class AcquisitionManager:
         logger.info(f"Export directory set to: {self._export_dir}")
 
     async def create_session(
-        self,
-        equipment,
-        config: AcquisitionConfig
+        self, equipment, config: AcquisitionConfig
     ) -> AcquisitionSession:
         """
         Create a new acquisition session.
@@ -62,28 +52,25 @@ class AcquisitionManager:
             acquisition_id=acquisition_id,
             equipment_id=config.equipment_id,
             config=config,
-            state=AcquisitionState.IDLE
+            state=AcquisitionState.IDLE,
         )
 
         # Create circular buffer
         buffer = CircularBuffer(
-            size=config.buffer_size,
-            num_channels=len(config.channels)
+            size=config.buffer_size, num_channels=len(config.channels)
         )
 
         # Store session and buffer
         self._sessions[acquisition_id] = session
         self._buffers[acquisition_id] = buffer
 
-        logger.info(f"Created acquisition session {acquisition_id} for {config.equipment_id}")
+        logger.info(
+            f"Created acquisition session {acquisition_id} for {config.equipment_id}"
+        )
 
         return session
 
-    async def start_acquisition(
-        self,
-        acquisition_id: str,
-        equipment
-    ) -> bool:
+    async def start_acquisition(self, acquisition_id: str, equipment) -> bool:
         """
         Start data acquisition.
 
@@ -106,14 +93,16 @@ class AcquisitionManager:
             return False
 
         # Update session state
-        session.state = AcquisitionState.WAITING_TRIGGER if config.trigger_config.trigger_type != TriggerType.IMMEDIATE else AcquisitionState.ACQUIRING
+        session.state = (
+            AcquisitionState.WAITING_TRIGGER
+            if config.trigger_config.trigger_type != TriggerType.IMMEDIATE
+            else AcquisitionState.ACQUIRING
+        )
         session.started_at = datetime.now()
         session.stats.start_time = session.started_at
 
         # Start acquisition task
-        task = asyncio.create_task(
-            self._acquisition_loop(acquisition_id, equipment)
-        )
+        task = asyncio.create_task(self._acquisition_loop(acquisition_id, equipment))
         self._tasks[acquisition_id] = task
 
         logger.info(f"Started acquisition {acquisition_id}")
@@ -253,7 +242,9 @@ class AcquisitionManager:
                 if config.duration_seconds:
                     elapsed = (datetime.now() - session.started_at).total_seconds()
                     if elapsed >= config.duration_seconds:
-                        logger.info(f"Reached duration limit of {config.duration_seconds}s")
+                        logger.info(
+                            f"Reached duration limit of {config.duration_seconds}s"
+                        )
                         break
 
                 # Sleep until next sample
@@ -309,7 +300,9 @@ class AcquisitionManager:
             if not config.channel or config.level is None:
                 raise ValueError("Level/edge trigger requires channel and level")
 
-            logger.info(f"Waiting for {config.trigger_type} trigger on {config.channel}")
+            logger.info(
+                f"Waiting for {config.trigger_type} trigger on {config.channel}"
+            )
 
             last_value = None
 
@@ -325,15 +318,20 @@ class AcquisitionManager:
                     if last_value is not None:
                         if config.edge == TriggerEdge.RISING:
                             if last_value < config.level and value >= config.level:
-                                logger.info(f"Rising edge trigger: {last_value} -> {value}")
+                                logger.info(
+                                    f"Rising edge trigger: {last_value} -> {value}"
+                                )
                                 break
                         elif config.edge == TriggerEdge.FALLING:
                             if last_value > config.level and value <= config.level:
-                                logger.info(f"Falling edge trigger: {last_value} -> {value}")
+                                logger.info(
+                                    f"Falling edge trigger: {last_value} -> {value}"
+                                )
                                 break
                         elif config.edge == TriggerEdge.EITHER:
-                            if (last_value < config.level and value >= config.level) or \
-                               (last_value > config.level and value <= config.level):
+                            if (
+                                last_value < config.level and value >= config.level
+                            ) or (last_value > config.level and value <= config.level):
                                 logger.info(f"Edge trigger: {last_value} -> {value}")
                                 break
 
@@ -346,24 +344,26 @@ class AcquisitionManager:
         # This is a simplified version - equipment drivers should implement proper channel reading
 
         # Try common methods
-        if hasattr(equipment, 'get_measurement'):
+        if hasattr(equipment, "get_measurement"):
             result = await equipment.get_measurement(channel)
-            if isinstance(result, dict) and 'value' in result:
-                return float(result['value'])
+            if isinstance(result, dict) and "value" in result:
+                return float(result["value"])
             return float(result)
 
-        elif hasattr(equipment, 'get_voltage'):
+        elif hasattr(equipment, "get_voltage"):
             return float(await equipment.get_voltage())
 
-        elif hasattr(equipment, 'get_current'):
+        elif hasattr(equipment, "get_current"):
             return float(await equipment.get_current())
 
         else:
             # Fallback: try to execute command
             try:
-                result = await equipment.execute_command("get_measurement", {"channel": channel})
-                if isinstance(result, dict) and 'value' in result:
-                    return float(result['value'])
+                result = await equipment.execute_command(
+                    "get_measurement", {"channel": channel}
+                )
+                if isinstance(result, dict) and "value" in result:
+                    return float(result["value"])
                 return float(result)
             except:
                 raise NotImplementedError(
@@ -379,9 +379,7 @@ class AcquisitionManager:
         return list(self._sessions.values())
 
     def get_buffer_data(
-        self,
-        acquisition_id: str,
-        num_samples: Optional[int] = None
+        self, acquisition_id: str, num_samples: Optional[int] = None
     ) -> tuple:
         """Get data from acquisition buffer."""
         if acquisition_id not in self._buffers:
@@ -394,7 +392,7 @@ class AcquisitionManager:
         self,
         acquisition_id: str,
         format: ExportFormat = ExportFormat.CSV,
-        filepath: Optional[str] = None
+        filepath: Optional[str] = None,
     ) -> str:
         """
         Export acquired data to file.
@@ -449,13 +447,19 @@ class AcquisitionManager:
 
         return str(export_path)
 
-    async def _export_csv(self, filepath: Path, session: AcquisitionSession, data: np.ndarray, timestamps: np.ndarray):
+    async def _export_csv(
+        self,
+        filepath: Path,
+        session: AcquisitionSession,
+        data: np.ndarray,
+        timestamps: np.ndarray,
+    ):
         """Export to CSV format."""
-        with open(filepath, 'w', newline='') as f:
+        with open(filepath, "w", newline="") as f:
             writer = csv.writer(f)
 
             # Header
-            header = ['timestamp'] + session.config.channels
+            header = ["timestamp"] + session.config.channels
             writer.writerow(header)
 
             # Data
@@ -464,17 +468,29 @@ class AcquisitionManager:
                 row.extend(data[:, i].tolist())
                 writer.writerow(row)
 
-    async def _export_numpy(self, filepath: Path, session: AcquisitionSession, data: np.ndarray, timestamps: np.ndarray):
+    async def _export_numpy(
+        self,
+        filepath: Path,
+        session: AcquisitionSession,
+        data: np.ndarray,
+        timestamps: np.ndarray,
+    ):
         """Export to NumPy binary format."""
         np.savez(
             filepath,
             data=data,
             timestamps=timestamps,
             channels=session.config.channels,
-            metadata=session.config.metadata
+            metadata=session.config.metadata,
         )
 
-    async def _export_json(self, filepath: Path, session: AcquisitionSession, data: np.ndarray, timestamps: np.ndarray):
+    async def _export_json(
+        self,
+        filepath: Path,
+        session: AcquisitionSession,
+        data: np.ndarray,
+        timestamps: np.ndarray,
+    ):
         """Export to JSON format."""
         export_data = {
             "acquisition_id": session.acquisition_id,
@@ -482,44 +498,54 @@ class AcquisitionManager:
             "config": session.config.dict(),
             "stats": session.stats.dict(),
             "data": {
-                "timestamps": [datetime.fromtimestamp(t).isoformat() for t in timestamps],
+                "timestamps": [
+                    datetime.fromtimestamp(t).isoformat() for t in timestamps
+                ],
                 "channels": {
                     channel: data[i, :].tolist()
                     for i, channel in enumerate(session.config.channels)
-                }
-            }
+                },
+            },
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(export_data, f, indent=2, default=str)
 
-    async def _export_hdf5(self, filepath: Path, session: AcquisitionSession, data: np.ndarray, timestamps: np.ndarray):
+    async def _export_hdf5(
+        self,
+        filepath: Path,
+        session: AcquisitionSession,
+        data: np.ndarray,
+        timestamps: np.ndarray,
+    ):
         """Export to HDF5 format."""
         try:
             import h5py
         except ImportError:
             logger.warning("h5py not installed, falling back to NumPy format")
-            await self._export_numpy(filepath.with_suffix('.npz'), session, data, timestamps)
+            await self._export_numpy(
+                filepath.with_suffix(".npz"), session, data, timestamps
+            )
             return
 
-        with h5py.File(filepath, 'w') as f:
+        with h5py.File(filepath, "w") as f:
             # Create groups
-            config_group = f.create_group('config')
-            stats_group = f.create_group('stats')
-            data_group = f.create_group('data')
+            config_group = f.create_group("config")
+            stats_group = f.create_group("stats")
+            data_group = f.create_group("data")
 
             # Store config
-            config_group.attrs['acquisition_id'] = session.acquisition_id
-            config_group.attrs['equipment_id'] = session.equipment_id
-            config_group.attrs['mode'] = session.config.mode
-            config_group.attrs['sample_rate'] = session.config.sample_rate
+            config_group.attrs["acquisition_id"] = session.acquisition_id
+            config_group.attrs["equipment_id"] = session.equipment_id
+            config_group.attrs["mode"] = session.config.mode
+            config_group.attrs["sample_rate"] = session.config.sample_rate
 
             # Store stats
-            stats_group.attrs['total_samples'] = session.stats.total_samples
-            stats_group.attrs['duration_seconds'] = session.stats.duration_seconds or 0
+            stats_group.attrs["total_samples"] = session.stats.total_samples
+            stats_group.attrs["duration_seconds"] = session.stats.duration_seconds or 0
 
             # Store data
-            data_group.create_dataset('timestamps', data=timestamps)
+            data_group.create_dataset("timestamps", data=timestamps)
             for i, channel in enumerate(session.config.channels):
                 data_group.create_dataset(channel, data=data[i, :])
 
@@ -541,7 +567,9 @@ class AcquisitionManager:
 
         return True
 
-    def compute_rolling_stats(self, acquisition_id: str, channel: str, num_samples: Optional[int] = None):
+    def compute_rolling_stats(
+        self, acquisition_id: str, channel: str, num_samples: Optional[int] = None
+    ):
         """
         Compute rolling statistics for a channel.
 
@@ -578,7 +606,7 @@ class AcquisitionManager:
         acquisition_id: str,
         channel: str,
         num_samples: Optional[int] = None,
-        window: str = "hann"
+        window: str = "hann",
     ):
         """
         Compute FFT analysis for a channel.
@@ -610,13 +638,12 @@ class AcquisitionManager:
 
         channel_data = data[channel_idx, :]
 
-        return stats_engine.compute_fft(channel_data, session.config.sample_rate, window)
+        return stats_engine.compute_fft(
+            channel_data, session.config.sample_rate, window
+        )
 
     def detect_trend(
-        self,
-        acquisition_id: str,
-        channel: str,
-        num_samples: Optional[int] = None
+        self, acquisition_id: str, channel: str, num_samples: Optional[int] = None
     ):
         """
         Detect trend in channel data.
@@ -654,7 +681,7 @@ class AcquisitionManager:
         acquisition_id: str,
         channel: str,
         num_samples: Optional[int] = None,
-        outlier_threshold: float = 3.0
+        outlier_threshold: float = 3.0,
     ):
         """
         Assess data quality for a channel.
@@ -695,7 +722,7 @@ class AcquisitionManager:
         num_samples: Optional[int] = None,
         prominence: Optional[float] = None,
         distance: Optional[int] = None,
-        height: Optional[float] = None
+        height: Optional[float] = None,
     ):
         """
         Detect peaks in channel data.
@@ -737,7 +764,7 @@ class AcquisitionManager:
         channel: str,
         threshold: float,
         direction: str = "both",
-        num_samples: Optional[int] = None
+        num_samples: Optional[int] = None,
     ):
         """
         Detect threshold crossings in channel data.
@@ -770,7 +797,9 @@ class AcquisitionManager:
 
         channel_data = data[channel_idx, :]
 
-        return stats_engine.detect_threshold_crossings(channel_data, threshold, direction)
+        return stats_engine.detect_threshold_crossings(
+            channel_data, threshold, direction
+        )
 
 
 # Global acquisition manager instance

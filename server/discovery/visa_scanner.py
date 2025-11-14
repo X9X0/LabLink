@@ -1,18 +1,14 @@
 """VISA resource scanner for equipment discovery."""
 
-import pyvisa
 import logging
 import re
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from .models import (
-    DiscoveredDevice,
-    DiscoveryMethod,
-    DeviceType,
-    ConnectionStatus,
-    DiscoveryConfig,
-)
+import pyvisa
+
+from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
+                     DiscoveryConfig, DiscoveryMethod)
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +185,9 @@ class VISAScanner:
         else:
             return "UNKNOWN"
 
-    def _parse_tcpip_resource(self, resource_name: str) -> tuple[Optional[str], Optional[str], Optional[int]]:
+    def _parse_tcpip_resource(
+        self, resource_name: str
+    ) -> tuple[Optional[str], Optional[str], Optional[int]]:
         """Parse TCPIP resource name.
 
         Args:
@@ -357,9 +355,7 @@ class VISAScanner:
             return DeviceType.FUNCTION_GENERATOR
 
         # Spectrum analyzer patterns
-        if any(
-            keyword in combined for keyword in ["spectrum analyzer", "sa", "rsa"]
-        ):
+        if any(keyword in combined for keyword in ["spectrum analyzer", "sa", "rsa"]):
             return DeviceType.SPECTRUM_ANALYZER
 
         return DeviceType.UNKNOWN

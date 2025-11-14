@@ -1,19 +1,11 @@
 """API endpoints for Backup & Restore system."""
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import List, Optional
 
-from backup import (
-    get_backup_manager,
-    BackupRequest,
-    RestoreRequest,
-    BackupType,
-    BackupInfo,
-    BackupMetadata,
-    BackupStatistics,
-    RestoreResult,
-    BackupVerificationResult,
-)
+from backup import (BackupInfo, BackupMetadata, BackupRequest,
+                    BackupStatistics, BackupType, BackupVerificationResult,
+                    RestoreRequest, RestoreResult, get_backup_manager)
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/backup", tags=["backup"])
 

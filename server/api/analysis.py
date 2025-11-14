@@ -1,32 +1,21 @@
 """API endpoints for data analysis pipeline."""
 
-from fastapi import APIRouter, HTTPException, Body
-from typing import List, Dict, Any
-from pydantic import BaseModel, Field
-import numpy as np
+from typing import Any, Dict, List
 
-from analysis.models import (
-    FilterConfig,
-    FilterResult,
-    ResampleConfig,
-    FitConfig,
-    FitResult,
-    SPCChartConfig,
-    SPCChartResult,
-    CapabilityResult,
-    ReportConfig,
-    Report,
-    ReportSection,
-    BatchJobConfig,
-    BatchJobResult,
-    AnalysisDataset,
-)
+import numpy as np
+from analysis.batch import BatchProcessor
 from analysis.filters import SignalFilter
 from analysis.fitting import CurveFitter
-from analysis.spc import SPCAnalyzer
-from analysis.resampling import DataResampler
+from analysis.models import (AnalysisDataset, BatchJobConfig, BatchJobResult,
+                             CapabilityResult, FilterConfig, FilterResult,
+                             FitConfig, FitResult, Report, ReportConfig,
+                             ReportSection, ResampleConfig, SPCChartConfig,
+                             SPCChartResult)
 from analysis.reports import ReportGenerator
-from analysis.batch import BatchProcessor
+from analysis.resampling import DataResampler
+from analysis.spc import SPCAnalyzer
+from fastapi import APIRouter, Body, HTTPException
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -42,6 +31,7 @@ batch_processor = BatchProcessor()
 # Request/Response models
 class FilterRequest(BaseModel):
     """Filter request."""
+
     data: List[float] = Field(..., description="Signal data")
     time: List[float] = Field(..., description="Time data")
     config: FilterConfig = Field(..., description="Filter configuration")
@@ -49,6 +39,7 @@ class FilterRequest(BaseModel):
 
 class ResampleRequest(BaseModel):
     """Resample request."""
+
     x_data: List[float] = Field(..., description="X data")
     y_data: List[float] = Field(..., description="Y data")
     config: ResampleConfig = Field(..., description="Resample configuration")
@@ -57,12 +48,14 @@ class ResampleRequest(BaseModel):
 
 class ResampleResponse(BaseModel):
     """Resample response."""
+
     x_data: List[float] = Field(..., description="Resampled X data")
     y_data: List[float] = Field(..., description="Resampled Y data")
 
 
 class FitRequest(BaseModel):
     """Curve fit request."""
+
     x_data: List[float] = Field(..., description="X data")
     y_data: List[float] = Field(..., description="Y data")
     config: FitConfig = Field(..., description="Fit configuration")
@@ -70,12 +63,14 @@ class FitRequest(BaseModel):
 
 class SPCChartRequest(BaseModel):
     """SPC chart request."""
+
     data: List[float] = Field(..., description="Process data")
     config: SPCChartConfig = Field(..., description="Chart configuration")
 
 
 class CapabilityRequest(BaseModel):
     """Capability analysis request."""
+
     data: List[float] = Field(..., description="Process data")
     lsl: float = Field(None, description="Lower specification limit")
     usl: float = Field(None, description="Upper specification limit")
@@ -84,11 +79,13 @@ class CapabilityRequest(BaseModel):
 
 class ReportRequest(BaseModel):
     """Report generation request."""
+
     sections: List[ReportSection] = Field(..., description="Report sections")
     config: ReportConfig = Field(..., description="Report configuration")
 
 
 # === Signal Filtering Endpoints ===
+
 
 @router.post("/filter", response_model=FilterResult)
 async def apply_filter(request: FilterRequest):
@@ -158,6 +155,7 @@ async def apply_savitzky_golay(
 
 # === Resampling Endpoints ===
 
+
 @router.post("/resample", response_model=ResampleResponse)
 async def resample_data(request: ResampleRequest):
     """Resample data to new rate or number of points.
@@ -205,6 +203,7 @@ async def interpolate_missing_points(
 
 # === Curve Fitting Endpoints ===
 
+
 @router.post("/fit", response_model=FitResult)
 async def fit_curve(request: FitRequest):
     """Fit curve to data.
@@ -249,6 +248,7 @@ async def predict_from_fit(
 
 
 # === SPC Endpoints ===
+
 
 @router.post("/spc/chart", response_model=SPCChartResult)
 async def generate_control_chart(request: SPCChartRequest):
@@ -297,6 +297,7 @@ async def analyze_capability(request: CapabilityRequest):
 
 # === Report Generation Endpoints ===
 
+
 @router.post("/report/generate", response_model=Report)
 async def generate_report(request: ReportRequest):
     """Generate analysis report.
@@ -333,6 +334,7 @@ async def create_report_section(
 
 
 # === Batch Processing Endpoints ===
+
 
 @router.post("/batch/submit")
 async def submit_batch_job(config: BatchJobConfig):
@@ -384,6 +386,7 @@ async def list_batch_jobs():
 
 # === Utility Endpoints ===
 
+
 @router.post("/dataset/create", response_model=AnalysisDataset)
 async def create_dataset(
     name: str = Body(...),
@@ -419,16 +422,39 @@ async def get_analysis_info():
     return {
         "filters": {
             "types": ["lowpass", "highpass", "bandpass", "bandstop"],
-            "methods": ["butterworth", "chebyshev1", "chebyshev2", "bessel", "elliptic", "fir"],
+            "methods": [
+                "butterworth",
+                "chebyshev1",
+                "chebyshev2",
+                "bessel",
+                "elliptic",
+                "fir",
+            ],
         },
         "resampling": {
             "methods": ["linear", "cubic", "nearest", "spline", "fourier"],
         },
         "fitting": {
-            "types": ["linear", "polynomial", "exponential", "logarithmic", "power", "sinusoidal", "gaussian", "custom"],
+            "types": [
+                "linear",
+                "polynomial",
+                "exponential",
+                "logarithmic",
+                "power",
+                "sinusoidal",
+                "gaussian",
+                "custom",
+            ],
         },
         "spc": {
-            "chart_types": ["xbar_r", "xbar_s", "individuals", "p_chart", "c_chart", "u_chart"],
+            "chart_types": [
+                "xbar_r",
+                "xbar_s",
+                "individuals",
+                "p_chart",
+                "c_chart",
+                "u_chart",
+            ],
         },
         "reports": {
             "formats": ["pdf", "html", "markdown", "json"],
