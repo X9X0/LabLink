@@ -37,7 +37,9 @@ class TestDiscoveryManagerInit:
     def test_discovery_manager_creation(self):
         """Test creating DiscoveryManager instance."""
         try:
-            manager = DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            manager = DiscoveryManager(config)
             assert manager is not None
         except Exception as e:
             pytest.skip(f"DiscoveryManager not fully implemented: {e}")
@@ -50,7 +52,9 @@ class TestVISAScanning:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -96,7 +100,9 @@ class TestMDNSDiscovery:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -131,7 +137,9 @@ class TestDeviceIdentification:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -176,7 +184,9 @@ class TestConnectionHistory:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -237,7 +247,9 @@ class TestSmartRecommendations:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -288,7 +300,9 @@ class TestDeviceAliases:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -344,7 +358,9 @@ class TestDiscoveryCache:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
@@ -384,7 +400,9 @@ class TestAutoDiscovery:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            return DiscoveryManager()
+            from discovery.models import DiscoveryConfig
+            config = DiscoveryConfig()
+            return DiscoveryManager(config)
         except Exception:
             pytest.skip("DiscoveryManager not implemented")
 
