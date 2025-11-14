@@ -22,10 +22,10 @@ from scheduler.models import (
     ScheduleType,
     JobStatus,
     TriggerType,
-    ScheduledJob,
+    ScheduleConfig,
     JobExecution,
-    JobCreate,
-    JobUpdate
+    JobHistory,
+    ScheduleStatistics
 )
 from scheduler.manager import SchedulerManager
 
@@ -56,7 +56,7 @@ class TestJobCreation:
     def test_create_cron_job(self, scheduler_manager):
         """Test creating cron-based job."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Daily backup",
                 schedule_type=ScheduleType.ACQUISITION,
                 trigger_type=TriggerType.CRON,
@@ -73,7 +73,7 @@ class TestJobCreation:
     def test_create_interval_job(self, scheduler_manager):
         """Test creating interval-based job."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Hourly check",
                 schedule_type=ScheduleType.MEASUREMENT,
                 trigger_type=TriggerType.INTERVAL,
@@ -91,7 +91,7 @@ class TestJobCreation:
         """Test creating one-time job."""
         try:
             run_time = datetime.utcnow() + timedelta(hours=1)
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="One-time task",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.DATE,
@@ -176,7 +176,7 @@ class TestJobManagement:
         """Test getting job information."""
         try:
             # Create a job first
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Test job",
                 schedule_type=ScheduleType.ACQUISITION,
                 trigger_type=TriggerType.INTERVAL,
@@ -195,7 +195,7 @@ class TestJobManagement:
         """Test updating job configuration."""
         try:
             # Create a job
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Original name",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -205,7 +205,7 @@ class TestJobManagement:
 
             if created:
                 # Update it
-                update = JobUpdate(
+                update = ScheduleConfig(
                     name="Updated name",
                     interval_seconds=7200
                 )
@@ -219,7 +219,7 @@ class TestJobManagement:
         """Test deleting a job."""
         try:
             # Create a job
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="To be deleted",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -249,7 +249,7 @@ class TestJobControl:
         """Test pausing a job."""
         try:
             # Create and pause job
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Pausable job",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -266,7 +266,7 @@ class TestJobControl:
     def test_resume_job(self, scheduler_manager):
         """Test resuming a paused job."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Resumable job",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -284,7 +284,7 @@ class TestJobControl:
     def test_trigger_job_manually(self, scheduler_manager):
         """Test manually triggering a job."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Manual job",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -314,7 +314,7 @@ class TestJobExecution:
         """Test getting job execution history."""
         try:
             # Create and execute a job
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Tracked job",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -359,7 +359,7 @@ class TestScheduleTypes:
     def test_acquisition_schedule(self, scheduler_manager):
         """Test acquisition schedule type."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Data acquisition",
                 schedule_type=ScheduleType.ACQUISITION,
                 trigger_type=TriggerType.INTERVAL,
@@ -373,7 +373,7 @@ class TestScheduleTypes:
     def test_measurement_schedule(self, scheduler_manager):
         """Test measurement schedule type."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Periodic measurement",
                 schedule_type=ScheduleType.MEASUREMENT,
                 trigger_type=TriggerType.CRON,
@@ -387,7 +387,7 @@ class TestScheduleTypes:
     def test_command_schedule(self, scheduler_manager):
         """Test command execution schedule."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Scheduled command",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -423,7 +423,7 @@ class TestJobStatistics:
     def test_get_next_run_times(self, scheduler_manager):
         """Test getting next run times for jobs."""
         try:
-            job = JobCreate(
+            job = ScheduleConfig(
                 name="Scheduled job",
                 schedule_type=ScheduleType.COMMAND,
                 trigger_type=TriggerType.INTERVAL,
@@ -460,7 +460,7 @@ class TestJobModels:
 
     def test_job_create_request(self):
         """Test JobCreate request model."""
-        request = JobCreate(
+        request = ScheduleConfig(
             name="New job",
             schedule_type=ScheduleType.COMMAND,
             trigger_type=TriggerType.INTERVAL,

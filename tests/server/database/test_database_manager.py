@@ -22,10 +22,10 @@ import sqlite3
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
 
 from database.models import (
-    CommandHistoryEntry,
+    CommandRecord,
     MeasurementRecord,
-    UsageStatistics,
-    DataQuery,
+    EquipmentUsageRecord,
+    DataSessionRecord,
     QueryResult
 )
 from database.manager import DatabaseManager
@@ -71,13 +71,14 @@ class TestCommandHistory:
     def test_log_command(self, db_manager):
         """Test logging a command."""
         try:
-            db_manager.log_command(
+            record = CommandRecord(
                 equipment_id="scope-001",
                 command="*IDN?",
                 response="RIGOL TECHNOLOGIES,DS1104Z,DS1ZA123456789,00.04.04",
                 execution_time_ms=45,
-                success=True
+                status="success"
             )
+            db_manager.log_command(record)
             # Should store the command
         except (NotImplementedError, AttributeError):
             pytest.skip("log_command not implemented")
@@ -93,13 +94,13 @@ class TestCommandHistory:
             ]
 
             for eq_id, cmd, resp in commands:
-                db_manager.log_command(
+                record = CommandRecord(
                     equipment_id=eq_id,
                     command=cmd,
                     response=resp,
-                    execution_time_ms=50,
-                    success=True
+                    execution_time_ms=50
                 )
+                db_manager.log_command(record)
 
             history = db_manager.get_command_history(
                 equipment_id="scope-001",
@@ -116,9 +117,9 @@ class TestCommandHistory:
         """Test filtering command history by equipment."""
         try:
             # Log commands for different equipment
-            db_manager.log_command("scope-001", "CMD1", "RESP1", 50, True)
-            db_manager.log_command("scope-002", "CMD2", "RESP2", 50, True)
-            db_manager.log_command("scope-001", "CMD3", "RESP3", 50, True)
+            for eq_id, cmd in [("scope-001", "CMD1"), ("scope-002", "CMD2"), ("scope-001", "CMD3")]:
+                record = CommandRecord(equipment_id=eq_id, command=cmd, response="RESP")
+                db_manager.log_command(record)
 
             history = db_manager.get_command_history(equipment_id="scope-001")
 
@@ -145,13 +146,14 @@ class TestMeasurementArchival:
     def test_archive_measurement(self, db_manager):
         """Test archiving a measurement."""
         try:
-            db_manager.archive_measurement(
+            record = MeasurementRecord(
                 equipment_id="scope-001",
                 measurement_type="voltage",
                 value=3.14,
                 unit="V",
                 metadata={"channel": 1, "range": "10V"}
             )
+            db_manager.archive_measurement(record)
             # Should store the measurement
         except (NotImplementedError, AttributeError):
             pytest.skip("archive_measurement not implemented")
@@ -183,9 +185,9 @@ class TestMeasurementArchival:
         """Test querying measurements by type."""
         try:
             # Archive different measurement types
-            db_manager.archive_measurement("scope-001", "voltage", 3.14, "V")
-            db_manager.archive_measurement("scope-001", "voltage", 3.15, "V")
-            db_manager.archive_measurement("scope-001", "current", 1.5, "A")
+            db_manager.archive_measurement(MeasurementRecord(equipment_id="scope-001", measurement_type="voltage", value=3.14, unit="V"))
+            db_manager.archive_measurement(MeasurementRecord(equipment_id="scope-001", measurement_type="voltage", value=3.15, unit="V"))
+            db_manager.archive_measurement(MeasurementRecord(equipment_id="scope-001", measurement_type="current", value=1.5, unit="A"))
 
             voltage_measurements = db_manager.query_measurements(
                 equipment_id="scope-001",
@@ -410,20 +412,18 @@ class TestDatabaseHealth:
 class TestDatabaseModels:
     """Test database models."""
 
-    def test_command_history_entry_creation(self):
-        """Test creating CommandHistoryEntry."""
-        entry = CommandHistoryEntry(
+    def test_command_record_creation(self):
+        """Test creating CommandRecord."""
+        entry = CommandRecord(
             equipment_id="scope-001",
             command="*IDN?",
             response="RIGOL...",
             execution_time_ms=45,
-            success=True,
             timestamp=datetime.utcnow()
         )
 
         assert entry.equipment_id == "scope-001"
         assert entry.command == "*IDN?"
-        assert entry.success is True
 
     def test_measurement_record_creation(self):
         """Test creating MeasurementRecord."""

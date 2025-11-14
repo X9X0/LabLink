@@ -23,9 +23,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
 from discovery.models import (
     DiscoveredDevice,
     DeviceType,
-    ConnectionAttempt,
-    ConnectionHistory,
-    DeviceRecommendation
+    ConnectionHistoryEntry,
+    SmartRecommendation,
+    DeviceAlias
 )
 from discovery.manager import DiscoveryManager
 
