@@ -3,6 +3,7 @@
 import sys
 import os
 import time
+import pytest
 
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "client"))
@@ -153,6 +154,7 @@ def test_client_discovery():
         traceback.print_exc()
 
 
+@pytest.mark.skipif(os.environ.get('CI') == 'true', reason="GUI test crashes in headless CI environment")
 def test_discovery_dialog():
     """Test discovery dialog GUI."""
     print("\n" + "="*60)
