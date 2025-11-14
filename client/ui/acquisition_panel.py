@@ -6,8 +6,15 @@ import time
 from collections import deque
 from typing import Dict, List, Optional, Set
 
-from models import (AcquisitionConfig, AcquisitionMode, AcquisitionState,
-                    ExportFormat, TriggerConfig, TriggerEdge, TriggerType)
+from client.models import (
+    AcquisitionConfig,
+    AcquisitionMode,
+    AcquisitionState,
+    ExportFormat,
+    TriggerConfig,
+    TriggerEdge,
+    TriggerType,
+)
 from PyQt6.QtCore import QEvent, QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                              QDoubleSpinBox, QFormLayout, QGroupBox,

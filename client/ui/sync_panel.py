@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, List, Optional
 
-from models import SyncState
+from client.models import SyncState
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
                              QGroupBox, QHBoxLayout, QHeaderView, QLabel,
