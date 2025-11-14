@@ -198,7 +198,7 @@ class DatabaseManager:
             record: Command record to log
 
         Returns:
-            Record ID of inserted command
+            Record ID of inserted command (or -1 if logging disabled)
         """
         if not self.config.enable_command_logging:
             return -1
@@ -228,7 +228,7 @@ class DatabaseManager:
                 ),
             )
 
-            record_id = cursor.lastrowid
+            record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
             conn.close()
 
@@ -356,7 +356,7 @@ class DatabaseManager:
                 ),
             )
 
-            record_id = cursor.lastrowid
+            record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
             conn.close()
 
@@ -478,7 +478,7 @@ class DatabaseManager:
                 ),
             )
 
-            record_id = cursor.lastrowid
+            record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
             conn.close()
 

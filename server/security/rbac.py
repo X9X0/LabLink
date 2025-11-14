@@ -231,7 +231,7 @@ def require_auth(get_user_func: Callable, config: AuthConfig):
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, request: Request = None, **kwargs):
+        async def wrapper(*args, request: Optional[Request] = None, **kwargs):
             # Extract token from Authorization header
             auth_header = request.headers.get("Authorization")
             if not auth_header or not auth_header.startswith("Bearer "):
@@ -299,7 +299,7 @@ def require_permission(
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, current_user: User = None, **kwargs):
+        async def wrapper(*args, current_user: Optional[User] = None, **kwargs):
             if not current_user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -337,7 +337,7 @@ def require_role(role_name: str):
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, current_user: User = None, **kwargs):
+        async def wrapper(*args, current_user: Optional[User] = None, **kwargs):
             if not current_user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -371,7 +371,7 @@ def require_superuser():
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, current_user: User = None, **kwargs):
+        async def wrapper(*args, current_user: Optional[User] = None, **kwargs):
             if not current_user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
