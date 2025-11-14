@@ -12,6 +12,7 @@ from .models import (
     TestSequence,
     TestStep,
     TestResult,
+    TestExecution,
     ParameterSweep,
     TestStatus,
     StepType,
@@ -24,12 +25,15 @@ __all__ = [
     "TestSequence",
     "TestStep",
     "TestResult",
+    "TestExecution",
     "ParameterSweep",
     "TestStatus",
     "StepType",
     "TestExecutor",
     "TestValidator",
     "TestTemplateLibrary",
+    "get_test_executor",
+    "initialize_test_executor",
 ]
 
 # Global test executor instance
