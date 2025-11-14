@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2025-01-14
+## [1.0.0] - 2025-11-14
 
 ### 🎉 **First Production Release!**
 
@@ -414,6 +414,6 @@ This is the first production release. For future upgrades, see version-specific 
 
 ---
 
-**Released**: 2025-01-14
+**Released**: 2025-11-14
 **Commit**: [Will be tagged as v1.0.0]
 **Full Changelog**: https://github.com/X9X0/LabLink/compare/...v1.0.0
