@@ -57,6 +57,39 @@ class ImageBuildThread(QThread):
         self.admin_password = admin_password
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
+        self.recent_output = []  # Buffer for recent output lines
+
+    def _parse_progress_only(self, line: str):
+        """Parse progress from a line without emitting output."""
+        # Download progress (wget shows % progress)
+        if "%" in line and ("K/s" in line or "M/s" in line or "G/s" in line):
+            try:
+                parts = line.split()
+                for part in parts:
+                    if "%" in part:
+                        pct = int(part.rstrip('%'))
+                        prog = 5 + int(pct * 0.10)
+                        self.progress.emit(prog, f"Downloading: {pct}%")
+                        break
+            except (ValueError, IndexError):
+                pass
+        # xz extraction/compression progress (e.g. "  5.4 %  123.4 MiB")
+        elif "%" in line and "MiB" in line and "K/s" not in line:
+            try:
+                parts = line.strip().split()
+                if len(parts) >= 2 and parts[0].replace('.', '', 1).replace('%', '').replace('-', '').isdigit():
+                    pct = float(parts[0].rstrip('%'))
+                    if pct >= 0:
+                        recent_text = ''.join(self.recent_output[-10:])
+                        if "Extracting" in recent_text or len(self.recent_output) < 20:
+                            # Early in process or explicitly extracting
+                            prog = 16 + int(pct * 0.04)
+                            self.progress.emit(prog, f"Extracting: {int(pct)}%")
+                        elif "Compressing" in recent_text:
+                            prog = 85 + int(pct * 0.10)
+                            self.progress.emit(prog, f"Compressing: {int(pct)}%")
+            except (ValueError, IndexError):
+                pass
 
     def run(self):
         """Run image building process."""
@@ -188,6 +221,7 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             # Monitor progress - read from pty master for unbuffered I/O
             line_count = 0
             partial_line = b''
+            last_cr_line = b''  # Track carriage return updates
 
             # Set master_fd to non-blocking mode
             import fcntl
@@ -213,7 +247,24 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
 
                             partial_line += data
 
-                            # Process complete lines
+                            # Process carriage returns (for in-place updates like xz progress)
+                            while b'\r' in partial_line and b'\n' not in partial_line[:partial_line.index(b'\r') + 1]:
+                                cr_end = partial_line.index(b'\r')
+                                cr_line = partial_line[:cr_end]
+                                partial_line = partial_line[cr_end + 1:]
+
+                                # Save for potential newline processing
+                                last_cr_line = cr_line
+
+                                # Process CR line for progress updates only
+                                try:
+                                    line = cr_line.decode('utf-8', errors='replace')
+                                    # Only parse progress, don't emit output to avoid spam
+                                    self._parse_progress_only(line)
+                                except Exception as e:
+                                    logger.debug(f"Error parsing CR line: {e}")
+
+                            # Process complete lines (ending in newline)
                             while b'\n' in partial_line:
                                 line_end = partial_line.index(b'\n')
                                 line_bytes = partial_line[:line_end + 1]
@@ -225,44 +276,19 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                     logger.debug(f"Build output [{line_count}]: {line.strip()}")
                                     self.output.emit(line)
 
+                                    # Keep recent output for context checking (last 50 lines)
+                                    self.recent_output.append(line)
+                                    if len(self.recent_output) > 50:
+                                        self.recent_output.pop(0)
+
                                     # Parse progress from output
-                                    # Download progress (wget shows % progress)
-                                    if "%" in line and ("K/s" in line or "M/s" in line or "G/s" in line):
-                                        try:
-                                            # Extract percentage from wget output
-                                            parts = line.split()
-                                            for part in parts:
-                                                if "%" in part:
-                                                    pct = int(part.rstrip('%'))
-                                                    # Map 0-100% download to 5-15% total progress
-                                                    prog = 5 + int(pct * 0.10)
-                                                    self.progress.emit(prog, f"Downloading: {pct}%")
-                                                    break
-                                        except (ValueError, IndexError):
-                                            pass
-                                    elif "Downloading" in line:
+                                    self._parse_progress_only(line)
+
+                                    # Parse step transitions (non-numeric progress)
+                                    if "Downloading" in line:
                                         self.progress.emit(5, "Starting download...")
                                     elif "Extracting" in line:
                                         self.progress.emit(16, "Extracting image...")
-                                    # xz extraction/compression progress (e.g. "  5.4 %  123.4 MiB")
-                                    elif "%" in line and "MiB" in line and "K/s" not in line:
-                                        try:
-                                            # xz verbose output format: "  12.3 %  123.4 MiB / 456.7 MiB"
-                                            parts = line.strip().split()
-                                            if len(parts) >= 2 and parts[0].replace('.', '', 1).replace('%', '').replace('-', '').isdigit():
-                                                pct = float(parts[0].rstrip('%'))
-                                                if pct >= 0:  # Valid percentage
-                                                    # Check if extracting or compressing based on recent context
-                                                    if "Extracting" in self.output_text.toPlainText()[-500:]:
-                                                        # Map 0-100% extraction to 16-20% total progress
-                                                        prog = 16 + int(pct * 0.04)
-                                                        self.progress.emit(prog, f"Extracting: {int(pct)}%")
-                                                    elif "Compressing" in self.output_text.toPlainText()[-500:]:
-                                                        # Map 0-100% compression to 85-95% total progress
-                                                        prog = 85 + int(pct * 0.10)
-                                                        self.progress.emit(prog, f"Compressing: {int(pct)}%")
-                                        except (ValueError, IndexError):
-                                            pass
                                     elif "extracted successfully" in line:
                                         self.progress.emit(20, "Extraction complete")
                                     elif "Expanding image" in line:

@@ -7,13 +7,14 @@ import platform
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
+from datetime import datetime
 
 try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
-    from PyQt6.QtGui import QFont
+    from PyQt6.QtGui import QFont, QAction
     from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
                                  QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                                 QMessageBox, QProgressBar, QPushButton,
+                                 QMenu, QMessageBox, QProgressBar, QPushButton,
                                  QTextEdit, QVBoxLayout, QWidget)
 
     PYQT_AVAILABLE = True
@@ -240,6 +241,84 @@ class ImageWriterThread(QThread):
         self._stop_requested = True
 
 
+def find_recent_images(max_results: int = 10) -> List[Dict[str, str]]:
+    """Find recent Raspberry Pi image files in common locations.
+
+    Args:
+        max_results: Maximum number of results to return
+
+    Returns:
+        List of dictionaries with image file information
+    """
+    images = []
+    search_paths = []
+
+    # Add common search locations
+    home = Path.home()
+
+    # Build output directory
+    search_paths.append(home)
+
+    # Downloads directory
+    downloads = home / "Downloads"
+    if downloads.exists():
+        search_paths.append(downloads)
+
+    # Temp build directory
+    temp_build = Path("/tmp/lablink-pi-build")
+    if temp_build.exists():
+        search_paths.append(temp_build)
+
+    # Desktop (sometimes used for output)
+    desktop = home / "Desktop"
+    if desktop.exists():
+        search_paths.append(desktop)
+
+    # Find all .img and .img.xz files
+    for search_path in search_paths:
+        try:
+            # Search for .img files
+            for pattern in ["*.img", "*.img.xz", "*.img.gz"]:
+                for img_path in search_path.glob(pattern):
+                    if img_path.is_file():
+                        stat = img_path.stat()
+                        images.append({
+                            "path": str(img_path),
+                            "name": img_path.name,
+                            "size": stat.st_size,
+                            "modified": stat.st_mtime,
+                            "modified_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                        })
+
+            # Also check subdirectories one level deep for build directories
+            if search_path == home or search_path == temp_build:
+                for subdir in search_path.iterdir():
+                    if subdir.is_dir():
+                        for pattern in ["*.img", "*.img.xz", "*.img.gz"]:
+                            for img_path in subdir.glob(pattern):
+                                if img_path.is_file():
+                                    stat = img_path.stat()
+                                    images.append({
+                                        "path": str(img_path),
+                                        "name": img_path.name,
+                                        "size": stat.st_size,
+                                        "modified": stat.st_mtime,
+                                        "modified_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                                    })
+        except Exception as e:
+            logger.debug(f"Error searching {search_path}: {e}")
+
+    # Remove duplicates and sort by modification time (newest first)
+    seen = set()
+    unique_images = []
+    for img in sorted(images, key=lambda x: x["modified"], reverse=True):
+        if img["path"] not in seen:
+            seen.add(img["path"])
+            unique_images.append(img)
+
+    return unique_images[:max_results]
+
+
 def get_removable_drives() -> List[Dict[str, str]]:
     """Get list of removable drives (potential SD cards).
 
@@ -413,6 +492,11 @@ class SDCardWriter(QDialog):
         self.image_path_label = QLabel("<i>No image selected</i>")
         image_row.addWidget(self.image_path_label)
 
+        recent_btn = QPushButton("Recent Images")
+        recent_btn.clicked.connect(self._show_recent_images)
+        recent_btn.setToolTip("Select from recently created or downloaded images")
+        image_row.addWidget(recent_btn)
+
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse_image)
         image_row.addWidget(browse_btn)
@@ -508,6 +592,63 @@ class SDCardWriter(QDialog):
             self.image_path_label.setText(Path(filename).name)
             self._log(f"Selected image: {filename}")
             self._update_write_button()
+
+    def _show_recent_images(self):
+        """Show menu with recently created/downloaded images."""
+        self._log("Searching for recent images...")
+
+        recent_images = find_recent_images(max_results=15)
+
+        if not recent_images:
+            QMessageBox.information(
+                self,
+                "No Images Found",
+                "No recent Raspberry Pi images found.\n\n"
+                "Searched in:\n"
+                "- Home directory\n"
+                "- Downloads folder\n"
+                "- /tmp/lablink-pi-build\n"
+                "- Desktop\n\n"
+                "Use 'Browse...' to select an image manually.",
+            )
+            return
+
+        # Create menu with recent images
+        menu = QMenu(self)
+
+        for img in recent_images:
+            # Format: filename (size, date)
+            size_mb = img["size"] / (1024 * 1024)
+            if size_mb < 1024:
+                size_str = f"{size_mb:.1f} MB"
+            else:
+                size_str = f"{size_mb / 1024:.1f} GB"
+
+            action_text = f"{img['name']}\n    {size_str}, {img['modified_str']}"
+            action = QAction(action_text, self)
+            action.setData(img["path"])
+            action.triggered.connect(lambda checked, path=img["path"]: self._select_image(path))
+            menu.addAction(action)
+
+        # Show menu at button
+        sender = self.sender()
+        if sender:
+            menu.exec(sender.mapToGlobal(sender.rect().bottomLeft()))
+
+    def _select_image(self, image_path: str):
+        """Select an image from the recent images menu."""
+        if os.path.exists(image_path):
+            self.image_path = image_path
+            self.image_path_label.setText(Path(image_path).name)
+            self._log(f"Selected recent image: {image_path}")
+            self._update_write_button()
+        else:
+            QMessageBox.warning(
+                self,
+                "Image Not Found",
+                f"The selected image file no longer exists:\n{image_path}",
+            )
+            self._log(f"Image not found: {image_path}")
 
     def _refresh_drives(self):
         """Refresh list of removable drives."""
