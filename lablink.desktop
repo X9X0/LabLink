@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LabLink Launcher
+Comment=Laboratory Equipment Control System - Setup and Launcher
+Exec=/home/user/LabLink/lablink.py
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Development;Science;Utility;
+Keywords=lab;equipment;control;SCPI;
+StartupNotify=true
