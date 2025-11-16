@@ -10,7 +10,7 @@ aiohttp==3.9.1
 
 # SSH and Deployment
 paramiko==3.4.0
-scp==0.14.5
+scp==0.15.0
 
 # Network Discovery
 scapy==2.5.0
