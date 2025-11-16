@@ -644,6 +644,7 @@ class CheckWorker(QThread):
             'pyserial': 'serial',  # pyserial package imports as 'serial'
             'pyusb': 'usb',  # pyusb package imports as 'usb'
             'PyJWT': 'jwt',  # PyJWT package imports as 'jwt'
+            'email-validator': 'email_validator',  # email-validator imports as 'email_validator'
         }
 
         # Determine which Python to use for checking
