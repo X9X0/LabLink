@@ -618,30 +618,50 @@ class CheckWorker(QThread):
         installed = []
         missing = []
 
+        # Map package names to import names for special cases
+        package_to_import = {
+            'python-dotenv': 'dotenv',
+            'python-dateutil': 'dateutil',
+            'pydantic-settings': 'pydantic_settings',
+            'uvicorn': 'uvicorn',
+            'pyvisa-py': 'pyvisa_py',
+            'PyQt6-Qt6': 'PyQt6',  # PyQt6-Qt6 is just Qt binaries, check PyQt6 instead
+        }
+
         # Determine which Python to use for checking
         venv_python = Path("venv/bin/python")
         use_venv = venv_python.exists()
 
+        logger.debug(f"Checking {len(packages)} packages, use_venv={use_venv}, venv_python={venv_python}")
+
         for pkg in packages:
+            # Get the correct import name
+            import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+
             if use_venv:
                 # Check if package is installed in venv using subprocess
                 result = subprocess.run(
-                    [str(venv_python), '-c', f'import {pkg.replace("-", "_")}'],
+                    [str(venv_python), '-c', f'import {import_name}'],
                     capture_output=True,
                     check=False
                 )
                 if result.returncode == 0:
+                    logger.debug(f"  {pkg}: INSTALLED (import {import_name} succeeded)")
                     installed.append(pkg)
                 else:
+                    logger.debug(f"  {pkg}: MISSING (import {import_name} failed: {result.stderr.decode().strip()})")
                     missing.append(pkg)
             else:
                 # Check if package is installed in current environment
                 try:
-                    __import__(pkg.replace('-', '_'))
+                    __import__(import_name)
+                    logger.debug(f"  {pkg}: INSTALLED (system environment)")
                     installed.append(pkg)
                 except ImportError:
+                    logger.debug(f"  {pkg}: MISSING (system environment)")
                     missing.append(pkg)
 
+        logger.debug(f"Package check complete: {len(installed)} installed, {len(missing)} missing")
         return installed, missing
 
 
