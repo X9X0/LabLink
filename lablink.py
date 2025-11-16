@@ -992,9 +992,54 @@ class FixWorker(QThread):
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
                     logger.info(f"Installing apt packages: {packages}")
-                    success = self.launcher._install_apt_packages(packages)
-                    if not success:
-                        raise Exception("Failed to install system packages")
+
+                    # Run apt install directly with pkexec (no GUI dialogs from worker thread)
+                    # pkexec will handle the password GUI prompt itself
+                    package_list = packages.split()
+
+                    # Check if pkexec is available
+                    pkexec_check = subprocess.run(
+                        ['which', 'pkexec'],
+                        capture_output=True,
+                        check=False
+                    )
+
+                    if pkexec_check.returncode == 0:
+                        # Use pkexec for GUI password prompt
+                        logger.info("Running apt update with pkexec...")
+                        result = subprocess.run(
+                            ['pkexec', 'apt', 'update'],
+                            capture_output=True,
+                            text=True,
+                            check=False
+                        )
+
+                        if result.returncode != 0:
+                            if "dismissed" in result.stderr.lower() or "cancelled" in result.stderr.lower():
+                                logger.info("User cancelled apt update")
+                                raise Exception("User cancelled package installation")
+                            else:
+                                logger.error(f"apt update failed: {result.stderr}")
+                                raise Exception(f"apt update failed: {result.stderr}")
+
+                        logger.info("Running apt install with pkexec...")
+                        result = subprocess.run(
+                            ['pkexec', 'apt', 'install', '-y'] + package_list,
+                            capture_output=True,
+                            text=True,
+                            check=False
+                        )
+
+                        if result.returncode != 0:
+                            logger.error(f"apt install failed: {result.stderr}")
+                            raise Exception(f"apt install failed: {result.stderr}")
+
+                        logger.info(f"Successfully installed system packages: {packages}")
+                    else:
+                        # pkexec not available, fail with error
+                        logger.error("pkexec not available for system package installation")
+                        raise Exception("pkexec not available. Please install: sudo apt install policykit-1")
+
                     logger.info("apt install completed successfully")
 
             except Exception as e:
