@@ -1290,15 +1290,15 @@ class LabLinkLauncher(QMainWindow):
 
         try:
             # Launch in new terminal
-            # Server expects to run from server/ directory with relative imports
+            # Server has mixed imports - needs both server/ as cwd AND LabLink root in PYTHONPATH
             if platform.system() == "Linux":
-                cmd = f'cd {server_dir} && {python_exe} main.py'
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
                 subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                cmd = f'cd {server_dir} && {python_exe} main.py'
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
                 subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && {python_exe} main.py'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py'], shell=True)
 
             QMessageBox.information(
                 self,
