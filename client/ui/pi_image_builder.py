@@ -225,7 +225,6 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             # Monitor progress - read from pty master for unbuffered I/O
             line_count = 0
             partial_line = b''
-            current_cr_line = ""  # Track current line being updated with \r
 
             # Set master_fd to non-blocking mode
             import fcntl
@@ -251,88 +250,86 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
 
                             partial_line += data
 
-                            # Process lines - handle both \r (carriage return) and \n (newline)
+                            # Process complete lines (treat both \r and \n as line endings)
                             while b'\n' in partial_line or b'\r' in partial_line:
-                                # Find next line terminator
+                                # Find next line terminator (whichever comes first)
                                 newline_pos = partial_line.find(b'\n')
                                 cr_pos = partial_line.find(b'\r')
 
-                                # Determine which comes first
                                 if newline_pos >= 0 and (cr_pos < 0 or newline_pos < cr_pos):
-                                    # Newline comes first - this is a complete line
-                                    line_bytes = partial_line[:newline_pos]
-                                    partial_line = partial_line[newline_pos + 1:]
-                                    is_final = True
+                                    # Newline first
+                                    line_end = newline_pos
+                                    terminator_len = 1
                                 elif cr_pos >= 0:
-                                    # Carriage return - this line may be updated
-                                    line_bytes = partial_line[:cr_pos]
-                                    partial_line = partial_line[cr_pos + 1:]
-                                    is_final = False
+                                    # CR first (check for CRLF)
+                                    if cr_pos + 1 < len(partial_line) and partial_line[cr_pos + 1:cr_pos + 2] == b'\n':
+                                        line_end = cr_pos
+                                        terminator_len = 2  # CRLF
+                                    else:
+                                        line_end = cr_pos
+                                        terminator_len = 1
                                 else:
                                     break
+
+                                line_bytes = partial_line[:line_end]
+                                partial_line = partial_line[line_end + terminator_len:]
 
                                 try:
                                     line = line_bytes.decode('utf-8', errors='replace')
 
                                     # Strip ANSI escape codes
                                     line = ANSI_ESCAPE.sub('', line)
-
-                                    # Clean up the line
                                     line_stripped = line.strip()
 
-                                    # Skip resize2fs debug noise and truly empty lines
-                                    if not line_stripped or line_stripped.startswith('old_desc_blocks') or line_stripped.startswith('new_desc_blocks'):
+                                    # Skip resize2fs noise and empty lines
+                                    if not line_stripped:
+                                        continue
+                                    if line_stripped.startswith('old_desc_blocks') or line_stripped.startswith('new_desc_blocks'):
                                         continue
 
-                                    if is_final:
-                                        # Newline - this is a complete line
-                                        line_count += 1
-                                        logger.debug(f"Build output [{line_count}]: {line_stripped}")
-                                        self.output.emit(line)  # Emit original line with whitespace preserved
+                                    # Emit the line
+                                    line_count += 1
+                                    logger.debug(f"Build output [{line_count}]: {line_stripped}")
+                                    self.output.emit(line + '\n')
 
-                                        # Keep recent output for context checking (last 50 lines)
-                                        self.recent_output.append(line_stripped)
-                                        if len(self.recent_output) > 50:
-                                            self.recent_output.pop(0)
+                                    # Keep recent output for context
+                                    self.recent_output.append(line_stripped)
+                                    if len(self.recent_output) > 50:
+                                        self.recent_output.pop(0)
 
-                                        # Parse progress from output
-                                        self._parse_progress_only(line_stripped)
+                                    # Parse progress
+                                    self._parse_progress_only(line_stripped)
 
-                                        # Parse step transitions (non-numeric progress)
-                                        if "Downloading" in line_stripped:
-                                            self.progress.emit(5, "Starting download...")
-                                        elif "Extracting" in line_stripped:
-                                            self.progress.emit(16, "Extracting image...")
-                                        elif "extracted successfully" in line_stripped:
-                                            self.progress.emit(20, "Extraction complete")
-                                        elif "Expanding image" in line_stripped:
-                                            self.progress.emit(22, "Expanding image...")
-                                        elif "Image expanded" in line_stripped:
-                                            self.progress.emit(25, "Expansion complete")
-                                        elif "Mounting" in line_stripped:
-                                            self.progress.emit(30, "Mounting image...")
-                                        elif "Configuring" in line_stripped:
-                                            self.progress.emit(50, "Configuring system...")
-                                        elif "Installing" in line_stripped:
-                                            self.progress.emit(60, "Installing LabLink...")
-                                        elif "Creating systemd" in line_stripped:
-                                            self.progress.emit(70, "Setting up auto-start...")
-                                        elif "Unmounting" in line_stripped or "unmounted" in line_stripped:
-                                            self.progress.emit(80, "Finalizing image...")
-                                        elif "Compressing image" in line_stripped:
-                                            self.progress.emit(85, "Starting compression...")
-                                        elif "Compression complete" in line_stripped:
-                                            self.progress.emit(95, "Compression complete")
-                                        elif "Image created" in line_stripped:
-                                            self.progress.emit(98, "Finalizing...")
-                                        elif "SUCCESS" in line_stripped or "Build complete" in line_stripped:
-                                            self.progress.emit(100, "Build complete!")
-                                    else:
-                                        # Carriage return - in-place update line (wget/xz progress)
-                                        # Parse for progress but don't spam output
-                                        current_cr_line = line_stripped
-                                        self._parse_progress_only(line_stripped)
-                                        logger.debug(f"Progress update [CR]: {line_stripped}")
+                                    # Parse step transitions
+                                    if "Downloading" in line_stripped:
+                                        self.progress.emit(5, "Starting download...")
+                                    elif "Extracting" in line_stripped:
+                                        self.progress.emit(16, "Extracting image...")
+                                    elif "extracted successfully" in line_stripped:
+                                        self.progress.emit(20, "Extraction complete")
+                                    elif "Expanding image" in line_stripped:
+                                        self.progress.emit(22, "Expanding image...")
+                                    elif "Image expanded" in line_stripped:
+                                        self.progress.emit(25, "Expansion complete")
+                                    elif "Mounting" in line_stripped:
+                                        self.progress.emit(30, "Mounting image...")
+                                    elif "Configuring" in line_stripped:
+                                        self.progress.emit(50, "Configuring system...")
+                                    elif "Installing" in line_stripped:
+                                        self.progress.emit(60, "Installing LabLink...")
+                                    elif "Creating systemd" in line_stripped:
+                                        self.progress.emit(70, "Setting up auto-start...")
+                                    elif "Unmounting" in line_stripped or "unmounted" in line_stripped:
+                                        self.progress.emit(80, "Finalizing image...")
+                                    elif "Compressing image" in line_stripped:
+                                        self.progress.emit(85, "Starting compression...")
+                                    elif "Compression complete" in line_stripped:
+                                        self.progress.emit(95, "Compression complete")
+                                    elif "Image created" in line_stripped:
+                                        self.progress.emit(98, "Finalizing...")
+                                    elif "SUCCESS" in line_stripped or "Build complete" in line_stripped:
+                                        self.progress.emit(100, "Build complete!")
+
                                 except Exception as e:
                                     logger.error(f"Error decoding line: {e}")
                         except OSError as e:
