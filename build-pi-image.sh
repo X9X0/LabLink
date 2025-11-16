@@ -42,15 +42,15 @@ print_header() {
 }
 
 print_step() {
-    echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $1"
+    echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $1" >&2
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING]${NC} $1" >&2
 }
 
 check_root() {
