@@ -297,6 +297,17 @@ class MainWindow(QMainWindow):
                     f"{server_info.get('name', 'LabLink')} v{server_info.get('version', '')}"
                 )
 
+                # Check if server has security enabled
+                security_enabled = server_info.get('security_enabled', True)
+
+                if not security_enabled:
+                    # Server has no authentication - skip login
+                    logger.info("Server authentication disabled, connecting without login")
+                    self.client.authenticated = True
+                    self.client.user_data = {"username": "anonymous", "roles": []}
+                    self._complete_connection()
+                    return
+
                 # Try to restore session from stored tokens
                 if self.token_storage.has_tokens():
                     access_token, refresh_token = self.token_storage.load_tokens()
@@ -354,7 +365,13 @@ class MainWindow(QMainWindow):
 
     def _complete_connection(self):
         """Complete connection setup after authentication."""
-        if not self.client or not self.client.is_authenticated():
+        if not self.client:
+            logger.error("Cannot complete connection: no client")
+            return
+
+        # Only check authentication if we have it set
+        # (security might be disabled on server)
+        if not self.client.authenticated:
             logger.error("Cannot complete connection: not authenticated")
             return
 

@@ -555,6 +555,7 @@ async def api_root():
         "name": "LabLink Server",
         "version": "0.27.0",
         "status": "running",
+        "security_enabled": settings.enable_advanced_security,
     }
 
 
