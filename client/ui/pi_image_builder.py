@@ -133,23 +133,9 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
 
             if pkexec_available:
                 # Run with pkexec for graphical sudo prompt
-                # Use unbuffer (from expect package) to force unbuffered output
                 logger.info("Running with pkexec for root privileges")
                 self.output.emit("Running with elevated privileges (pkexec)...\n")
-
-                # Try unbuffer first, fall back to script command
-                unbuffer_available = subprocess.run(
-                    ['which', 'unbuffer'],
-                    capture_output=True,
-                    check=False
-                ).returncode == 0
-
-                if unbuffer_available:
-                    command = ['pkexec', 'unbuffer', 'bash', wrapper_path]
-                    self.output.emit("Using unbuffer for real-time output\n")
-                else:
-                    command = ['pkexec', 'bash', wrapper_path]
-                    self.output.emit("Note: Install 'expect' package for better output streaming\n")
+                command = ['pkexec', 'bash', wrapper_path]
             else:
                 # Warn that the script needs sudo
                 logger.warning("pkexec not available, script may fail without sudo")
@@ -157,61 +143,104 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                 self.output.emit("pkexec not found - build may fail\n")
                 command = ['bash', wrapper_path]
 
-            # Run build script with unbuffered binary mode
+            # Use pty to force unbuffered output
+            import pty
+            import select
+
+            logger.info(f"Launching command: {' '.join(command)}")
+
+            # Create a pseudo-terminal for truly unbuffered I/O
+            master_fd, slave_fd = pty.openpty()
+
             process = subprocess.Popen(
                 command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=0,  # Unbuffered - only works properly in binary mode
+                stdout=slave_fd,
+                stderr=slave_fd,
+                stdin=slave_fd,
+                close_fds=True,
             )
+
+            # Close slave fd in parent process
+            os.close(slave_fd)
 
             logger.info(f"Process started with PID: {process.pid}")
             self.output.emit(f"Process started (PID: {process.pid})\n")
 
-            # Monitor progress - read in binary mode for true unbuffered I/O
+            # Monitor progress - read from pty master for unbuffered I/O
             line_count = 0
             partial_line = b''
 
+            # Set master_fd to non-blocking mode
+            import fcntl
+            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
             while True:
-                # Read one byte at a time for truly unbuffered output
-                char = process.stdout.read(1)
-                if not char:
-                    break
+                # Check if process has exited
+                poll_result = process.poll()
 
-                partial_line += char
+                try:
+                    # Use select to wait for data with timeout
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
 
-                # When we hit a newline, emit the complete line
-                if char == b'\n':
-                    try:
-                        line = partial_line.decode('utf-8', errors='replace')
-                        line_count += 1
-                        logger.debug(f"Build output [{line_count}]: {line.strip()}")
-                        self.output.emit(line)
+                    if ready:
+                        # Read available data
+                        try:
+                            data = os.read(master_fd, 4096)
+                            if not data:
+                                if poll_result is not None:
+                                    break
+                                continue
 
-                        # Parse progress from output
-                        if "Downloading" in line:
-                            self.progress.emit(10, "Downloading base image...")
-                        elif "Expanding" in line or "Creating" in line:
-                            self.progress.emit(20, "Expanding image...")
-                        elif "Mounting" in line:
-                            self.progress.emit(30, "Mounting image...")
-                        elif "Configuring" in line:
-                            self.progress.emit(50, "Configuring system...")
-                        elif "Installing" in line:
-                            self.progress.emit(60, "Installing LabLink...")
-                        elif "Creating systemd" in line:
-                            self.progress.emit(70, "Setting up auto-start...")
-                        elif "Unmounting" in line:
-                            self.progress.emit(80, "Finalizing image...")
-                        elif "Compressing" in line:
-                            self.progress.emit(90, "Compressing image...")
-                        elif "SUCCESS" in line or "Complete" in line:
-                            self.progress.emit(100, "Build complete!")
+                            partial_line += data
 
-                        partial_line = b''
-                    except Exception as e:
-                        logger.error(f"Error decoding line: {e}")
-                        partial_line = b''
+                            # Process complete lines
+                            while b'\n' in partial_line:
+                                line_end = partial_line.index(b'\n')
+                                line_bytes = partial_line[:line_end + 1]
+                                partial_line = partial_line[line_end + 1:]
+
+                                try:
+                                    line = line_bytes.decode('utf-8', errors='replace')
+                                    line_count += 1
+                                    logger.debug(f"Build output [{line_count}]: {line.strip()}")
+                                    self.output.emit(line)
+
+                                    # Parse progress from output
+                                    if "Downloading" in line:
+                                        self.progress.emit(10, "Downloading base image...")
+                                    elif "Expanding" in line or "Creating" in line:
+                                        self.progress.emit(20, "Expanding image...")
+                                    elif "Mounting" in line:
+                                        self.progress.emit(30, "Mounting image...")
+                                    elif "Configuring" in line:
+                                        self.progress.emit(50, "Configuring system...")
+                                    elif "Installing" in line:
+                                        self.progress.emit(60, "Installing LabLink...")
+                                    elif "Creating systemd" in line:
+                                        self.progress.emit(70, "Setting up auto-start...")
+                                    elif "Unmounting" in line:
+                                        self.progress.emit(80, "Finalizing image...")
+                                    elif "Compressing" in line:
+                                        self.progress.emit(90, "Compressing image...")
+                                    elif "SUCCESS" in line or "Complete" in line:
+                                        self.progress.emit(100, "Build complete!")
+                                except Exception as e:
+                                    logger.error(f"Error decoding line: {e}")
+                        except OSError as e:
+                            if poll_result is not None:
+                                break
+                    elif poll_result is not None:
+                        # Process exited and no more data
+                        break
+
+                except Exception as e:
+                    logger.error(f"Error reading from pty: {e}")
+                    if poll_result is not None:
+                        break
+
+            # Close master fd
+            os.close(master_fd)
 
             logger.info(f"Process output loop ended. Total lines: {line_count}")
             process.wait()
