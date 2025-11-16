@@ -254,11 +254,12 @@ class ConfigurationPage(QWizardPage):
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
 
-        # Set default output path after registration so Next button is enabled
-        default_path = os.path.expanduser("~/lablink-pi.img")
-        self.output_path_edit.setText(default_path)
-        # Notify wizard that page is complete
-        self.completeChanged.emit()
+    def initializePage(self):
+        """Initialize page when shown - set default values here."""
+        # Set default output path when page is displayed
+        if not self.output_path_edit.text():
+            default_path = os.path.expanduser("~/lablink-pi.img")
+            self.output_path_edit.setText(default_path)
 
     def _browse_output(self):
         """Browse for output file location."""
