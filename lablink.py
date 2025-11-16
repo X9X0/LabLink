@@ -19,10 +19,28 @@ import os
 import subprocess
 import platform
 import json
+import shutil
+import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+    handlers=[
+        logging.FileHandler('lablink_debug.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Log startup
+logger.info("=" * 70)
+logger.info("LabLink Launcher Debug Log Started")
+logger.info("=" * 70)
 
 # Bootstrap check: Ensure pip is available before trying to install PyQt6
 def check_and_install_pip():
@@ -277,15 +295,16 @@ class CheckWorker(QThread):
                 ]
             )
         elif venv_path.exists():
+            # Venv exists - this is good! The launcher uses it automatically
             results['venv'] = CheckResult(
                 "Virtual Environment",
-                StatusLevel.WARNING,
-                "Exists but not active",
+                StatusLevel.OK,
+                "Available",
                 [
-                    "⚠ Virtual environment exists but is not activated",
+                    "✓ Virtual environment found",
                     f"  Path: {venv_path.absolute()}",
-                    "  Activate with: source venv/bin/activate (Linux/macOS)",
-                    "  or: venv\\Scripts\\activate (Windows)"
+                    "  Note: The launcher automatically uses this venv",
+                    "  Manual activation not required for the launcher"
                 ]
             )
         else:
@@ -306,7 +325,8 @@ class CheckWorker(QThread):
         self.progress.emit("Checking for PEP 668...")
         is_externally_managed = self._check_externally_managed()
 
-        if is_externally_managed and not in_venv:
+        if is_externally_managed and not in_venv and not venv_path.exists():
+            # Externally managed with no venv - this is a problem
             results['pep668'] = CheckResult(
                 "Package Installation",
                 StatusLevel.WARNING,
@@ -316,6 +336,19 @@ class CheckWorker(QThread):
                     "  Ubuntu 24.04 and similar systems prevent system-wide pip installs",
                     "  A virtual environment is strongly recommended",
                     "  Or use: apt install python3-<package>"
+                ]
+            )
+        elif is_externally_managed and (in_venv or venv_path.exists()):
+            # Externally managed but venv exists - this is OK, we handle it
+            results['pep668'] = CheckResult(
+                "Package Installation",
+                StatusLevel.OK,
+                "Handled via venv",
+                [
+                    "✓ System is externally-managed (PEP 668)",
+                    "  This is normal for Ubuntu 24.04",
+                    "  The launcher uses the virtual environment to handle this",
+                    "  All package installations go to the venv"
                 ]
             )
         else:
@@ -363,7 +396,7 @@ class CheckWorker(QThread):
                 "libxcb-xinerama0",
                 "libxcb-icccm4",
                 "libxcb-keysyms1",
-                "libgl1-mesa-glx"
+                "libgl1"  # Ubuntu 24.04: libgl1-mesa-glx replaced by libgl1
             ]
 
             # USB libraries for equipment
@@ -592,18 +625,157 @@ class CheckWorker(QThread):
         return packages
 
     def _check_packages(self, packages: List[str]) -> Tuple[List[str], List[str]]:
-        """Check which packages are installed."""
+        """Check which packages are installed.
+
+        If a venv exists, checks packages in the venv.
+        Otherwise, checks packages in the current environment.
+        """
         installed = []
         missing = []
 
-        for pkg in packages:
-            try:
-                __import__(pkg.replace('-', '_'))
-                installed.append(pkg)
-            except ImportError:
-                missing.append(pkg)
+        # Map package names to import names for special cases
+        package_to_import = {
+            'python-dotenv': 'dotenv',
+            'python-dateutil': 'dateutil',
+            'pydantic-settings': 'pydantic_settings',
+            'uvicorn': 'uvicorn',
+            'pyvisa-py': 'pyvisa_py',
+            'PyQt6-Qt6': 'PyQt6',  # PyQt6-Qt6 is just Qt binaries, check PyQt6 instead
+            'pyserial': 'serial',  # pyserial package imports as 'serial'
+            'pyusb': 'usb',  # pyusb package imports as 'usb'
+            'PyJWT': 'jwt',  # PyJWT package imports as 'jwt'
+            'email-validator': 'email_validator',  # email-validator imports as 'email_validator'
+        }
 
+        # Determine which Python to use for checking
+        venv_python = Path("venv/bin/python")
+        use_venv = venv_python.exists()
+
+        logger.debug(f"Checking {len(packages)} packages, use_venv={use_venv}, venv_python={venv_python}")
+
+        for pkg in packages:
+            # Get the correct import name
+            import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+
+            if use_venv:
+                # Check if package is installed in venv using subprocess
+                result = subprocess.run(
+                    [str(venv_python), '-c', f'import {import_name}'],
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    logger.debug(f"  {pkg}: INSTALLED (import {import_name} succeeded)")
+                    installed.append(pkg)
+                else:
+                    logger.debug(f"  {pkg}: MISSING (import {import_name} failed: {result.stderr.decode().strip()})")
+                    missing.append(pkg)
+            else:
+                # Check if package is installed in current environment
+                try:
+                    __import__(import_name)
+                    logger.debug(f"  {pkg}: INSTALLED (system environment)")
+                    installed.append(pkg)
+                except ImportError:
+                    logger.debug(f"  {pkg}: MISSING (system environment)")
+                    missing.append(pkg)
+
+        logger.debug(f"Package check complete: {len(installed)} installed, {len(missing)} missing")
         return installed, missing
+
+
+class FixWorker(QThread):
+    """Background worker for applying fixes."""
+
+    progress_update = pyqtSignal(str, int)  # message, progress value
+    fix_error = pyqtSignal(str, str)  # issue name, error message
+    finished = pyqtSignal()
+
+    def __init__(self, issues: List[CheckResult], parent_launcher):
+        super().__init__()
+        self.issues = issues
+        self.launcher = parent_launcher
+
+    def run(self):
+        """Apply fixes in background."""
+        logger.info(f"FixWorker: Starting to apply {len(self.issues)} fixes")
+
+        # Sort fixes by priority
+        def fix_priority(issue):
+            if issue.fix_command.startswith("apt_install:"):
+                return 0
+            elif issue.fix_command == "ensurepip":
+                return 1
+            elif issue.fix_command == "create_venv":
+                return 2
+            elif issue.fix_command.startswith("pip_install:"):
+                return 3
+            return 4
+
+        sorted_issues = sorted(self.issues, key=fix_priority)
+
+        # Check environment status
+        venv_exists = Path("venv/bin/pip").exists()
+        externally_managed = self.launcher._check_externally_managed()
+        logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
+
+        for i, issue in enumerate(sorted_issues):
+            logger.info(f"Fixing issue {i+1}/{len(sorted_issues)}: {issue.name}")
+            self.progress_update.emit(f"Fixing: {issue.name}", i)
+
+            try:
+                if issue.fix_command == "ensurepip":
+                    logger.info("Running ensurepip")
+                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
+
+                elif issue.fix_command == "create_venv":
+                    venv_path = Path("venv")
+                    venv_pip = venv_path / "bin" / "pip"
+
+                    if venv_path.exists() and not venv_pip.exists():
+                        logger.warning(f"Venv exists but is broken, recreating...")
+                        self.progress_update.emit("Removing broken venv...", i)
+                        shutil.rmtree(venv_path)
+                        logger.info("Removed broken venv")
+
+                    if not venv_path.exists():
+                        logger.info("Creating virtual environment...")
+                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                        logger.info("Virtual environment created successfully")
+
+                        if not venv_pip.exists():
+                            raise Exception(f"venv created but {venv_pip} not found. Ensure python3-venv is installed.")
+
+                elif issue.fix_command.startswith("pip_install:"):
+                    target = issue.fix_command.split(':')[1]
+                    req_file = f"{target}/requirements.txt"
+                    logger.info(f"Installing pip packages from {req_file}")
+
+                    venv_pip = Path("venv/bin/pip")
+                    if venv_pip.exists():
+                        logger.info(f"Using venv pip: {venv_pip}")
+                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
+                    else:
+                        logger.info("Using system pip")
+                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
+
+                elif issue.fix_command.startswith("apt_install:"):
+                    packages = issue.fix_command.split(':')[1]
+                    logger.info(f"Installing apt packages: {packages}")
+                    success = self.launcher._install_apt_packages(packages)
+                    if not success:
+                        raise Exception("Failed to install system packages")
+                    logger.info("apt install completed successfully")
+
+            except Exception as e:
+                logger.error(f"Failed to fix {issue.name}: {str(e)}", exc_info=True)
+                self.fix_error.emit(issue.name, str(e))
+
+        logger.info(f"All fixes applied")
+        self.progress_update.emit("✓ Fixes applied", len(sorted_issues))
+        self.finished.emit()
 
 
 class IssueDetailsDialog(QDialog):
@@ -783,6 +955,7 @@ class LabLinkLauncher(QMainWindow):
 
     def check_all(self):
         """Check all system components."""
+        logger.info("Starting comprehensive system check")
         self.progress_label.setText("Checking system...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
@@ -805,6 +978,10 @@ class LabLinkLauncher(QMainWindow):
 
     def on_env_checked(self, results):
         """Handle environment check completion."""
+        logger.info(f"Environment check completed with {len(results)} results")
+        for key, result in results.items():
+            logger.debug(f"  {key}: {result.status.name} - {result.message}")
+
         self.env_results = results
         self.update_led_status(self.env_led, results)
 
@@ -870,6 +1047,8 @@ class LabLinkLauncher(QMainWindow):
 
     def update_led_status(self, led: LEDIndicator, results: Dict[str, CheckResult]):
         """Update LED based on check results."""
+        logger.debug(f"Updating LED '{led.label}' with {len(results)} results")
+
         if not results:
             led.set_status(StatusLevel.UNKNOWN)
             return
@@ -879,10 +1058,13 @@ class LabLinkLauncher(QMainWindow):
         has_warning = any(r.status == StatusLevel.WARNING for r in results.values())
 
         if has_error:
+            logger.info(f"  Setting {led.label} LED to RED (has errors)")
             led.set_status(StatusLevel.ERROR)
         elif has_warning:
+            logger.info(f"  Setting {led.label} LED to YELLOW (has warnings)")
             led.set_status(StatusLevel.WARNING)
         else:
+            logger.info(f"  Setting {led.label} LED to GREEN (all OK)")
             led.set_status(StatusLevel.OK)
 
     def update_launch_buttons(self):
@@ -969,39 +1151,43 @@ class LabLinkLauncher(QMainWindow):
             self.apply_fixes(fixable_issues)
 
     def apply_fixes(self, issues: List[CheckResult]):
-        """Apply fixes for issues."""
+        """Apply fixes for issues in background."""
+        logger.info(f"Starting to apply {len(issues)} fixes")
+        for issue in issues:
+            logger.debug(f"  Will fix: {issue.name} - {issue.fix_command}")
+
         self.progress_label.setText("Fixing issues...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(issues))
 
-        for i, issue in enumerate(issues):
-            self.progress_label.setText(f"Fixing: {issue.name}")
-            self.progress_bar.setValue(i)
+        # Disable buttons during fix
+        self.fix_btn.setEnabled(False)
+        self.server_btn.setEnabled(False)
+        self.client_btn.setEnabled(False)
 
-            try:
-                if issue.fix_command == "ensurepip":
-                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
-                elif issue.fix_command == "create_venv":
-                    subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
-                elif issue.fix_command.startswith("pip_install:"):
-                    target = issue.fix_command.split(':')[1]
-                    req_file = f"{target}/requirements.txt"
-                    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
-                elif issue.fix_command.startswith("apt_install:"):
-                    packages = issue.fix_command.split(':')[1]
-                    success = self._install_apt_packages(packages)
-                    if not success:
-                        raise Exception("Failed to install system packages")
-            except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    "Fix Failed",
-                    f"Failed to fix {issue.name}:\n{str(e)}"
-                )
+        # Create and start fix worker
+        self.fix_worker = FixWorker(issues, self)
+        self.fix_worker.progress_update.connect(self.on_fix_progress)
+        self.fix_worker.fix_error.connect(self.on_fix_error)
+        self.fix_worker.finished.connect(self.on_fixes_complete)
+        self.fix_worker.start()
 
-        self.progress_bar.setValue(len(issues))
-        self.progress_label.setText("✓ Fixes applied")
+    def on_fix_progress(self, message: str, value: int):
+        """Update progress during fixes."""
+        self.progress_label.setText(message)
+        self.progress_bar.setValue(value)
 
+    def on_fix_error(self, issue_name: str, error_message: str):
+        """Handle fix error."""
+        QMessageBox.warning(
+            self,
+            "Fix Failed",
+            f"Failed to fix {issue_name}:\n{error_message}"
+        )
+
+    def on_fixes_complete(self):
+        """Handle fixes completion."""
+        logger.info("All fixes applied, re-checking system in 1 second...")
         # Re-check after fixes
         QTimer.singleShot(1000, self.check_all)
 
@@ -1040,6 +1226,7 @@ class LabLinkLauncher(QMainWindow):
                     )
 
                     if result.returncode == 0:
+                        logger.info(f"apt install succeeded for packages: {packages}")
                         QMessageBox.information(
                             self,
                             "Success",
@@ -1047,16 +1234,23 @@ class LabLinkLauncher(QMainWindow):
                         )
                         return True
                     else:
+                        logger.error(f"apt install failed with return code {result.returncode}")
+                        logger.error(f"apt install stderr: {result.stderr}")
+                        logger.error(f"apt install stdout: {result.stdout}")
                         raise Exception(f"apt install failed: {result.stderr}")
                 else:
                     # User cancelled or authentication failed
                     if "dismissed" in result.stderr.lower() or "cancelled" in result.stderr.lower():
+                        logger.info("User cancelled package installation")
                         QMessageBox.information(
                             self,
                             "Cancelled",
                             "Package installation was cancelled."
                         )
                         return False
+                    logger.error(f"apt update failed with return code {result.returncode}")
+                    logger.error(f"apt update stderr: {result.stderr}")
+                    logger.error(f"apt update stdout: {result.stdout}")
                     raise Exception(f"apt update failed: {result.stderr}")
 
             # Fall back to terminal-based sudo
@@ -1072,6 +1266,7 @@ class LabLinkLauncher(QMainWindow):
                 return False
 
         except Exception as e:
+            logger.error(f"System package installation failed: {str(e)}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Installation Failed",
@@ -1080,6 +1275,43 @@ class LabLinkLauncher(QMainWindow):
                 f"sudo apt update && sudo apt install -y {packages}"
             )
             return False
+
+    def _check_externally_managed(self) -> bool:
+        """Check if Python is externally managed (PEP 668)."""
+        if sys.prefix != sys.base_prefix:
+            return False
+
+        import sysconfig
+        stdlib = sysconfig.get_path('stdlib')
+        if stdlib:
+            marker = Path(stdlib) / 'EXTERNALLY-MANAGED'
+            return marker.exists()
+        return False
+
+    def _check_command_exists(self, command: str) -> bool:
+        """Check if a command exists in PATH."""
+        try:
+            result = subprocess.run(
+                ['which', command],
+                capture_output=True,
+                check=False
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _show_auto_close_message(self, title: str, message: str, timeout_ms: int = 3000):
+        """Show a message box that auto-closes after timeout."""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        # Auto-close after timeout
+        QTimer.singleShot(timeout_ms, msg_box.accept)
+
+        msg_box.exec()
 
     def launch_server(self):
         """Launch the LabLink server."""
@@ -1093,19 +1325,30 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
+        # Get absolute paths
+        lablink_root = Path.cwd().absolute()
+        server_dir = lablink_root / "server"
+
+        # Use venv python if available, otherwise system python (use absolute path)
+        venv_python = lablink_root / "venv" / "bin" / "python"
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
+
         try:
             # Launch in new terminal
+            # Server has mixed imports - needs both server/ as cwd AND LabLink root in PYTHONPATH
             if platform.system() == "Linux":
-                subprocess.Popen(['x-terminal-emulator', '-e', f'cd server && {sys.executable} main.py'])
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
+                subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                subprocess.Popen(['open', '-a', 'Terminal', 'server/main.py'])
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
+                subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd server && {sys.executable} main.py'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py'], shell=True)
 
-            QMessageBox.information(
-                self,
+            self._show_auto_close_message(
                 "Server Starting",
-                "LabLink server is starting in a new terminal window."
+                "LabLink server is starting in a new terminal window.\n\n"
+                "(This message will close automatically in 3 seconds)"
             )
         except Exception as e:
             QMessageBox.warning(
@@ -1126,14 +1369,25 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
-        try:
-            # Launch client directly (GUI application)
-            subprocess.Popen([sys.executable, str(client_path)])
+        # Get absolute path to LabLink root directory
+        lablink_root = Path.cwd().absolute()
 
-            QMessageBox.information(
-                self,
+        # Use venv python if available, otherwise system python (use absolute path)
+        venv_python = lablink_root / "venv" / "bin" / "python"
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
+
+        try:
+            # Launch client using python -m to handle imports correctly
+            # Change to LabLink root and run as module
+            subprocess.Popen(
+                [python_exe, '-m', 'client.main'],
+                cwd=str(lablink_root)
+            )
+
+            self._show_auto_close_message(
                 "Client Starting",
-                "LabLink client is starting..."
+                "LabLink client is starting...\n\n"
+                "(This message will close automatically in 3 seconds)"
             )
         except Exception as e:
             QMessageBox.warning(
