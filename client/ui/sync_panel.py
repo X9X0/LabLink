@@ -340,6 +340,10 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         except Exception as e:
             logger.error(f"Error refreshing acquisitions: {e}")
 
+    def refresh(self):
+        """Refresh sync panel data."""
+        self.refresh_groups(silent=True)
+
     def refresh_groups(self, silent: bool = False):
         """Refresh sync groups list."""
         if not self.client:
