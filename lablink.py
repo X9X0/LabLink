@@ -19,6 +19,7 @@ import os
 import subprocess
 import platform
 import json
+import shutil
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
@@ -592,16 +593,37 @@ class CheckWorker(QThread):
         return packages
 
     def _check_packages(self, packages: List[str]) -> Tuple[List[str], List[str]]:
-        """Check which packages are installed."""
+        """Check which packages are installed.
+
+        If a venv exists, checks packages in the venv.
+        Otherwise, checks packages in the current environment.
+        """
         installed = []
         missing = []
 
+        # Determine which Python to use for checking
+        venv_python = Path("venv/bin/python")
+        use_venv = venv_python.exists()
+
         for pkg in packages:
-            try:
-                __import__(pkg.replace('-', '_'))
-                installed.append(pkg)
-            except ImportError:
-                missing.append(pkg)
+            if use_venv:
+                # Check if package is installed in venv using subprocess
+                result = subprocess.run(
+                    [str(venv_python), '-c', f'import {pkg.replace("-", "_")}'],
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    installed.append(pkg)
+                else:
+                    missing.append(pkg)
+            else:
+                # Check if package is installed in current environment
+                try:
+                    __import__(pkg.replace('-', '_'))
+                    installed.append(pkg)
+                except ImportError:
+                    missing.append(pkg)
 
         return installed, missing
 
@@ -974,24 +996,68 @@ class LabLinkLauncher(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(issues))
 
-        for i, issue in enumerate(issues):
+        # Sort fixes to ensure correct order of operations:
+        # 1. apt_install (system packages like python3-venv)
+        # 2. ensurepip (if needed)
+        # 3. create_venv (requires python3-venv to be installed)
+        # 4. pip_install (requires venv to exist)
+        def fix_priority(issue):
+            if issue.fix_command.startswith("apt_install:"):
+                return 0
+            elif issue.fix_command == "ensurepip":
+                return 1
+            elif issue.fix_command == "create_venv":
+                return 2
+            elif issue.fix_command.startswith("pip_install:"):
+                return 3
+            return 4
+
+        sorted_issues = sorted(issues, key=fix_priority)
+
+        for i, issue in enumerate(sorted_issues):
             self.progress_label.setText(f"Fixing: {issue.name}")
             self.progress_bar.setValue(i)
 
             try:
                 if issue.fix_command == "ensurepip":
                     subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
+
                 elif issue.fix_command == "create_venv":
-                    subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                    venv_path = Path("venv")
+                    venv_pip = venv_path / "bin" / "pip"
+
+                    # If venv exists but pip doesn't, it's broken - delete it
+                    if venv_path.exists() and not venv_pip.exists():
+                        self.progress_label.setText("Removing broken venv...")
+                        shutil.rmtree(venv_path)
+
+                    # Create venv if it doesn't exist
+                    if not venv_path.exists():
+                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+
+                        # Verify pip was created
+                        if not venv_pip.exists():
+                            raise Exception(f"venv created but {venv_pip} not found. Ensure python3-venv is installed.")
+
                 elif issue.fix_command.startswith("pip_install:"):
                     target = issue.fix_command.split(':')[1]
                     req_file = f"{target}/requirements.txt"
-                    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+
+                    # Determine which pip to use
+                    venv_pip = Path("venv/bin/pip")
+                    if venv_pip.exists():
+                        # Use venv pip if it exists
+                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                    else:
+                        # Fall back to system pip (via python -m pip)
+                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
                     success = self._install_apt_packages(packages)
                     if not success:
                         raise Exception("Failed to install system packages")
+
             except Exception as e:
                 QMessageBox.warning(
                     self,
@@ -999,7 +1065,7 @@ class LabLinkLauncher(QMainWindow):
                     f"Failed to fix {issue.name}:\n{str(e)}"
                 )
 
-        self.progress_bar.setValue(len(issues))
+        self.progress_bar.setValue(len(sorted_issues))
         self.progress_label.setText("✓ Fixes applied")
 
         # Re-check after fixes
@@ -1093,14 +1159,18 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
+        # Use venv python if available, otherwise system python
+        venv_python = Path("venv/bin/python")
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
+
         try:
             # Launch in new terminal
             if platform.system() == "Linux":
-                subprocess.Popen(['x-terminal-emulator', '-e', f'cd server && {sys.executable} main.py'])
+                subprocess.Popen(['x-terminal-emulator', '-e', f'cd server && {python_exe} main.py'])
             elif platform.system() == "Darwin":  # macOS
                 subprocess.Popen(['open', '-a', 'Terminal', 'server/main.py'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd server && {sys.executable} main.py'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd server && {python_exe} main.py'], shell=True)
 
             QMessageBox.information(
                 self,
@@ -1126,9 +1196,13 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
+        # Use venv python if available, otherwise system python
+        venv_python = Path("venv/bin/python")
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
+
         try:
             # Launch client directly (GUI application)
-            subprocess.Popen([sys.executable, str(client_path)])
+            subprocess.Popen([python_exe, str(client_path)])
 
             QMessageBox.information(
                 self,
