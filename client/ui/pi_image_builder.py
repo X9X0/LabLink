@@ -222,9 +222,6 @@ class ConfigurationPage(QWizardPage):
         output_layout = QHBoxLayout()
 
         self.output_path_edit = QLineEdit()
-        # Set default output path so Next button is enabled
-        default_path = os.path.expanduser("~/lablink-pi.img")
-        self.output_path_edit.setText(default_path)
         self.output_path_edit.setPlaceholderText("Select where to save the image...")
         output_layout.addWidget(self.output_path_edit)
 
@@ -256,6 +253,12 @@ class ConfigurationPage(QWizardPage):
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
+
+        # Set default output path after registration so Next button is enabled
+        default_path = os.path.expanduser("~/lablink-pi.img")
+        self.output_path_edit.setText(default_path)
+        # Notify wizard that page is complete
+        self.completeChanged.emit()
 
     def _browse_output(self):
         """Browse for output file location."""
