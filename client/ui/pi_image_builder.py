@@ -59,16 +59,20 @@ class ImageBuildThread(QThread):
         """Run image building process."""
         try:
             self.progress.emit(0, "Starting image build process...")
+            logger.info("ImageBuildThread starting")
 
             # Check if build script exists
             script_path = Path(__file__).parent.parent.parent / "build-pi-image.sh"
+            logger.info(f"Looking for build script at: {script_path}")
+            logger.info(f"Script exists: {script_path.exists()}")
 
             if not script_path.exists():
-                self.finished.emit(
-                    False,
+                error_msg = (
                     f"Build script not found at: {script_path}\n\n"
-                    "Please ensure build-pi-image.sh is in the LabLink root directory.",
+                    "Please ensure build-pi-image.sh is in the LabLink root directory."
                 )
+                logger.error(error_msg)
+                self.finished.emit(False, error_msg)
                 return
 
             # Prepare environment variables
@@ -87,8 +91,13 @@ class ImageBuildThread(QThread):
             env["AUTO_EXPAND"] = "yes" if self.auto_expand else "no"
 
             self.progress.emit(5, "Launching build script...")
+            self.output.emit(f"Build script: {script_path}\n")
             self.output.emit(f"Building image: {self.output_path}\n")
             self.output.emit(f"Hostname: {self.hostname}\n")
+            self.output.emit(f"\n--- Starting build process ---\n")
+
+            logger.info(f"Launching bash with script: {script_path}")
+            logger.info(f"Output path: {self.output_path}")
 
             # Run build script
             process = subprocess.Popen(
@@ -100,11 +109,17 @@ class ImageBuildThread(QThread):
                 bufsize=1,
             )
 
+            logger.info(f"Process started with PID: {process.pid}")
+            self.output.emit(f"Process started (PID: {process.pid})\n")
+
             # Monitor progress
+            line_count = 0
             for line in iter(process.stdout.readline, ""):
                 if not line:
                     break
 
+                line_count += 1
+                logger.debug(f"Build output [{line_count}]: {line.strip()}")
                 self.output.emit(line)
 
                 # Parse progress from output
@@ -127,7 +142,9 @@ class ImageBuildThread(QThread):
                 elif "SUCCESS" in line or "Complete" in line:
                     self.progress.emit(100, "Build complete!")
 
+            logger.info(f"Process output loop ended. Total lines: {line_count}")
             process.wait()
+            logger.info(f"Process exited with code: {process.returncode}")
 
             if process.returncode == 0:
                 self.progress.emit(100, "Image built successfully!")
@@ -138,18 +155,17 @@ class ImageBuildThread(QThread):
                     f"You can now write this image to an SD card.",
                 )
             else:
-                self.finished.emit(
-                    False,
+                error_msg = (
                     f"Build failed with exit code {process.returncode}\n\n"
-                    "Check the output log for details.",
+                    "Check the output log for details."
                 )
+                logger.error(error_msg)
+                self.finished.emit(False, error_msg)
 
-        except FileNotFoundError:
-            self.finished.emit(
-                False,
-                "Build script not found.\n\n"
-                "This tool requires bash to be installed.",
-            )
+        except FileNotFoundError as e:
+            error_msg = f"Build script not found: {e}\n\nThis tool requires bash to be installed."
+            logger.error(error_msg)
+            self.finished.emit(False, error_msg)
         except Exception as e:
             logger.exception("Image build failed")
             self.finished.emit(False, f"Build error: {str(e)}")
