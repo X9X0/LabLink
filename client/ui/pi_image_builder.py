@@ -108,25 +108,48 @@ class ImageBuildThread(QThread):
 
             if pkexec_available:
                 # Run with pkexec for graphical sudo prompt
-                # Use stdbuf to force unbuffered output so we see progress in real-time
+                # Use 'script' command to force unbuffered output via pseudo-terminal
                 logger.info("Running with pkexec for root privileges")
                 self.output.emit("Running with elevated privileges (pkexec)...\n")
-                command = ['pkexec', 'stdbuf', '-oL', '-eL', 'bash', str(script_path)]
+                # script -qec runs command with unbuffered I/O, -q for quiet (no start/done messages)
+                command = ['pkexec', 'script', '-qec', f'bash {script_path}', '/dev/null']
             else:
                 # Warn that the script needs sudo
                 logger.warning("pkexec not available, script may fail without sudo")
                 self.output.emit("WARNING: This script requires root privileges\n")
                 self.output.emit("pkexec not found - build may fail\n")
-                command = ['stdbuf', '-oL', '-eL', 'bash', str(script_path)]
+                command = ['script', '-qec', f'bash {script_path}', '/dev/null']
+
+            # Run build script with environment
+            # Note: env variables must be exported before the script command
+            script_wrapper = f"""
+export OUTPUT_IMAGE='{self.output_path}'
+export PI_HOSTNAME='{self.hostname}'
+export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
+export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
+"""
+            if self.wifi_ssid:
+                script_wrapper += f"export WIFI_SSID='{self.wifi_ssid}'\n"
+            if self.wifi_password:
+                script_wrapper += f"export WIFI_PASSWORD='{self.wifi_password}'\n"
+            if self.admin_password:
+                script_wrapper += f"export ADMIN_PASSWORD='{self.admin_password}'\n"
+
+            script_wrapper += f"bash {script_path}"
+
+            # Update command to use wrapper
+            if pkexec_available:
+                command = ['pkexec', 'bash', '-c', script_wrapper]
+            else:
+                command = ['bash', '-c', script_wrapper]
 
             # Run build script
             process = subprocess.Popen(
                 command,
-                env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,
+                bufsize=0,  # Unbuffered
             )
 
             logger.info(f"Process started with PID: {process.pid}")
