@@ -121,62 +121,111 @@ class ImageWriterThread(QThread):
     def _write_unix(self) -> bool:
         """Write image on Linux/macOS using dd."""
         try:
-            # Check if pkexec is available, otherwise fall back to sudo
+            # Check if pkexec is available
             pkexec_available = subprocess.run(
                 ['which', 'pkexec'],
                 capture_output=True,
                 check=False
             ).returncode == 0
 
-            privilege_cmd = 'pkexec' if pkexec_available else 'sudo'
+            # Create a wrapper script for the write operation
+            import tempfile
 
-            # Decompress if needed
+            # Build the dd command
             if self.image_path.endswith(".xz"):
-                self.progress.emit(20, "Decompressing image...")
-                cmd = f"xz -dc '{self.image_path}' | {privilege_cmd} dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"xz -dc '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
             elif self.image_path.endswith(".gz"):
-                cmd = f"gunzip -c '{self.image_path}' | {privilege_cmd} dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"gunzip -c '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
             else:
-                cmd = f"{privilege_cmd} dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
 
-            # Execute dd with progress monitoring
-            process = subprocess.Popen(
-                cmd,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            # Create wrapper script
+            script_content = f"""#!/bin/bash
+set -e
+exec 2>&1  # Redirect stderr to stdout so we can capture it
+{dd_cmd}
+"""
 
-            # Monitor progress
-            image_size = os.path.getsize(self.image_path)
-            while True:
-                if self._stop_requested:
-                    process.kill()
-                    return False
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_content)
+                script_path = f.name
 
-                line = process.stderr.readline()
-                if not line and process.poll() is not None:
-                    break
+            # Make script executable
+            os.chmod(script_path, 0o755)
 
-                # Parse dd progress
-                if "bytes" in line:
-                    try:
-                        bytes_written = int(line.split()[0])
-                        percent = min(int((bytes_written / image_size) * 70) + 20, 90)
-                        self.progress.emit(
-                            percent, f"Writing: {bytes_written / (1024**3):.2f} GB"
-                        )
-                    except:
-                        pass
+            try:
+                if self.image_path.endswith(".xz"):
+                    self.progress.emit(20, "Decompressing and writing image...")
+                elif self.image_path.endswith(".gz"):
+                    self.progress.emit(20, "Decompressing and writing image...")
+                else:
+                    self.progress.emit(20, "Writing image...")
 
-            # Check exit code
-            return_code = process.wait()
-            if return_code != 0:
-                error = process.stderr.read()
-                raise Exception(f"dd failed: {error}")
+                # Execute with pkexec or sudo
+                if pkexec_available:
+                    cmd = ['pkexec', 'bash', script_path]
+                else:
+                    cmd = ['sudo', 'bash', script_path]
 
-            return True
+                # Execute with progress monitoring
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # Combine stderr into stdout
+                    text=True,
+                )
+
+                # Monitor progress
+                image_size = os.path.getsize(self.image_path)
+                output_lines = []
+
+                while True:
+                    if self._stop_requested:
+                        process.kill()
+                        return False
+
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+
+                    if line:
+                        output_lines.append(line.strip())
+                        logger.debug(f"dd output: {line.strip()}")
+
+                    # Parse dd progress (format: "123456789 bytes (123 MB, 117 MiB) copied")
+                    if "bytes" in line and "copied" in line:
+                        try:
+                            parts = line.split()
+                            bytes_written = int(parts[0])
+                            percent = min(int((bytes_written / image_size) * 70) + 20, 90)
+                            self.progress.emit(
+                                percent, f"Writing: {bytes_written / (1024**3):.2f} GB"
+                            )
+                        except (ValueError, IndexError) as e:
+                            logger.debug(f"Failed to parse progress: {e}")
+
+                # Wait for completion
+                return_code = process.wait()
+
+                # Clean up script
+                try:
+                    os.unlink(script_path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up script: {e}")
+
+                if return_code != 0:
+                    error_output = '\n'.join(output_lines[-10:])  # Last 10 lines
+                    raise Exception(f"dd failed with exit code {return_code}:\n{error_output}")
+
+                return True
+
+            except Exception as e:
+                # Clean up script on error
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Unix write failed: {e}")
