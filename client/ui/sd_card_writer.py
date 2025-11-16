@@ -115,6 +115,11 @@ class ImageWriterThread(QThread):
                     subprocess.run(["umount", part], check=False, capture_output=True)
 
             self.progress.emit(12, "Device unmounted")
+
+            # Wait a moment for the kernel to settle after unmount
+            import time
+            time.sleep(1)
+
         except Exception as e:
             logger.warning(f"Failed to unmount: {e}")
 
@@ -143,7 +148,24 @@ class ImageWriterThread(QThread):
             script_content = f"""#!/bin/bash
 set -e
 exec 2>&1  # Redirect stderr to stdout so we can capture it
+
+# Verify device is accessible before writing
+if [ ! -b "{self.device_path}" ]; then
+    echo "Error: Device {self.device_path} is not a block device"
+    exit 1
+fi
+
+# Flush filesystem buffers and re-read partition table
+sync
+blockdev --rereadpt "{self.device_path}" 2>/dev/null || true
+
+# Give kernel time to settle after re-reading partition table
+sleep 2
+
 {dd_cmd}
+
+# Ensure all writes are flushed
+sync
 """
 
             with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
