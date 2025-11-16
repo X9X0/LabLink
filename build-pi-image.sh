@@ -373,8 +373,25 @@ finalize_image() {
 
     print_step "Finalizing image..."
 
+    # Ensure output directory exists
+    output_dir=$(dirname "$output_img")
+    if [ ! -d "$output_dir" ]; then
+        mkdir -p "$output_dir" || {
+            print_error "Failed to create output directory: $output_dir"
+            exit 1
+        }
+    fi
+
     # Copy to output location
-    cp "$source_img" "$output_img"
+    print_step "Copying image to: $output_img"
+    cp "$source_img" "$output_img" || {
+        print_error "Failed to copy image to output location"
+        print_error "Source: $source_img"
+        print_error "Destination: $output_img"
+        exit 1
+    }
+
+    print_step "Image copied successfully"
 
     # Compress if output filename ends with .xz
     if [[ "$output_img" == *.xz ]]; then
@@ -406,11 +423,26 @@ finalize_image() {
         if [ "$EUID" -eq 0 ]; then
             if [ -n "$ORIGINAL_UID" ] && [ -n "$ORIGINAL_GID" ]; then
                 print_step "Fixing file ownership to $SUDO_USER ($ORIGINAL_UID:$ORIGINAL_GID)..."
-                chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_img" "${output_img}.sha256" 2>/dev/null || true
+                chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_img" "${output_img}.sha256" 2>/dev/null || {
+                    print_warning "Failed to change ownership, image may be owned by root"
+                }
+                # Also fix ownership of output directory if we created it
+                if [ -n "$output_dir" ] && [ "$output_dir" != "/" ] && [ "$output_dir" != "/home" ]; then
+                    chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_dir" 2>/dev/null || true
+                fi
             elif [ -n "$SUDO_USER" ]; then
                 print_step "Fixing file ownership to $SUDO_USER..."
-                chown "$SUDO_USER:$SUDO_USER" "$output_img" "${output_img}.sha256" 2>/dev/null || true
+                chown "$SUDO_USER:$SUDO_USER" "$output_img" "${output_img}.sha256" 2>/dev/null || {
+                    print_warning "Failed to change ownership, image may be owned by root"
+                }
             fi
+        fi
+
+        # Verify file is accessible
+        if [ -r "$output_img" ]; then
+            print_step "Image file is readable and ready"
+        else
+            print_warning "Image created but may not be readable by current user"
         fi
     else
         print_error "Output file not found: $output_img"
