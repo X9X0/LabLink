@@ -381,7 +381,7 @@ class CheckWorker(QThread):
                 "libxcb-xinerama0",
                 "libxcb-icccm4",
                 "libxcb-keysyms1",
-                "libgl1-mesa-glx"
+                "libgl1"  # Ubuntu 24.04: libgl1-mesa-glx replaced by libgl1
             ]
 
             # USB libraries for equipment
@@ -1157,6 +1157,7 @@ class LabLinkLauncher(QMainWindow):
                     )
 
                     if result.returncode == 0:
+                        logger.info(f"apt install succeeded for packages: {packages}")
                         QMessageBox.information(
                             self,
                             "Success",
@@ -1164,16 +1165,23 @@ class LabLinkLauncher(QMainWindow):
                         )
                         return True
                     else:
+                        logger.error(f"apt install failed with return code {result.returncode}")
+                        logger.error(f"apt install stderr: {result.stderr}")
+                        logger.error(f"apt install stdout: {result.stdout}")
                         raise Exception(f"apt install failed: {result.stderr}")
                 else:
                     # User cancelled or authentication failed
                     if "dismissed" in result.stderr.lower() or "cancelled" in result.stderr.lower():
+                        logger.info("User cancelled package installation")
                         QMessageBox.information(
                             self,
                             "Cancelled",
                             "Package installation was cancelled."
                         )
                         return False
+                    logger.error(f"apt update failed with return code {result.returncode}")
+                    logger.error(f"apt update stderr: {result.stderr}")
+                    logger.error(f"apt update stdout: {result.stdout}")
                     raise Exception(f"apt update failed: {result.stderr}")
 
             # Fall back to terminal-based sudo
@@ -1189,6 +1197,7 @@ class LabLinkLauncher(QMainWindow):
                 return False
 
         except Exception as e:
+            logger.error(f"System package installation failed: {str(e)}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Installation Failed",
