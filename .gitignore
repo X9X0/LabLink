@@ -42,6 +42,7 @@ Thumbs.db
 *.npy
 data/
 logs/
+*_debug.log
 
 # Configuration
 config.local.json
