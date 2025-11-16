@@ -98,9 +98,21 @@ download_pi_os() {
     fi
 
     print_step "Extracting image..."
-    xz -d -k -f "$pi_os_file"
+    xz -d -k -f "$pi_os_file" || {
+        print_error "Failed to extract Raspberry Pi OS image"
+        exit 1
+    }
 
     local extracted_img="${pi_os_file%.xz}"
+
+    # Verify extraction succeeded
+    if [ ! -f "$extracted_img" ]; then
+        print_error "Extracted image not found at: $extracted_img"
+        ls -lh "$WORK_DIR/" || true
+        exit 1
+    fi
+
+    print_step "Image extracted successfully: $extracted_img"
 
     echo "$extracted_img"
 }
