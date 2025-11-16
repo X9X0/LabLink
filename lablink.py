@@ -1284,20 +1284,21 @@ class LabLinkLauncher(QMainWindow):
         venv_python = Path("venv/bin/python")
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
-        # Get absolute path to LabLink root directory
+        # Get absolute paths
         lablink_root = Path.cwd().absolute()
+        server_dir = lablink_root / "server"
 
         try:
-            # Launch in new terminal with proper module path
+            # Launch in new terminal
+            # Server expects to run from server/ directory with relative imports
             if platform.system() == "Linux":
-                # Use python -m to run as a module, which handles imports correctly
-                cmd = f'cd {lablink_root} && {python_exe} -m server.main'
+                cmd = f'cd {server_dir} && {python_exe} main.py'
                 subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                cmd = f'cd {lablink_root} && {python_exe} -m server.main'
+                cmd = f'cd {server_dir} && {python_exe} main.py'
                 subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd {lablink_root} && {python_exe} -m server.main'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && {python_exe} main.py'], shell=True)
 
             QMessageBox.information(
                 self,
