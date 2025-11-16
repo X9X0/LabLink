@@ -29,6 +29,7 @@ class ImageBuildThread(QThread):
         self,
         output_path: str,
         hostname: str = "lablink-pi",
+        pi_model: str = "5",
         wifi_ssid: str = "",
         wifi_password: str = "",
         admin_password: str = "",
@@ -40,6 +41,7 @@ class ImageBuildThread(QThread):
         Args:
             output_path: Path where image will be saved
             hostname: Raspberry Pi hostname
+            pi_model: Raspberry Pi model (3, 4, or 5)
             wifi_ssid: Wi-Fi network name (optional)
             wifi_password: Wi-Fi password (optional)
             admin_password: Admin user password (optional)
@@ -49,6 +51,7 @@ class ImageBuildThread(QThread):
         super().__init__()
         self.output_path = output_path
         self.hostname = hostname
+        self.pi_model = pi_model
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
         self.admin_password = admin_password
@@ -79,6 +82,7 @@ class ImageBuildThread(QThread):
             env = os.environ.copy()
             env["OUTPUT_IMAGE"] = self.output_path
             env["PI_HOSTNAME"] = self.hostname
+            env["PI_MODEL"] = self.pi_model
 
             if self.wifi_ssid:
                 env["WIFI_SSID"] = self.wifi_ssid
@@ -110,6 +114,7 @@ class ImageBuildThread(QThread):
             script_wrapper = f"""#!/bin/bash
 export OUTPUT_IMAGE='{self.output_path}'
 export PI_HOSTNAME='{self.hostname}'
+export PI_MODEL='{self.pi_model}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
 export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
 """
@@ -221,10 +226,30 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                     self.output.emit(line)
 
                                     # Parse progress from output
-                                    if "Downloading" in line:
-                                        self.progress.emit(10, "Downloading base image...")
-                                    elif "Expanding" in line or "Creating" in line:
-                                        self.progress.emit(20, "Expanding image...")
+                                    # Download progress (wget shows % progress)
+                                    if "%" in line and ("K/s" in line or "M/s" in line or "G/s" in line):
+                                        try:
+                                            # Extract percentage from wget output
+                                            parts = line.split()
+                                            for part in parts:
+                                                if "%" in part:
+                                                    pct = int(part.rstrip('%'))
+                                                    # Map 0-100% download to 5-15% total progress
+                                                    prog = 5 + int(pct * 0.10)
+                                                    self.progress.emit(prog, f"Downloading: {pct}%")
+                                                    break
+                                        except (ValueError, IndexError):
+                                            pass
+                                    elif "Downloading" in line:
+                                        self.progress.emit(5, "Starting download...")
+                                    elif "Extracting" in line:
+                                        self.progress.emit(16, "Extracting image...")
+                                    elif "extracted successfully" in line:
+                                        self.progress.emit(20, "Extraction complete")
+                                    elif "Expanding image" in line:
+                                        self.progress.emit(22, "Expanding image...")
+                                    elif "Image expanded" in line:
+                                        self.progress.emit(25, "Expansion complete")
                                     elif "Mounting" in line:
                                         self.progress.emit(30, "Mounting image...")
                                     elif "Configuring" in line:
@@ -233,11 +258,13 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                         self.progress.emit(60, "Installing LabLink...")
                                     elif "Creating systemd" in line:
                                         self.progress.emit(70, "Setting up auto-start...")
-                                    elif "Unmounting" in line:
+                                    elif "Unmounting" in line or "unmounted" in line:
                                         self.progress.emit(80, "Finalizing image...")
                                     elif "Compressing" in line:
-                                        self.progress.emit(90, "Compressing image...")
-                                    elif "SUCCESS" in line or "Complete" in line:
+                                        self.progress.emit(85, "Compressing image...")
+                                    elif "Compression complete" in line:
+                                        self.progress.emit(95, "Compression complete")
+                                    elif "SUCCESS" in line or "Build complete" in line:
                                         self.progress.emit(100, "Build complete!")
                                 except Exception as e:
                                     logger.error(f"Error decoding line: {e}")
@@ -304,6 +331,18 @@ class ConfigurationPage(QWizardPage):
         )
 
         layout = QVBoxLayout()
+
+        # Hardware settings
+        hardware_group = QGroupBox("Hardware Configuration")
+        hardware_layout = QFormLayout()
+
+        self.pi_model_combo = QComboBox()
+        self.pi_model_combo.addItems(["Raspberry Pi 5", "Raspberry Pi 4", "Raspberry Pi 3"])
+        self.pi_model_combo.setCurrentIndex(0)  # Default to Pi 5
+        hardware_layout.addRow("Raspberry Pi Model:", self.pi_model_combo)
+
+        hardware_group.setLayout(hardware_layout)
+        layout.addWidget(hardware_group)
 
         # Basic settings
         basic_group = QGroupBox("Basic Settings")
@@ -388,6 +427,7 @@ class ConfigurationPage(QWizardPage):
         self.setLayout(layout)
 
         # Register fields for validation
+        self.registerField("pi_model", self.pi_model_combo, "currentText")
         self.registerField("hostname*", self.hostname_edit)
         self.registerField("output_path*", self.output_path_edit)
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
@@ -487,7 +527,18 @@ class BuildProgressPage(QWizardPage):
 
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
-        self.output_text.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.output_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)  # No wrapping
+        self.output_text.setStyleSheet("""
+            QTextEdit {
+                font-family: 'Courier New', 'Consolas', monospace;
+                font-size: 9pt;
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                border: 2px solid #3e3e3e;
+                border-radius: 4px;
+                padding: 8px;
+            }
+        """)
         layout.addWidget(self.output_text)
 
         self.setLayout(layout)
@@ -495,6 +546,15 @@ class BuildProgressPage(QWizardPage):
     def initializePage(self):
         """Start build process when page is shown."""
         # Get configuration from previous page
+        pi_model_text = self.field("pi_model") or "Raspberry Pi 5"
+        # Extract model number (3, 4, or 5)
+        if "3" in pi_model_text:
+            pi_model = "3"
+        elif "4" in pi_model_text:
+            pi_model = "4"
+        else:
+            pi_model = "5"
+
         hostname = self.field("hostname")
         output_path = self.field("output_path")
         wifi_ssid = self.field("wifi_ssid") or ""
@@ -516,6 +576,7 @@ class BuildProgressPage(QWizardPage):
         self.build_thread = ImageBuildThread(
             output_path=output_path,
             hostname=hostname,
+            pi_model=pi_model,
             wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
             admin_password=admin_password,

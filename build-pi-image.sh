@@ -15,8 +15,25 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
+PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
 PI_OS_VERSION="${PI_OS_VERSION:-2024-03-15}"
-PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-${PI_OS_VERSION}/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+
+# Select appropriate image URL based on Pi model
+case "$PI_MODEL" in
+    "3")
+        # Pi 3 uses 32-bit armhf image
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2024-03-15/2024-03-15-raspios-bookworm-armhf-lite.img.xz"
+        ;;
+    "4")
+        # Pi 4 can use 64-bit arm64 image
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+        ;;
+    "5"|*)
+        # Pi 5 uses 64-bit arm64 image (default)
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+        ;;
+esac
+
 OUTPUT_IMAGE="${1:-lablink-pi-$(date +%Y%m%d).img}"
 WORK_DIR="/tmp/lablink-pi-build"
 MOUNT_BOOT="$WORK_DIR/boot"
@@ -422,6 +439,9 @@ cleanup() {
 # Main build process
 main() {
     print_header
+
+    # Show which model we're building for
+    print_step "Building image for Raspberry Pi Model $PI_MODEL"
 
     # Parse arguments
     if [ -t 0 ] && [ $# -eq 0 ]; then
