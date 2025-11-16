@@ -261,28 +261,37 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ### 🚀 NEW: GUI Launcher (Recommended)
 
-The easiest way to get started with LabLink is using the new **GUI Launcher**:
+The easiest way to get started with LabLink is using the new **GUI Launcher**.
 
-1. **Install system dependencies** (Ubuntu/Debian):
-   ```bash
-   sudo apt update && sudo apt install -y python3 python3-pip python3-venv git \
-       libusb-1.0-0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libgl1-mesa-glx
-   ```
+**Ubuntu 24.04+ Users** - Fully automated setup:
+```bash
+git clone https://github.com/X9X0/LabLink.git
+cd LabLink
+python3 lablink.py
+```
 
-2. **Clone and launch**:
-   ```bash
-   git clone https://github.com/X9X0/LabLink.git
-   cd LabLink
-   python3 lablink.py
-   ```
+The launcher will automatically handle everything, including installing system packages with your permission!
+
+**Other Systems** - Install system dependencies first:
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git \
+    libusb-1.0-0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libgl1-mesa-glx
+
+# Then clone and launch
+git clone https://github.com/X9X0/LabLink.git
+cd LabLink
+python3 lablink.py
+```
 
 The **LabLink Launcher** will:
 - ✅ Check your environment automatically
+- ✅ Detect and install missing system packages (Ubuntu 24.04+)
 - ✅ Show LED indicators for system status (Green = OK, Yellow = Warning, Red = Error)
-- ✅ Install missing dependencies with one click
+- ✅ Install missing Python dependencies with one click
 - ✅ Launch server or client with dedicated buttons
 
-**For Ubuntu 24.04 users**: See the detailed [Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md) for step-by-step instructions.
+**For Ubuntu 24.04 users**: See the detailed [Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md) for more information.
 
 ---
 

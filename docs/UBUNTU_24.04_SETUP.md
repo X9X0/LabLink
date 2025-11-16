@@ -15,9 +15,34 @@ This guide will help you get LabLink up and running on Ubuntu 24.04 in just a fe
 
 ## 🚀 Quick Start (Recommended)
 
-### Step 1: Install System Dependencies
+### Option 1: Fully Automated (One Command!)
 
-Open a terminal (Ctrl+Alt+T) and run:
+If you just want to get started quickly without installing anything manually:
+
+```bash
+# Just clone and run the launcher
+git clone https://github.com/X9X0/LabLink.git
+cd LabLink
+python3 lablink.py
+```
+
+**That's it!** The LabLink GUI launcher will:
+- ✅ Check your environment automatically
+- ✅ Detect missing system packages (Qt libraries, USB support, etc.)
+- ✅ **Install system packages automatically with your permission**
+- ✅ Show you what's missing with colored LED indicators
+- ✅ Install Python dependencies with one click
+- ✅ Let you start the server or client with one click
+
+The launcher uses `pkexec` for a graphical password prompt when installing system packages, so you won't need to type commands in the terminal.
+
+---
+
+### Option 2: Manual System Dependencies First (Traditional)
+
+If you prefer to install system dependencies manually before running the launcher:
+
+**Step 1:** Install system dependencies:
 
 ```bash
 sudo apt update && sudo apt install -y \
@@ -34,7 +59,7 @@ sudo apt update && sudo apt install -y \
 
 This installs Python 3, pip, virtual environment support, Git, and required system libraries for Qt and USB communication.
 
-### Step 2: Clone LabLink
+**Step 2:** Clone LabLink:
 
 ```bash
 cd ~
@@ -42,17 +67,13 @@ git clone https://github.com/X9X0/LabLink.git
 cd LabLink
 ```
 
-### Step 3: Launch the LabLink GUI Launcher
+**Step 3:** Launch the GUI launcher:
 
 ```bash
 python3 lablink.py
 ```
 
-**That's it!** The LabLink GUI launcher will:
-- ✅ Check your environment automatically
-- ✅ Show you what's missing with colored LED indicators
-- ✅ Offer to fix issues automatically
-- ✅ Let you start the server or client with one click
+The launcher will verify all dependencies are installed and show green LED indicators.
 
 ---
 

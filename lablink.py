@@ -285,60 +285,93 @@ class CheckWorker(QThread):
 
         self.progress.emit("Checking system dependencies...")
 
-        # Qt libraries (Linux only)
+        # Only check apt packages on Linux
         if os_type == "Linux":
-            qt_libs = [
+            # Check if apt is available
+            if not self._check_command_exists('apt'):
+                results['system_packages'] = CheckResult(
+                    "System Packages",
+                    StatusLevel.WARNING,
+                    "apt not found",
+                    [
+                        "⚠ apt package manager not found",
+                        "  System package checks are limited to Debian/Ubuntu-based systems"
+                    ]
+                )
+                return results
+
+            # Core system packages needed for LabLink
+            core_packages = [
+                "python3",
+                "python3-pip",
+                "python3-venv",
+                "git"
+            ]
+
+            # Qt libraries for GUI
+            qt_packages = [
                 "libxcb-xinerama0",
                 "libxcb-icccm4",
                 "libxcb-keysyms1",
                 "libgl1-mesa-glx"
             ]
 
-            missing_libs = []
-            for lib in qt_libs:
-                if not self._check_lib_installed(lib):
-                    missing_libs.append(lib)
+            # USB libraries for equipment
+            usb_packages = [
+                "libusb-1.0-0"
+            ]
 
-            if not missing_libs:
-                results['qt_libs'] = CheckResult(
-                    "Qt Libraries",
+            # Check all packages
+            all_packages = core_packages + qt_packages + usb_packages
+            missing_packages = []
+
+            self.progress.emit("Checking system packages...")
+            for pkg in all_packages:
+                if not self._check_lib_installed(pkg):
+                    missing_packages.append(pkg)
+
+            if not missing_packages:
+                results['system_packages'] = CheckResult(
+                    "System Packages",
                     StatusLevel.OK,
                     "All installed",
-                    ["✓ All required Qt libraries are installed"]
+                    [
+                        "✓ All required system packages are installed",
+                        f"  Core: {', '.join(core_packages)}",
+                        f"  Qt: {', '.join(qt_packages)}",
+                        f"  USB: {', '.join(usb_packages)}"
+                    ]
                 )
             else:
-                results['qt_libs'] = CheckResult(
-                    "Qt Libraries",
-                    StatusLevel.ERROR,
-                    f"{len(missing_libs)} missing",
-                    [
-                        f"✗ Missing libraries: {', '.join(missing_libs)}",
-                        f"Install with: sudo apt install {' '.join(missing_libs)}"
-                    ],
-                    fixable=True,
-                    fix_command=f"apt_install:{' '.join(missing_libs)}"
-                )
+                # Categorize missing packages
+                missing_core = [p for p in missing_packages if p in core_packages]
+                missing_qt = [p for p in missing_packages if p in qt_packages]
+                missing_usb = [p for p in missing_packages if p in usb_packages]
 
-        # USB libraries (for equipment communication)
-        if os_type == "Linux":
-            if self._check_lib_installed("libusb-1.0-0"):
-                results['usb_libs'] = CheckResult(
-                    "USB Libraries",
-                    StatusLevel.OK,
-                    "Installed",
-                    ["✓ libusb is installed for equipment communication"]
-                )
-            else:
-                results['usb_libs'] = CheckResult(
-                    "USB Libraries",
-                    StatusLevel.WARNING,
-                    "Not installed",
-                    [
-                        "⚠ libusb not found (needed for USB equipment)",
-                        "Install with: sudo apt install libusb-1.0-0"
-                    ],
+                status = StatusLevel.ERROR if missing_core else StatusLevel.WARNING
+
+                details = [
+                    f"✗ {len(missing_packages)} system packages missing",
+                    ""
+                ]
+
+                if missing_core:
+                    details.append(f"Critical: {', '.join(missing_core)}")
+                if missing_qt:
+                    details.append(f"Qt libraries: {', '.join(missing_qt)}")
+                if missing_usb:
+                    details.append(f"USB support: {', '.join(missing_usb)}")
+
+                details.append("")
+                details.append("These packages can be installed automatically.")
+
+                results['system_packages'] = CheckResult(
+                    "System Packages",
+                    status,
+                    f"{len(missing_packages)} missing",
+                    details,
                     fixable=True,
-                    fix_command="apt_install:libusb-1.0-0"
+                    fix_command=f"apt_install:{' '.join(missing_packages)}"
                 )
 
         # VISA library check (optional)
@@ -471,8 +504,21 @@ class CheckWorker(QThread):
             return marker.exists()
         return False
 
+    def _check_command_exists(self, command: str) -> bool:
+        """Check if a command exists in PATH."""
+        try:
+            result = subprocess.run(
+                ['which', command],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
+
     def _check_lib_installed(self, lib_name: str) -> bool:
-        """Check if a system library is installed (dpkg)."""
+        """Check if a system library/package is installed (dpkg)."""
         try:
             result = subprocess.run(
                 ['dpkg', '-s', lib_name],
@@ -893,11 +939,9 @@ class LabLinkLauncher(QMainWindow):
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
-                    QMessageBox.information(
-                        self,
-                        "Manual Action Required",
-                        f"Please run:\nsudo apt install {packages}"
-                    )
+                    success = self._install_apt_packages(packages)
+                    if not success:
+                        raise Exception("Failed to install system packages")
             except Exception as e:
                 QMessageBox.warning(
                     self,
@@ -910,6 +954,82 @@ class LabLinkLauncher(QMainWindow):
 
         # Re-check after fixes
         QTimer.singleShot(1000, self.check_all)
+
+    def _install_apt_packages(self, packages: str) -> bool:
+        """Install system packages using apt with sudo."""
+        # First, inform the user
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setWindowTitle("System Package Installation")
+        msg.setText("LabLink needs to install system packages with administrator privileges.")
+        msg.setInformativeText(f"Packages to install:\n{packages}\n\n"
+                              "You will be prompted for your password.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+
+        if msg.exec() != QMessageBox.StandardButton.Ok:
+            return False
+
+        try:
+            # Try pkexec first (graphical password prompt)
+            if self._check_command_exists('pkexec'):
+                self.progress_label.setText("Waiting for password (pkexec)...")
+                result = subprocess.run(
+                    ['pkexec', 'apt', 'update'],
+                    check=False,
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode == 0:
+                    self.progress_label.setText("Installing packages...")
+                    result = subprocess.run(
+                        ['pkexec', 'apt', 'install', '-y'] + packages.split(),
+                        check=False,
+                        capture_output=True,
+                        text=True
+                    )
+
+                    if result.returncode == 0:
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            f"System packages installed successfully:\n{packages}"
+                        )
+                        return True
+                    else:
+                        raise Exception(f"apt install failed: {result.stderr}")
+                else:
+                    # User cancelled or authentication failed
+                    if "dismissed" in result.stderr.lower() or "cancelled" in result.stderr.lower():
+                        QMessageBox.information(
+                            self,
+                            "Cancelled",
+                            "Package installation was cancelled."
+                        )
+                        return False
+                    raise Exception(f"apt update failed: {result.stderr}")
+
+            # Fall back to terminal-based sudo
+            else:
+                QMessageBox.information(
+                    self,
+                    "Terminal Required",
+                    "Please run the following commands in a terminal:\n\n"
+                    f"sudo apt update\n"
+                    f"sudo apt install -y {packages}\n\n"
+                    "Then click 'Refresh Status' to continue."
+                )
+                return False
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Installation Failed",
+                f"Failed to install system packages:\n{str(e)}\n\n"
+                f"Please install manually:\n"
+                f"sudo apt update && sudo apt install -y {packages}"
+            )
+            return False
 
     def launch_server(self):
         """Launch the LabLink server."""
