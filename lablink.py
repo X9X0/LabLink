@@ -921,7 +921,7 @@ class LabLinkLauncher(QMainWindow):
         header = QLabel("LabLink System Launcher")
         header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("padding: 20px; background-color: #2c3e50; color: white; border-radius: 5px;")
+        header.setStyleSheet("padding: 20px; background-color: #1a252f; color: white; border-radius: 5px;")
         main_layout.addWidget(header)
 
         # Status indicators section
@@ -1128,6 +1128,9 @@ class LabLinkLauncher(QMainWindow):
         self.fix_btn.setEnabled(True)
         self.update_launch_buttons()
 
+        # Auto-trigger fix dialog if there are fixable errors
+        self.auto_fix_if_needed()
+
     def update_progress(self, message):
         """Update progress label."""
         self.progress_label.setText(message)
@@ -1202,6 +1205,21 @@ class LabLinkLauncher(QMainWindow):
         if self.client_results:
             dialog = IssueDetailsDialog("Client Dependencies Details", self.client_results, self)
             dialog.exec()
+
+    def auto_fix_if_needed(self):
+        """Automatically prompt to fix issues if errors are detected."""
+        fixable_errors = []
+
+        # Collect fixable issues that are errors (not just warnings)
+        for results in [self.env_results, self.sys_results, self.server_results, self.client_results]:
+            for result in results.values():
+                if result.fixable and result.fix_command and result.status == StatusLevel.ERROR:
+                    fixable_errors.append(result)
+
+        # If we have fixable errors, automatically show the fix dialog
+        if fixable_errors:
+            logger.info(f"Auto-fix: Found {len(fixable_errors)} fixable errors, showing fix dialog")
+            QTimer.singleShot(500, self.fix_issues)
 
     def fix_issues(self):
         """Automatically fix detected issues."""
