@@ -256,6 +256,17 @@ class ConfigurationPage(QWizardPage):
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
 
+        # Connect text changes to notify wizard of completion status
+        self.hostname_edit.textChanged.connect(self.completeChanged)
+        self.output_path_edit.textChanged.connect(self.completeChanged)
+
+    def isComplete(self):
+        """Check if page has all required fields filled."""
+        # Both required fields must have text
+        has_hostname = bool(self.hostname_edit.text().strip())
+        has_output = bool(self.output_path_edit.text().strip())
+        return has_hostname and has_output
+
     def _browse_output(self):
         """Browse for output file location."""
         file_path, _ = QFileDialog.getSaveFileName(
@@ -494,6 +505,11 @@ class PiImageBuilderWizard(QWizard):
             }
             QPushButton:pressed {
                 background-color: #2471a3;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+                color: #ecf0f1;
             }
         """)
 
