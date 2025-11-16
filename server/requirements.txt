@@ -24,6 +24,7 @@ python-dotenv==1.0.0
 
 # Utilities
 python-dateutil==2.8.2
+psutil==5.9.8
 
 # Testing
 pytest==7.4.4
