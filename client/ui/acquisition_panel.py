@@ -726,6 +726,10 @@ Samples Collected: {session.get('sample_count', 0)}
         except Exception as e:
             logger.error(f"Error refreshing equipment list: {e}")
 
+    def refresh(self):
+        """Refresh acquisition panel data."""
+        self.refresh_sessions(silent=True)
+
     def refresh_sessions(self, silent: bool = False):
         """Refresh active acquisition sessions."""
         if not self.client:

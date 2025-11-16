@@ -34,7 +34,7 @@ async def get_all_equipment_health():
     from equipment.manager import equipment_manager
 
     try:
-        equipment_ids = list(equipment_manager._equipment.keys())
+        equipment_ids = list(equipment_manager.equipment.keys())
         health_status = {}
 
         for eq_id in equipment_ids:

@@ -953,6 +953,31 @@ class LabLinkLauncher(QMainWindow):
         info_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
         main_layout.addWidget(info_label)
 
+    def _check_externally_managed(self) -> bool:
+        """Check if Python is externally managed (PEP 668)."""
+        if sys.prefix != sys.base_prefix:
+            return False
+
+        import sysconfig
+        stdlib = sysconfig.get_path('stdlib')
+        if stdlib:
+            marker = Path(stdlib) / 'EXTERNALLY-MANAGED'
+            return marker.exists()
+        return False
+
+    def _check_command_exists(self, command: str) -> bool:
+        """Check if a command exists in PATH."""
+        try:
+            result = subprocess.run(
+                ['which', command],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
+
     def check_all(self):
         """Check all system components."""
         logger.info("Starting comprehensive system check")

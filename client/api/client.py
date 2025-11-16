@@ -52,8 +52,9 @@ class LabLinkClient:
         self.authenticated = False
 
         # Initialize WebSocket manager if available
+        # Note: WebSocket is on the same port as API, not a separate port
         if WebSocketManager:
-            self.ws_manager = WebSocketManager(host=host, port=ws_port)
+            self.ws_manager = WebSocketManager(host=host, port=api_port)
         else:
             self.ws_manager = None
             logger.warning("WebSocket manager not available")
@@ -1354,7 +1355,7 @@ class LabLinkClient:
         Returns:
             Server information
         """
-        response = self._session.get(f"http://{self.host}:{self.api_port}/")
+        response = self._session.get(f"http://{self.host}:{self.api_port}/api")
         response.raise_for_status()
         return response.json()
 
