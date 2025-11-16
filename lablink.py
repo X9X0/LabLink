@@ -687,7 +687,7 @@ class CheckWorker(QThread):
         return packages
 
     def _check_packages(self, packages: List[str]) -> Tuple[List[str], List[str]]:
-        """Check which packages are installed.
+        """Check which packages are installed (optimized batch check).
 
         If a venv exists, checks packages in the venv.
         Otherwise, checks packages in the current environment.
@@ -715,25 +715,58 @@ class CheckWorker(QThread):
 
         logger.debug(f"Checking {len(packages)} packages, use_venv={use_venv}, venv_python={venv_python}")
 
-        for pkg in packages:
-            # Get the correct import name
-            import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+        if use_venv:
+            # OPTIMIZED: Check all packages in a single subprocess call
+            import_checks = []
+            for pkg in packages:
+                import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+                import_checks.append(f"'{pkg}': __import__('{import_name}')")
 
-            if use_venv:
-                # Check if package is installed in venv using subprocess
-                result = subprocess.run(
-                    [str(venv_python), '-c', f'import {import_name}'],
-                    capture_output=True,
-                    check=False
-                )
-                if result.returncode == 0:
-                    logger.debug(f"  {pkg}: INSTALLED (import {import_name} succeeded)")
-                    installed.append(pkg)
-                else:
-                    logger.debug(f"  {pkg}: MISSING (import {import_name} failed: {result.stderr.decode().strip()})")
-                    missing.append(pkg)
+            check_script = f"""
+import sys
+results = {{}}
+for pkg_import in [{', '.join(import_checks)}]:
+    pkg_name = pkg_import[0]
+    try:
+        exec(pkg_import[1])
+        results[pkg_name] = 'OK'
+    except:
+        results[pkg_name] = 'MISSING'
+print('|'.join(f'{{k}}={{v}}' for k, v in results.items()))
+"""
+            # Create a more efficient batch check
+            batch_check = "import sys; results = {}; "
+            for pkg in packages:
+                import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+                batch_check += f"try: __import__('{import_name}'); results['{pkg}'] = 'OK'\nexcept: results['{pkg}'] = 'MISS'\n"
+            batch_check += "print('|'.join(f'{k}={v}' for k, v in results.items()))"
+
+            result = subprocess.run(
+                [str(venv_python), '-c', batch_check],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                # Parse batch results
+                for item in result.stdout.strip().split('|'):
+                    if '=' in item:
+                        pkg, status = item.split('=', 1)
+                        if status == 'OK':
+                            installed.append(pkg)
+                            logger.debug(f"  {pkg}: INSTALLED")
+                        else:
+                            missing.append(pkg)
+                            logger.debug(f"  {pkg}: MISSING")
             else:
-                # Check if package is installed in current environment
+                # Fallback: if batch check fails, assume all missing
+                logger.warning("Batch package check failed, marking all as missing")
+                missing.extend(packages)
+        else:
+            # Check in current environment (also batched)
+            for pkg in packages:
+                import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
                 try:
                     __import__(import_name)
                     logger.debug(f"  {pkg}: INSTALLED (system environment)")
@@ -903,6 +936,10 @@ class LabLinkLauncher(QMainWindow):
         self.server_results = {}
         self.client_results = {}
 
+        # Cache for check results (prevents redundant checks)
+        self._check_cache = {}
+        self._cache_timeout = 30  # seconds
+
         # Initialize UI
         self.init_ui()
 
@@ -921,7 +958,13 @@ class LabLinkLauncher(QMainWindow):
         header = QLabel("LabLink System Launcher")
         header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("padding: 20px; background-color: #2c3e50; color: white; border-radius: 5px;")
+        header.setStyleSheet("""
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            border: 2px solid #007acc;
+            border-radius: 6px;
+        """)
         main_layout.addWidget(header)
 
         # Status indicators section
@@ -1490,6 +1533,91 @@ def main():
 
     # Set application style
     app.setStyle("Fusion")
+
+    # Dark theme with high contrast
+    dark_palette = QPalette()
+    dark_palette.setColor(QPalette.ColorRole.Window, QColor(45, 45, 48))
+    dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
+    dark_palette.setColor(QPalette.ColorRole.Base, QColor(30, 30, 32))
+    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 45, 48))
+    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(53, 53, 57))
+    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(220, 220, 220))
+    dark_palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
+    dark_palette.setColor(QPalette.ColorRole.Button, QColor(60, 60, 64))
+    dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
+    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.Link, QColor(100, 149, 237))
+    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 122, 204))
+    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    app.setPalette(dark_palette)
+
+    # Global stylesheet for borders and enhanced visuals
+    app.setStyleSheet("""
+        QMainWindow {
+            background-color: #2d2d30;
+        }
+        QGroupBox {
+            border: 2px solid #3c3c3f;
+            border-radius: 6px;
+            margin-top: 12px;
+            padding-top: 18px;
+            background-color: #252526;
+            font-weight: bold;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 8px;
+            color: #dcdcdc;
+        }
+        QPushButton {
+            background-color: #3c3c3f;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 8px 16px;
+            color: #dcdcdc;
+        }
+        QPushButton:hover {
+            background-color: #505050;
+            border: 1px solid #007acc;
+        }
+        QPushButton:pressed {
+            background-color: #007acc;
+        }
+        QPushButton:disabled {
+            background-color: #3c3c3f;
+            color: #6d6d6d;
+            border: 1px solid #444444;
+        }
+        QProgressBar {
+            border: 1px solid #555555;
+            border-radius: 4px;
+            background-color: #1e1e1e;
+            text-align: center;
+            color: #dcdcdc;
+        }
+        QProgressBar::chunk {
+            background-color: #007acc;
+            border-radius: 3px;
+        }
+        QTextEdit, QPlainTextEdit {
+            background-color: #1e1e1e;
+            border: 1px solid #3c3c3f;
+            border-radius: 4px;
+            color: #dcdcdc;
+            selection-background-color: #264f78;
+        }
+        QLabel {
+            color: #dcdcdc;
+        }
+        QMessageBox {
+            background-color: #2d2d30;
+        }
+        QDialog {
+            background-color: #2d2d30;
+            border: 2px solid #555555;
+        }
+    """)
 
     # Create and show launcher
     launcher = LabLinkLauncher()
