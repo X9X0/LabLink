@@ -143,47 +143,61 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             else:
                 command = ['bash', '-c', script_wrapper]
 
-            # Run build script
+            # Run build script with unbuffered binary mode
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=0,  # Unbuffered
+                bufsize=0,  # Unbuffered - only works properly in binary mode
             )
 
             logger.info(f"Process started with PID: {process.pid}")
             self.output.emit(f"Process started (PID: {process.pid})\n")
 
-            # Monitor progress
+            # Monitor progress - read in binary mode for true unbuffered I/O
             line_count = 0
-            for line in iter(process.stdout.readline, ""):
-                if not line:
+            partial_line = b''
+
+            while True:
+                # Read one byte at a time for truly unbuffered output
+                char = process.stdout.read(1)
+                if not char:
                     break
 
-                line_count += 1
-                logger.debug(f"Build output [{line_count}]: {line.strip()}")
-                self.output.emit(line)
+                partial_line += char
 
-                # Parse progress from output
-                if "Downloading" in line:
-                    self.progress.emit(10, "Downloading base image...")
-                elif "Expanding" in line or "Creating" in line:
-                    self.progress.emit(20, "Expanding image...")
-                elif "Mounting" in line:
-                    self.progress.emit(30, "Mounting image...")
-                elif "Configuring" in line:
-                    self.progress.emit(50, "Configuring system...")
-                elif "Installing" in line:
-                    self.progress.emit(60, "Installing LabLink...")
-                elif "Creating systemd" in line:
-                    self.progress.emit(70, "Setting up auto-start...")
-                elif "Unmounting" in line:
-                    self.progress.emit(80, "Finalizing image...")
-                elif "Compressing" in line:
-                    self.progress.emit(90, "Compressing image...")
-                elif "SUCCESS" in line or "Complete" in line:
-                    self.progress.emit(100, "Build complete!")
+                # When we hit a newline, emit the complete line
+                if char == b'\n':
+                    try:
+                        line = partial_line.decode('utf-8', errors='replace')
+                        line_count += 1
+                        logger.debug(f"Build output [{line_count}]: {line.strip()}")
+                        self.output.emit(line)
+
+                        # Parse progress from output
+                        if "Downloading" in line:
+                            self.progress.emit(10, "Downloading base image...")
+                        elif "Expanding" in line or "Creating" in line:
+                            self.progress.emit(20, "Expanding image...")
+                        elif "Mounting" in line:
+                            self.progress.emit(30, "Mounting image...")
+                        elif "Configuring" in line:
+                            self.progress.emit(50, "Configuring system...")
+                        elif "Installing" in line:
+                            self.progress.emit(60, "Installing LabLink...")
+                        elif "Creating systemd" in line:
+                            self.progress.emit(70, "Setting up auto-start...")
+                        elif "Unmounting" in line:
+                            self.progress.emit(80, "Finalizing image...")
+                        elif "Compressing" in line:
+                            self.progress.emit(90, "Compressing image...")
+                        elif "SUCCESS" in line or "Complete" in line:
+                            self.progress.emit(100, "Build complete!")
+
+                        partial_line = b''
+                    except Exception as e:
+                        logger.error(f"Error decoding line: {e}")
+                        partial_line = b''
 
             logger.info(f"Process output loop ended. Total lines: {line_count}")
             process.wait()
