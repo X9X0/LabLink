@@ -31,7 +31,7 @@ class ImageWriterThread(QThread):
     finished = pyqtSignal(bool, str)  # Success, message
 
     def __init__(self, image_path: str, device_path: str, verify: bool = True):
-        """Initialize writer thread.
+        r"""Initialize writer thread.
 
         Args:
             image_path: Path to image file
