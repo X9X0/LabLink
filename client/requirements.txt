@@ -19,7 +19,7 @@ zeroconf==0.132.2
 # Data Handling
 numpy==1.26.3
 pandas==2.2.0
-h5py==3.10.0
+h5py==3.15.1
 
 # Configuration
 pydantic==2.5.3
