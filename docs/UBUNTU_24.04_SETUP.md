@@ -26,15 +26,38 @@ cd LabLink
 python3 lablink.py
 ```
 
-**That's it!** The LabLink GUI launcher will:
-- ✅ Check your environment automatically
-- ✅ Detect missing system packages (Qt libraries, USB support, etc.)
-- ✅ **Install system packages automatically with your permission**
-- ✅ Show you what's missing with colored LED indicators
-- ✅ Install Python dependencies with one click
-- ✅ Let you start the server or client with one click
+**What happens next:**
+
+1. **First run**: If pip is not installed, you'll see a clear message:
+   ```
+   ERROR: pip is not installed
+
+   On Ubuntu 24.04, install pip with:
+     sudo apt update
+     sudo apt install -y python3-pip python3-venv
+   ```
+   Just run that command and try again!
+
+2. **Second run**: The launcher will install PyQt6 (needed for the GUI)
+
+3. **Third run**: The launcher opens and automatically:
+   - ✅ Checks your environment
+   - ✅ Detects missing system packages (Qt libraries, USB support, etc.)
+   - ✅ **Installs system packages automatically with your permission**
+   - ✅ Shows you what's missing with colored LED indicators
+   - ✅ Installs Python dependencies with one click
+   - ✅ Lets you start the server or client with one click
 
 The launcher uses `pkexec` for a graphical password prompt when installing system packages, so you won't need to type commands in the terminal.
+
+**TL;DR:** On a completely fresh Ubuntu 24.04, you'll run:
+```bash
+# If you get an error about pip, run this first:
+sudo apt update && sudo apt install -y python3-pip python3-venv
+
+# Then the launcher works automatically
+python3 lablink.py
+```
 
 ---
 
@@ -252,6 +275,28 @@ sudo ufw enable
 ---
 
 ## 🐛 Troubleshooting
+
+### "pip is not installed" error
+
+**Most common on fresh Ubuntu 24.04!**
+
+If you see:
+```
+ERROR: pip is not installed
+/usr/bin/python3: No module named pip
+```
+
+This is because Ubuntu 24.04 doesn't include pip by default. Install it:
+
+```bash
+sudo apt update
+sudo apt install -y python3-pip python3-venv
+```
+
+Then run the launcher again:
+```bash
+python3 lablink.py
+```
 
 ### "PyQt6 is not installed" on first run
 

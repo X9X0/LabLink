@@ -24,7 +24,30 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-# Qt imports
+# Bootstrap check: Ensure pip is available before trying to install PyQt6
+def check_and_install_pip():
+    """Check if pip is available, and install if needed."""
+    # Check if pip is available
+    result = subprocess.run(
+        [sys.executable, '-m', 'pip', '--version'],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    if result.returncode != 0:
+        print("\n" + "="*70)
+        print("ERROR: pip is not installed")
+        print("="*70)
+        print("\nLabLink requires pip to install dependencies.")
+        print("\nOn Ubuntu 24.04, install pip with:")
+        print("  sudo apt update")
+        print("  sudo apt install -y python3-pip python3-venv")
+        print("\nOr use the system package manager to install LabLink dependencies.")
+        print("="*70 + "\n")
+        sys.exit(1)
+
+# Qt imports with bootstrap handling
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -34,11 +57,38 @@ try:
     from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize
     from PyQt6.QtGui import QPainter, QColor, QFont, QPalette, QIcon
 except ImportError:
-    print("ERROR: PyQt6 is not installed.")
-    print("Installing PyQt6 for the launcher...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
-    print("PyQt6 installed. Please restart the application.")
-    sys.exit(0)
+    print("\n" + "="*70)
+    print("PyQt6 is not installed - Installing now...")
+    print("="*70)
+
+    # Make sure pip is available first
+    check_and_install_pip()
+
+    # Try to install PyQt6
+    try:
+        print("\nInstalling PyQt6 for the launcher...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
+        print("\n" + "="*70)
+        print("SUCCESS: PyQt6 installed successfully!")
+        print("="*70)
+        print("\nPlease run the launcher again:")
+        print(f"  python3 {sys.argv[0]}")
+        print("="*70 + "\n")
+        sys.exit(0)
+    except subprocess.CalledProcessError as e:
+        print("\n" + "="*70)
+        print("ERROR: Failed to install PyQt6")
+        print("="*70)
+        print(f"\nError: {e}")
+        print("\nPlease install manually:")
+        print("  python3 -m pip install PyQt6")
+        print("\nOr use a virtual environment:")
+        print("  python3 -m venv venv")
+        print("  source venv/bin/activate")
+        print("  pip install PyQt6")
+        print(f"  python3 {sys.argv[0]}")
+        print("="*70 + "\n")
+        sys.exit(1)
 
 
 # Status levels
