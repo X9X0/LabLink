@@ -123,8 +123,20 @@ expand_image() {
 
     print_step "Expanding image by ${extra_space_mb}MB..."
 
+    # Debug: verify file exists before dd
+    if [ ! -f "$img_file" ]; then
+        print_error "Image file not found before expand: $img_file"
+        ls -lh "$(dirname "$img_file")/" || true
+        exit 1
+    fi
+
+    print_step "Image file verified: $(ls -lh "$img_file")"
+
     # Add extra space for LabLink installation
-    dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file"
+    dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file" 2>&1 || {
+        print_error "Failed to expand image with dd"
+        exit 1
+    }
 
     # Resize partition
     parted "$img_file" resizepart 2 100% || true
