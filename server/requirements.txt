@@ -25,6 +25,8 @@ python-dotenv==1.0.0
 # Utilities
 python-dateutil==2.8.2
 psutil==5.9.8
+apscheduler==3.10.4
+zeroconf==0.132.2
 
 # Testing
 pytest==7.4.4
