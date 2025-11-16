@@ -221,7 +221,9 @@ class ConfigurationPage(QWizardPage):
         output_group = QGroupBox("Output Image")
         output_layout = QHBoxLayout()
 
-        self.output_path_edit = QLineEdit()
+        # Set default path directly in constructor, same as hostname field
+        default_path = os.path.expanduser("~/lablink-pi.img")
+        self.output_path_edit = QLineEdit(default_path)
         self.output_path_edit.setPlaceholderText("Select where to save the image...")
         output_layout.addWidget(self.output_path_edit)
 
@@ -253,13 +255,6 @@ class ConfigurationPage(QWizardPage):
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
-
-    def initializePage(self):
-        """Initialize page when shown - set default values here."""
-        # Set default output path when page is displayed
-        if not self.output_path_edit.text():
-            default_path = os.path.expanduser("~/lablink-pi.img")
-            self.output_path_edit.setText(default_path)
 
     def _browse_output(self):
         """Browse for output file location."""
