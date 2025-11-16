@@ -166,6 +166,20 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             logger.info(f"Process started with PID: {process.pid}")
             self.output.emit(f"Process started (PID: {process.pid})\n")
 
+            # Send newlines to stdin to skip interactive prompts
+            # The script will use the environment variables we set
+            try:
+                # Send 6 newlines to accept all default prompts:
+                # 1. Output image name
+                # 2. Hostname
+                # 3. Enable SSH
+                # 4. Wi-Fi SSID (empty to skip)
+                # 5. Admin password
+                # Plus one extra for safety
+                os.write(master_fd, b'\n' * 6)
+            except Exception as e:
+                logger.warning(f"Failed to write to stdin: {e}")
+
             # Monitor progress - read from pty master for unbuffered I/O
             line_count = 0
             partial_line = b''
