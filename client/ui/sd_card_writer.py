@@ -121,14 +121,23 @@ class ImageWriterThread(QThread):
     def _write_unix(self) -> bool:
         """Write image on Linux/macOS using dd."""
         try:
+            # Check if pkexec is available, otherwise fall back to sudo
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
+
+            privilege_cmd = 'pkexec' if pkexec_available else 'sudo'
+
             # Decompress if needed
             if self.image_path.endswith(".xz"):
                 self.progress.emit(20, "Decompressing image...")
-                cmd = f"xz -dc '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
+                cmd = f"xz -dc '{self.image_path}' | {privilege_cmd} dd of={self.device_path} bs=4M status=progress"
             elif self.image_path.endswith(".gz"):
-                cmd = f"gunzip -c '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
+                cmd = f"gunzip -c '{self.image_path}' | {privilege_cmd} dd of={self.device_path} bs=4M status=progress"
             else:
-                cmd = f"sudo dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
+                cmd = f"{privilege_cmd} dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
 
             # Execute dd with progress monitoring
             process = subprocess.Popen(
@@ -740,16 +749,7 @@ class SDCardWriter(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # Check for admin/root privileges
-        if platform.system() != "Windows" and os.geteuid() != 0:
-            QMessageBox.warning(
-                self,
-                "Insufficient Privileges",
-                "SD card writing requires administrator/root privileges.\n\n"
-                "Please run the LabLink client with sudo:\n"
-                "sudo python main.py",
-            )
-            return
+        # No privilege check needed - pkexec will handle it in the write thread
 
         # Start write
         self._log("=" * 60)
