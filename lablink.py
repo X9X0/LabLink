@@ -20,10 +20,27 @@ import subprocess
 import platform
 import json
 import shutil
+import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+    handlers=[
+        logging.FileHandler('lablink_debug.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Log startup
+logger.info("=" * 70)
+logger.info("LabLink Launcher Debug Log Started")
+logger.info("=" * 70)
 
 # Bootstrap check: Ensure pip is available before trying to install PyQt6
 def check_and_install_pip():
@@ -805,6 +822,7 @@ class LabLinkLauncher(QMainWindow):
 
     def check_all(self):
         """Check all system components."""
+        logger.info("Starting comprehensive system check")
         self.progress_label.setText("Checking system...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
@@ -827,6 +845,10 @@ class LabLinkLauncher(QMainWindow):
 
     def on_env_checked(self, results):
         """Handle environment check completion."""
+        logger.info(f"Environment check completed with {len(results)} results")
+        for key, result in results.items():
+            logger.debug(f"  {key}: {result.status.name} - {result.message}")
+
         self.env_results = results
         self.update_led_status(self.env_led, results)
 
@@ -892,6 +914,8 @@ class LabLinkLauncher(QMainWindow):
 
     def update_led_status(self, led: LEDIndicator, results: Dict[str, CheckResult]):
         """Update LED based on check results."""
+        logger.debug(f"Updating LED '{led.label}' with {len(results)} results")
+
         if not results:
             led.set_status(StatusLevel.UNKNOWN)
             return
@@ -901,10 +925,13 @@ class LabLinkLauncher(QMainWindow):
         has_warning = any(r.status == StatusLevel.WARNING for r in results.values())
 
         if has_error:
+            logger.info(f"  Setting {led.label} LED to RED (has errors)")
             led.set_status(StatusLevel.ERROR)
         elif has_warning:
+            logger.info(f"  Setting {led.label} LED to YELLOW (has warnings)")
             led.set_status(StatusLevel.WARNING)
         else:
+            logger.info(f"  Setting {led.label} LED to GREEN (all OK)")
             led.set_status(StatusLevel.OK)
 
     def update_launch_buttons(self):
@@ -992,6 +1019,10 @@ class LabLinkLauncher(QMainWindow):
 
     def apply_fixes(self, issues: List[CheckResult]):
         """Apply fixes for issues."""
+        logger.info(f"Starting to apply {len(issues)} fixes")
+        for issue in issues:
+            logger.debug(f"  Will fix: {issue.name} - {issue.fix_command}")
+
         self.progress_label.setText("Fixing issues...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(issues))
@@ -1014,12 +1045,19 @@ class LabLinkLauncher(QMainWindow):
 
         sorted_issues = sorted(issues, key=fix_priority)
 
+        # Check environment management status
+        venv_exists = Path("venv/bin/pip").exists()
+        externally_managed = self._check_externally_managed()
+        logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
+
         for i, issue in enumerate(sorted_issues):
+            logger.info(f"Fixing issue {i+1}/{len(sorted_issues)}: {issue.name}")
             self.progress_label.setText(f"Fixing: {issue.name}")
             self.progress_bar.setValue(i)
 
             try:
                 if issue.fix_command == "ensurepip":
+                    logger.info("Running ensurepip")
                     subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
 
                 elif issue.fix_command == "create_venv":
@@ -1028,12 +1066,16 @@ class LabLinkLauncher(QMainWindow):
 
                     # If venv exists but pip doesn't, it's broken - delete it
                     if venv_path.exists() and not venv_pip.exists():
+                        logger.warning(f"Venv exists but is broken (no pip at {venv_pip}), recreating...")
                         self.progress_label.setText("Removing broken venv...")
                         shutil.rmtree(venv_path)
+                        logger.info("Removed broken venv")
 
                     # Create venv if it doesn't exist
                     if not venv_path.exists():
+                        logger.info("Creating virtual environment...")
                         subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                        logger.info("Virtual environment created successfully")
 
                         # Verify pip was created
                         if not venv_pip.exists():
@@ -1042,23 +1084,31 @@ class LabLinkLauncher(QMainWindow):
                 elif issue.fix_command.startswith("pip_install:"):
                     target = issue.fix_command.split(':')[1]
                     req_file = f"{target}/requirements.txt"
+                    logger.info(f"Installing pip packages from {req_file}")
 
                     # Determine which pip to use
                     venv_pip = Path("venv/bin/pip")
                     if venv_pip.exists():
                         # Use venv pip if it exists
+                        logger.info(f"Using venv pip: {venv_pip}")
                         subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
                     else:
                         # Fall back to system pip (via python -m pip)
+                        logger.info("Using system pip")
                         subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
 
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
+                    logger.info(f"Installing apt packages: {packages}")
                     success = self._install_apt_packages(packages)
                     if not success:
                         raise Exception("Failed to install system packages")
+                    logger.info("apt install completed successfully")
 
             except Exception as e:
+                logger.error(f"Failed to fix {issue.name}: {str(e)}", exc_info=True)
                 QMessageBox.warning(
                     self,
                     "Fix Failed",
@@ -1067,6 +1117,7 @@ class LabLinkLauncher(QMainWindow):
 
         self.progress_bar.setValue(len(sorted_issues))
         self.progress_label.setText("✓ Fixes applied")
+        logger.info(f"All fixes applied, re-checking system in 1 second...")
 
         # Re-check after fixes
         QTimer.singleShot(1000, self.check_all)
