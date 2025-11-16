@@ -108,15 +108,16 @@ class ImageBuildThread(QThread):
 
             if pkexec_available:
                 # Run with pkexec for graphical sudo prompt
+                # Use stdbuf to force unbuffered output so we see progress in real-time
                 logger.info("Running with pkexec for root privileges")
                 self.output.emit("Running with elevated privileges (pkexec)...\n")
-                command = ['pkexec', 'bash', str(script_path)]
+                command = ['pkexec', 'stdbuf', '-oL', '-eL', 'bash', str(script_path)]
             else:
                 # Warn that the script needs sudo
                 logger.warning("pkexec not available, script may fail without sudo")
                 self.output.emit("WARNING: This script requires root privileges\n")
                 self.output.emit("pkexec not found - build may fail\n")
-                command = ['bash', str(script_path)]
+                command = ['stdbuf', '-oL', '-eL', 'bash', str(script_path)]
 
             # Run build script
             process = subprocess.Popen(
