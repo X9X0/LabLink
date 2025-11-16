@@ -682,6 +682,100 @@ class CheckWorker(QThread):
         return installed, missing
 
 
+class FixWorker(QThread):
+    """Background worker for applying fixes."""
+
+    progress_update = pyqtSignal(str, int)  # message, progress value
+    fix_error = pyqtSignal(str, str)  # issue name, error message
+    finished = pyqtSignal()
+
+    def __init__(self, issues: List[CheckResult], parent_launcher):
+        super().__init__()
+        self.issues = issues
+        self.launcher = parent_launcher
+
+    def run(self):
+        """Apply fixes in background."""
+        logger.info(f"FixWorker: Starting to apply {len(self.issues)} fixes")
+
+        # Sort fixes by priority
+        def fix_priority(issue):
+            if issue.fix_command.startswith("apt_install:"):
+                return 0
+            elif issue.fix_command == "ensurepip":
+                return 1
+            elif issue.fix_command == "create_venv":
+                return 2
+            elif issue.fix_command.startswith("pip_install:"):
+                return 3
+            return 4
+
+        sorted_issues = sorted(self.issues, key=fix_priority)
+
+        # Check environment status
+        venv_exists = Path("venv/bin/pip").exists()
+        externally_managed = self.launcher._check_externally_managed()
+        logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
+
+        for i, issue in enumerate(sorted_issues):
+            logger.info(f"Fixing issue {i+1}/{len(sorted_issues)}: {issue.name}")
+            self.progress_update.emit(f"Fixing: {issue.name}", i)
+
+            try:
+                if issue.fix_command == "ensurepip":
+                    logger.info("Running ensurepip")
+                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
+
+                elif issue.fix_command == "create_venv":
+                    venv_path = Path("venv")
+                    venv_pip = venv_path / "bin" / "pip"
+
+                    if venv_path.exists() and not venv_pip.exists():
+                        logger.warning(f"Venv exists but is broken, recreating...")
+                        self.progress_update.emit("Removing broken venv...", i)
+                        shutil.rmtree(venv_path)
+                        logger.info("Removed broken venv")
+
+                    if not venv_path.exists():
+                        logger.info("Creating virtual environment...")
+                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                        logger.info("Virtual environment created successfully")
+
+                        if not venv_pip.exists():
+                            raise Exception(f"venv created but {venv_pip} not found. Ensure python3-venv is installed.")
+
+                elif issue.fix_command.startswith("pip_install:"):
+                    target = issue.fix_command.split(':')[1]
+                    req_file = f"{target}/requirements.txt"
+                    logger.info(f"Installing pip packages from {req_file}")
+
+                    venv_pip = Path("venv/bin/pip")
+                    if venv_pip.exists():
+                        logger.info(f"Using venv pip: {venv_pip}")
+                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
+                    else:
+                        logger.info("Using system pip")
+                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                        logger.info("Pip install completed successfully")
+
+                elif issue.fix_command.startswith("apt_install:"):
+                    packages = issue.fix_command.split(':')[1]
+                    logger.info(f"Installing apt packages: {packages}")
+                    success = self.launcher._install_apt_packages(packages)
+                    if not success:
+                        raise Exception("Failed to install system packages")
+                    logger.info("apt install completed successfully")
+
+            except Exception as e:
+                logger.error(f"Failed to fix {issue.name}: {str(e)}", exc_info=True)
+                self.fix_error.emit(issue.name, str(e))
+
+        logger.info(f"All fixes applied")
+        self.progress_update.emit("✓ Fixes applied", len(sorted_issues))
+        self.finished.emit()
+
+
 class IssueDetailsDialog(QDialog):
     """Dialog to show detailed information about issues."""
 
@@ -1055,7 +1149,7 @@ class LabLinkLauncher(QMainWindow):
             self.apply_fixes(fixable_issues)
 
     def apply_fixes(self, issues: List[CheckResult]):
-        """Apply fixes for issues."""
+        """Apply fixes for issues in background."""
         logger.info(f"Starting to apply {len(issues)} fixes")
         for issue in issues:
             logger.debug(f"  Will fix: {issue.name} - {issue.fix_command}")
@@ -1064,98 +1158,34 @@ class LabLinkLauncher(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(issues))
 
-        # Sort fixes to ensure correct order of operations:
-        # 1. apt_install (system packages like python3-venv)
-        # 2. ensurepip (if needed)
-        # 3. create_venv (requires python3-venv to be installed)
-        # 4. pip_install (requires venv to exist)
-        def fix_priority(issue):
-            if issue.fix_command.startswith("apt_install:"):
-                return 0
-            elif issue.fix_command == "ensurepip":
-                return 1
-            elif issue.fix_command == "create_venv":
-                return 2
-            elif issue.fix_command.startswith("pip_install:"):
-                return 3
-            return 4
+        # Disable buttons during fix
+        self.fix_btn.setEnabled(False)
+        self.server_btn.setEnabled(False)
+        self.client_btn.setEnabled(False)
 
-        sorted_issues = sorted(issues, key=fix_priority)
+        # Create and start fix worker
+        self.fix_worker = FixWorker(issues, self)
+        self.fix_worker.progress_update.connect(self.on_fix_progress)
+        self.fix_worker.fix_error.connect(self.on_fix_error)
+        self.fix_worker.finished.connect(self.on_fixes_complete)
+        self.fix_worker.start()
 
-        # Check environment management status
-        venv_exists = Path("venv/bin/pip").exists()
-        externally_managed = self._check_externally_managed()
-        logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
+    def on_fix_progress(self, message: str, value: int):
+        """Update progress during fixes."""
+        self.progress_label.setText(message)
+        self.progress_bar.setValue(value)
 
-        for i, issue in enumerate(sorted_issues):
-            logger.info(f"Fixing issue {i+1}/{len(sorted_issues)}: {issue.name}")
-            self.progress_label.setText(f"Fixing: {issue.name}")
-            self.progress_bar.setValue(i)
+    def on_fix_error(self, issue_name: str, error_message: str):
+        """Handle fix error."""
+        QMessageBox.warning(
+            self,
+            "Fix Failed",
+            f"Failed to fix {issue_name}:\n{error_message}"
+        )
 
-            try:
-                if issue.fix_command == "ensurepip":
-                    logger.info("Running ensurepip")
-                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
-
-                elif issue.fix_command == "create_venv":
-                    venv_path = Path("venv")
-                    venv_pip = venv_path / "bin" / "pip"
-
-                    # If venv exists but pip doesn't, it's broken - delete it
-                    if venv_path.exists() and not venv_pip.exists():
-                        logger.warning(f"Venv exists but is broken (no pip at {venv_pip}), recreating...")
-                        self.progress_label.setText("Removing broken venv...")
-                        shutil.rmtree(venv_path)
-                        logger.info("Removed broken venv")
-
-                    # Create venv if it doesn't exist
-                    if not venv_path.exists():
-                        logger.info("Creating virtual environment...")
-                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
-                        logger.info("Virtual environment created successfully")
-
-                        # Verify pip was created
-                        if not venv_pip.exists():
-                            raise Exception(f"venv created but {venv_pip} not found. Ensure python3-venv is installed.")
-
-                elif issue.fix_command.startswith("pip_install:"):
-                    target = issue.fix_command.split(':')[1]
-                    req_file = f"{target}/requirements.txt"
-                    logger.info(f"Installing pip packages from {req_file}")
-
-                    # Determine which pip to use
-                    venv_pip = Path("venv/bin/pip")
-                    if venv_pip.exists():
-                        # Use venv pip if it exists
-                        logger.info(f"Using venv pip: {venv_pip}")
-                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
-                    else:
-                        # Fall back to system pip (via python -m pip)
-                        logger.info("Using system pip")
-                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
-
-                elif issue.fix_command.startswith("apt_install:"):
-                    packages = issue.fix_command.split(':')[1]
-                    logger.info(f"Installing apt packages: {packages}")
-                    success = self._install_apt_packages(packages)
-                    if not success:
-                        raise Exception("Failed to install system packages")
-                    logger.info("apt install completed successfully")
-
-            except Exception as e:
-                logger.error(f"Failed to fix {issue.name}: {str(e)}", exc_info=True)
-                QMessageBox.warning(
-                    self,
-                    "Fix Failed",
-                    f"Failed to fix {issue.name}:\n{str(e)}"
-                )
-
-        self.progress_bar.setValue(len(sorted_issues))
-        self.progress_label.setText("✓ Fixes applied")
-        logger.info(f"All fixes applied, re-checking system in 1 second...")
-
+    def on_fixes_complete(self):
+        """Handle fixes completion."""
+        logger.info("All fixes applied, re-checking system in 1 second...")
         # Re-check after fixes
         QTimer.singleShot(1000, self.check_all)
 
@@ -1268,6 +1298,19 @@ class LabLinkLauncher(QMainWindow):
         except Exception:
             return False
 
+    def _show_auto_close_message(self, title: str, message: str, timeout_ms: int = 3000):
+        """Show a message box that auto-closes after timeout."""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        # Auto-close after timeout
+        QTimer.singleShot(timeout_ms, msg_box.accept)
+
+        msg_box.exec()
+
     def launch_server(self):
         """Launch the LabLink server."""
         server_path = Path("server/main.py")
@@ -1300,10 +1343,10 @@ class LabLinkLauncher(QMainWindow):
             elif platform.system() == "Windows":
                 subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py'], shell=True)
 
-            QMessageBox.information(
-                self,
+            self._show_auto_close_message(
                 "Server Starting",
-                "LabLink server is starting in a new terminal window."
+                "LabLink server is starting in a new terminal window.\n\n"
+                "(This message will close automatically in 3 seconds)"
             )
         except Exception as e:
             QMessageBox.warning(
@@ -1339,10 +1382,10 @@ class LabLinkLauncher(QMainWindow):
                 cwd=str(lablink_root)
             )
 
-            QMessageBox.information(
-                self,
+            self._show_auto_close_message(
                 "Client Starting",
-                "LabLink client is starting..."
+                "LabLink client is starting...\n\n"
+                "(This message will close automatically in 3 seconds)"
             )
         except Exception as e:
             QMessageBox.warning(
