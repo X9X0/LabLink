@@ -1198,6 +1198,30 @@ class LabLinkLauncher(QMainWindow):
             )
             return False
 
+    def _check_externally_managed(self) -> bool:
+        """Check if Python is externally managed (PEP 668)."""
+        if sys.prefix != sys.base_prefix:
+            return False
+
+        import sysconfig
+        stdlib = sysconfig.get_path('stdlib')
+        if stdlib:
+            marker = Path(stdlib) / 'EXTERNALLY-MANAGED'
+            return marker.exists()
+        return False
+
+    def _check_command_exists(self, command: str) -> bool:
+        """Check if a command exists in PATH."""
+        try:
+            result = subprocess.run(
+                ['which', command],
+                capture_output=True,
+                check=False
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def launch_server(self):
         """Launch the LabLink server."""
         server_path = Path("server/main.py")
