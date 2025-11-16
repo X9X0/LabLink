@@ -279,6 +279,8 @@ class CheckWorker(QThread):
             results = self.check_server_dependencies()
         elif self.check_type == "client_deps":
             results = self.check_client_dependencies()
+        elif self.check_type == "utils_deps":
+            results = self.check_utils_dependencies()
 
         self.finished.emit(results)
 
@@ -655,6 +657,122 @@ class CheckWorker(QThread):
 
         return results
 
+    def check_utils_dependencies(self) -> Dict[str, CheckResult]:
+        """Check client utilities (deployment and discovery tools)."""
+        results = {}
+
+        self.progress.emit("Checking client utilities...")
+
+        # Utilities for deployment
+        deployment_utils = {
+            'paramiko': 'SSH client library for deployment',
+            'scp': 'SCP (secure copy) support',
+        }
+
+        # Utilities for network discovery
+        discovery_utils = {
+            'scapy': 'Network packet manipulation and discovery',
+            'zeroconf': 'mDNS/Bonjour service discovery',
+        }
+
+        all_utils = {**deployment_utils, **discovery_utils}
+
+        # Check which utilities are installed
+        installed = []
+        missing = []
+
+        # Map package names to import names for special cases
+        package_to_import = {
+            'python-dotenv': 'dotenv',
+            'python-dateutil': 'dateutil',
+            'pydantic-settings': 'pydantic_settings',
+            'pyserial': 'serial',
+            'pyusb': 'usb',
+            'PyJWT': 'jwt',
+        }
+
+        # Determine which Python to use for checking
+        venv_python = Path("venv/bin/python")
+        use_venv = venv_python.exists()
+
+        for pkg, description in all_utils.items():
+            # Get the correct import name
+            import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+
+            if use_venv:
+                # Check if package is installed in venv using subprocess
+                result = subprocess.run(
+                    [str(venv_python), '-c', f'import {import_name}'],
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    installed.append(pkg)
+                else:
+                    missing.append(pkg)
+            else:
+                # Check if package is installed in current environment
+                try:
+                    __import__(import_name)
+                    installed.append(pkg)
+                except ImportError:
+                    missing.append(pkg)
+
+        # Determine status
+        if not missing:
+            results['utils_deps'] = CheckResult(
+                "Client Utilities",
+                StatusLevel.OK,
+                f"All installed ({len(installed)})",
+                [
+                    f"✓ All {len(installed)} utilities are installed",
+                    "",
+                    "Deployment utilities:",
+                    *[f"  ✓ {pkg}: {deployment_utils[pkg]}" for pkg in deployment_utils if pkg in installed],
+                    "",
+                    "Discovery utilities:",
+                    *[f"  ✓ {pkg}: {discovery_utils[pkg]}" for pkg in discovery_utils if pkg in installed],
+                ]
+            )
+        else:
+            # Categorize missing utilities
+            missing_deployment = [p for p in missing if p in deployment_utils]
+            missing_discovery = [p for p in missing if p in discovery_utils]
+
+            details = [
+                f"✗ {len(missing)} utilities missing",
+                "",
+            ]
+
+            if missing_deployment:
+                details.append("Missing deployment utilities:")
+                for pkg in missing_deployment:
+                    details.append(f"  ✗ {pkg}: {deployment_utils[pkg]}")
+                details.append("")
+
+            if missing_discovery:
+                details.append("Missing discovery utilities:")
+                for pkg in missing_discovery:
+                    details.append(f"  ✗ {pkg}: {discovery_utils[pkg]}")
+                details.append("")
+
+            if installed:
+                details.append(f"Installed: {len(installed)}/{len(all_utils)}")
+
+            details.append("")
+            details.append("These utilities can be installed automatically.")
+
+            results['utils_deps'] = CheckResult(
+                "Client Utilities",
+                StatusLevel.ERROR,
+                f"{len(missing)} missing",
+                details,
+                fixable=True,
+                fix_command="pip_install:client_utils"
+            )
+
+        return results
+
     def _check_externally_managed(self) -> bool:
         """Check if Python is externally managed (PEP 668)."""
         if sys.prefix != sys.base_prefix:
@@ -828,18 +946,35 @@ class FixWorker(QThread):
 
                 elif issue.fix_command.startswith("pip_install:"):
                     target = issue.fix_command.split(':')[1]
-                    req_file = f"{target}/requirements.txt"
-                    logger.info(f"Installing pip packages from {req_file}")
 
-                    venv_pip = Path("venv/bin/pip")
-                    if venv_pip.exists():
-                        logger.info(f"Using venv pip: {venv_pip}")
-                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
+                    # Special handling for client utilities
+                    if target == "client_utils":
+                        logger.info("Installing client utilities packages")
+                        packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
+
+                        venv_pip = Path("venv/bin/pip")
+                        if venv_pip.exists():
+                            logger.info(f"Using venv pip: {venv_pip}")
+                            subprocess.check_call([str(venv_pip), 'install'] + packages)
+                            logger.info("Client utilities install completed successfully")
+                        else:
+                            logger.info("Using system pip")
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages)
+                            logger.info("Client utilities install completed successfully")
                     else:
-                        logger.info("Using system pip")
-                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
+                        # Standard requirements.txt installation
+                        req_file = f"{target}/requirements.txt"
+                        logger.info(f"Installing pip packages from {req_file}")
+
+                        venv_pip = Path("venv/bin/pip")
+                        if venv_pip.exists():
+                            logger.info(f"Using venv pip: {venv_pip}")
+                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                            logger.info("Pip install completed successfully")
+                        else:
+                            logger.info("Using system pip")
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                            logger.info("Pip install completed successfully")
 
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
@@ -928,6 +1063,7 @@ class LabLinkLauncher(QMainWindow):
         self.sys_results = {}
         self.server_results = {}
         self.client_results = {}
+        self.utils_results = {}
 
         # Initialize UI
         self.init_ui()
@@ -1001,6 +1137,11 @@ class LabLinkLauncher(QMainWindow):
         self.client_led = LEDIndicator("Client Dependencies")
         self.client_led.clicked.connect(self.show_client_details)
         status_layout.addWidget(self.client_led)
+
+        # Client utilities status
+        self.utils_led = LEDIndicator("Client Utilities (Deployment, Discovery)")
+        self.utils_led.clicked.connect(self.show_utils_details)
+        status_layout.addWidget(self.utils_led)
 
         status_group.setLayout(status_layout)
         main_layout.addWidget(status_group)
@@ -1283,6 +1424,22 @@ class LabLinkLauncher(QMainWindow):
         self.client_results = results
         self.update_led_status(self.client_led, results)
 
+        # Start next check
+        self.check_utils_deps()
+
+    def check_utils_deps(self):
+        """Check client utilities dependencies."""
+        worker = CheckWorker("utils_deps")
+        worker.progress.connect(self.update_progress)
+        worker.finished.connect(self.on_utils_checked)
+        worker.start()
+        self.utils_worker = worker
+
+    def on_utils_checked(self, results):
+        """Handle utilities dependencies check completion."""
+        self.utils_results = results
+        self.update_led_status(self.utils_led, results)
+
         # All checks complete
         self.progress_bar.setVisible(False)
         self.progress_label.setText("✓ Status check complete")
@@ -1369,12 +1526,18 @@ class LabLinkLauncher(QMainWindow):
             dialog = IssueDetailsDialog("Client Dependencies Details", self.client_results, self)
             dialog.exec()
 
+    def show_utils_details(self):
+        """Show utilities dependencies details."""
+        if self.utils_results:
+            dialog = IssueDetailsDialog("Client Utilities Details", self.utils_results, self)
+            dialog.exec()
+
     def auto_fix_if_needed(self):
         """Automatically prompt to fix issues if errors are detected."""
         fixable_errors = []
 
         # Collect fixable issues that are errors (not just warnings)
-        for results in [self.env_results, self.sys_results, self.server_results, self.client_results]:
+        for results in [self.env_results, self.sys_results, self.server_results, self.client_results, self.utils_results]:
             for result in results.values():
                 if result.fixable and result.fix_command and result.status == StatusLevel.ERROR:
                     fixable_errors.append(result)
@@ -1389,7 +1552,7 @@ class LabLinkLauncher(QMainWindow):
         fixable_issues = []
 
         # Collect all fixable issues
-        for results in [self.env_results, self.sys_results, self.server_results, self.client_results]:
+        for results in [self.env_results, self.sys_results, self.server_results, self.client_results, self.utils_results]:
             for result in results.values():
                 if result.fixable and result.fix_command:
                     fixable_issues.append(result)
