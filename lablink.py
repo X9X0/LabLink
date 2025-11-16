@@ -1284,14 +1284,20 @@ class LabLinkLauncher(QMainWindow):
         venv_python = Path("venv/bin/python")
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
+        # Get absolute path to LabLink root directory
+        lablink_root = Path.cwd().absolute()
+
         try:
-            # Launch in new terminal
+            # Launch in new terminal with proper module path
             if platform.system() == "Linux":
-                subprocess.Popen(['x-terminal-emulator', '-e', f'cd server && {python_exe} main.py'])
+                # Use python -m to run as a module, which handles imports correctly
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main'
+                subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                subprocess.Popen(['open', '-a', 'Terminal', 'server/main.py'])
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main'
+                subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd server && {python_exe} main.py'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {lablink_root} && {python_exe} -m server.main'], shell=True)
 
             QMessageBox.information(
                 self,
@@ -1321,9 +1327,16 @@ class LabLinkLauncher(QMainWindow):
         venv_python = Path("venv/bin/python")
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
+        # Get absolute path to LabLink root directory
+        lablink_root = Path.cwd().absolute()
+
         try:
-            # Launch client directly (GUI application)
-            subprocess.Popen([python_exe, str(client_path)])
+            # Launch client using python -m to handle imports correctly
+            # Change to LabLink root and run as module
+            subprocess.Popen(
+                [python_exe, '-m', 'client.main'],
+                cwd=str(lablink_root)
+            )
 
             QMessageBox.information(
                 self,
