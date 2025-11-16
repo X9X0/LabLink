@@ -222,6 +222,9 @@ class ConfigurationPage(QWizardPage):
         output_layout = QHBoxLayout()
 
         self.output_path_edit = QLineEdit()
+        # Set default output path so Next button is enabled
+        default_path = os.path.expanduser("~/lablink-pi.img")
+        self.output_path_edit.setText(default_path)
         self.output_path_edit.setPlaceholderText("Select where to save the image...")
         output_layout.addWidget(self.output_path_edit)
 
@@ -455,6 +458,45 @@ class PiImageBuilderWizard(QWizard):
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
         self.resize(700, 600)
+
+        # Apply visual styling
+        self.setStyleSheet("""
+            QWizard {
+                background-color: #ecf0f1;
+            }
+            QWizardPage {
+                background-color: #ecf0f1;
+            }
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: 2px solid #2471a3;
+                border-radius: 6px;
+                padding: 8px 15px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+                border: 2px solid #1f618d;
+            }
+            QPushButton:pressed {
+                background-color: #2471a3;
+            }
+        """)
 
         # Add pages
         self.config_page = ConfigurationPage()

@@ -343,11 +343,53 @@ class SDCardWriter(QDialog):
         self.setWindowTitle("SD Card Writer")
         self.resize(700, 600)
 
+        # Apply visual styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ecf0f1;
+            }
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: 2px solid #2471a3;
+                border-radius: 6px;
+                padding: 8px 15px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+                border: 2px solid #1f618d;
+            }
+            QPushButton:pressed {
+                background-color: #2471a3;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+            }
+        """)
+
         self._setup_ui()
 
     def _setup_ui(self):
         """Set up user interface."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
 
         # Header
         header = QLabel("<h2>SD Card Writer</h2>")
