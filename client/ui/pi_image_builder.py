@@ -148,12 +148,21 @@ class ImageBuildThread(QThread):
             ).returncode == 0
 
             # Build script wrapper that exports env vars
+            # Get current user for ownership fixing after build
+            import pwd
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            current_uid = os.getuid()
+            current_gid = os.getgid()
+
             script_wrapper = f"""#!/bin/bash
 export OUTPUT_IMAGE='{self.output_path}'
 export PI_HOSTNAME='{self.hostname}'
 export PI_MODEL='{self.pi_model}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
 export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
+export SUDO_USER='{current_user}'
+export ORIGINAL_UID='{current_uid}'
+export ORIGINAL_GID='{current_gid}'
 """
             if self.wifi_ssid:
                 script_wrapper += f"export WIFI_SSID='{self.wifi_ssid}'\n"

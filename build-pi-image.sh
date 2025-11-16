@@ -401,6 +401,17 @@ finalize_image() {
         sha256sum "$output_img" > "${output_img}.sha256"
         print_step "Image created: $output_img"
         print_step "SHA256: ${output_img}.sha256"
+
+        # Fix ownership if running as root (via pkexec/sudo)
+        if [ "$EUID" -eq 0 ]; then
+            if [ -n "$ORIGINAL_UID" ] && [ -n "$ORIGINAL_GID" ]; then
+                print_step "Fixing file ownership to $SUDO_USER ($ORIGINAL_UID:$ORIGINAL_GID)..."
+                chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_img" "${output_img}.sha256" 2>/dev/null || true
+            elif [ -n "$SUDO_USER" ]; then
+                print_step "Fixing file ownership to $SUDO_USER..."
+                chown "$SUDO_USER:$SUDO_USER" "$output_img" "${output_img}.sha256" 2>/dev/null || true
+            fi
+        fi
     else
         print_error "Output file not found: $output_img"
         exit 1
