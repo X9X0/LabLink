@@ -106,23 +106,8 @@ class ImageBuildThread(QThread):
                 check=False
             ).returncode == 0
 
-            if pkexec_available:
-                # Run with pkexec for graphical sudo prompt
-                # Use 'script' command to force unbuffered output via pseudo-terminal
-                logger.info("Running with pkexec for root privileges")
-                self.output.emit("Running with elevated privileges (pkexec)...\n")
-                # script -qec runs command with unbuffered I/O, -q for quiet (no start/done messages)
-                command = ['pkexec', 'script', '-qec', f'bash {script_path}', '/dev/null']
-            else:
-                # Warn that the script needs sudo
-                logger.warning("pkexec not available, script may fail without sudo")
-                self.output.emit("WARNING: This script requires root privileges\n")
-                self.output.emit("pkexec not found - build may fail\n")
-                command = ['script', '-qec', f'bash {script_path}', '/dev/null']
-
-            # Run build script with environment
-            # Note: env variables must be exported before the script command
-            script_wrapper = f"""
+            # Build script wrapper that exports env vars
+            script_wrapper = f"""#!/bin/bash
 export OUTPUT_IMAGE='{self.output_path}'
 export PI_HOSTNAME='{self.hostname}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
@@ -135,13 +120,42 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             if self.admin_password:
                 script_wrapper += f"export ADMIN_PASSWORD='{self.admin_password}'\n"
 
-            script_wrapper += f"bash {script_path}"
+            script_wrapper += f"exec bash {script_path}\n"
 
-            # Update command to use wrapper
+            # Write wrapper to temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_wrapper)
+                wrapper_path = f.name
+
+            # Make wrapper executable
+            os.chmod(wrapper_path, 0o755)
+
             if pkexec_available:
-                command = ['pkexec', 'bash', '-c', script_wrapper]
+                # Run with pkexec for graphical sudo prompt
+                # Use unbuffer (from expect package) to force unbuffered output
+                logger.info("Running with pkexec for root privileges")
+                self.output.emit("Running with elevated privileges (pkexec)...\n")
+
+                # Try unbuffer first, fall back to script command
+                unbuffer_available = subprocess.run(
+                    ['which', 'unbuffer'],
+                    capture_output=True,
+                    check=False
+                ).returncode == 0
+
+                if unbuffer_available:
+                    command = ['pkexec', 'unbuffer', 'bash', wrapper_path]
+                    self.output.emit("Using unbuffer for real-time output\n")
+                else:
+                    command = ['pkexec', 'bash', wrapper_path]
+                    self.output.emit("Note: Install 'expect' package for better output streaming\n")
             else:
-                command = ['bash', '-c', script_wrapper]
+                # Warn that the script needs sudo
+                logger.warning("pkexec not available, script may fail without sudo")
+                self.output.emit("WARNING: This script requires root privileges\n")
+                self.output.emit("pkexec not found - build may fail\n")
+                command = ['bash', wrapper_path]
 
             # Run build script with unbuffered binary mode
             process = subprocess.Popen(
@@ -202,6 +216,13 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             logger.info(f"Process output loop ended. Total lines: {line_count}")
             process.wait()
             logger.info(f"Process exited with code: {process.returncode}")
+
+            # Clean up temp wrapper script
+            try:
+                os.unlink(wrapper_path)
+                logger.debug(f"Cleaned up temp wrapper: {wrapper_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp wrapper: {e}")
 
             if process.returncode == 0:
                 self.progress.emit(100, "Image built successfully!")
