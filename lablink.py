@@ -1280,13 +1280,13 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
-        # Use venv python if available, otherwise system python
-        venv_python = Path("venv/bin/python")
-        python_exe = str(venv_python) if venv_python.exists() else sys.executable
-
         # Get absolute paths
         lablink_root = Path.cwd().absolute()
         server_dir = lablink_root / "server"
+
+        # Use venv python if available, otherwise system python (use absolute path)
+        venv_python = lablink_root / "venv" / "bin" / "python"
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
             # Launch in new terminal
@@ -1324,12 +1324,12 @@ class LabLinkLauncher(QMainWindow):
             )
             return
 
-        # Use venv python if available, otherwise system python
-        venv_python = Path("venv/bin/python")
-        python_exe = str(venv_python) if venv_python.exists() else sys.executable
-
         # Get absolute path to LabLink root directory
         lablink_root = Path.cwd().absolute()
+
+        # Use venv python if available, otherwise system python (use absolute path)
+        venv_python = lablink_root / "venv" / "bin" / "python"
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
             # Launch client using python -m to handle imports correctly
