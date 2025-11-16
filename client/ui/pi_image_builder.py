@@ -99,9 +99,28 @@ class ImageBuildThread(QThread):
             logger.info(f"Launching bash with script: {script_path}")
             logger.info(f"Output path: {self.output_path}")
 
+            # Check if pkexec is available for GUI sudo
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
+
+            if pkexec_available:
+                # Run with pkexec for graphical sudo prompt
+                logger.info("Running with pkexec for root privileges")
+                self.output.emit("Running with elevated privileges (pkexec)...\n")
+                command = ['pkexec', 'bash', str(script_path)]
+            else:
+                # Warn that the script needs sudo
+                logger.warning("pkexec not available, script may fail without sudo")
+                self.output.emit("WARNING: This script requires root privileges\n")
+                self.output.emit("pkexec not found - build may fail\n")
+                command = ['bash', str(script_path)]
+
             # Run build script
             process = subprocess.Popen(
-                ["bash", str(script_path)],
+                command,
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -255,7 +274,8 @@ class ConfigurationPage(QWizardPage):
         # Info label
         info_label = QLabel(
             "ℹ️ The image will be based on Raspberry Pi OS Lite with LabLink pre-installed.\n"
-            "Build process may take 10-30 minutes depending on your internet connection."
+            "Build process may take 10-30 minutes depending on your internet connection.\n\n"
+            "⚠️ This tool requires root privileges. You will be prompted for your password."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet(
