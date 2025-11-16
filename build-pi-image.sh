@@ -34,7 +34,8 @@ case "$PI_MODEL" in
         ;;
 esac
 
-OUTPUT_IMAGE="${1:-lablink-pi-$(date +%Y%m%d).img}"
+# Use environment variable if set, otherwise use command-line arg, otherwise default with date
+OUTPUT_IMAGE="${OUTPUT_IMAGE:-${1:-lablink-pi-$(date +%Y%m%d).img}}"
 WORK_DIR="/tmp/lablink-pi-build"
 MOUNT_BOOT="$WORK_DIR/boot"
 MOUNT_ROOT="$WORK_DIR/root"
