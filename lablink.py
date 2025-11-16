@@ -915,6 +915,14 @@ class LabLinkLauncher(QMainWindow):
         self.setWindowTitle("LabLink Launcher")
         self.setMinimumSize(800, 700)
 
+        # Add defined border to main window
+        self.setStyleSheet("""
+            QMainWindow {
+                border: 3px solid #34495e;
+                background-color: #ecf0f1;
+            }
+        """)
+
         # Store check results
         self.env_results = {}
         self.sys_results = {}
