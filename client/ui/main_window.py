@@ -421,7 +421,8 @@ class MainWindow(QMainWindow):
     def disconnect_from_server(self):
         """Disconnect from server."""
         if self.client:
-            self.client.disconnect()
+            # Schedule async disconnect properly
+            asyncio.create_task(self.client.disconnect())
             self.client = None
 
         # Reset connection states

@@ -1354,7 +1354,7 @@ class LabLinkClient:
         Returns:
             Server information
         """
-        response = self._session.get(f"http://{self.host}:{self.api_port}/")
+        response = self._session.get(f"http://{self.host}:{self.api_port}/api")
         response.raise_for_status()
         return response.json()
 

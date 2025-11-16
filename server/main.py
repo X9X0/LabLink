@@ -553,7 +553,7 @@ async def api_root():
     """API root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.24.0",
+        "version": "0.27.0",
         "status": "running",
     }
 
