@@ -918,7 +918,7 @@ class LabLinkLauncher(QMainWindow):
         # Add defined border to main window
         self.setStyleSheet("""
             QMainWindow {
-                border: 3px solid #34495e;
+                border: 5px solid #2c3e50;
                 background-color: #ecf0f1;
             }
         """)
