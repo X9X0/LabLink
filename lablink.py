@@ -486,8 +486,17 @@ class CheckWorker(QThread):
                 "libusb-1.0-0"
             ]
 
+            # Build tools for Raspberry Pi image builder
+            build_packages = [
+                "kpartx",        # Partition mapping for disk images
+                "qemu-user-static",  # ARM emulation for chroot
+                "parted",        # Partition manipulation
+                "wget",          # Download utilities
+                "xz-utils"       # Compression utilities
+            ]
+
             # Check all packages
-            all_packages = core_packages + qt_packages + usb_packages
+            all_packages = core_packages + qt_packages + usb_packages + build_packages
             missing_packages = []
 
             self.progress.emit("Checking system packages...")
@@ -504,7 +513,8 @@ class CheckWorker(QThread):
                         "✓ All required system packages are installed",
                         f"  Core: {', '.join(core_packages)}",
                         f"  Qt: {', '.join(qt_packages)}",
-                        f"  USB: {', '.join(usb_packages)}"
+                        f"  USB: {', '.join(usb_packages)}",
+                        f"  Build tools: {', '.join(build_packages)}"
                     ]
                 )
             else:
@@ -512,6 +522,7 @@ class CheckWorker(QThread):
                 missing_core = [p for p in missing_packages if p in core_packages]
                 missing_qt = [p for p in missing_packages if p in qt_packages]
                 missing_usb = [p for p in missing_packages if p in usb_packages]
+                missing_build = [p for p in missing_packages if p in build_packages]
 
                 status = StatusLevel.ERROR if missing_core else StatusLevel.WARNING
 
@@ -526,6 +537,8 @@ class CheckWorker(QThread):
                     details.append(f"Qt libraries: {', '.join(missing_qt)}")
                 if missing_usb:
                     details.append(f"USB support: {', '.join(missing_usb)}")
+                if missing_build:
+                    details.append(f"Build tools (for Pi image builder): {', '.join(missing_build)}")
 
                 details.append("")
                 details.append("These packages can be installed automatically.")
