@@ -626,6 +626,8 @@ class CheckWorker(QThread):
             'uvicorn': 'uvicorn',
             'pyvisa-py': 'pyvisa_py',
             'PyQt6-Qt6': 'PyQt6',  # PyQt6-Qt6 is just Qt binaries, check PyQt6 instead
+            'pyserial': 'serial',  # pyserial package imports as 'serial'
+            'pyusb': 'usb',  # pyusb package imports as 'usb'
         }
 
         # Determine which Python to use for checking
