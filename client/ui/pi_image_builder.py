@@ -221,7 +221,6 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
             # Monitor progress - read from pty master for unbuffered I/O
             line_count = 0
             partial_line = b''
-            last_cr_line = b''  # Track carriage return updates
 
             # Set master_fd to non-blocking mode
             import fcntl
@@ -246,23 +245,6 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                 continue
 
                             partial_line += data
-
-                            # Process carriage returns (for in-place updates like xz progress)
-                            while b'\r' in partial_line and b'\n' not in partial_line[:partial_line.index(b'\r') + 1]:
-                                cr_end = partial_line.index(b'\r')
-                                cr_line = partial_line[:cr_end]
-                                partial_line = partial_line[cr_end + 1:]
-
-                                # Save for potential newline processing
-                                last_cr_line = cr_line
-
-                                # Process CR line for progress updates only
-                                try:
-                                    line = cr_line.decode('utf-8', errors='replace')
-                                    # Only parse progress, don't emit output to avoid spam
-                                    self._parse_progress_only(line)
-                                except Exception as e:
-                                    logger.debug(f"Error parsing CR line: {e}")
 
                             # Process complete lines (ending in newline)
                             while b'\n' in partial_line:
