@@ -76,37 +76,99 @@ try:
     from PyQt6.QtGui import QPainter, QColor, QFont, QPalette, QIcon
 except ImportError:
     print("\n" + "="*70)
-    print("PyQt6 is not installed - Installing now...")
+    print("PyQt6 is not installed - Setting up environment...")
     print("="*70)
 
     # Make sure pip is available first
     check_and_install_pip()
 
-    # Try to install PyQt6
-    try:
-        print("\nInstalling PyQt6 for the launcher...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
-        print("\n" + "="*70)
-        print("SUCCESS: PyQt6 installed successfully!")
-        print("="*70)
-        print("\nPlease run the launcher again:")
-        print(f"  python3 {sys.argv[0]}")
-        print("="*70 + "\n")
-        sys.exit(0)
-    except subprocess.CalledProcessError as e:
-        print("\n" + "="*70)
-        print("ERROR: Failed to install PyQt6")
-        print("="*70)
-        print(f"\nError: {e}")
-        print("\nPlease install manually:")
-        print("  python3 -m pip install PyQt6")
-        print("\nOr use a virtual environment:")
-        print("  python3 -m venv venv")
-        print("  source venv/bin/activate")
-        print("  pip install PyQt6")
-        print(f"  python3 {sys.argv[0]}")
-        print("="*70 + "\n")
-        sys.exit(1)
+    # Check if Python is externally managed (PEP 668)
+    venv_path = Path("venv")
+    needs_venv = False
+
+    # Check for EXTERNALLY-MANAGED marker
+    import sysconfig
+    stdlib = sysconfig.get_path('stdlib')
+    if stdlib:
+        marker = Path(stdlib) / 'EXTERNALLY-MANAGED'
+        if marker.exists():
+            needs_venv = True
+            print("\n⚠️  Detected externally-managed Python (Ubuntu 24.04/PEP 668)")
+            print("Creating virtual environment for LabLink...")
+
+    if needs_venv:
+        # Create venv if it doesn't exist
+        if not venv_path.exists():
+            try:
+                print(f"\nCreating virtual environment at {venv_path}...")
+                subprocess.check_call([sys.executable, "-m", "venv", "venv"])
+                print("✓ Virtual environment created")
+            except subprocess.CalledProcessError as e:
+                print("\n" + "="*70)
+                print("ERROR: Failed to create virtual environment")
+                print("="*70)
+                print(f"\nError: {e}")
+                print("\nPlease install python3-venv:")
+                print("  sudo apt update")
+                print("  sudo apt install -y python3-venv")
+                print("="*70 + "\n")
+                sys.exit(1)
+
+        # Install PyQt6 in venv
+        venv_python = venv_path / "bin" / "python"
+        venv_pip = venv_path / "bin" / "pip"
+
+        try:
+            print("\nInstalling PyQt6 in virtual environment...")
+            subprocess.check_call([str(venv_pip), "install", "PyQt6"])
+            print("\n" + "="*70)
+            print("✓ SUCCESS: Environment setup complete!")
+            print("="*70)
+            print("\nRestarting launcher with virtual environment...")
+            print("="*70 + "\n")
+
+            # Re-run this script with venv python
+            import os
+            os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+        except subprocess.CalledProcessError as e:
+            print("\n" + "="*70)
+            print("ERROR: Failed to install PyQt6")
+            print("="*70)
+            print(f"\nError: {e}")
+            print("\nPlease try manually:")
+            print("  python3 -m venv venv")
+            print("  source venv/bin/activate")
+            print("  pip install PyQt6")
+            print(f"  python3 {sys.argv[0]}")
+            print("="*70 + "\n")
+            sys.exit(1)
+    else:
+        # Try direct install (non-externally-managed system)
+        try:
+            print("\nInstalling PyQt6...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
+            print("\n" + "="*70)
+            print("SUCCESS: PyQt6 installed successfully!")
+            print("="*70)
+            print("\nPlease run the launcher again:")
+            print(f"  python3 {sys.argv[0]}")
+            print("="*70 + "\n")
+            sys.exit(0)
+        except subprocess.CalledProcessError as e:
+            print("\n" + "="*70)
+            print("ERROR: Failed to install PyQt6")
+            print("="*70)
+            print(f"\nError: {e}")
+            print("\nPlease install manually:")
+            print("  python3 -m pip install PyQt6")
+            print("\nOr use a virtual environment:")
+            print("  python3 -m venv venv")
+            print("  source venv/bin/activate")
+            print("  pip install PyQt6")
+            print(f"  python3 {sys.argv[0]}")
+            print("="*70 + "\n")
+            sys.exit(1)
 
 
 # Status levels
