@@ -100,8 +100,7 @@ download_pi_os() {
     print_step "Extracting image..."
     xz -d -k -f "$pi_os_file"
 
-    local extracted_img="$WORK_DIR/raspios.img"
-    mv "${pi_os_file%.xz}" "$extracted_img"
+    local extracted_img="${pi_os_file%.xz}"
 
     echo "$extracted_img"
 }
