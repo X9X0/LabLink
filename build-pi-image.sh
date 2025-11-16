@@ -115,7 +115,7 @@ download_pi_os() {
     fi
 
     print_step "Extracting image..."
-    xz -d -k -f "$pi_os_file" || {
+    xz -d -v -k -f "$pi_os_file" || {
         print_error "Failed to extract Raspberry Pi OS image"
         exit 1
     }
@@ -376,18 +376,35 @@ finalize_image() {
     # Copy to output location
     cp "$source_img" "$output_img"
 
-    # Compress (optional)
-    if command -v xz &> /dev/null; then
-        print_step "Compressing image..."
-        xz -z -9 -T0 "$output_img"
-        output_img="${output_img}.xz"
+    # Compress if output filename ends with .xz
+    if [[ "$output_img" == *.xz ]]; then
+        if command -v xz &> /dev/null; then
+            print_step "Compressing image..."
+            # Remove existing compressed file if present
+            rm -f "$output_img"
+            # Compress with verbose output and force overwrite
+            xz -z -v -9 -T0 "${output_img%.xz}" || {
+                print_error "Compression failed"
+                exit 1
+            }
+            print_step "Compression complete"
+        else
+            print_warning "xz not found, saving uncompressed image"
+            # Rename to remove .xz extension since we can't compress
+            mv "$output_img" "${output_img%.xz}"
+            output_img="${output_img%.xz}"
+        fi
     fi
 
     # Calculate checksum
-    sha256sum "$output_img" > "${output_img}.sha256"
-
-    print_step "Image created: $output_img"
-    print_step "SHA256: ${output_img}.sha256"
+    if [ -f "$output_img" ]; then
+        sha256sum "$output_img" > "${output_img}.sha256"
+        print_step "Image created: $output_img"
+        print_step "SHA256: ${output_img}.sha256"
+    else
+        print_error "Output file not found: $output_img"
+        exit 1
+    fi
 }
 
 print_success() {

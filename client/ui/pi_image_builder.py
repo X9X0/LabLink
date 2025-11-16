@@ -244,6 +244,25 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                         self.progress.emit(5, "Starting download...")
                                     elif "Extracting" in line:
                                         self.progress.emit(16, "Extracting image...")
+                                    # xz extraction/compression progress (e.g. "  5.4 %  123.4 MiB")
+                                    elif "%" in line and "MiB" in line and "K/s" not in line:
+                                        try:
+                                            # xz verbose output format: "  12.3 %  123.4 MiB / 456.7 MiB"
+                                            parts = line.strip().split()
+                                            if len(parts) >= 2 and parts[0].replace('.', '', 1).replace('%', '').replace('-', '').isdigit():
+                                                pct = float(parts[0].rstrip('%'))
+                                                if pct >= 0:  # Valid percentage
+                                                    # Check if extracting or compressing based on recent context
+                                                    if "Extracting" in self.output_text.toPlainText()[-500:]:
+                                                        # Map 0-100% extraction to 16-20% total progress
+                                                        prog = 16 + int(pct * 0.04)
+                                                        self.progress.emit(prog, f"Extracting: {int(pct)}%")
+                                                    elif "Compressing" in self.output_text.toPlainText()[-500:]:
+                                                        # Map 0-100% compression to 85-95% total progress
+                                                        prog = 85 + int(pct * 0.10)
+                                                        self.progress.emit(prog, f"Compressing: {int(pct)}%")
+                                        except (ValueError, IndexError):
+                                            pass
                                     elif "extracted successfully" in line:
                                         self.progress.emit(20, "Extraction complete")
                                     elif "Expanding image" in line:
@@ -260,10 +279,12 @@ export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
                                         self.progress.emit(70, "Setting up auto-start...")
                                     elif "Unmounting" in line or "unmounted" in line:
                                         self.progress.emit(80, "Finalizing image...")
-                                    elif "Compressing" in line:
-                                        self.progress.emit(85, "Compressing image...")
+                                    elif "Compressing image" in line:
+                                        self.progress.emit(85, "Starting compression...")
                                     elif "Compression complete" in line:
                                         self.progress.emit(95, "Compression complete")
+                                    elif "Image created" in line:
+                                        self.progress.emit(98, "Finalizing...")
                                     elif "SUCCESS" in line or "Build complete" in line:
                                         self.progress.emit(100, "Build complete!")
                                 except Exception as e:
