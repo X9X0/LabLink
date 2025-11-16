@@ -259,7 +259,36 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ## Quick Start
 
-### Server Setup
+### 🚀 NEW: GUI Launcher (Recommended)
+
+The easiest way to get started with LabLink is using the new **GUI Launcher**:
+
+1. **Install system dependencies** (Ubuntu/Debian):
+   ```bash
+   sudo apt update && sudo apt install -y python3 python3-pip python3-venv git \
+       libusb-1.0-0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libgl1-mesa-glx
+   ```
+
+2. **Clone and launch**:
+   ```bash
+   git clone https://github.com/X9X0/LabLink.git
+   cd LabLink
+   python3 lablink.py
+   ```
+
+The **LabLink Launcher** will:
+- ✅ Check your environment automatically
+- ✅ Show LED indicators for system status (Green = OK, Yellow = Warning, Red = Error)
+- ✅ Install missing dependencies with one click
+- ✅ Launch server or client with dedicated buttons
+
+**For Ubuntu 24.04 users**: See the detailed [Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md) for step-by-step instructions.
+
+---
+
+### Manual Installation (Alternative)
+
+#### Server Setup
 
 1. Install dependencies:
    ```bash
@@ -277,7 +306,7 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 3. Access API documentation:
    - Open browser to `http://localhost:8000/docs`
 
-### GUI Client Setup
+#### GUI Client Setup
 
 1. Install dependencies:
    ```bash
@@ -299,6 +328,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Documentation
 
+- **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - NEW! Step-by-step guide for Ubuntu 24.04 users
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
 - [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
