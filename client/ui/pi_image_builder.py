@@ -601,6 +601,7 @@ class BuildProgressPage(QWizardPage):
                 border: 2px solid #3e3e3e;
                 border-radius: 4px;
                 padding: 8px;
+                text-align: left;
             }
         """)
         layout.addWidget(self.output_text)

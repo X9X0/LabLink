@@ -259,6 +259,19 @@ def find_recent_images(max_results: int = 10) -> List[Dict[str, str]]:
     # Build output directory
     search_paths.append(home)
 
+    # LabLink directory
+    lablink_dir = home / "LabLink"
+    if lablink_dir.exists():
+        search_paths.append(lablink_dir)
+
+    # LabLink-* directories (case-insensitive)
+    try:
+        for item in home.iterdir():
+            if item.is_dir() and item.name.lower().startswith("lablink-"):
+                search_paths.append(item)
+    except Exception as e:
+        logger.debug(f"Error scanning for LabLink-* directories: {e}")
+
     # Downloads directory
     downloads = home / "Downloads"
     if downloads.exists():
@@ -606,6 +619,8 @@ class SDCardWriter(QDialog):
                 "No recent Raspberry Pi images found.\n\n"
                 "Searched in:\n"
                 "- Home directory\n"
+                "- ~/LabLink/\n"
+                "- ~/LabLink-* directories\n"
                 "- Downloads folder\n"
                 "- /tmp/lablink-pi-build\n"
                 "- Desktop\n\n"
