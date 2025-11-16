@@ -295,15 +295,16 @@ class CheckWorker(QThread):
                 ]
             )
         elif venv_path.exists():
+            # Venv exists - this is good! The launcher uses it automatically
             results['venv'] = CheckResult(
                 "Virtual Environment",
-                StatusLevel.WARNING,
-                "Exists but not active",
+                StatusLevel.OK,
+                "Available",
                 [
-                    "⚠ Virtual environment exists but is not activated",
+                    "✓ Virtual environment found",
                     f"  Path: {venv_path.absolute()}",
-                    "  Activate with: source venv/bin/activate (Linux/macOS)",
-                    "  or: venv\\Scripts\\activate (Windows)"
+                    "  Note: The launcher automatically uses this venv",
+                    "  Manual activation not required for the launcher"
                 ]
             )
         else:
@@ -324,7 +325,8 @@ class CheckWorker(QThread):
         self.progress.emit("Checking for PEP 668...")
         is_externally_managed = self._check_externally_managed()
 
-        if is_externally_managed and not in_venv:
+        if is_externally_managed and not in_venv and not venv_path.exists():
+            # Externally managed with no venv - this is a problem
             results['pep668'] = CheckResult(
                 "Package Installation",
                 StatusLevel.WARNING,
@@ -334,6 +336,19 @@ class CheckWorker(QThread):
                     "  Ubuntu 24.04 and similar systems prevent system-wide pip installs",
                     "  A virtual environment is strongly recommended",
                     "  Or use: apt install python3-<package>"
+                ]
+            )
+        elif is_externally_managed and (in_venv or venv_path.exists()):
+            # Externally managed but venv exists - this is OK, we handle it
+            results['pep668'] = CheckResult(
+                "Package Installation",
+                StatusLevel.OK,
+                "Handled via venv",
+                [
+                    "✓ System is externally-managed (PEP 668)",
+                    "  This is normal for Ubuntu 24.04",
+                    "  The launcher uses the virtual environment to handle this",
+                    "  All package installations go to the venv"
                 ]
             )
         else:
