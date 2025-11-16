@@ -393,11 +393,12 @@ class MainWindow(QMainWindow):
         self.refresh_all()
 
         # Attempt WebSocket connection (optional, non-blocking)
-        # Schedule async task using qasync's event loop
-        import qasync
-        loop = qasync.QEventLoop.instance()
-        if loop:
+        # Schedule async task using asyncio's event loop (qasync provides it)
+        try:
+            loop = asyncio.get_event_loop()
             asyncio.ensure_future(self._connect_websocket(), loop=loop)
+        except Exception as e:
+            logger.error(f"Connection error: {e}")
 
         # Update UI with user info
         if self.client.user_data:
