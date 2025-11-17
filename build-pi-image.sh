@@ -354,39 +354,99 @@ install_lablink() {
 #!/bin/bash
 # LabLink First Boot Setup
 
-set -e
+# Log to both journal and file
+exec 1> >(tee -a /var/log/lablink-first-boot.log)
+exec 2>&1
 
 echo "[LabLink] Starting first boot setup..."
+echo "[LabLink] $(date)"
+
+# Function to wait for network
+wait_for_network() {
+    local max_attempts=30
+    local attempt=1
+
+    echo "[LabLink] Waiting for network connectivity..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+            echo "[LabLink] Network is ready (attempt $attempt)"
+            return 0
+        fi
+        echo "[LabLink] Network not ready, attempt $attempt/$max_attempts..."
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+
+    echo "[LabLink] WARNING: Network not available after $max_attempts attempts"
+    return 1
+}
+
+# Wait for network
+if ! wait_for_network; then
+    echo "[LabLink] Skipping setup due to network unavailability"
+    echo "[LabLink] You can manually run this script later: sudo /usr/local/bin/lablink-first-boot.sh"
+    systemctl disable lablink-first-boot.service
+    exit 0
+fi
 
 # Update system
-apt-get update
-apt-get upgrade -y
+echo "[LabLink] Updating system packages..."
+if apt-get update && apt-get upgrade -y; then
+    echo "[LabLink] System updated successfully"
+else
+    echo "[LabLink] WARNING: System update failed, continuing anyway..."
+fi
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker admin
+echo "[LabLink] Installing Docker..."
+if curl -fsSL https://get.docker.com | sh; then
+    echo "[LabLink] Docker installed successfully"
+    usermod -aG docker admin
+else
+    echo "[LabLink] ERROR: Docker installation failed"
+    systemctl disable lablink-first-boot.service
+    exit 1
+fi
 
 # Install LabLink
+echo "[LabLink] Downloading LabLink..."
 mkdir -p /opt/lablink
 cd /opt/lablink
 
-# Download LabLink
-curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz
-tar -xzf lablink.tar.gz --strip-components=1
-rm lablink.tar.gz
+if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz; then
+    echo "[LabLink] Download successful, extracting..."
+    tar -xzf lablink.tar.gz --strip-components=1
+    rm lablink.tar.gz
+else
+    echo "[LabLink] ERROR: Failed to download LabLink"
+    systemctl disable lablink-first-boot.service
+    exit 1
+fi
 
 # Configure environment
-cp .env.example .env
+if [ -f .env.example ]; then
+    cp .env.example .env
 
-# Generate JWT secret
-JWT_SECRET=$(openssl rand -hex 32)
-sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
+    # Generate JWT secret
+    JWT_SECRET=$(openssl rand -hex 32)
+    sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
 
-# Set default admin password
-sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD}/" .env
+    # Set default admin password
+    sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD:-lablink}/" .env
+
+    echo "[LabLink] Environment configured"
+else
+    echo "[LabLink] WARNING: .env.example not found"
+fi
 
 # Start LabLink
-docker compose up -d
+echo "[LabLink] Starting LabLink with Docker Compose..."
+if docker compose up -d; then
+    echo "[LabLink] LabLink started successfully"
+else
+    echo "[LabLink] WARNING: Failed to start LabLink"
+fi
 
 # Enable LabLink on boot
 cat > /etc/systemd/system/lablink.service <<EOF
@@ -410,6 +470,7 @@ systemctl enable lablink.service
 
 echo "[LabLink] First boot setup complete!"
 echo "[LabLink] Access at http://$(hostname).local"
+echo "[LabLink] Completed at: $(date)"
 
 # Disable this script from running again
 systemctl disable lablink-first-boot.service
@@ -422,7 +483,7 @@ FIRSTBOOT
     cat > "$MOUNT_ROOT/etc/systemd/system/lablink-first-boot.service" <<EOF
 [Unit]
 Description=LabLink First Boot Setup
-After=network-online.target
+After=network-online.target multi-user.target
 Wants=network-online.target
 
 [Service]
@@ -430,6 +491,9 @@ Type=oneshot
 ExecStart=/usr/local/bin/lablink-first-boot.sh
 StandardOutput=journal
 StandardError=journal
+RemainAfterExit=no
+# Don't fail boot if this service fails
+SuccessExitStatus=0 1
 
 [Install]
 WantedBy=multi-user.target
