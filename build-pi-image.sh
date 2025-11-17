@@ -344,6 +344,43 @@ $WPA_CONFIG
 EOF
             print_step "Wrote wpa_supplicant.conf to rootfs: $MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf"
 
+            # Method 4: Create NetworkManager connection file (for modern Pi OS Bookworm+)
+            # NetworkManager is the default network manager in newer Pi OS versions
+            print_step "Creating NetworkManager connection file..."
+
+            # Extract just the PSK hash from wpa_passphrase output
+            PSK_HASH=$(echo "$WPA_CONFIG" | grep -E '^\s*psk=' | head -1 | sed 's/.*psk=//' | tr -d ' ')
+
+            mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
+            cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
+[connection]
+id=$WIFI_SSID
+uuid=$(uuidgen 2>/dev/null || echo "$(date +%s)-$(head -c 8 /dev/urandom | xxd -p)")
+type=wifi
+autoconnect=true
+autoconnect-priority=1
+
+[wifi]
+mode=infrastructure
+ssid=$WIFI_SSID
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk=$PSK_HASH
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+NMEOF
+
+            # NetworkManager requires strict permissions on connection files
+            chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
+            print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
+
             print_step "Wi-Fi configured with encrypted PSK for SSID: $WIFI_SSID"
         else
             # Fallback to plaintext if wpa_passphrase fails
@@ -378,6 +415,38 @@ network={
 }
 EOF
             print_step "Wrote wpa_supplicant.conf to rootfs (plaintext)"
+
+            # Also create NetworkManager connection file (plaintext)
+            print_step "Creating NetworkManager connection file (plaintext)..."
+            mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
+            cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
+[connection]
+id=$WIFI_SSID
+uuid=$(uuidgen 2>/dev/null || echo "$(date +%s)-$(head -c 8 /dev/urandom | xxd -p)")
+type=wifi
+autoconnect=true
+autoconnect-priority=1
+
+[wifi]
+mode=infrastructure
+ssid=$WIFI_SSID
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk=$WIFI_PASSWORD
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+NMEOF
+
+            chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
+            print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
+
             print_step "Wi-Fi configured with plaintext password for SSID: $WIFI_SSID"
         fi
     else
