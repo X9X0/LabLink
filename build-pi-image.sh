@@ -602,6 +602,28 @@ sync_time() {
     return 0
 }
 
+# Function to wait for DNS resolution
+wait_for_dns() {
+    local max_attempts=20
+    local attempt=1
+
+    echo "[LabLink] Waiting for DNS resolution..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if ping -c 1 -W 2 github.com >/dev/null 2>&1; then
+            echo "[LabLink] DNS is ready (attempt $attempt)"
+            return 0
+        fi
+        echo "[LabLink] DNS not ready, attempt $attempt/$max_attempts..."
+        sleep 3
+        attempt=$((attempt + 1))
+    done
+
+    echo "[LabLink] WARNING: DNS not available after $max_attempts attempts"
+    echo "[LabLink] Service will retry on next boot"
+    return 1
+}
+
 # Wait for network
 if ! wait_for_network; then
     echo "[LabLink] Skipping setup due to network unavailability"
@@ -612,6 +634,14 @@ fi
 
 # Sync time BEFORE doing any SSL operations
 sync_time
+
+# Wait for DNS to be ready BEFORE downloading anything
+if ! wait_for_dns; then
+    echo "[LabLink] Skipping setup due to DNS unavailability"
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] You can manually run this script: sudo /usr/local/bin/lablink-first-boot.sh"
+    exit 0
+fi
 
 # Update system
 echo "[LabLink] Updating system packages..."
