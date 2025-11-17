@@ -620,6 +620,7 @@ if [ -f .env.example ]; then
     # Set default admin password for web UI
     WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-lablink}"
     sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
+    sed -i "s/LABLINK_DEFAULT_ADMIN_EMAIL=.*/LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com/" .env
 
     echo "[LabLink] Environment configured with admin password: $WEB_ADMIN_PASSWORD"
 else
