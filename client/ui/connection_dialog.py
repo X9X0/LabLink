@@ -67,7 +67,7 @@ class ConnectionDialog(QDialog):
 
         # Hostname/IP
         self.host_input = QLineEdit()
-        self.host_input.setPlaceholderText("localhost or IP address")
+        self.host_input.setPlaceholderText("lablink-pi.local, localhost, or IP address")
         server_layout.addRow("Host:", self.host_input)
 
         # API Port
@@ -97,7 +97,7 @@ class ConnectionDialog(QDialog):
 
         pi_btn = QPushButton("Raspberry Pi")
         pi_btn.clicked.connect(
-            lambda: self.set_connection("raspberrypi.local", 8000, 8001)
+            lambda: self.set_connection("lablink-pi.local", 8000, 8001)
         )
         quick_layout.addWidget(pi_btn)
 
@@ -115,7 +115,7 @@ class ConnectionDialog(QDialog):
     def _load_last_connection(self):
         """Load last used connection settings."""
         # TODO: Load from settings file
-        self.host_input.setText("localhost")
+        self.host_input.setText("lablink-pi.local")
 
     def set_connection(self, host: str, api_port: int, ws_port: int):
         """Set connection parameters.

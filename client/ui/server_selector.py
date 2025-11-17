@@ -39,7 +39,7 @@ class AddServerDialog(QDialog):
 
         # Host
         self.host_edit = QLineEdit()
-        self.host_edit.setPlaceholderText("192.168.1.100 or lablink.local")
+        self.host_edit.setPlaceholderText("lablink-pi.local or 192.168.1.100")
         layout.addRow("Hostname/IP:", self.host_edit)
 
         # API port

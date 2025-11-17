@@ -428,7 +428,7 @@ class ConfigurationPage(QWizardPage):
         self.admin_password_edit = QLineEdit()
         self.admin_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.admin_password_edit.setPlaceholderText(
-            "Leave empty to use default: raspberry"
+            "Leave empty to use default: lablink"
         )
         basic_layout.addRow("Admin Password:", self.admin_password_edit)
 
