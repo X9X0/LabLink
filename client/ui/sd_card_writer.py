@@ -7,13 +7,14 @@ import platform
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
+from datetime import datetime
 
 try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
-    from PyQt6.QtGui import QFont
+    from PyQt6.QtGui import QFont, QAction
     from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
                                  QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                                 QMessageBox, QProgressBar, QPushButton,
+                                 QMenu, QMessageBox, QProgressBar, QPushButton,
                                  QTextEdit, QVBoxLayout, QWidget)
 
     PYQT_AVAILABLE = True
@@ -30,7 +31,7 @@ class ImageWriterThread(QThread):
     finished = pyqtSignal(bool, str)  # Success, message
 
     def __init__(self, image_path: str, device_path: str, verify: bool = True):
-        """Initialize writer thread.
+        r"""Initialize writer thread.
 
         Args:
             image_path: Path to image file
@@ -55,13 +56,14 @@ class ImageWriterThread(QThread):
 
             # Get image size
             image_size = os.path.getsize(self.image_path)
-            self.progress.emit(10, f"Image size: {image_size / (1024**3):.2f} GB")
+            self.progress.emit(8, f"Image size: {image_size / (1024**3):.2f} GB")
 
             # Unmount device (Linux/macOS)
             if platform.system() in ["Linux", "Darwin"]:
                 self._unmount_device()
 
-            self.progress.emit(15, "Writing image...")
+            self.progress.emit(10, "Checking device readiness...")
+            self.progress.emit(15, "Starting write operation...")
 
             # Write image
             if platform.system() == "Windows":
@@ -114,59 +116,185 @@ class ImageWriterThread(QThread):
                     subprocess.run(["umount", part], check=False, capture_output=True)
 
             self.progress.emit(12, "Device unmounted")
+
+            # Wait a moment for the kernel to settle after unmount
+            import time
+            time.sleep(1)
+
         except Exception as e:
             logger.warning(f"Failed to unmount: {e}")
 
     def _write_unix(self) -> bool:
         """Write image on Linux/macOS using dd."""
         try:
-            # Decompress if needed
+            # Check if pkexec is available
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
+
+            # Create a wrapper script for the write operation
+            import tempfile
+
+            # Build the dd command
             if self.image_path.endswith(".xz"):
-                self.progress.emit(20, "Decompressing image...")
-                cmd = f"xz -dc '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"xz -dc '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
             elif self.image_path.endswith(".gz"):
-                cmd = f"gunzip -c '{self.image_path}' | sudo dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"gunzip -c '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
             else:
-                cmd = f"sudo dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
 
-            # Execute dd with progress monitoring
-            process = subprocess.Popen(
-                cmd,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            # Create wrapper script
+            script_content = f"""#!/bin/bash
+set -e
+exec 2>&1  # Redirect stderr to stdout so we can capture it
 
-            # Monitor progress
-            image_size = os.path.getsize(self.image_path)
-            while True:
-                if self._stop_requested:
-                    process.kill()
-                    return False
+# Function to check if device is ready
+check_device_ready() {{
+    local device="$1"
+    local max_attempts=10
+    local attempt=1
 
-                line = process.stderr.readline()
-                if not line and process.poll() is not None:
-                    break
+    echo "Checking if device $device is ready..."
 
-                # Parse dd progress
-                if "bytes" in line:
-                    try:
-                        bytes_written = int(line.split()[0])
-                        percent = min(int((bytes_written / image_size) * 70) + 20, 90)
-                        self.progress.emit(
-                            percent, f"Writing: {bytes_written / (1024**3):.2f} GB"
-                        )
-                    except:
-                        pass
+    while [ $attempt -le $max_attempts ]; do
+        # Check if device exists as a block device
+        if [ ! -b "$device" ]; then
+            echo "Attempt $attempt/$max_attempts: Device $device is not a block device"
+            sleep 1
+            attempt=$((attempt + 1))
+            continue
+        fi
 
-            # Check exit code
-            return_code = process.wait()
-            if return_code != 0:
-                error = process.stderr.read()
-                raise Exception(f"dd failed: {error}")
+        # Try to read device size to verify medium is present
+        if blockdev --getsize64 "$device" &>/dev/null; then
+            local size=$(blockdev --getsize64 "$device" 2>/dev/null)
+            if [ "$size" -gt 0 ]; then
+                echo "Device ready: $device (size: $size bytes)"
+                return 0
+            fi
+        fi
 
-            return True
+        echo "Attempt $attempt/$max_attempts: Device not ready or no medium found"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+
+    echo "Error: Device $device is not ready after $max_attempts attempts"
+    echo "Please check that:"
+    echo "  1. The SD card is properly inserted"
+    echo "  2. The SD card reader is connected"
+    echo "  3. Try unplugging and re-plugging the SD card reader"
+    return 1
+}}
+
+# Check if device is ready
+if ! check_device_ready "{self.device_path}"; then
+    exit 1
+fi
+
+# Flush filesystem buffers and re-read partition table
+echo "Flushing buffers and re-reading partition table..."
+sync
+blockdev --rereadpt "{self.device_path}" 2>/dev/null || true
+sleep 1
+
+# Final verification before writing
+echo "Final device check before writing..."
+if ! blockdev --getsize64 "{self.device_path}" &>/dev/null; then
+    echo "Error: Device became unavailable just before writing"
+    exit 1
+fi
+
+echo "Starting write operation..."
+{dd_cmd}
+
+# Ensure all writes are flushed
+echo "Flushing final writes..."
+sync
+"""
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_content)
+                script_path = f.name
+
+            # Make script executable
+            os.chmod(script_path, 0o755)
+
+            try:
+                if self.image_path.endswith(".xz"):
+                    self.progress.emit(20, "Decompressing and writing image...")
+                elif self.image_path.endswith(".gz"):
+                    self.progress.emit(20, "Decompressing and writing image...")
+                else:
+                    self.progress.emit(20, "Writing image...")
+
+                # Execute with pkexec or sudo
+                if pkexec_available:
+                    cmd = ['pkexec', 'bash', script_path]
+                else:
+                    cmd = ['sudo', 'bash', script_path]
+
+                # Execute with progress monitoring
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # Combine stderr into stdout
+                    text=True,
+                )
+
+                # Monitor progress
+                image_size = os.path.getsize(self.image_path)
+                output_lines = []
+
+                while True:
+                    if self._stop_requested:
+                        process.kill()
+                        return False
+
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+
+                    if line:
+                        output_lines.append(line.strip())
+                        logger.debug(f"dd output: {line.strip()}")
+
+                    # Parse dd progress (format: "123456789 bytes (123 MB, 117 MiB) copied")
+                    if "bytes" in line and "copied" in line:
+                        try:
+                            parts = line.split()
+                            bytes_written = int(parts[0])
+                            percent = min(int((bytes_written / image_size) * 70) + 20, 90)
+                            self.progress.emit(
+                                percent, f"Writing: {bytes_written / (1024**3):.2f} GB"
+                            )
+                        except (ValueError, IndexError) as e:
+                            logger.debug(f"Failed to parse progress: {e}")
+
+                # Wait for completion
+                return_code = process.wait()
+
+                # Clean up script
+                try:
+                    os.unlink(script_path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up script: {e}")
+
+                if return_code != 0:
+                    error_output = '\n'.join(output_lines[-10:])  # Last 10 lines
+                    raise Exception(f"dd failed with exit code {return_code}:\n{error_output}")
+
+                return True
+
+            except Exception as e:
+                # Clean up script on error
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Unix write failed: {e}")
@@ -193,27 +321,86 @@ class ImageWriterThread(QThread):
     def _verify_write(self) -> bool:
         """Verify written image."""
         try:
-            # Read back some of the written data and compare
-            block_size = 4096
-            blocks_to_verify = 1000  # Verify first ~4MB
+            import tempfile
 
-            with open(self.image_path, "rb") as img_file:
-                with open(self.device_path, "rb") as dev_file:
-                    for i in range(blocks_to_verify):
-                        if self._stop_requested:
-                            return False
+            # Check if pkexec is available
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
 
-                        img_block = img_file.read(block_size)
-                        dev_block = dev_file.read(block_size)
+            # Create verification script that compares first 100MB of image with device
+            verify_script = f"""#!/bin/bash
+set -e
+exec 2>&1
 
-                        if img_block != dev_block:
-                            return False
+echo "Verifying first 100MB of written image..."
 
-                        if i % 100 == 0:
-                            percent = 92 + int((i / blocks_to_verify) * 7)
-                            self.progress.emit(percent, f"Verifying: {percent}%")
+# Compare first 100MB (102400 blocks of 1024 bytes)
+if cmp -n 104857600 '{self.image_path}' '{self.device_path}'; then
+    echo "Verification successful: Data matches!"
+    exit 0
+else
+    echo "Verification failed: Data mismatch!"
+    exit 1
+fi
+"""
 
-            return True
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(verify_script)
+                script_path = f.name
+
+            # Make script executable
+            os.chmod(script_path, 0o755)
+
+            try:
+                # Execute with pkexec or sudo
+                if pkexec_available:
+                    cmd = ['pkexec', 'bash', script_path]
+                else:
+                    cmd = ['sudo', 'bash', script_path]
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+
+                # Monitor verification output
+                while True:
+                    if self._stop_requested:
+                        process.kill()
+                        return False
+
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+
+                    if line:
+                        logger.debug(f"Verify output: {line.strip()}")
+                        if "Verifying" in line:
+                            self.progress.emit(95, "Verifying: 50%")
+
+                # Wait for completion
+                return_code = process.wait()
+
+                # Clean up script
+                try:
+                    os.unlink(script_path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up verify script: {e}")
+
+                return return_code == 0
+
+            except Exception as e:
+                # Clean up script on error
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Verification failed: {e}")
@@ -227,10 +414,23 @@ class ImageWriterThread(QThread):
             if platform.system() == "Darwin":
                 subprocess.run(["diskutil", "eject", self.device_path], check=True)
             elif platform.system() == "Linux":
+                # Sync is already done in the write script, but do it again to be safe
                 subprocess.run(["sync"], check=True)
-                subprocess.run(["eject", self.device_path], check=False)
 
-            self.progress.emit(100, "SD card ejected safely")
+                # Check if pkexec is available for eject
+                pkexec_available = subprocess.run(
+                    ['which', 'pkexec'],
+                    capture_output=True,
+                    check=False
+                ).returncode == 0
+
+                # Try to eject with elevated privileges
+                if pkexec_available:
+                    subprocess.run(["pkexec", "eject", self.device_path], check=False, capture_output=True)
+                else:
+                    subprocess.run(["sudo", "eject", self.device_path], check=False, capture_output=True)
+
+            self.progress.emit(100, "SD card ready to remove")
 
         except Exception as e:
             logger.warning(f"Eject failed: {e}")
@@ -238,6 +438,97 @@ class ImageWriterThread(QThread):
     def request_stop(self):
         """Request thread to stop."""
         self._stop_requested = True
+
+
+def find_recent_images(max_results: int = 10) -> List[Dict[str, str]]:
+    """Find recent Raspberry Pi image files in common locations.
+
+    Args:
+        max_results: Maximum number of results to return
+
+    Returns:
+        List of dictionaries with image file information
+    """
+    images = []
+    search_paths = []
+
+    # Add common search locations
+    home = Path.home()
+
+    # Build output directory
+    search_paths.append(home)
+
+    # LabLink directory
+    lablink_dir = home / "LabLink"
+    if lablink_dir.exists():
+        search_paths.append(lablink_dir)
+
+    # LabLink-* directories (case-insensitive)
+    try:
+        for item in home.iterdir():
+            if item.is_dir() and item.name.lower().startswith("lablink-"):
+                search_paths.append(item)
+    except Exception as e:
+        logger.debug(f"Error scanning for LabLink-* directories: {e}")
+
+    # Downloads directory
+    downloads = home / "Downloads"
+    if downloads.exists():
+        search_paths.append(downloads)
+
+    # Temp build directory
+    temp_build = Path("/tmp/lablink-pi-build")
+    if temp_build.exists():
+        search_paths.append(temp_build)
+
+    # Desktop (sometimes used for output)
+    desktop = home / "Desktop"
+    if desktop.exists():
+        search_paths.append(desktop)
+
+    # Find all .img and .img.xz files
+    for search_path in search_paths:
+        try:
+            # Search for .img files
+            for pattern in ["*.img", "*.img.xz", "*.img.gz"]:
+                for img_path in search_path.glob(pattern):
+                    if img_path.is_file():
+                        stat = img_path.stat()
+                        images.append({
+                            "path": str(img_path),
+                            "name": img_path.name,
+                            "size": stat.st_size,
+                            "modified": stat.st_mtime,
+                            "modified_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                        })
+
+            # Also check subdirectories one level deep for build directories
+            if search_path == home or search_path == temp_build:
+                for subdir in search_path.iterdir():
+                    if subdir.is_dir():
+                        for pattern in ["*.img", "*.img.xz", "*.img.gz"]:
+                            for img_path in subdir.glob(pattern):
+                                if img_path.is_file():
+                                    stat = img_path.stat()
+                                    images.append({
+                                        "path": str(img_path),
+                                        "name": img_path.name,
+                                        "size": stat.st_size,
+                                        "modified": stat.st_mtime,
+                                        "modified_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                                    })
+        except Exception as e:
+            logger.debug(f"Error searching {search_path}: {e}")
+
+    # Remove duplicates and sort by modification time (newest first)
+    seen = set()
+    unique_images = []
+    for img in sorted(images, key=lambda x: x["modified"], reverse=True):
+        if img["path"] not in seen:
+            seen.add(img["path"])
+            unique_images.append(img)
+
+    return unique_images[:max_results]
 
 
 def get_removable_drives() -> List[Dict[str, str]]:
@@ -343,11 +634,53 @@ class SDCardWriter(QDialog):
         self.setWindowTitle("SD Card Writer")
         self.resize(700, 600)
 
+        # Apply visual styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ecf0f1;
+            }
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: 2px solid #2471a3;
+                border-radius: 6px;
+                padding: 8px 15px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+                border: 2px solid #1f618d;
+            }
+            QPushButton:pressed {
+                background-color: #2471a3;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+            }
+        """)
+
         self._setup_ui()
 
     def _setup_ui(self):
         """Set up user interface."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
 
         # Header
         header = QLabel("<h2>SD Card Writer</h2>")
@@ -370,6 +703,11 @@ class SDCardWriter(QDialog):
         image_row = QHBoxLayout()
         self.image_path_label = QLabel("<i>No image selected</i>")
         image_row.addWidget(self.image_path_label)
+
+        recent_btn = QPushButton("Recent Images")
+        recent_btn.clicked.connect(self._show_recent_images)
+        recent_btn.setToolTip("Select from recently created or downloaded images")
+        image_row.addWidget(recent_btn)
 
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse_image)
@@ -405,8 +743,9 @@ class SDCardWriter(QDialog):
         options_group = QGroupBox("3. Options")
         options_layout = QVBoxLayout()
 
-        self.verify_check = QCheckBox("Verify after writing (recommended)")
-        self.verify_check.setChecked(True)
+        self.verify_check = QCheckBox("Verify after writing (compares first 100MB)")
+        self.verify_check.setChecked(False)  # Disabled by default to speed up the process
+        self.verify_check.setToolTip("Reads back and compares the first 100MB to verify the write was successful.\nRequires entering your password for root access.")
         options_layout.addWidget(self.verify_check)
 
         options_group.setLayout(options_layout)
@@ -466,6 +805,65 @@ class SDCardWriter(QDialog):
             self.image_path_label.setText(Path(filename).name)
             self._log(f"Selected image: {filename}")
             self._update_write_button()
+
+    def _show_recent_images(self):
+        """Show menu with recently created/downloaded images."""
+        self._log("Searching for recent images...")
+
+        recent_images = find_recent_images(max_results=15)
+
+        if not recent_images:
+            QMessageBox.information(
+                self,
+                "No Images Found",
+                "No recent Raspberry Pi images found.\n\n"
+                "Searched in:\n"
+                "- Home directory\n"
+                "- ~/LabLink/\n"
+                "- ~/LabLink-* directories\n"
+                "- Downloads folder\n"
+                "- /tmp/lablink-pi-build\n"
+                "- Desktop\n\n"
+                "Use 'Browse...' to select an image manually.",
+            )
+            return
+
+        # Create menu with recent images
+        menu = QMenu(self)
+
+        for img in recent_images:
+            # Format: filename (size, date)
+            size_mb = img["size"] / (1024 * 1024)
+            if size_mb < 1024:
+                size_str = f"{size_mb:.1f} MB"
+            else:
+                size_str = f"{size_mb / 1024:.1f} GB"
+
+            action_text = f"{img['name']}\n    {size_str}, {img['modified_str']}"
+            action = QAction(action_text, self)
+            action.setData(img["path"])
+            action.triggered.connect(lambda checked, path=img["path"]: self._select_image(path))
+            menu.addAction(action)
+
+        # Show menu at button
+        sender = self.sender()
+        if sender:
+            menu.exec(sender.mapToGlobal(sender.rect().bottomLeft()))
+
+    def _select_image(self, image_path: str):
+        """Select an image from the recent images menu."""
+        if os.path.exists(image_path):
+            self.image_path = image_path
+            self.image_path_label.setText(Path(image_path).name)
+            self._log(f"Selected recent image: {image_path}")
+            self._update_write_button()
+        else:
+            QMessageBox.warning(
+                self,
+                "Image Not Found",
+                f"The selected image file no longer exists:\n{image_path}",
+            )
+            self._log(f"Image not found: {image_path}")
 
     def _refresh_drives(self):
         """Refresh list of removable drives."""
@@ -542,16 +940,7 @@ class SDCardWriter(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # Check for admin/root privileges
-        if platform.system() != "Windows" and os.geteuid() != 0:
-            QMessageBox.warning(
-                self,
-                "Insufficient Privileges",
-                "SD card writing requires administrator/root privileges.\n\n"
-                "Please run the LabLink client with sudo:\n"
-                "sudo python main.py",
-            )
-            return
+        # No privilege check needed - pkexec will handle it in the write thread
 
         # Start write
         self._log("=" * 60)

@@ -15,9 +15,27 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
+PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
 PI_OS_VERSION="${PI_OS_VERSION:-2024-03-15}"
-PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-${PI_OS_VERSION}/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
-OUTPUT_IMAGE="${1:-lablink-pi-$(date +%Y%m%d).img}"
+
+# Select appropriate image URL based on Pi model
+case "$PI_MODEL" in
+    "3")
+        # Pi 3 uses 32-bit armhf image
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2024-03-15/2024-03-15-raspios-bookworm-armhf-lite.img.xz"
+        ;;
+    "4")
+        # Pi 4 can use 64-bit arm64 image
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+        ;;
+    "5"|*)
+        # Pi 5 uses 64-bit arm64 image (default)
+        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+        ;;
+esac
+
+# Use environment variable if set, otherwise use command-line arg, otherwise default with date
+OUTPUT_IMAGE="${OUTPUT_IMAGE:-${1:-lablink-pi-$(date +%Y%m%d).img}}"
 WORK_DIR="/tmp/lablink-pi-build"
 MOUNT_BOOT="$WORK_DIR/boot"
 MOUNT_ROOT="$WORK_DIR/root"
@@ -42,15 +60,15 @@ print_header() {
 }
 
 print_step() {
-    echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $1"
+    echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $1" >&2
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING]${NC} $1" >&2
 }
 
 check_root() {
@@ -98,10 +116,21 @@ download_pi_os() {
     fi
 
     print_step "Extracting image..."
-    xz -d -k -f "$pi_os_file"
+    xz -d -v -k -f "$pi_os_file" || {
+        print_error "Failed to extract Raspberry Pi OS image"
+        exit 1
+    }
 
-    local extracted_img="$WORK_DIR/raspios.img"
-    mv "${pi_os_file%.xz}" "$extracted_img"
+    local extracted_img="${pi_os_file%.xz}"
+
+    # Verify extraction succeeded
+    if [ ! -f "$extracted_img" ]; then
+        print_error "Extracted image not found at: $extracted_img"
+        ls -lh "$WORK_DIR/" || true
+        exit 1
+    fi
+
+    print_step "Image extracted successfully: $extracted_img"
 
     echo "$extracted_img"
 }
@@ -112,8 +141,20 @@ expand_image() {
 
     print_step "Expanding image by ${extra_space_mb}MB..."
 
+    # Debug: verify file exists before dd
+    if [ ! -f "$img_file" ]; then
+        print_error "Image file not found before expand: $img_file"
+        ls -lh "$(dirname "$img_file")/" || true
+        exit 1
+    fi
+
+    print_step "Image file verified: $(ls -lh "$img_file")"
+
     # Add extra space for LabLink installation
-    dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file"
+    dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file" 2>&1 || {
+        print_error "Failed to expand image with dd"
+        exit 1
+    }
 
     # Resize partition
     parted "$img_file" resizepart 2 100% || true
@@ -163,6 +204,105 @@ unmount_image() {
 configure_first_boot() {
     print_step "Configuring first boot..."
 
+    # Create admin user (Raspberry Pi OS 2022+ doesn't create default user)
+    print_step "Creating admin user..."
+
+    # Copy qemu for ARM emulation if needed
+    if [ ! -f "$MOUNT_ROOT/usr/bin/qemu-arm-static" ] && [ ! -f "$MOUNT_ROOT/usr/bin/qemu-aarch64-static" ]; then
+        cp /usr/bin/qemu-arm-static "$MOUNT_ROOT/usr/bin/" 2>/dev/null || \
+        cp /usr/bin/qemu-aarch64-static "$MOUNT_ROOT/usr/bin/qemu-arm-static" 2>/dev/null || true
+    fi
+
+    # Create admin user with all necessary groups
+    chroot "$MOUNT_ROOT" useradd -m -G sudo,adm,dialout,cdrom,audio,video,plugdev,games,users,input,netdev,gpio,i2c,spi -s /bin/bash admin 2>/dev/null || {
+        print_warning "User admin may already exist, updating password..."
+    }
+
+    # Set password for admin user
+    PASSWORD="${LABLINK_ADMIN_PASSWORD:-lablink}"
+    echo "admin:$PASSWORD" | chroot "$MOUNT_ROOT" chpasswd
+    print_step "Admin user created with password"
+
+    # Give sudo without password
+    echo "admin ALL=(ALL) NOPASSWD:ALL" > "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
+    chmod 0440 "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
+
+    # Disable first-boot wizard (piwiz) and userconfig
+    print_step "Disabling first-boot wizard..."
+
+    # Method 1: Remove piwiz from autostart
+    rm -f "$MOUNT_ROOT/etc/xdg/autostart/piwiz.desktop" 2>/dev/null || true
+
+    # Method 2: Create Hidden=true override if it exists
+    if [ -f "$MOUNT_ROOT/usr/share/applications/piwiz.desktop" ]; then
+        mkdir -p "$MOUNT_ROOT/etc/xdg/autostart"
+        cat > "$MOUNT_ROOT/etc/xdg/autostart/piwiz.desktop" <<EOF
+[Desktop Entry]
+Hidden=true
+EOF
+    fi
+
+    # Method 3: Disable userconfig service (runs first-boot setup)
+    if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/userconfig.service" ]; then
+        rm -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/userconfig.service"
+    fi
+    if [ -f "$MOUNT_ROOT/lib/systemd/system/userconfig.service" ]; then
+        chroot "$MOUNT_ROOT" systemctl disable userconfig.service 2>/dev/null || true
+    fi
+
+    # Method 4: Create userconf file to indicate user is already configured
+    # This prevents the first-boot user creation wizard
+    # Format: username:encrypted_password
+    ENCRYPTED_PASS=$(echo "${PASSWORD}" | openssl passwd -6 -stdin)
+    echo "admin:${ENCRYPTED_PASS}" > "$MOUNT_BOOT/userconf.txt" || \
+    echo "admin:${ENCRYPTED_PASS}" > "$MOUNT_BOOT/userconf"
+
+    # Method 5: Create sentinel files
+    mkdir -p "$MOUNT_ROOT/home/admin"
+    touch "$MOUNT_ROOT/home/admin/.piwiz_done"
+    chroot "$MOUNT_ROOT" chown admin:admin /home/admin/.piwiz_done 2>/dev/null || true
+
+    # Pre-configure locale (US English UTF-8)
+    print_step "Configuring locale..."
+    sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' "$MOUNT_ROOT/etc/locale.gen"
+    chroot "$MOUNT_ROOT" locale-gen en_US.UTF-8
+    chroot "$MOUNT_ROOT" update-locale LANG=en_US.UTF-8
+
+    # Pre-configure keyboard layout (US)
+    print_step "Configuring keyboard layout..."
+    cat > "$MOUNT_ROOT/etc/default/keyboard" <<EOF
+# KEYBOARD configuration file
+XKBMODEL="pc105"
+XKBLAYOUT="us"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+
+    # Pre-configure timezone (America/New_York)
+    print_step "Configuring timezone..."
+    ln -sf /usr/share/zoneinfo/America/New_York "$MOUNT_ROOT/etc/localtime"
+    echo "America/New_York" > "$MOUNT_ROOT/etc/timezone"
+
+    # Configure auto-login for admin user (bypasses all setup wizards)
+    print_step "Configuring auto-login..."
+
+    # Create lightdm auto-login configuration
+    mkdir -p "$MOUNT_ROOT/etc/lightdm/lightdm.conf.d"
+    cat > "$MOUNT_ROOT/etc/lightdm/lightdm.conf.d/autologin.conf" <<EOF
+[Seat:*]
+autologin-user=admin
+autologin-user-timeout=0
+EOF
+
+    # Also configure for console auto-login (in case lightdm isn't used)
+    mkdir -p "$MOUNT_ROOT/etc/systemd/system/getty@tty1.service.d"
+    cat > "$MOUNT_ROOT/etc/systemd/system/getty@tty1.service.d/autologin.conf" <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin admin --noclear %I \$TERM
+EOF
+
     # Enable SSH
     if [ "$ENABLE_SSH" = "yes" ]; then
         touch "$MOUNT_BOOT/ssh"
@@ -171,7 +311,82 @@ configure_first_boot() {
 
     # Configure Wi-Fi
     if [ -n "$WIFI_SSID" ]; then
-        cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
+        print_step "Configuring Wi-Fi for SSID: $WIFI_SSID"
+
+        # Generate encrypted PSK using wpa_passphrase
+        # This is more reliable than plaintext passwords
+        WPA_CONFIG=$(wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" 2>/dev/null || echo "")
+
+        if [ -n "$WPA_CONFIG" ]; then
+            # Method 1: Write to boot partition (for first-boot auto-config)
+            cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+$WPA_CONFIG
+EOF
+            print_step "Wrote wpa_supplicant.conf to boot partition: $MOUNT_BOOT/wpa_supplicant.conf"
+
+            # Method 2: Also create in firmware subdirectory if it exists (newer Pi OS)
+            if [ -d "$MOUNT_BOOT/firmware" ]; then
+                cp "$MOUNT_BOOT/wpa_supplicant.conf" "$MOUNT_BOOT/firmware/wpa_supplicant.conf"
+                print_step "Also wrote to firmware subdirectory"
+            fi
+
+            # Method 3: Write directly to rootfs wpa_supplicant.conf
+            cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+$WPA_CONFIG
+EOF
+            print_step "Wrote wpa_supplicant.conf to rootfs: $MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf"
+
+            # Method 4: Create NetworkManager connection file (for modern Pi OS Bookworm+)
+            # NetworkManager is the default network manager in newer Pi OS versions
+            print_step "Creating NetworkManager connection file..."
+
+            # Extract just the PSK hash from wpa_passphrase output
+            PSK_HASH=$(echo "$WPA_CONFIG" | grep -E '^\s*psk=' | head -1 | sed 's/.*psk=//' | tr -d ' ')
+
+            mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
+            cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
+[connection]
+id=$WIFI_SSID
+uuid=$(uuidgen 2>/dev/null || echo "$(date +%s)-$(head -c 8 /dev/urandom | xxd -p)")
+type=wifi
+autoconnect=true
+autoconnect-priority=1
+
+[wifi]
+mode=infrastructure
+ssid=$WIFI_SSID
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk=$PSK_HASH
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+NMEOF
+
+            # NetworkManager requires strict permissions on connection files
+            chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
+            print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
+
+            print_step "Wi-Fi configured with encrypted PSK for SSID: $WIFI_SSID"
+        else
+            # Fallback to plaintext if wpa_passphrase fails
+            print_warning "wpa_passphrase not available, using plaintext password"
+
+            cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -181,7 +396,67 @@ network={
     psk="$WIFI_PASSWORD"
 }
 EOF
-        print_step "Wi-Fi configured"
+            print_step "Wrote wpa_supplicant.conf to boot partition (plaintext)"
+
+            # Also write to firmware subdirectory if it exists
+            if [ -d "$MOUNT_BOOT/firmware" ]; then
+                cp "$MOUNT_BOOT/wpa_supplicant.conf" "$MOUNT_BOOT/firmware/wpa_supplicant.conf"
+                print_step "Also wrote to firmware subdirectory"
+            fi
+
+            cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+network={
+    ssid="$WIFI_SSID"
+    psk="$WIFI_PASSWORD"
+}
+EOF
+            print_step "Wrote wpa_supplicant.conf to rootfs (plaintext)"
+
+            # Also create NetworkManager connection file (plaintext)
+            print_step "Creating NetworkManager connection file (plaintext)..."
+            mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
+            cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
+[connection]
+id=$WIFI_SSID
+uuid=$(uuidgen 2>/dev/null || echo "$(date +%s)-$(head -c 8 /dev/urandom | xxd -p)")
+type=wifi
+autoconnect=true
+autoconnect-priority=1
+
+[wifi]
+mode=infrastructure
+ssid=$WIFI_SSID
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk=$WIFI_PASSWORD
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+NMEOF
+
+            chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
+            print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
+
+            print_step "Wi-Fi configured with plaintext password for SSID: $WIFI_SSID"
+        fi
+    else
+        # No WiFi credentials provided, create basic config
+        cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF
+        print_step "Wi-Fi country set to US (no credentials provided)"
     fi
 
     # Set hostname
@@ -207,39 +482,99 @@ install_lablink() {
 #!/bin/bash
 # LabLink First Boot Setup
 
-set -e
+# Log to both journal and file
+exec 1> >(tee -a /var/log/lablink-first-boot.log)
+exec 2>&1
 
 echo "[LabLink] Starting first boot setup..."
+echo "[LabLink] $(date)"
+
+# Function to wait for network
+wait_for_network() {
+    local max_attempts=30
+    local attempt=1
+
+    echo "[LabLink] Waiting for network connectivity..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+            echo "[LabLink] Network is ready (attempt $attempt)"
+            return 0
+        fi
+        echo "[LabLink] Network not ready, attempt $attempt/$max_attempts..."
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+
+    echo "[LabLink] WARNING: Network not available after $max_attempts attempts"
+    return 1
+}
+
+# Wait for network
+if ! wait_for_network; then
+    echo "[LabLink] Skipping setup due to network unavailability"
+    echo "[LabLink] You can manually run this script later: sudo /usr/local/bin/lablink-first-boot.sh"
+    systemctl disable lablink-first-boot.service
+    exit 0
+fi
 
 # Update system
-apt-get update
-apt-get upgrade -y
+echo "[LabLink] Updating system packages..."
+if apt-get update && apt-get upgrade -y; then
+    echo "[LabLink] System updated successfully"
+else
+    echo "[LabLink] WARNING: System update failed, continuing anyway..."
+fi
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker pi
+echo "[LabLink] Installing Docker..."
+if curl -fsSL https://get.docker.com | sh; then
+    echo "[LabLink] Docker installed successfully"
+    usermod -aG docker admin
+else
+    echo "[LabLink] ERROR: Docker installation failed"
+    systemctl disable lablink-first-boot.service
+    exit 1
+fi
 
 # Install LabLink
+echo "[LabLink] Downloading LabLink..."
 mkdir -p /opt/lablink
 cd /opt/lablink
 
-# Download LabLink
-curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz
-tar -xzf lablink.tar.gz --strip-components=1
-rm lablink.tar.gz
+if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz; then
+    echo "[LabLink] Download successful, extracting..."
+    tar -xzf lablink.tar.gz --strip-components=1
+    rm lablink.tar.gz
+else
+    echo "[LabLink] ERROR: Failed to download LabLink"
+    systemctl disable lablink-first-boot.service
+    exit 1
+fi
 
 # Configure environment
-cp .env.example .env
+if [ -f .env.example ]; then
+    cp .env.example .env
 
-# Generate JWT secret
-JWT_SECRET=$(openssl rand -hex 32)
-sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
+    # Generate JWT secret
+    JWT_SECRET=$(openssl rand -hex 32)
+    sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
 
-# Set default admin password
-sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD}/" .env
+    # Set default admin password
+    sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD:-lablink}/" .env
+
+    echo "[LabLink] Environment configured"
+else
+    echo "[LabLink] WARNING: .env.example not found"
+fi
 
 # Start LabLink
-docker compose up -d
+echo "[LabLink] Starting LabLink with Docker Compose..."
+if docker compose up -d; then
+    echo "[LabLink] LabLink started successfully"
+else
+    echo "[LabLink] WARNING: Failed to start LabLink"
+fi
 
 # Enable LabLink on boot
 cat > /etc/systemd/system/lablink.service <<EOF
@@ -263,6 +598,7 @@ systemctl enable lablink.service
 
 echo "[LabLink] First boot setup complete!"
 echo "[LabLink] Access at http://$(hostname).local"
+echo "[LabLink] Completed at: $(date)"
 
 # Disable this script from running again
 systemctl disable lablink-first-boot.service
@@ -275,7 +611,7 @@ FIRSTBOOT
     cat > "$MOUNT_ROOT/etc/systemd/system/lablink-first-boot.service" <<EOF
 [Unit]
 Description=LabLink First Boot Setup
-After=network-online.target
+After=network-online.target multi-user.target
 Wants=network-online.target
 
 [Service]
@@ -283,6 +619,9 @@ Type=oneshot
 ExecStart=/usr/local/bin/lablink-first-boot.sh
 StandardOutput=journal
 StandardError=journal
+RemainAfterExit=no
+# Don't fail boot if this service fails
+SuccessExitStatus=0 1
 
 [Install]
 WantedBy=multi-user.target
@@ -333,21 +672,81 @@ finalize_image() {
 
     print_step "Finalizing image..."
 
-    # Copy to output location
-    cp "$source_img" "$output_img"
+    # Ensure output directory exists
+    output_dir=$(dirname "$output_img")
+    if [ ! -d "$output_dir" ]; then
+        mkdir -p "$output_dir" || {
+            print_error "Failed to create output directory: $output_dir"
+            exit 1
+        }
+    fi
 
-    # Compress (optional)
-    if command -v xz &> /dev/null; then
-        print_step "Compressing image..."
-        xz -z -9 -T0 "$output_img"
-        output_img="${output_img}.xz"
+    # Copy to output location
+    print_step "Copying image to: $output_img"
+    cp "$source_img" "$output_img" || {
+        print_error "Failed to copy image to output location"
+        print_error "Source: $source_img"
+        print_error "Destination: $output_img"
+        exit 1
+    }
+
+    print_step "Image copied successfully"
+
+    # Compress if output filename ends with .xz
+    if [[ "$output_img" == *.xz ]]; then
+        if command -v xz &> /dev/null; then
+            print_step "Compressing image..."
+            # Remove existing compressed file if present
+            rm -f "$output_img"
+            # Compress with verbose output and force overwrite
+            xz -z -v -9 -T0 "${output_img%.xz}" || {
+                print_error "Compression failed"
+                exit 1
+            }
+            print_step "Compression complete"
+        else
+            print_warning "xz not found, saving uncompressed image"
+            # Rename to remove .xz extension since we can't compress
+            mv "$output_img" "${output_img%.xz}"
+            output_img="${output_img%.xz}"
+        fi
     fi
 
     # Calculate checksum
-    sha256sum "$output_img" > "${output_img}.sha256"
+    if [ -f "$output_img" ]; then
+        sha256sum "$output_img" > "${output_img}.sha256"
+        print_step "Image created: $output_img"
+        print_step "SHA256: ${output_img}.sha256"
 
-    print_step "Image created: $output_img"
-    print_step "SHA256: ${output_img}.sha256"
+        # Fix ownership if running as root (via pkexec/sudo)
+        if [ "$EUID" -eq 0 ]; then
+            if [ -n "$ORIGINAL_UID" ] && [ -n "$ORIGINAL_GID" ]; then
+                print_step "Fixing file ownership to $SUDO_USER ($ORIGINAL_UID:$ORIGINAL_GID)..."
+                chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_img" "${output_img}.sha256" 2>/dev/null || {
+                    print_warning "Failed to change ownership, image may be owned by root"
+                }
+                # Also fix ownership of output directory if we created it
+                if [ -n "$output_dir" ] && [ "$output_dir" != "/" ] && [ "$output_dir" != "/home" ]; then
+                    chown "$ORIGINAL_UID:$ORIGINAL_GID" "$output_dir" 2>/dev/null || true
+                fi
+            elif [ -n "$SUDO_USER" ]; then
+                print_step "Fixing file ownership to $SUDO_USER..."
+                chown "$SUDO_USER:$SUDO_USER" "$output_img" "${output_img}.sha256" 2>/dev/null || {
+                    print_warning "Failed to change ownership, image may be owned by root"
+                }
+            fi
+        fi
+
+        # Verify file is accessible
+        if [ -r "$output_img" ]; then
+            print_step "Image file is readable and ready"
+        else
+            print_warning "Image created but may not be readable by current user"
+        fi
+    else
+        print_error "Output file not found: $output_img"
+        exit 1
+    fi
 }
 
 print_success() {
@@ -400,8 +799,12 @@ cleanup() {
 main() {
     print_header
 
-    # Parse arguments
-    if [ -t 0 ] && [ $# -eq 0 ]; then
+    # Show which model we're building for
+    print_step "Building image for Raspberry Pi Model $PI_MODEL"
+
+    # Parse arguments - only prompt if not set via environment variables
+    # Check if we should enter interactive mode (terminal input + no args + no env vars set)
+    if [ -t 0 ] && [ $# -eq 0 ] && [ -z "$LABLINK_HOSTNAME" ]; then
         echo "Configuration Options:"
         read -p "Output image name [lablink-pi-$(date +%Y%m%d).img]: " output_input
         OUTPUT_IMAGE="${output_input:-$OUTPUT_IMAGE}"

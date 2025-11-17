@@ -202,6 +202,14 @@ class LEDIndicator(QWidget):
         self.status = StatusLevel.UNKNOWN
         self.setMinimumSize(200, 60)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("""
+            LEDIndicator {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                margin: 2px;
+            }
+        """)
 
     def set_status(self, status: StatusLevel):
         """Update the LED status and repaint."""
@@ -213,25 +221,35 @@ class LEDIndicator(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # Draw widget background with border
+        painter.setPen(QColor("#dee2e6"))
+        painter.setBrush(QColor("#f8f9fa"))
+        painter.drawRoundedRect(0, 0, self.width()-1, self.height()-1, 6, 6)
+
         # Draw LED circle
         color = QColor(self.status.value)
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(10, 15, 30, 30)
+        painter.drawEllipse(15, 18, 24, 24)
 
         # Add glow effect
         glow_color = QColor(self.status.value)
-        glow_color.setAlpha(100)
+        glow_color.setAlpha(80)
         painter.setBrush(glow_color)
-        painter.drawEllipse(5, 10, 40, 40)
+        painter.drawEllipse(12, 15, 30, 30)
+
+        # Draw LED border for definition
+        painter.setPen(QColor("#2c3e50"))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(15, 18, 24, 24)
 
         # Draw label
-        painter.setPen(QColor("black"))
+        painter.setPen(QColor("#2c3e50"))
         font = QFont()
         font.setPointSize(10)
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(55, 30, self.label)
+        painter.drawText(55, 33, self.label)
 
     def mousePressEvent(self, event):
         """Handle click events."""
@@ -261,6 +279,8 @@ class CheckWorker(QThread):
             results = self.check_server_dependencies()
         elif self.check_type == "client_deps":
             results = self.check_client_dependencies()
+        elif self.check_type == "utils_deps":
+            results = self.check_utils_dependencies()
 
         self.finished.emit(results)
 
@@ -466,8 +486,17 @@ class CheckWorker(QThread):
                 "libusb-1.0-0"
             ]
 
+            # Build tools for Raspberry Pi image builder
+            build_packages = [
+                "kpartx",        # Partition mapping for disk images
+                "qemu-user-static",  # ARM emulation for chroot
+                "parted",        # Partition manipulation
+                "wget",          # Download utilities
+                "xz-utils"       # Compression utilities
+            ]
+
             # Check all packages
-            all_packages = core_packages + qt_packages + usb_packages
+            all_packages = core_packages + qt_packages + usb_packages + build_packages
             missing_packages = []
 
             self.progress.emit("Checking system packages...")
@@ -484,7 +513,8 @@ class CheckWorker(QThread):
                         "✓ All required system packages are installed",
                         f"  Core: {', '.join(core_packages)}",
                         f"  Qt: {', '.join(qt_packages)}",
-                        f"  USB: {', '.join(usb_packages)}"
+                        f"  USB: {', '.join(usb_packages)}",
+                        f"  Build tools: {', '.join(build_packages)}"
                     ]
                 )
             else:
@@ -492,6 +522,7 @@ class CheckWorker(QThread):
                 missing_core = [p for p in missing_packages if p in core_packages]
                 missing_qt = [p for p in missing_packages if p in qt_packages]
                 missing_usb = [p for p in missing_packages if p in usb_packages]
+                missing_build = [p for p in missing_packages if p in build_packages]
 
                 status = StatusLevel.ERROR if missing_core else StatusLevel.WARNING
 
@@ -506,6 +537,8 @@ class CheckWorker(QThread):
                     details.append(f"Qt libraries: {', '.join(missing_qt)}")
                 if missing_usb:
                     details.append(f"USB support: {', '.join(missing_usb)}")
+                if missing_build:
+                    details.append(f"Build tools (for Pi image builder): {', '.join(missing_build)}")
 
                 details.append("")
                 details.append("These packages can be installed automatically.")
@@ -633,6 +666,122 @@ class CheckWorker(QThread):
                 ],
                 fixable=True,
                 fix_command="pip_install:client"
+            )
+
+        return results
+
+    def check_utils_dependencies(self) -> Dict[str, CheckResult]:
+        """Check client utilities (deployment and discovery tools)."""
+        results = {}
+
+        self.progress.emit("Checking client utilities...")
+
+        # Utilities for deployment
+        deployment_utils = {
+            'paramiko': 'SSH client library for deployment',
+            'scp': 'SCP (secure copy) support',
+        }
+
+        # Utilities for network discovery
+        discovery_utils = {
+            'scapy': 'Network packet manipulation and discovery',
+            'zeroconf': 'mDNS/Bonjour service discovery',
+        }
+
+        all_utils = {**deployment_utils, **discovery_utils}
+
+        # Check which utilities are installed
+        installed = []
+        missing = []
+
+        # Map package names to import names for special cases
+        package_to_import = {
+            'python-dotenv': 'dotenv',
+            'python-dateutil': 'dateutil',
+            'pydantic-settings': 'pydantic_settings',
+            'pyserial': 'serial',
+            'pyusb': 'usb',
+            'PyJWT': 'jwt',
+        }
+
+        # Determine which Python to use for checking
+        venv_python = Path("venv/bin/python")
+        use_venv = venv_python.exists()
+
+        for pkg, description in all_utils.items():
+            # Get the correct import name
+            import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
+
+            if use_venv:
+                # Check if package is installed in venv using subprocess
+                result = subprocess.run(
+                    [str(venv_python), '-c', f'import {import_name}'],
+                    capture_output=True,
+                    check=False
+                )
+                if result.returncode == 0:
+                    installed.append(pkg)
+                else:
+                    missing.append(pkg)
+            else:
+                # Check if package is installed in current environment
+                try:
+                    __import__(import_name)
+                    installed.append(pkg)
+                except ImportError:
+                    missing.append(pkg)
+
+        # Determine status
+        if not missing:
+            results['utils_deps'] = CheckResult(
+                "Client Utilities",
+                StatusLevel.OK,
+                f"All installed ({len(installed)})",
+                [
+                    f"✓ All {len(installed)} utilities are installed",
+                    "",
+                    "Deployment utilities:",
+                    *[f"  ✓ {pkg}: {deployment_utils[pkg]}" for pkg in deployment_utils if pkg in installed],
+                    "",
+                    "Discovery utilities:",
+                    *[f"  ✓ {pkg}: {discovery_utils[pkg]}" for pkg in discovery_utils if pkg in installed],
+                ]
+            )
+        else:
+            # Categorize missing utilities
+            missing_deployment = [p for p in missing if p in deployment_utils]
+            missing_discovery = [p for p in missing if p in discovery_utils]
+
+            details = [
+                f"✗ {len(missing)} utilities missing",
+                "",
+            ]
+
+            if missing_deployment:
+                details.append("Missing deployment utilities:")
+                for pkg in missing_deployment:
+                    details.append(f"  ✗ {pkg}: {deployment_utils[pkg]}")
+                details.append("")
+
+            if missing_discovery:
+                details.append("Missing discovery utilities:")
+                for pkg in missing_discovery:
+                    details.append(f"  ✗ {pkg}: {discovery_utils[pkg]}")
+                details.append("")
+
+            if installed:
+                details.append(f"Installed: {len(installed)}/{len(all_utils)}")
+
+            details.append("")
+            details.append("These utilities can be installed automatically.")
+
+            results['utils_deps'] = CheckResult(
+                "Client Utilities",
+                StatusLevel.ERROR,
+                f"{len(missing)} missing",
+                details,
+                fixable=True,
+                fix_command="pip_install:client_utils"
             )
 
         return results
@@ -843,25 +992,87 @@ class FixWorker(QThread):
 
                 elif issue.fix_command.startswith("pip_install:"):
                     target = issue.fix_command.split(':')[1]
-                    req_file = f"{target}/requirements.txt"
-                    logger.info(f"Installing pip packages from {req_file}")
 
-                    venv_pip = Path("venv/bin/pip")
-                    if venv_pip.exists():
-                        logger.info(f"Using venv pip: {venv_pip}")
-                        subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
+                    # Special handling for client utilities
+                    if target == "client_utils":
+                        logger.info("Installing client utilities packages")
+                        packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
+
+                        venv_pip = Path("venv/bin/pip")
+                        if venv_pip.exists():
+                            logger.info(f"Using venv pip: {venv_pip}")
+                            subprocess.check_call([str(venv_pip), 'install'] + packages)
+                            logger.info("Client utilities install completed successfully")
+                        else:
+                            logger.info("Using system pip")
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages)
+                            logger.info("Client utilities install completed successfully")
                     else:
-                        logger.info("Using system pip")
-                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
-                        logger.info("Pip install completed successfully")
+                        # Standard requirements.txt installation
+                        req_file = f"{target}/requirements.txt"
+                        logger.info(f"Installing pip packages from {req_file}")
+
+                        venv_pip = Path("venv/bin/pip")
+                        if venv_pip.exists():
+                            logger.info(f"Using venv pip: {venv_pip}")
+                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                            logger.info("Pip install completed successfully")
+                        else:
+                            logger.info("Using system pip")
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                            logger.info("Pip install completed successfully")
 
                 elif issue.fix_command.startswith("apt_install:"):
                     packages = issue.fix_command.split(':')[1]
                     logger.info(f"Installing apt packages: {packages}")
-                    success = self.launcher._install_apt_packages(packages)
-                    if not success:
-                        raise Exception("Failed to install system packages")
+
+                    # Run apt install directly with pkexec (no GUI dialogs from worker thread)
+                    # pkexec will handle the password GUI prompt itself
+                    package_list = packages.split()
+
+                    # Check if pkexec is available
+                    pkexec_check = subprocess.run(
+                        ['which', 'pkexec'],
+                        capture_output=True,
+                        check=False
+                    )
+
+                    if pkexec_check.returncode == 0:
+                        # Use pkexec for GUI password prompt
+                        logger.info("Running apt update with pkexec...")
+                        result = subprocess.run(
+                            ['pkexec', 'apt', 'update'],
+                            capture_output=True,
+                            text=True,
+                            check=False
+                        )
+
+                        if result.returncode != 0:
+                            if "dismissed" in result.stderr.lower() or "cancelled" in result.stderr.lower():
+                                logger.info("User cancelled apt update")
+                                raise Exception("User cancelled package installation")
+                            else:
+                                logger.error(f"apt update failed: {result.stderr}")
+                                raise Exception(f"apt update failed: {result.stderr}")
+
+                        logger.info("Running apt install with pkexec...")
+                        result = subprocess.run(
+                            ['pkexec', 'apt', 'install', '-y'] + package_list,
+                            capture_output=True,
+                            text=True,
+                            check=False
+                        )
+
+                        if result.returncode != 0:
+                            logger.error(f"apt install failed: {result.stderr}")
+                            raise Exception(f"apt install failed: {result.stderr}")
+
+                        logger.info(f"Successfully installed system packages: {packages}")
+                    else:
+                        # pkexec not available, fail with error
+                        logger.error("pkexec not available for system package installation")
+                        raise Exception("pkexec not available. Please install: sudo apt install policykit-1")
+
                     logger.info("apt install completed successfully")
 
             except Exception as e:
@@ -930,11 +1141,20 @@ class LabLinkLauncher(QMainWindow):
         self.setWindowTitle("LabLink Launcher")
         self.setMinimumSize(800, 700)
 
+        # Add defined border to main window
+        self.setStyleSheet("""
+            QMainWindow {
+                border: 6px solid #0d1419;
+                background-color: #ecf0f1;
+            }
+        """)
+
         # Store check results
         self.env_results = {}
         self.sys_results = {}
         self.server_results = {}
         self.client_results = {}
+        self.utils_results = {}
 
         # Cache for check results (prevents redundant checks)
         self._check_cache = {}
@@ -951,7 +1171,12 @@ class LabLinkLauncher(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
+        # Set main window background
+        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
+
         main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(15)
         central_widget.setLayout(main_layout)
 
         # Header
@@ -960,17 +1185,33 @@ class LabLinkLauncher(QMainWindow):
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet("""
             padding: 20px;
-            background-color: #1e1e1e;
-            color: #ffffff;
-            border: 2px solid #007acc;
-            border-radius: 6px;
+            background-color: #1a252f;
+            color: white;
+            border-radius: 8px;
+            border: 2px solid #0d1419;
         """)
         main_layout.addWidget(header)
 
         # Status indicators section
         status_group = QGroupBox("System Status")
         status_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        status_group.setStyleSheet("""
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+        """)
         status_layout = QVBoxLayout()
+        status_layout.setSpacing(8)
 
         # Environment status
         self.env_led = LEDIndicator("Environment (Python, pip, venv)")
@@ -992,27 +1233,86 @@ class LabLinkLauncher(QMainWindow):
         self.client_led.clicked.connect(self.show_client_details)
         status_layout.addWidget(self.client_led)
 
+        # Client utilities status
+        self.utils_led = LEDIndicator("Client Utilities (Deployment, Discovery)")
+        self.utils_led.clicked.connect(self.show_utils_details)
+        status_layout.addWidget(self.utils_led)
+
         status_group.setLayout(status_layout)
         main_layout.addWidget(status_group)
 
         # Progress bar
         self.progress_label = QLabel("Ready")
         self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_label.setFont(QFont("Arial", 10))
+        self.progress_label.setStyleSheet("""
+            QLabel {
+                padding: 8px;
+                background-color: white;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                color: #2c3e50;
+            }
+        """)
         main_layout.addWidget(self.progress_label)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #bdc3c7;
+                border-radius: 6px;
+                background-color: white;
+                text-align: center;
+                height: 25px;
+            }
+            QProgressBar::chunk {
+                background-color: #3498db;
+                border-radius: 4px;
+            }
+        """)
         main_layout.addWidget(self.progress_bar)
 
         # Control buttons
         control_group = QGroupBox("Actions")
         control_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        control_group.setStyleSheet("""
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+        """)
         control_layout = QVBoxLayout()
+        control_layout.setSpacing(10)
 
         # Check button
         check_btn = QPushButton("🔄 Refresh Status")
         check_btn.setFont(QFont("Arial", 11))
         check_btn.setMinimumHeight(40)
+        check_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ecf0f1;
+                border: 2px solid #bdc3c7;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #d5dbdb;
+                border: 2px solid #95a5a6;
+            }
+            QPushButton:pressed {
+                background-color: #bdc3c7;
+            }
+        """)
         check_btn.clicked.connect(self.check_all)
         control_layout.addWidget(check_btn)
 
@@ -1020,6 +1320,22 @@ class LabLinkLauncher(QMainWindow):
         self.fix_btn = QPushButton("🔧 Fix Issues Automatically")
         self.fix_btn.setFont(QFont("Arial", 11))
         self.fix_btn.setMinimumHeight(40)
+        self.fix_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12;
+                color: white;
+                border: 2px solid #d68910;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e67e22;
+                border: 2px solid #ca6f1e;
+            }
+            QPushButton:pressed {
+                background-color: #d68910;
+            }
+        """)
         self.fix_btn.clicked.connect(self.fix_issues)
         control_layout.addWidget(self.fix_btn)
 
@@ -1027,22 +1343,62 @@ class LabLinkLauncher(QMainWindow):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #bdc3c7; margin: 10px 0px;")
         control_layout.addWidget(line)
 
         # Launch buttons
         launch_layout = QHBoxLayout()
+        launch_layout.setSpacing(10)
 
         self.server_btn = QPushButton("▶️  Start Server")
         self.server_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.server_btn.setMinimumHeight(50)
-        self.server_btn.setStyleSheet("background-color: #27ae60; color: white; border-radius: 5px;")
+        self.server_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: 2px solid #1e8449;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+                border: 2px solid #186a3b;
+            }
+            QPushButton:pressed {
+                background-color: #1e8449;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+            }
+        """)
         self.server_btn.clicked.connect(self.launch_server)
         launch_layout.addWidget(self.server_btn)
 
         self.client_btn = QPushButton("▶️  Start Client")
         self.client_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.client_btn.setMinimumHeight(50)
-        self.client_btn.setStyleSheet("background-color: #3498db; color: white; border-radius: 5px;")
+        self.client_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: 2px solid #2471a3;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+                border: 2px solid #1f618d;
+            }
+            QPushButton:pressed {
+                background-color: #2471a3;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+            }
+        """)
         self.client_btn.clicked.connect(self.launch_client)
         launch_layout.addWidget(self.client_btn)
 
@@ -1163,6 +1519,22 @@ class LabLinkLauncher(QMainWindow):
         self.client_results = results
         self.update_led_status(self.client_led, results)
 
+        # Start next check
+        self.check_utils_deps()
+
+    def check_utils_deps(self):
+        """Check client utilities dependencies."""
+        worker = CheckWorker("utils_deps")
+        worker.progress.connect(self.update_progress)
+        worker.finished.connect(self.on_utils_checked)
+        worker.start()
+        self.utils_worker = worker
+
+    def on_utils_checked(self, results):
+        """Handle utilities dependencies check completion."""
+        self.utils_results = results
+        self.update_led_status(self.utils_led, results)
+
         # All checks complete
         self.progress_bar.setVisible(False)
         self.progress_label.setText("✓ Status check complete")
@@ -1170,6 +1542,9 @@ class LabLinkLauncher(QMainWindow):
         # Re-enable buttons
         self.fix_btn.setEnabled(True)
         self.update_launch_buttons()
+
+        # Auto-trigger fix dialog if there are fixable errors
+        self.auto_fix_if_needed()
 
     def update_progress(self, message):
         """Update progress label."""
@@ -1246,12 +1621,33 @@ class LabLinkLauncher(QMainWindow):
             dialog = IssueDetailsDialog("Client Dependencies Details", self.client_results, self)
             dialog.exec()
 
+    def show_utils_details(self):
+        """Show utilities dependencies details."""
+        if self.utils_results:
+            dialog = IssueDetailsDialog("Client Utilities Details", self.utils_results, self)
+            dialog.exec()
+
+    def auto_fix_if_needed(self):
+        """Automatically prompt to fix issues if errors are detected."""
+        fixable_errors = []
+
+        # Collect fixable issues that are errors (not just warnings)
+        for results in [self.env_results, self.sys_results, self.server_results, self.client_results, self.utils_results]:
+            for result in results.values():
+                if result.fixable and result.fix_command and result.status == StatusLevel.ERROR:
+                    fixable_errors.append(result)
+
+        # If we have fixable errors, automatically show the fix dialog
+        if fixable_errors:
+            logger.info(f"Auto-fix: Found {len(fixable_errors)} fixable errors, showing fix dialog")
+            QTimer.singleShot(500, self.fix_issues)
+
     def fix_issues(self):
         """Automatically fix detected issues."""
         fixable_issues = []
 
         # Collect all fixable issues
-        for results in [self.env_results, self.sys_results, self.server_results, self.client_results]:
+        for results in [self.env_results, self.sys_results, self.server_results, self.client_results, self.utils_results]:
             for result in results.values():
                 if result.fixable and result.fix_command:
                     fixable_issues.append(result)

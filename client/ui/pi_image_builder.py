@@ -5,6 +5,7 @@ This wizard creates custom Raspberry Pi images with LabLink pre-installed.
 
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,9 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                              QVBoxLayout, QWizard, QWizardPage)
 
 logger = logging.getLogger(__name__)
+
+# Regex pattern to strip ANSI escape codes
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 class ImageBuildThread(QThread):
@@ -29,6 +33,7 @@ class ImageBuildThread(QThread):
         self,
         output_path: str,
         hostname: str = "lablink-pi",
+        pi_model: str = "5",
         wifi_ssid: str = "",
         wifi_password: str = "",
         admin_password: str = "",
@@ -40,6 +45,7 @@ class ImageBuildThread(QThread):
         Args:
             output_path: Path where image will be saved
             hostname: Raspberry Pi hostname
+            pi_model: Raspberry Pi model (3, 4, or 5)
             wifi_ssid: Wi-Fi network name (optional)
             wifi_password: Wi-Fi password (optional)
             admin_password: Admin user password (optional)
@@ -49,85 +55,317 @@ class ImageBuildThread(QThread):
         super().__init__()
         self.output_path = output_path
         self.hostname = hostname
+        self.pi_model = pi_model
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
         self.admin_password = admin_password
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
+        self.recent_output = []  # Buffer for recent output lines
+
+    def _parse_progress_only(self, line: str):
+        """Parse progress from a line without emitting output."""
+        # Download progress (wget shows % progress)
+        if "%" in line and ("K/s" in line or "M/s" in line or "G/s" in line):
+            try:
+                parts = line.split()
+                for part in parts:
+                    if "%" in part:
+                        pct = int(part.rstrip('%'))
+                        prog = 5 + int(pct * 0.10)
+                        self.progress.emit(prog, f"Downloading: {pct}%")
+                        break
+            except (ValueError, IndexError):
+                pass
+        # xz extraction/compression progress (e.g. "  5.4 %  123.4 MiB")
+        elif "%" in line and "MiB" in line and "K/s" not in line:
+            try:
+                parts = line.strip().split()
+                if len(parts) >= 2 and parts[0].replace('.', '', 1).replace('%', '').replace('-', '').isdigit():
+                    pct = float(parts[0].rstrip('%'))
+                    if pct >= 0:
+                        recent_text = ''.join(self.recent_output[-10:])
+                        if "Extracting" in recent_text or len(self.recent_output) < 20:
+                            # Early in process or explicitly extracting
+                            prog = 16 + int(pct * 0.04)
+                            self.progress.emit(prog, f"Extracting: {int(pct)}%")
+                        elif "Compressing" in recent_text:
+                            prog = 85 + int(pct * 0.10)
+                            self.progress.emit(prog, f"Compressing: {int(pct)}%")
+            except (ValueError, IndexError):
+                pass
 
     def run(self):
         """Run image building process."""
         try:
             self.progress.emit(0, "Starting image build process...")
+            logger.info("ImageBuildThread starting")
 
             # Check if build script exists
             script_path = Path(__file__).parent.parent.parent / "build-pi-image.sh"
+            logger.info(f"Looking for build script at: {script_path}")
+            logger.info(f"Script exists: {script_path.exists()}")
 
             if not script_path.exists():
-                self.finished.emit(
-                    False,
+                error_msg = (
                     f"Build script not found at: {script_path}\n\n"
-                    "Please ensure build-pi-image.sh is in the LabLink root directory.",
+                    "Please ensure build-pi-image.sh is in the LabLink root directory."
                 )
+                logger.error(error_msg)
+                self.finished.emit(False, error_msg)
                 return
 
             # Prepare environment variables
             env = os.environ.copy()
             env["OUTPUT_IMAGE"] = self.output_path
-            env["PI_HOSTNAME"] = self.hostname
+            env["LABLINK_HOSTNAME"] = self.hostname  # Fixed: was PI_HOSTNAME
+            env["PI_MODEL"] = self.pi_model
 
             if self.wifi_ssid:
                 env["WIFI_SSID"] = self.wifi_ssid
             if self.wifi_password:
                 env["WIFI_PASSWORD"] = self.wifi_password
             if self.admin_password:
-                env["ADMIN_PASSWORD"] = self.admin_password
+                env["LABLINK_ADMIN_PASSWORD"] = self.admin_password  # Fixed: was ADMIN_PASSWORD
 
             env["ENABLE_SSH"] = "yes" if self.enable_ssh else "no"
             env["AUTO_EXPAND"] = "yes" if self.auto_expand else "no"
 
             self.progress.emit(5, "Launching build script...")
+            self.output.emit(f"Build script: {script_path}\n")
             self.output.emit(f"Building image: {self.output_path}\n")
             self.output.emit(f"Hostname: {self.hostname}\n")
+            self.output.emit(f"\n--- Starting build process ---\n")
 
-            # Run build script
+            logger.info(f"Launching bash with script: {script_path}")
+            logger.info(f"Output path: {self.output_path}")
+
+            # Check if pkexec is available for GUI sudo
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
+
+            # Build script wrapper that exports env vars
+            # Get current user for ownership fixing after build
+            import pwd
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            current_uid = os.getuid()
+            current_gid = os.getgid()
+
+            script_wrapper = f"""#!/bin/bash
+export OUTPUT_IMAGE='{self.output_path}'
+export LABLINK_HOSTNAME='{self.hostname}'
+export PI_MODEL='{self.pi_model}'
+export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
+export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
+export SUDO_USER='{current_user}'
+export ORIGINAL_UID='{current_uid}'
+export ORIGINAL_GID='{current_gid}'
+"""
+            if self.wifi_ssid:
+                script_wrapper += f"export WIFI_SSID='{self.wifi_ssid}'\n"
+            if self.wifi_password:
+                script_wrapper += f"export WIFI_PASSWORD='{self.wifi_password}'\n"
+            if self.admin_password:
+                script_wrapper += f"export LABLINK_ADMIN_PASSWORD='{self.admin_password}'\n"
+
+            script_wrapper += f"exec bash {script_path}\n"
+
+            # Write wrapper to temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_wrapper)
+                wrapper_path = f.name
+
+            # Make wrapper executable
+            os.chmod(wrapper_path, 0o755)
+
+            if pkexec_available:
+                # Run with pkexec for graphical sudo prompt
+                logger.info("Running with pkexec for root privileges")
+                self.output.emit("Running with elevated privileges (pkexec)...\n")
+                command = ['pkexec', 'bash', wrapper_path]
+            else:
+                # Warn that the script needs sudo
+                logger.warning("pkexec not available, script may fail without sudo")
+                self.output.emit("WARNING: This script requires root privileges\n")
+                self.output.emit("pkexec not found - build may fail\n")
+                command = ['bash', wrapper_path]
+
+            # Use pty to force unbuffered output
+            import pty
+            import select
+
+            logger.info(f"Launching command: {' '.join(command)}")
+
+            # Create a pseudo-terminal for truly unbuffered I/O
+            master_fd, slave_fd = pty.openpty()
+
             process = subprocess.Popen(
-                ["bash", str(script_path)],
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
+                command,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                stdin=slave_fd,
+                close_fds=True,
             )
 
-            # Monitor progress
-            for line in iter(process.stdout.readline, ""):
-                if not line:
-                    break
+            # Close slave fd in parent process
+            os.close(slave_fd)
 
-                self.output.emit(line)
+            logger.info(f"Process started with PID: {process.pid}")
+            self.output.emit(f"Process started (PID: {process.pid})\n")
 
-                # Parse progress from output
-                if "Downloading" in line:
-                    self.progress.emit(10, "Downloading base image...")
-                elif "Expanding" in line or "Creating" in line:
-                    self.progress.emit(20, "Expanding image...")
-                elif "Mounting" in line:
-                    self.progress.emit(30, "Mounting image...")
-                elif "Configuring" in line:
-                    self.progress.emit(50, "Configuring system...")
-                elif "Installing" in line:
-                    self.progress.emit(60, "Installing LabLink...")
-                elif "Creating systemd" in line:
-                    self.progress.emit(70, "Setting up auto-start...")
-                elif "Unmounting" in line:
-                    self.progress.emit(80, "Finalizing image...")
-                elif "Compressing" in line:
-                    self.progress.emit(90, "Compressing image...")
-                elif "SUCCESS" in line or "Complete" in line:
-                    self.progress.emit(100, "Build complete!")
+            # Send newlines to stdin to skip interactive prompts
+            # The script will use the environment variables we set
+            try:
+                # Send 6 newlines to accept all default prompts:
+                # 1. Output image name
+                # 2. Hostname
+                # 3. Enable SSH
+                # 4. Wi-Fi SSID (empty to skip)
+                # 5. Admin password
+                # Plus one extra for safety
+                os.write(master_fd, b'\n' * 6)
+            except Exception as e:
+                logger.warning(f"Failed to write to stdin: {e}")
 
+            # Monitor progress - read from pty master for unbuffered I/O
+            line_count = 0
+            partial_line = b''
+
+            # Set master_fd to non-blocking mode
+            import fcntl
+            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+            while True:
+                # Check if process has exited
+                poll_result = process.poll()
+
+                try:
+                    # Use select to wait for data with timeout
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+
+                    if ready:
+                        # Read available data
+                        try:
+                            data = os.read(master_fd, 4096)
+                            if not data:
+                                if poll_result is not None:
+                                    break
+                                continue
+
+                            partial_line += data
+
+                            # Process complete lines (treat both \r and \n as line endings)
+                            while b'\n' in partial_line or b'\r' in partial_line:
+                                # Find next line terminator (whichever comes first)
+                                newline_pos = partial_line.find(b'\n')
+                                cr_pos = partial_line.find(b'\r')
+
+                                if newline_pos >= 0 and (cr_pos < 0 or newline_pos < cr_pos):
+                                    # Newline first
+                                    line_end = newline_pos
+                                    terminator_len = 1
+                                elif cr_pos >= 0:
+                                    # CR first (check for CRLF)
+                                    if cr_pos + 1 < len(partial_line) and partial_line[cr_pos + 1:cr_pos + 2] == b'\n':
+                                        line_end = cr_pos
+                                        terminator_len = 2  # CRLF
+                                    else:
+                                        line_end = cr_pos
+                                        terminator_len = 1
+                                else:
+                                    break
+
+                                line_bytes = partial_line[:line_end]
+                                partial_line = partial_line[line_end + terminator_len:]
+
+                                try:
+                                    line = line_bytes.decode('utf-8', errors='replace')
+
+                                    # Strip ANSI escape codes
+                                    line = ANSI_ESCAPE.sub('', line)
+                                    line_stripped = line.strip()
+
+                                    # Skip resize2fs noise and empty lines
+                                    if not line_stripped:
+                                        continue
+                                    if line_stripped.startswith('old_desc_blocks') or line_stripped.startswith('new_desc_blocks'):
+                                        continue
+
+                                    # Emit the line
+                                    line_count += 1
+                                    logger.debug(f"Build output [{line_count}]: {line_stripped}")
+                                    self.output.emit(line + '\n')
+
+                                    # Keep recent output for context
+                                    self.recent_output.append(line_stripped)
+                                    if len(self.recent_output) > 50:
+                                        self.recent_output.pop(0)
+
+                                    # Parse progress
+                                    self._parse_progress_only(line_stripped)
+
+                                    # Parse step transitions
+                                    if "Downloading" in line_stripped:
+                                        self.progress.emit(5, "Starting download...")
+                                    elif "Extracting" in line_stripped:
+                                        self.progress.emit(16, "Extracting image...")
+                                    elif "extracted successfully" in line_stripped:
+                                        self.progress.emit(20, "Extraction complete")
+                                    elif "Expanding image" in line_stripped:
+                                        self.progress.emit(22, "Expanding image...")
+                                    elif "Image expanded" in line_stripped:
+                                        self.progress.emit(25, "Expansion complete")
+                                    elif "Mounting" in line_stripped:
+                                        self.progress.emit(30, "Mounting image...")
+                                    elif "Configuring" in line_stripped:
+                                        self.progress.emit(50, "Configuring system...")
+                                    elif "Installing" in line_stripped:
+                                        self.progress.emit(60, "Installing LabLink...")
+                                    elif "Creating systemd" in line_stripped:
+                                        self.progress.emit(70, "Setting up auto-start...")
+                                    elif "Unmounting" in line_stripped or "unmounted" in line_stripped:
+                                        self.progress.emit(80, "Finalizing image...")
+                                    elif "Compressing image" in line_stripped:
+                                        self.progress.emit(85, "Starting compression...")
+                                    elif "Compression complete" in line_stripped:
+                                        self.progress.emit(95, "Compression complete")
+                                    elif "Image created" in line_stripped:
+                                        self.progress.emit(98, "Finalizing...")
+                                    elif "SUCCESS" in line_stripped or "Build complete" in line_stripped:
+                                        self.progress.emit(100, "Build complete!")
+
+                                except Exception as e:
+                                    logger.error(f"Error decoding line: {e}")
+                        except OSError as e:
+                            if poll_result is not None:
+                                break
+                    elif poll_result is not None:
+                        # Process exited and no more data
+                        break
+
+                except Exception as e:
+                    logger.error(f"Error reading from pty: {e}")
+                    if poll_result is not None:
+                        break
+
+            # Close master fd
+            os.close(master_fd)
+
+            logger.info(f"Process output loop ended. Total lines: {line_count}")
             process.wait()
+            logger.info(f"Process exited with code: {process.returncode}")
+
+            # Clean up temp wrapper script
+            try:
+                os.unlink(wrapper_path)
+                logger.debug(f"Cleaned up temp wrapper: {wrapper_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp wrapper: {e}")
 
             if process.returncode == 0:
                 self.progress.emit(100, "Image built successfully!")
@@ -138,18 +376,17 @@ class ImageBuildThread(QThread):
                     f"You can now write this image to an SD card.",
                 )
             else:
-                self.finished.emit(
-                    False,
+                error_msg = (
                     f"Build failed with exit code {process.returncode}\n\n"
-                    "Check the output log for details.",
+                    "Check the output log for details."
                 )
+                logger.error(error_msg)
+                self.finished.emit(False, error_msg)
 
-        except FileNotFoundError:
-            self.finished.emit(
-                False,
-                "Build script not found.\n\n"
-                "This tool requires bash to be installed.",
-            )
+        except FileNotFoundError as e:
+            error_msg = f"Build script not found: {e}\n\nThis tool requires bash to be installed."
+            logger.error(error_msg)
+            self.finished.emit(False, error_msg)
         except Exception as e:
             logger.exception("Image build failed")
             self.finished.emit(False, f"Build error: {str(e)}")
@@ -167,6 +404,18 @@ class ConfigurationPage(QWizardPage):
         )
 
         layout = QVBoxLayout()
+
+        # Hardware settings
+        hardware_group = QGroupBox("Hardware Configuration")
+        hardware_layout = QFormLayout()
+
+        self.pi_model_combo = QComboBox()
+        self.pi_model_combo.addItems(["Raspberry Pi 5", "Raspberry Pi 4", "Raspberry Pi 3"])
+        self.pi_model_combo.setCurrentIndex(0)  # Default to Pi 5
+        hardware_layout.addRow("Raspberry Pi Model:", self.pi_model_combo)
+
+        hardware_group.setLayout(hardware_layout)
+        layout.addWidget(hardware_group)
 
         # Basic settings
         basic_group = QGroupBox("Basic Settings")
@@ -221,7 +470,9 @@ class ConfigurationPage(QWizardPage):
         output_group = QGroupBox("Output Image")
         output_layout = QHBoxLayout()
 
-        self.output_path_edit = QLineEdit()
+        # Set default path directly in constructor, same as hostname field
+        default_path = os.path.expanduser("~/lablink-pi.img")
+        self.output_path_edit = QLineEdit(default_path)
         self.output_path_edit.setPlaceholderText("Select where to save the image...")
         output_layout.addWidget(self.output_path_edit)
 
@@ -237,7 +488,8 @@ class ConfigurationPage(QWizardPage):
         # Info label
         info_label = QLabel(
             "ℹ️ The image will be based on Raspberry Pi OS Lite with LabLink pre-installed.\n"
-            "Build process may take 10-30 minutes depending on your internet connection."
+            "Build process may take 10-30 minutes depending on your internet connection.\n\n"
+            "⚠️ This tool requires root privileges. You will be prompted for your password."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet(
@@ -248,11 +500,23 @@ class ConfigurationPage(QWizardPage):
         self.setLayout(layout)
 
         # Register fields for validation
+        self.registerField("pi_model", self.pi_model_combo, "currentText")
         self.registerField("hostname*", self.hostname_edit)
         self.registerField("output_path*", self.output_path_edit)
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
+
+        # Connect text changes to notify wizard of completion status
+        self.hostname_edit.textChanged.connect(self.completeChanged)
+        self.output_path_edit.textChanged.connect(self.completeChanged)
+
+    def isComplete(self):
+        """Check if page has all required fields filled."""
+        # Both required fields must have text
+        has_hostname = bool(self.hostname_edit.text().strip())
+        has_output = bool(self.output_path_edit.text().strip())
+        return has_hostname and has_output
 
     def _browse_output(self):
         """Browse for output file location."""
@@ -336,7 +600,19 @@ class BuildProgressPage(QWizardPage):
 
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
-        self.output_text.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.output_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)  # No wrapping
+        self.output_text.setStyleSheet("""
+            QTextEdit {
+                font-family: 'Courier New', 'Consolas', monospace;
+                font-size: 9pt;
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                border: 2px solid #3e3e3e;
+                border-radius: 4px;
+                padding: 8px;
+                text-align: left;
+            }
+        """)
         layout.addWidget(self.output_text)
 
         self.setLayout(layout)
@@ -344,6 +620,15 @@ class BuildProgressPage(QWizardPage):
     def initializePage(self):
         """Start build process when page is shown."""
         # Get configuration from previous page
+        pi_model_text = self.field("pi_model") or "Raspberry Pi 5"
+        # Extract model number (3, 4, or 5)
+        if "3" in pi_model_text:
+            pi_model = "3"
+        elif "4" in pi_model_text:
+            pi_model = "4"
+        else:
+            pi_model = "5"
+
         hostname = self.field("hostname")
         output_path = self.field("output_path")
         wifi_ssid = self.field("wifi_ssid") or ""
@@ -365,6 +650,7 @@ class BuildProgressPage(QWizardPage):
         self.build_thread = ImageBuildThread(
             output_path=output_path,
             hostname=hostname,
+            pi_model=pi_model,
             wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
             admin_password=admin_password,
@@ -455,6 +741,50 @@ class PiImageBuilderWizard(QWizard):
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
         self.resize(700, 600)
+
+        # Apply visual styling
+        self.setStyleSheet("""
+            QWizard {
+                background-color: #ecf0f1;
+            }
+            QWizardPage {
+                background-color: #ecf0f1;
+            }
+            QGroupBox {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                background-color: white;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 5px 10px;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: 2px solid #2471a3;
+                border-radius: 6px;
+                padding: 8px 15px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+                border: 2px solid #1f618d;
+            }
+            QPushButton:pressed {
+                background-color: #2471a3;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+                border: 2px solid #7f8c8d;
+                color: #ecf0f1;
+            }
+        """)
 
         # Add pages
         self.config_page = ConfigurationPage()
