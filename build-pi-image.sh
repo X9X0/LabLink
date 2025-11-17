@@ -227,6 +227,46 @@ configure_first_boot() {
     echo "admin ALL=(ALL) NOPASSWD:ALL" > "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
     chmod 0440 "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
 
+    # Disable first-boot wizard (piwiz)
+    print_step "Disabling first-boot wizard..."
+
+    # Remove piwiz from autostart
+    rm -f "$MOUNT_ROOT/etc/xdg/autostart/piwiz.desktop" 2>/dev/null || true
+
+    # Create sentinel file to indicate setup is complete
+    mkdir -p "$MOUNT_ROOT/home/admin"
+    touch "$MOUNT_ROOT/home/admin/.piwiz_done"
+    chroot "$MOUNT_ROOT" chown admin:admin /home/admin/.piwiz_done
+
+    # Pre-configure locale (US English UTF-8)
+    print_step "Configuring locale..."
+    sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' "$MOUNT_ROOT/etc/locale.gen"
+    chroot "$MOUNT_ROOT" locale-gen en_US.UTF-8
+    chroot "$MOUNT_ROOT" update-locale LANG=en_US.UTF-8
+
+    # Pre-configure keyboard layout (US)
+    print_step "Configuring keyboard layout..."
+    cat > "$MOUNT_ROOT/etc/default/keyboard" <<EOF
+# KEYBOARD configuration file
+XKBMODEL="pc105"
+XKBLAYOUT="us"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+
+    # Pre-configure timezone (America/New_York)
+    print_step "Configuring timezone..."
+    ln -sf /usr/share/zoneinfo/America/New_York "$MOUNT_ROOT/etc/localtime"
+    echo "America/New_York" > "$MOUNT_ROOT/etc/timezone"
+
+    # Configure WiFi country
+    cat >> "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF
+
     # Enable SSH
     if [ "$ENABLE_SSH" = "yes" ]; then
         touch "$MOUNT_BOOT/ssh"
