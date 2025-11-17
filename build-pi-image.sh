@@ -326,8 +326,15 @@ update_config=1
 
 $WPA_CONFIG
 EOF
+            print_step "Wrote wpa_supplicant.conf to boot partition: $MOUNT_BOOT/wpa_supplicant.conf"
 
-            # Method 2: Also write directly to rootfs wpa_supplicant.conf
+            # Method 2: Also create in firmware subdirectory if it exists (newer Pi OS)
+            if [ -d "$MOUNT_BOOT/firmware" ]; then
+                cp "$MOUNT_BOOT/wpa_supplicant.conf" "$MOUNT_BOOT/firmware/wpa_supplicant.conf"
+                print_step "Also wrote to firmware subdirectory"
+            fi
+
+            # Method 3: Write directly to rootfs wpa_supplicant.conf
             cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
@@ -335,8 +342,9 @@ update_config=1
 
 $WPA_CONFIG
 EOF
+            print_step "Wrote wpa_supplicant.conf to rootfs: $MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf"
 
-            print_step "Wi-Fi configured with encrypted PSK"
+            print_step "Wi-Fi configured with encrypted PSK for SSID: $WIFI_SSID"
         else
             # Fallback to plaintext if wpa_passphrase fails
             print_warning "wpa_passphrase not available, using plaintext password"
@@ -351,6 +359,13 @@ network={
     psk="$WIFI_PASSWORD"
 }
 EOF
+            print_step "Wrote wpa_supplicant.conf to boot partition (plaintext)"
+
+            # Also write to firmware subdirectory if it exists
+            if [ -d "$MOUNT_BOOT/firmware" ]; then
+                cp "$MOUNT_BOOT/wpa_supplicant.conf" "$MOUNT_BOOT/firmware/wpa_supplicant.conf"
+                print_step "Also wrote to firmware subdirectory"
+            fi
 
             cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
 country=US
@@ -362,7 +377,8 @@ network={
     psk="$WIFI_PASSWORD"
 }
 EOF
-            print_step "Wi-Fi configured with plaintext password"
+            print_step "Wrote wpa_supplicant.conf to rootfs (plaintext)"
+            print_step "Wi-Fi configured with plaintext password for SSID: $WIFI_SSID"
         fi
     else
         # No WiFi credentials provided, create basic config
