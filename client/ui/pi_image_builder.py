@@ -820,9 +820,11 @@ class PiImageBuilderWizard(QWizard):
                 # Get image path
                 image_path = self.field("output_path")
 
-                # Show SD card writer
-                writer = SDCardWriter(self.parent())
-                writer.set_image_path(image_path)
-                writer.exec()
+                # Show SD card writer as independent window (no parent binding)
+                # Store as instance variable to prevent garbage collection
+                self.writer = SDCardWriter(None)
+                self.writer.set_image_path(image_path)
+                self.writer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+                self.writer.show()
 
         super().done(result)
