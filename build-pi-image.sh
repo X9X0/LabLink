@@ -546,6 +546,13 @@ exec 2>&1
 echo "[LabLink] Starting first boot setup..."
 echo "[LabLink] $(date)"
 
+# Check if setup already completed
+if [ -f /var/lib/lablink-setup-complete ]; then
+    echo "[LabLink] Setup already completed, exiting"
+    systemctl disable lablink-first-boot.service
+    exit 0
+fi
+
 # Function to wait for network
 wait_for_network() {
     local max_attempts=30
@@ -567,13 +574,44 @@ wait_for_network() {
     return 1
 }
 
+# Function to sync time
+sync_time() {
+    echo "[LabLink] Synchronizing system time via NTP..."
+
+    # Enable NTP
+    timedatectl set-ntp true
+
+    # Restart timesyncd to force sync
+    systemctl restart systemd-timesyncd
+
+    # Wait for time sync with timeout
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if timedatectl status | grep -q "System clock synchronized: yes"; then
+            echo "[LabLink] Time synchronized successfully"
+            echo "[LabLink] Current time: $(date)"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    echo "[LabLink] WARNING: Time sync timeout, but continuing anyway"
+    echo "[LabLink] Current time: $(date)"
+    return 0
+}
+
 # Wait for network
 if ! wait_for_network; then
     echo "[LabLink] Skipping setup due to network unavailability"
-    echo "[LabLink] You can manually run this script later: sudo /usr/local/bin/lablink-first-boot.sh"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] You can manually run this script: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 0
 fi
+
+# Sync time BEFORE doing any SSL operations
+sync_time
 
 # Update system
 echo "[LabLink] Updating system packages..."
@@ -590,7 +628,8 @@ if curl -fsSL https://get.docker.com | sh; then
     usermod -aG docker admin
 else
     echo "[LabLink] ERROR: Docker installation failed"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 1
 fi
 
@@ -605,7 +644,8 @@ if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lab
     rm lablink.tar.gz
 else
     echo "[LabLink] ERROR: Failed to download LabLink"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 1
 fi
 
@@ -808,6 +848,10 @@ echo "[LabLink] Completed at: $(date)"
 # Run status check to show final state
 echo ""
 /usr/local/bin/lablink-status
+
+# Mark setup as complete
+touch /var/lib/lablink-setup-complete
+echo "[LabLink] Setup marked as complete"
 
 # Disable this script from running again
 systemctl disable lablink-first-boot.service
