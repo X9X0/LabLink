@@ -321,27 +321,86 @@ sync
     def _verify_write(self) -> bool:
         """Verify written image."""
         try:
-            # Read back some of the written data and compare
-            block_size = 4096
-            blocks_to_verify = 1000  # Verify first ~4MB
+            import tempfile
 
-            with open(self.image_path, "rb") as img_file:
-                with open(self.device_path, "rb") as dev_file:
-                    for i in range(blocks_to_verify):
-                        if self._stop_requested:
-                            return False
+            # Check if pkexec is available
+            pkexec_available = subprocess.run(
+                ['which', 'pkexec'],
+                capture_output=True,
+                check=False
+            ).returncode == 0
 
-                        img_block = img_file.read(block_size)
-                        dev_block = dev_file.read(block_size)
+            # Create verification script that compares first 100MB of image with device
+            verify_script = f"""#!/bin/bash
+set -e
+exec 2>&1
 
-                        if img_block != dev_block:
-                            return False
+echo "Verifying first 100MB of written image..."
 
-                        if i % 100 == 0:
-                            percent = 92 + int((i / blocks_to_verify) * 7)
-                            self.progress.emit(percent, f"Verifying: {percent}%")
+# Compare first 100MB (102400 blocks of 1024 bytes)
+if cmp -n 104857600 '{self.image_path}' '{self.device_path}'; then
+    echo "Verification successful: Data matches!"
+    exit 0
+else
+    echo "Verification failed: Data mismatch!"
+    exit 1
+fi
+"""
 
-            return True
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(verify_script)
+                script_path = f.name
+
+            # Make script executable
+            os.chmod(script_path, 0o755)
+
+            try:
+                # Execute with pkexec or sudo
+                if pkexec_available:
+                    cmd = ['pkexec', 'bash', script_path]
+                else:
+                    cmd = ['sudo', 'bash', script_path]
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+
+                # Monitor verification output
+                while True:
+                    if self._stop_requested:
+                        process.kill()
+                        return False
+
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+
+                    if line:
+                        logger.debug(f"Verify output: {line.strip()}")
+                        if "Verifying" in line:
+                            self.progress.emit(95, "Verifying: 50%")
+
+                # Wait for completion
+                return_code = process.wait()
+
+                # Clean up script
+                try:
+                    os.unlink(script_path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up verify script: {e}")
+
+                return return_code == 0
+
+            except Exception as e:
+                # Clean up script on error
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                raise
 
         except Exception as e:
             logger.error(f"Verification failed: {e}")
@@ -355,10 +414,23 @@ sync
             if platform.system() == "Darwin":
                 subprocess.run(["diskutil", "eject", self.device_path], check=True)
             elif platform.system() == "Linux":
+                # Sync is already done in the write script, but do it again to be safe
                 subprocess.run(["sync"], check=True)
-                subprocess.run(["eject", self.device_path], check=False)
 
-            self.progress.emit(100, "SD card ejected safely")
+                # Check if pkexec is available for eject
+                pkexec_available = subprocess.run(
+                    ['which', 'pkexec'],
+                    capture_output=True,
+                    check=False
+                ).returncode == 0
+
+                # Try to eject with elevated privileges
+                if pkexec_available:
+                    subprocess.run(["pkexec", "eject", self.device_path], check=False, capture_output=True)
+                else:
+                    subprocess.run(["sudo", "eject", self.device_path], check=False, capture_output=True)
+
+            self.progress.emit(100, "SD card ready to remove")
 
         except Exception as e:
             logger.warning(f"Eject failed: {e}")
@@ -671,9 +743,9 @@ class SDCardWriter(QDialog):
         options_group = QGroupBox("3. Options")
         options_layout = QVBoxLayout()
 
-        self.verify_check = QCheckBox("Verify after writing (requires root access)")
-        self.verify_check.setChecked(False)  # Disabled by default - requires additional privileges
-        self.verify_check.setToolTip("Verification requires reading the device which needs root access")
+        self.verify_check = QCheckBox("Verify after writing (compares first 100MB)")
+        self.verify_check.setChecked(False)  # Disabled by default to speed up the process
+        self.verify_check.setToolTip("Reads back and compares the first 100MB to verify the write was successful.\nRequires entering your password for root access.")
         options_layout.addWidget(self.verify_check)
 
         options_group.setLayout(options_layout)
