@@ -56,13 +56,14 @@ class ImageWriterThread(QThread):
 
             # Get image size
             image_size = os.path.getsize(self.image_path)
-            self.progress.emit(10, f"Image size: {image_size / (1024**3):.2f} GB")
+            self.progress.emit(8, f"Image size: {image_size / (1024**3):.2f} GB")
 
             # Unmount device (Linux/macOS)
             if platform.system() in ["Linux", "Darwin"]:
                 self._unmount_device()
 
-            self.progress.emit(15, "Writing image...")
+            self.progress.emit(10, "Checking device readiness...")
+            self.progress.emit(15, "Starting write operation...")
 
             # Write image
             if platform.system() == "Windows":
@@ -149,22 +150,68 @@ class ImageWriterThread(QThread):
 set -e
 exec 2>&1  # Redirect stderr to stdout so we can capture it
 
-# Verify device is accessible before writing
-if [ ! -b "{self.device_path}" ]; then
-    echo "Error: Device {self.device_path} is not a block device"
+# Function to check if device is ready
+check_device_ready() {{
+    local device="$1"
+    local max_attempts=10
+    local attempt=1
+
+    echo "Checking if device $device is ready..."
+
+    while [ $attempt -le $max_attempts ]; do
+        # Check if device exists as a block device
+        if [ ! -b "$device" ]; then
+            echo "Attempt $attempt/$max_attempts: Device $device is not a block device"
+            sleep 1
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        # Try to read device size to verify medium is present
+        if blockdev --getsize64 "$device" &>/dev/null; then
+            local size=$(blockdev --getsize64 "$device" 2>/dev/null)
+            if [ "$size" -gt 0 ]; then
+                echo "Device ready: $device (size: $size bytes)"
+                return 0
+            fi
+        fi
+
+        echo "Attempt $attempt/$max_attempts: Device not ready or no medium found"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+
+    echo "Error: Device $device is not ready after $max_attempts attempts"
+    echo "Please check that:"
+    echo "  1. The SD card is properly inserted"
+    echo "  2. The SD card reader is connected"
+    echo "  3. Try unplugging and re-plugging the SD card reader"
+    return 1
+}}
+
+# Check if device is ready
+if ! check_device_ready "{self.device_path}"; then
     exit 1
 fi
 
 # Flush filesystem buffers and re-read partition table
+echo "Flushing buffers and re-reading partition table..."
 sync
 blockdev --rereadpt "{self.device_path}" 2>/dev/null || true
+sleep 1
 
-# Give kernel time to settle after re-reading partition table
-sleep 2
+# Final verification before writing
+echo "Final device check before writing..."
+if ! blockdev --getsize64 "{self.device_path}" &>/dev/null; then
+    echo "Error: Device became unavailable just before writing"
+    exit 1
+fi
 
+echo "Starting write operation..."
 {dd_cmd}
 
 # Ensure all writes are flushed
+echo "Flushing final writes..."
 sync
 """
 
