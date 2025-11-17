@@ -866,29 +866,22 @@ class CheckWorker(QThread):
 
         if use_venv:
             # OPTIMIZED: Check all packages in a single subprocess call
+            # Build a proper multiline Python script
             import_checks = []
             for pkg in packages:
                 import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
-                import_checks.append(f"'{pkg}': __import__('{import_name}')")
+                import_checks.append((pkg, import_name))
 
-            check_script = f"""
-import sys
-results = {{}}
-for pkg_import in [{', '.join(import_checks)}]:
-    pkg_name = pkg_import[0]
-    try:
-        exec(pkg_import[1])
-        results[pkg_name] = 'OK'
-    except:
-        results[pkg_name] = 'MISSING'
-print('|'.join(f'{{k}}={{v}}' for k, v in results.items()))
-"""
-            # Create a more efficient batch check
-            batch_check = "import sys; results = {}; "
-            for pkg in packages:
-                import_name = package_to_import.get(pkg, pkg.replace("-", "_"))
-                batch_check += f"try: __import__('{import_name}'); results['{pkg}'] = 'OK'\nexcept: results['{pkg}'] = 'MISS'\n"
-            batch_check += "print('|'.join(f'{k}={v}' for k, v in results.items()))"
+            # Create a properly formatted multiline script
+            batch_check = "import sys\nresults = {}\n"
+            for pkg, import_name in import_checks:
+                # Use proper multiline try/except blocks
+                batch_check += f"try:\n"
+                batch_check += f"    __import__('{import_name}')\n"
+                batch_check += f"    results['{pkg}'] = 'OK'\n"
+                batch_check += f"except Exception:\n"
+                batch_check += f"    results['{pkg}'] = 'MISS'\n"
+            batch_check += "print('|'.join(f'{k}={v}' for k, v in results.items()))\n"
 
             result = subprocess.run(
                 [str(venv_python), '-c', batch_check],
