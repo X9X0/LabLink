@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # LabLink Server (FastAPI backend)
   lablink-server:
