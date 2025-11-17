@@ -390,10 +390,8 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-# Support both WPA3-Personal (sae) and WPA2-PSK for compatibility
-key-mgmt=sae;wpa-psk
+key-mgmt=sae,wpa-psk
 psk=$PSK_HASH
-# Protected Management Frames: optional (1) allows WPA3 with WPA2 fallback
 pmf=1
 
 [ipv4]
@@ -468,7 +466,7 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-key-mgmt=sae;wpa-psk
+key-mgmt=sae,wpa-psk
 psk=$WIFI_PASSWORD
 pmf=1
 
