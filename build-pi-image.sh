@@ -204,6 +204,29 @@ unmount_image() {
 configure_first_boot() {
     print_step "Configuring first boot..."
 
+    # Create admin user (Raspberry Pi OS 2022+ doesn't create default user)
+    print_step "Creating admin user..."
+
+    # Copy qemu for ARM emulation if needed
+    if [ ! -f "$MOUNT_ROOT/usr/bin/qemu-arm-static" ] && [ ! -f "$MOUNT_ROOT/usr/bin/qemu-aarch64-static" ]; then
+        cp /usr/bin/qemu-arm-static "$MOUNT_ROOT/usr/bin/" 2>/dev/null || \
+        cp /usr/bin/qemu-aarch64-static "$MOUNT_ROOT/usr/bin/qemu-arm-static" 2>/dev/null || true
+    fi
+
+    # Create admin user with all necessary groups
+    chroot "$MOUNT_ROOT" useradd -m -G sudo,adm,dialout,cdrom,audio,video,plugdev,games,users,input,netdev,gpio,i2c,spi -s /bin/bash admin 2>/dev/null || {
+        print_warning "User admin may already exist, updating password..."
+    }
+
+    # Set password for admin user
+    PASSWORD="${LABLINK_ADMIN_PASSWORD:-lablink}"
+    echo "admin:$PASSWORD" | chroot "$MOUNT_ROOT" chpasswd
+    print_step "Admin user created with password"
+
+    # Give sudo without password
+    echo "admin ALL=(ALL) NOPASSWD:ALL" > "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
+    chmod 0440 "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
+
     # Enable SSH
     if [ "$ENABLE_SSH" = "yes" ]; then
         touch "$MOUNT_BOOT/ssh"
@@ -258,7 +281,7 @@ apt-get upgrade -y
 
 # Install Docker
 curl -fsSL https://get.docker.com | sh
-usermod -aG docker pi
+usermod -aG docker admin
 
 # Install LabLink
 mkdir -p /opt/lablink
