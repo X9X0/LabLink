@@ -624,8 +624,9 @@ class SDCardWriter(QDialog):
         options_group = QGroupBox("3. Options")
         options_layout = QVBoxLayout()
 
-        self.verify_check = QCheckBox("Verify after writing (recommended)")
-        self.verify_check.setChecked(True)
+        self.verify_check = QCheckBox("Verify after writing (requires root access)")
+        self.verify_check.setChecked(False)  # Disabled by default - requires additional privileges
+        self.verify_check.setToolTip("Verification requires reading the device which needs root access")
         options_layout.addWidget(self.verify_check)
 
         options_group.setLayout(options_layout)
