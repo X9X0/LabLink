@@ -227,16 +227,40 @@ configure_first_boot() {
     echo "admin ALL=(ALL) NOPASSWD:ALL" > "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
     chmod 0440 "$MOUNT_ROOT/etc/sudoers.d/010_admin-nopasswd"
 
-    # Disable first-boot wizard (piwiz)
+    # Disable first-boot wizard (piwiz) and userconfig
     print_step "Disabling first-boot wizard..."
 
-    # Remove piwiz from autostart
+    # Method 1: Remove piwiz from autostart
     rm -f "$MOUNT_ROOT/etc/xdg/autostart/piwiz.desktop" 2>/dev/null || true
 
-    # Create sentinel file to indicate setup is complete
+    # Method 2: Create Hidden=true override if it exists
+    if [ -f "$MOUNT_ROOT/usr/share/applications/piwiz.desktop" ]; then
+        mkdir -p "$MOUNT_ROOT/etc/xdg/autostart"
+        cat > "$MOUNT_ROOT/etc/xdg/autostart/piwiz.desktop" <<EOF
+[Desktop Entry]
+Hidden=true
+EOF
+    fi
+
+    # Method 3: Disable userconfig service (runs first-boot setup)
+    if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/userconfig.service" ]; then
+        rm -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/userconfig.service"
+    fi
+    if [ -f "$MOUNT_ROOT/lib/systemd/system/userconfig.service" ]; then
+        chroot "$MOUNT_ROOT" systemctl disable userconfig.service 2>/dev/null || true
+    fi
+
+    # Method 4: Create userconf file to indicate user is already configured
+    # This prevents the first-boot user creation wizard
+    # Format: username:encrypted_password
+    ENCRYPTED_PASS=$(echo "${PASSWORD}" | openssl passwd -6 -stdin)
+    echo "admin:${ENCRYPTED_PASS}" > "$MOUNT_BOOT/userconf.txt" || \
+    echo "admin:${ENCRYPTED_PASS}" > "$MOUNT_BOOT/userconf"
+
+    # Method 5: Create sentinel files
     mkdir -p "$MOUNT_ROOT/home/admin"
     touch "$MOUNT_ROOT/home/admin/.piwiz_done"
-    chroot "$MOUNT_ROOT" chown admin:admin /home/admin/.piwiz_done
+    chroot "$MOUNT_ROOT" chown admin:admin /home/admin/.piwiz_done 2>/dev/null || true
 
     # Pre-configure locale (US English UTF-8)
     print_step "Configuring locale..."
@@ -265,6 +289,25 @@ EOF
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
+EOF
+
+    # Configure auto-login for admin user (bypasses all setup wizards)
+    print_step "Configuring auto-login..."
+
+    # Create lightdm auto-login configuration
+    mkdir -p "$MOUNT_ROOT/etc/lightdm/lightdm.conf.d"
+    cat > "$MOUNT_ROOT/etc/lightdm/lightdm.conf.d/autologin.conf" <<EOF
+[Seat:*]
+autologin-user=admin
+autologin-user-timeout=0
+EOF
+
+    # Also configure for console auto-login (in case lightdm isn't used)
+    mkdir -p "$MOUNT_ROOT/etc/systemd/system/getty@tty1.service.d"
+    cat > "$MOUNT_ROOT/etc/systemd/system/getty@tty1.service.d/autologin.conf" <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin admin --noclear %I \$TERM
 EOF
 
     # Enable SSH
