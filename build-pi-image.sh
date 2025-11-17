@@ -733,8 +733,9 @@ main() {
     # Show which model we're building for
     print_step "Building image for Raspberry Pi Model $PI_MODEL"
 
-    # Parse arguments
-    if [ -t 0 ] && [ $# -eq 0 ]; then
+    # Parse arguments - only prompt if not set via environment variables
+    # Check if we should enter interactive mode (terminal input + no args + no env vars set)
+    if [ -t 0 ] && [ $# -eq 0 ] && [ -z "$LABLINK_HOSTNAME" ]; then
         echo "Configuration Options:"
         read -p "Output image name [lablink-pi-$(date +%Y%m%d).img]: " output_input
         OUTPUT_IMAGE="${output_input:-$OUTPUT_IMAGE}"
