@@ -194,7 +194,7 @@ LabLink provides a complete GUI-based workflow for deploying to Raspberry Pi dev
 2. Go to **Tools → Build Raspberry Pi Image...**
 3. Configure settings:
    - **Hostname**: `lablink-pi` (default)
-   - **Admin Password**: Set a secure password (optional, default is `raspberry`)
+   - **Admin Password**: Set a secure password (optional, default is `lablink`)
    - **Wi-Fi SSID**: Your network name (optional)
    - **Wi-Fi Password**: Your network password (optional)
    - **Enable SSH**: ✅ (recommended)

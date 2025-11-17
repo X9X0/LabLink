@@ -318,13 +318,38 @@ EOF
         WPA_CONFIG=$(wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" 2>/dev/null || echo "")
 
         if [ -n "$WPA_CONFIG" ]; then
+            # Extract just the PSK hash from wpa_passphrase output
+            PSK_HASH=$(echo "$WPA_CONFIG" | grep -E '^\s*psk=' | head -1 | sed 's/.*psk=//' | tr -d ' ')
+
+            # Determine WiFi security based on Pi model
+            # Pi 5 supports WPA3, Pi 3/4 only support WPA2
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Creating WPA3/WPA2 compatible configuration for Pi 5..."
+                WPA_KEY_MGMT="SAE WPA-PSK"
+                WPA_IEEE80211W="1"
+                NM_KEY_MGMT="sae,wpa-psk"
+                NM_PMF="1"
+            else
+                print_step "Creating WPA2 configuration for Pi $PI_MODEL..."
+                WPA_KEY_MGMT="WPA-PSK"
+                WPA_IEEE80211W="0"
+                NM_KEY_MGMT="wpa-psk"
+                NM_PMF="0"
+            fi
+
             # Method 1: Write to boot partition (for first-boot auto-config)
             cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
-$WPA_CONFIG
+network={
+    ssid="$WIFI_SSID"
+    key_mgmt=$WPA_KEY_MGMT
+    psk=$PSK_HASH
+    ieee80211w=$WPA_IEEE80211W
+    priority=1
+}
 EOF
             print_step "Wrote wpa_supplicant.conf to boot partition: $MOUNT_BOOT/wpa_supplicant.conf"
 
@@ -340,16 +365,19 @@ country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
-$WPA_CONFIG
+network={
+    ssid="$WIFI_SSID"
+    key_mgmt=$WPA_KEY_MGMT
+    psk=$PSK_HASH
+    ieee80211w=$WPA_IEEE80211W
+    priority=1
+}
 EOF
             print_step "Wrote wpa_supplicant.conf to rootfs: $MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf"
 
             # Method 4: Create NetworkManager connection file (for modern Pi OS Bookworm+)
             # NetworkManager is the default network manager in newer Pi OS versions
             print_step "Creating NetworkManager connection file..."
-
-            # Extract just the PSK hash from wpa_passphrase output
-            PSK_HASH=$(echo "$WPA_CONFIG" | grep -E '^\s*psk=' | head -1 | sed 's/.*psk=//' | tr -d ' ')
 
             mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
             cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
@@ -366,8 +394,9 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-key-mgmt=wpa-psk
+key-mgmt=$NM_KEY_MGMT
 psk=$PSK_HASH
+pmf=$NM_PMF
 
 [ipv4]
 method=auto
@@ -381,10 +410,27 @@ NMEOF
             chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
             print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
 
-            print_step "Wi-Fi configured with encrypted PSK for SSID: $WIFI_SSID"
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Wi-Fi configured with WPA3/WPA2 compatibility for SSID: $WIFI_SSID"
+            else
+                print_step "Wi-Fi configured with WPA2 for SSID: $WIFI_SSID"
+            fi
         else
             # Fallback to plaintext if wpa_passphrase fails
             print_warning "wpa_passphrase not available, using plaintext password"
+
+            # Determine WiFi security based on Pi model
+            if [ "$PI_MODEL" = "5" ]; then
+                WPA_KEY_MGMT="SAE WPA-PSK"
+                WPA_IEEE80211W="1"
+                NM_KEY_MGMT="sae,wpa-psk"
+                NM_PMF="1"
+            else
+                WPA_KEY_MGMT="WPA-PSK"
+                WPA_IEEE80211W="0"
+                NM_KEY_MGMT="wpa-psk"
+                NM_PMF="0"
+            fi
 
             cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
 country=US
@@ -394,6 +440,9 @@ update_config=1
 network={
     ssid="$WIFI_SSID"
     psk="$WIFI_PASSWORD"
+    key_mgmt=$WPA_KEY_MGMT
+    ieee80211w=$WPA_IEEE80211W
+    priority=1
 }
 EOF
             print_step "Wrote wpa_supplicant.conf to boot partition (plaintext)"
@@ -412,6 +461,9 @@ update_config=1
 network={
     ssid="$WIFI_SSID"
     psk="$WIFI_PASSWORD"
+    key_mgmt=$WPA_KEY_MGMT
+    ieee80211w=$WPA_IEEE80211W
+    priority=1
 }
 EOF
             print_step "Wrote wpa_supplicant.conf to rootfs (plaintext)"
@@ -433,8 +485,9 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-key-mgmt=wpa-psk
+key-mgmt=$NM_KEY_MGMT
 psk=$WIFI_PASSWORD
+pmf=$NM_PMF
 
 [ipv4]
 method=auto
@@ -447,7 +500,11 @@ NMEOF
             chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
             print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
 
-            print_step "Wi-Fi configured with plaintext password for SSID: $WIFI_SSID"
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Wi-Fi configured with WPA3/WPA2 compatibility (plaintext) for SSID: $WIFI_SSID"
+            else
+                print_step "Wi-Fi configured with WPA2 (plaintext) for SSID: $WIFI_SSID"
+            fi
         fi
     else
         # No WiFi credentials provided, create basic config
@@ -489,6 +546,13 @@ exec 2>&1
 echo "[LabLink] Starting first boot setup..."
 echo "[LabLink] $(date)"
 
+# Check if setup already completed
+if [ -f /var/lib/lablink-setup-complete ]; then
+    echo "[LabLink] Setup already completed, exiting"
+    systemctl disable lablink-first-boot.service
+    exit 0
+fi
+
 # Function to wait for network
 wait_for_network() {
     local max_attempts=30
@@ -510,11 +574,72 @@ wait_for_network() {
     return 1
 }
 
+# Function to sync time
+sync_time() {
+    echo "[LabLink] Synchronizing system time via NTP..."
+
+    # Enable NTP
+    timedatectl set-ntp true
+
+    # Restart timesyncd to force sync
+    systemctl restart systemd-timesyncd
+
+    # Wait for time sync with timeout
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if timedatectl status | grep -q "System clock synchronized: yes"; then
+            echo "[LabLink] Time synchronized successfully"
+            echo "[LabLink] Current time: $(date)"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    echo "[LabLink] WARNING: Time sync timeout, but continuing anyway"
+    echo "[LabLink] Current time: $(date)"
+    return 0
+}
+
+# Function to wait for DNS resolution
+wait_for_dns() {
+    local max_attempts=20
+    local attempt=1
+
+    echo "[LabLink] Waiting for DNS resolution..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if ping -c 1 -W 2 github.com >/dev/null 2>&1; then
+            echo "[LabLink] DNS is ready (attempt $attempt)"
+            return 0
+        fi
+        echo "[LabLink] DNS not ready, attempt $attempt/$max_attempts..."
+        sleep 3
+        attempt=$((attempt + 1))
+    done
+
+    echo "[LabLink] WARNING: DNS not available after $max_attempts attempts"
+    echo "[LabLink] Service will retry on next boot"
+    return 1
+}
+
 # Wait for network
 if ! wait_for_network; then
     echo "[LabLink] Skipping setup due to network unavailability"
-    echo "[LabLink] You can manually run this script later: sudo /usr/local/bin/lablink-first-boot.sh"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] You can manually run this script: sudo /usr/local/bin/lablink-first-boot.sh"
+    exit 0
+fi
+
+# Sync time BEFORE doing any SSL operations
+sync_time
+
+# Wait for DNS to be ready BEFORE downloading anything
+if ! wait_for_dns; then
+    echo "[LabLink] Skipping setup due to DNS unavailability"
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] You can manually run this script: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 0
 fi
 
@@ -533,7 +658,8 @@ if curl -fsSL https://get.docker.com | sh; then
     usermod -aG docker admin
 else
     echo "[LabLink] ERROR: Docker installation failed"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 1
 fi
 
@@ -548,7 +674,8 @@ if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lab
     rm lablink.tar.gz
 else
     echo "[LabLink] ERROR: Failed to download LabLink"
-    systemctl disable lablink-first-boot.service
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
     exit 1
 fi
 
@@ -560,10 +687,13 @@ if [ -f .env.example ]; then
     JWT_SECRET=$(openssl rand -hex 32)
     sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
 
-    # Set default admin password
-    sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD:-lablink}/" .env
+    # Set default admin password for web UI
+    # Password must meet requirements: 8+ chars, uppercase letter
+    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-LabLink@2025}"
+    sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
+    sed -i "s/LABLINK_DEFAULT_ADMIN_EMAIL=.*/LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com/" .env
 
-    echo "[LabLink] Environment configured"
+    echo "[LabLink] Environment configured with admin password: $WEB_ADMIN_PASSWORD"
 else
     echo "[LabLink] WARNING: .env.example not found"
 fi
@@ -571,9 +701,26 @@ fi
 # Start LabLink
 echo "[LabLink] Starting LabLink with Docker Compose..."
 if docker compose up -d; then
-    echo "[LabLink] LabLink started successfully"
+    echo "[LabLink] LabLink containers starting..."
+
+    # Wait for containers to be healthy
+    echo "[LabLink] Waiting for services to be ready..."
+    sleep 5
+
+    # Check container status
+    if docker compose ps | grep -q "Up"; then
+        echo "[LabLink] ✓ LabLink started successfully"
+
+        # Show container status
+        echo "[LabLink] Container status:"
+        docker compose ps
+    else
+        echo "[LabLink] ⚠ WARNING: Containers started but may not be healthy"
+        docker compose ps
+    fi
 else
-    echo "[LabLink] WARNING: Failed to start LabLink"
+    echo "[LabLink] ✗ ERROR: Failed to start LabLink"
+    echo "[LabLink] Check logs with: cd /opt/lablink && docker compose logs"
 fi
 
 # Enable LabLink on boot
@@ -581,7 +728,8 @@ cat > /etc/systemd/system/lablink.service <<EOF
 [Unit]
 Description=LabLink Server
 Requires=docker.service
-After=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
@@ -589,6 +737,8 @@ RemainAfterExit=yes
 WorkingDirectory=/opt/lablink
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
+# Wait a bit after starting to ensure containers are up
+ExecStartPost=/bin/sleep 3
 
 [Install]
 WantedBy=multi-user.target
@@ -596,9 +746,142 @@ EOF
 
 systemctl enable lablink.service
 
+# Create status check script
+cat > /usr/local/bin/lablink-status <<'STATUSSCRIPT'
+#!/bin/bash
+# LabLink Status Checker
+
+echo "════════════════════════════════════════════════════════"
+echo "           LabLink Server Status"
+echo "════════════════════════════════════════════════════════"
+echo ""
+
+# Check network
+echo "Network Status:"
+if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+    echo "  ✓ Internet connectivity: OK"
+else
+    echo "  ✗ Internet connectivity: OFFLINE"
+fi
+
+# Show IP addresses
+echo "  IP Addresses:"
+ip -4 addr show | grep inet | grep -v 127.0.0.1 | awk '{print "    - " $2}' || echo "    No IP addresses"
+echo ""
+
+# Check Docker
+echo "Docker Status:"
+if systemctl is-active --quiet docker; then
+    echo "  ✓ Docker service: Running"
+else
+    echo "  ✗ Docker service: Not running"
+fi
+echo ""
+
+# Check LabLink service
+echo "LabLink Service Status:"
+if systemctl is-active --quiet lablink; then
+    echo "  ✓ LabLink service: Enabled and active"
+else
+    echo "  ⚠ LabLink service: Not active"
+    systemctl status lablink --no-pager 2>&1 | head -5 | sed 's/^/    /'
+fi
+echo ""
+
+# Check LabLink containers
+if [ -d /opt/lablink ]; then
+    echo "LabLink Containers:"
+    cd /opt/lablink
+    if docker compose ps 2>/dev/null | grep -q "Up"; then
+        docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" | sed 's/^/  /'
+        echo ""
+        echo "  ✓ LabLink is running"
+        echo ""
+        echo "Access Points:"
+        echo "  Web UI:  http://$(hostname).local"
+        echo "  API:     http://$(hostname).local:8000"
+        echo "  API Docs: http://$(hostname).local:8000/docs"
+    else
+        echo "  ✗ No containers running"
+        echo ""
+        echo "To start LabLink:"
+        echo "  cd /opt/lablink && sudo docker compose up -d"
+        echo ""
+        echo "To view logs:"
+        echo "  cd /opt/lablink && sudo docker compose logs -f"
+    fi
+else
+    echo "  ✗ LabLink not installed at /opt/lablink"
+fi
+
+echo ""
+echo "════════════════════════════════════════════════════════"
+echo ""
+echo "Useful Commands:"
+echo "  lablink-status         - Show this status"
+echo "  lablink-start          - Start LabLink"
+echo "  lablink-stop           - Stop LabLink"
+echo "  lablink-restart        - Restart LabLink"
+echo "  lablink-logs           - View LabLink logs"
+echo ""
+STATUSSCRIPT
+
+chmod +x /usr/local/bin/lablink-status
+
+# Create convenience commands
+cat > /usr/local/bin/lablink-start <<'STARTSCRIPT'
+#!/bin/bash
+echo "Starting LabLink..."
+cd /opt/lablink && docker compose up -d
+sleep 3
+lablink-status
+STARTSCRIPT
+chmod +x /usr/local/bin/lablink-start
+
+cat > /usr/local/bin/lablink-stop <<'STOPSCRIPT'
+#!/bin/bash
+echo "Stopping LabLink..."
+cd /opt/lablink && docker compose down
+echo "LabLink stopped."
+STOPSCRIPT
+chmod +x /usr/local/bin/lablink-stop
+
+cat > /usr/local/bin/lablink-restart <<'RESTARTSCRIPT'
+#!/bin/bash
+echo "Restarting LabLink..."
+cd /opt/lablink && docker compose restart
+sleep 3
+lablink-status
+RESTARTSCRIPT
+chmod +x /usr/local/bin/lablink-restart
+
+cat > /usr/local/bin/lablink-logs <<'LOGSSCRIPT'
+#!/bin/bash
+cd /opt/lablink && docker compose logs -f --tail=100
+LOGSSCRIPT
+chmod +x /usr/local/bin/lablink-logs
+
 echo "[LabLink] First boot setup complete!"
-echo "[LabLink] Access at http://$(hostname).local"
+echo "[LabLink] ════════════════════════════════════════════════════════"
+echo "[LabLink] "
+echo "[LabLink] ✓ Setup completed successfully!"
+echo "[LabLink] "
+echo "[LabLink] Access LabLink at: http://$(hostname).local"
+echo "[LabLink] "
+echo "[LabLink] Useful commands:"
+echo "[LabLink]   lablink-status  - Check LabLink status"
+echo "[LabLink]   lablink-logs    - View logs"
+echo "[LabLink] "
+echo "[LabLink] ════════════════════════════════════════════════════════"
 echo "[LabLink] Completed at: $(date)"
+
+# Run status check to show final state
+echo ""
+/usr/local/bin/lablink-status
+
+# Mark setup as complete
+touch /var/lib/lablink-setup-complete
+echo "[LabLink] Setup marked as complete"
 
 # Disable this script from running again
 systemctl disable lablink-first-boot.service
@@ -637,31 +920,71 @@ EOF
 create_welcome_message() {
     print_step "Creating welcome message..."
 
-    cat > "$MOUNT_ROOT/etc/motd" <<'EOF'
+    # Create dynamic MOTD script
+    cat > "$MOUNT_ROOT/etc/update-motd.d/10-lablink" <<'EOF'
+#!/bin/bash
+# Dynamic LabLink status in MOTD
 
-╔═══════════════════════════════════════════════════════╗
-║                                                       ║
-║                LabLink Server - Ready!                ║
-║                                                       ║
-╚═══════════════════════════════════════════════════════╝
+echo ""
+echo "╔═══════════════════════════════════════════════════════╗"
+echo "║                                                       ║"
+echo "║                LabLink Server - Ready!                ║"
+echo "║                                                       ║"
+echo "╚═══════════════════════════════════════════════════════╝"
+echo ""
 
-Access LabLink:
-  Web Dashboard: http://$(hostname).local
-  API:           http://$(hostname).local:8000
-  API Docs:      http://$(hostname).local:8000/docs
+# Show quick status
+if systemctl is-active --quiet lablink && [ -d /opt/lablink ]; then
+    if cd /opt/lablink 2>/dev/null && docker compose ps 2>/dev/null | grep -q "Up"; then
+        echo "Status: ✓ LabLink is RUNNING"
+        echo ""
+        echo "Access LabLink:"
+        echo "  Web UI:  http://$(hostname).local"
+        echo "  API:     http://$(hostname).local:8000"
+        echo "  API Docs: http://$(hostname).local:8000/docs"
+    else
+        echo "Status: ⚠ LabLink containers are not running"
+        echo "  Run: lablink-start"
+    fi
+elif [ -f /var/log/lablink-first-boot.log ]; then
+    # Check if first boot is in progress
+    if systemctl is-active --quiet lablink-first-boot; then
+        echo "Status: ⏳ First boot setup in progress..."
+        echo "  This may take 5-10 minutes"
+        echo "  Check progress: sudo journalctl -u lablink-first-boot -f"
+    else
+        echo "Status: ⚠ LabLink service not active"
+        echo "  Run: lablink-status (for details)"
+    fi
+else
+    echo "Status: ⏳ Waiting for first boot setup..."
+fi
 
-Default Credentials:
-  Username: admin
-  Password: lablink (CHANGE THIS!)
-
-Commands:
-  sudo docker compose logs -f  # View logs
-  sudo docker compose restart  # Restart LabLink
-  sudo systemctl status lablink  # Check status
-
-For help: https://github.com/X9X0/LabLink
-
+echo ""
+echo "Quick Commands:"
+echo "  lablink-status   - Show detailed status"
+echo "  lablink-logs     - View logs"
+echo "  lablink-restart  - Restart services"
+echo ""
+echo "For help: https://github.com/X9X0/LabLink"
+echo ""
 EOF
+
+    chmod +x "$MOUNT_ROOT/etc/update-motd.d/10-lablink"
+
+    # Disable default Raspberry Pi MOTD components to make ours more visible
+    # Keep only essential ones
+    for motd_script in "$MOUNT_ROOT"/etc/update-motd.d/*; do
+        if [ -f "$motd_script" ]; then
+            filename=$(basename "$motd_script")
+            # Disable verbose default messages, keep wifi-check and our custom one
+            case "$filename" in
+                10-uname|50-landscape-sysinfo)
+                    chmod -x "$motd_script" 2>/dev/null || true
+                    ;;
+            esac
+        fi
+    done
 
     print_step "Welcome message created"
 }

@@ -265,7 +265,7 @@ class ConnectionPage(QWizardPage):
 
         # Hostname
         self.host_edit = QLineEdit()
-        self.host_edit.setPlaceholderText("192.168.1.100 or raspberrypi.local")
+        self.host_edit.setPlaceholderText("lablink-pi.local or 192.168.1.100")
         self.registerField("host*", self.host_edit)
         layout.addRow("Hostname/IP:", self.host_edit)
 

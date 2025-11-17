@@ -428,7 +428,7 @@ class ConfigurationPage(QWizardPage):
         self.admin_password_edit = QLineEdit()
         self.admin_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.admin_password_edit.setPlaceholderText(
-            "Leave empty to use default: raspberry"
+            "Leave empty to use default: lablink"
         )
         basic_layout.addRow("Admin Password:", self.admin_password_edit)
 
@@ -820,9 +820,21 @@ class PiImageBuilderWizard(QWizard):
                 # Get image path
                 image_path = self.field("output_path")
 
-                # Show SD card writer
-                writer = SDCardWriter(self.parent())
-                writer.set_image_path(image_path)
-                writer.exec()
+                # Show SD card writer as independent window (no parent binding)
+                # Store as instance variable to prevent garbage collection
+                self.writer = SDCardWriter(None)
+                self.writer.set_image_path(image_path)
+                self.writer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+                # Connect writer close event to wizard close
+                # This ensures wizard closes after writer is done
+                self.writer.finished.connect(lambda: super(PiImageBuilderWizard, self).done(result))
+
+                # Hide wizard but keep it alive to maintain event loop
+                self.hide()
+
+                # Show writer window
+                self.writer.show()
+                return  # Don't call super().done() yet
 
         super().done(result)

@@ -10,14 +10,12 @@ LABEL version="0.27.0"
 # Install curl for healthcheck
 RUN apk add --no-cache curl
 
-# Remove default nginx config
+# Remove default nginx config and main config (we'll replace it)
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy web dashboard files
-COPY server/web/ /usr/share/nginx/html/
-
-# Copy nginx configuration
-COPY docker/nginx/nginx.conf /etc/nginx/conf.d/lablink.conf
+# Copy nginx configuration (replaces the default nginx.conf)
+# Note: Web UI is served by the FastAPI server, not by nginx
+COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Create SSL directory
 RUN mkdir -p /etc/nginx/ssl

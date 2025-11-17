@@ -386,9 +386,9 @@ Deploy LabLink server to Raspberry Pi:
 
 1. **Tools → SSH Deployment Wizard**
 2. **Enter Pi Details:**
-   - Hostname: raspberrypi.local
-   - Username: pi
-   - Password: (your password)
+   - Hostname: lablink-pi.local
+   - Username: admin
+   - Password: lablink (default)
 3. **Click "Deploy"**
    - Automatically copies files
    - Installs dependencies

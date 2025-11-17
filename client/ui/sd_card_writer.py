@@ -988,6 +988,12 @@ class SDCardWriter(QDialog):
         self._log(message)
         self._log("=" * 60)
 
+        # Clean up thread
+        if self.writer_thread:
+            self.writer_thread.wait()  # Wait for thread to finish
+            self.writer_thread.deleteLater()  # Schedule for deletion
+            self.writer_thread = None
+
         self.write_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.device_combo.setEnabled(True)
@@ -1007,3 +1013,39 @@ class SDCardWriter(QDialog):
         """Add message to log output."""
         self.log_output.append(message)
         logger.info(message)
+
+    def closeEvent(self, event):
+        """Handle window close event.
+
+        Args:
+            event: Close event
+        """
+        # If thread is running, ask for confirmation
+        if self.writer_thread and self.writer_thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Write in Progress",
+                "An SD card write operation is in progress.\n\n"
+                "Closing this window will cancel the operation.\n\n"
+                "Are you sure you want to close?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                self._log("Cancelling write due to window close...")
+                self.writer_thread.request_stop()
+                self.writer_thread.wait(3000)  # Wait up to 3 seconds
+                if self.writer_thread.isRunning():
+                    self.writer_thread.terminate()
+                    self.writer_thread.wait()
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            # Clean up thread if it exists
+            if self.writer_thread:
+                self.writer_thread.wait()
+                self.writer_thread.deleteLater()
+                self.writer_thread = None
+            event.accept()
