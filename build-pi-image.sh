@@ -618,7 +618,8 @@ if [ -f .env.example ]; then
     sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
 
     # Set default admin password for web UI
-    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-lablink}"
+    # Password must meet requirements: 8+ chars, uppercase letter
+    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-LabLink@2025}"
     sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
     sed -i "s/LABLINK_DEFAULT_ADMIN_EMAIL=.*/LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com/" .env
 
