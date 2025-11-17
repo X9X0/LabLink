@@ -118,7 +118,7 @@ class ImageBuildThread(QThread):
             # Prepare environment variables
             env = os.environ.copy()
             env["OUTPUT_IMAGE"] = self.output_path
-            env["PI_HOSTNAME"] = self.hostname
+            env["LABLINK_HOSTNAME"] = self.hostname  # Fixed: was PI_HOSTNAME
             env["PI_MODEL"] = self.pi_model
 
             if self.wifi_ssid:
@@ -126,7 +126,7 @@ class ImageBuildThread(QThread):
             if self.wifi_password:
                 env["WIFI_PASSWORD"] = self.wifi_password
             if self.admin_password:
-                env["ADMIN_PASSWORD"] = self.admin_password
+                env["LABLINK_ADMIN_PASSWORD"] = self.admin_password  # Fixed: was ADMIN_PASSWORD
 
             env["ENABLE_SSH"] = "yes" if self.enable_ssh else "no"
             env["AUTO_EXPAND"] = "yes" if self.auto_expand else "no"
@@ -156,7 +156,7 @@ class ImageBuildThread(QThread):
 
             script_wrapper = f"""#!/bin/bash
 export OUTPUT_IMAGE='{self.output_path}'
-export PI_HOSTNAME='{self.hostname}'
+export LABLINK_HOSTNAME='{self.hostname}'
 export PI_MODEL='{self.pi_model}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
 export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
@@ -169,7 +169,7 @@ export ORIGINAL_GID='{current_gid}'
             if self.wifi_password:
                 script_wrapper += f"export WIFI_PASSWORD='{self.wifi_password}'\n"
             if self.admin_password:
-                script_wrapper += f"export ADMIN_PASSWORD='{self.admin_password}'\n"
+                script_wrapper += f"export LABLINK_ADMIN_PASSWORD='{self.admin_password}'\n"
 
             script_wrapper += f"exec bash {script_path}\n"
 
