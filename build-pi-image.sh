@@ -617,10 +617,11 @@ if [ -f .env.example ]; then
     JWT_SECRET=$(openssl rand -hex 32)
     sed -i "s/your-secret-key-change-this-in-production/$JWT_SECRET/" .env
 
-    # Set default admin password
-    sed -i "s/LABLINK_ADMIN_PASSWORD=.*/LABLINK_ADMIN_PASSWORD=${LABLINK_ADMIN_PASSWORD:-lablink}/" .env
+    # Set default admin password for web UI
+    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-lablink}"
+    sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
 
-    echo "[LabLink] Environment configured"
+    echo "[LabLink] Environment configured with admin password: $WEB_ADMIN_PASSWORD"
 else
     echo "[LabLink] WARNING: .env.example not found"
 fi
