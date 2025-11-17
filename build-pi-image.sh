@@ -284,13 +284,6 @@ EOF
     ln -sf /usr/share/zoneinfo/America/New_York "$MOUNT_ROOT/etc/localtime"
     echo "America/New_York" > "$MOUNT_ROOT/etc/timezone"
 
-    # Configure WiFi country
-    cat >> "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
-country=US
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-EOF
-
     # Configure auto-login for admin user (bypasses all setup wizards)
     print_step "Configuring auto-login..."
 
@@ -318,7 +311,37 @@ EOF
 
     # Configure Wi-Fi
     if [ -n "$WIFI_SSID" ]; then
-        cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
+        print_step "Configuring Wi-Fi for SSID: $WIFI_SSID"
+
+        # Generate encrypted PSK using wpa_passphrase
+        # This is more reliable than plaintext passwords
+        WPA_CONFIG=$(wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" 2>/dev/null || echo "")
+
+        if [ -n "$WPA_CONFIG" ]; then
+            # Method 1: Write to boot partition (for first-boot auto-config)
+            cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+$WPA_CONFIG
+EOF
+
+            # Method 2: Also write directly to rootfs wpa_supplicant.conf
+            cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+$WPA_CONFIG
+EOF
+
+            print_step "Wi-Fi configured with encrypted PSK"
+        else
+            # Fallback to plaintext if wpa_passphrase fails
+            print_warning "wpa_passphrase not available, using plaintext password"
+
+            cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -328,7 +351,27 @@ network={
     psk="$WIFI_PASSWORD"
 }
 EOF
-        print_step "Wi-Fi configured"
+
+            cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+network={
+    ssid="$WIFI_SSID"
+    psk="$WIFI_PASSWORD"
+}
+EOF
+            print_step "Wi-Fi configured with plaintext password"
+        fi
+    else
+        # No WiFi credentials provided, create basic config
+        cat > "$MOUNT_ROOT/etc/wpa_supplicant/wpa_supplicant.conf" <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF
+        print_step "Wi-Fi country set to US (no credentials provided)"
     fi
 
     # Set hostname
