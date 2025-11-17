@@ -321,9 +321,21 @@ EOF
             # Extract just the PSK hash from wpa_passphrase output
             PSK_HASH=$(echo "$WPA_CONFIG" | grep -E '^\s*psk=' | head -1 | sed 's/.*psk=//' | tr -d ' ')
 
-            # Create WPA3/WPA2 compatible configuration
-            # Uses SAE (WPA3) with PSK (WPA2) fallback for maximum compatibility
-            print_step "Creating WPA3/WPA2 compatible configuration..."
+            # Determine WiFi security based on Pi model
+            # Pi 5 supports WPA3, Pi 3/4 only support WPA2
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Creating WPA3/WPA2 compatible configuration for Pi 5..."
+                WPA_KEY_MGMT="SAE WPA-PSK"
+                WPA_IEEE80211W="1"
+                NM_KEY_MGMT="sae,wpa-psk"
+                NM_PMF="1"
+            else
+                print_step "Creating WPA2 configuration for Pi $PI_MODEL..."
+                WPA_KEY_MGMT="WPA-PSK"
+                WPA_IEEE80211W="0"
+                NM_KEY_MGMT="wpa-psk"
+                NM_PMF="0"
+            fi
 
             # Method 1: Write to boot partition (for first-boot auto-config)
             cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
@@ -331,15 +343,11 @@ country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
-# WPA3/WPA2 compatible network configuration
 network={
     ssid="$WIFI_SSID"
-    # WPA3-Personal (SAE) with WPA2-PSK fallback
-    key_mgmt=SAE WPA-PSK
+    key_mgmt=$WPA_KEY_MGMT
     psk=$PSK_HASH
-    # Enable Protected Management Frames for WPA3
-    ieee80211w=1
-    # Prioritize this network
+    ieee80211w=$WPA_IEEE80211W
     priority=1
 }
 EOF
@@ -357,15 +365,11 @@ country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
-# WPA3/WPA2 compatible network configuration
 network={
     ssid="$WIFI_SSID"
-    # WPA3-Personal (SAE) with WPA2-PSK fallback
-    key_mgmt=SAE WPA-PSK
+    key_mgmt=$WPA_KEY_MGMT
     psk=$PSK_HASH
-    # Enable Protected Management Frames for WPA3
-    ieee80211w=1
-    # Prioritize this network
+    ieee80211w=$WPA_IEEE80211W
     priority=1
 }
 EOF
@@ -373,7 +377,7 @@ EOF
 
             # Method 4: Create NetworkManager connection file (for modern Pi OS Bookworm+)
             # NetworkManager is the default network manager in newer Pi OS versions
-            print_step "Creating NetworkManager connection file (WPA3/WPA2 compatible)..."
+            print_step "Creating NetworkManager connection file..."
 
             mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
             cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
@@ -390,9 +394,9 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-key-mgmt=sae,wpa-psk
+key-mgmt=$NM_KEY_MGMT
 psk=$PSK_HASH
-pmf=1
+pmf=$NM_PMF
 
 [ipv4]
 method=auto
@@ -406,10 +410,27 @@ NMEOF
             chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
             print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
 
-            print_step "Wi-Fi configured with WPA3/WPA2 compatibility for SSID: $WIFI_SSID"
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Wi-Fi configured with WPA3/WPA2 compatibility for SSID: $WIFI_SSID"
+            else
+                print_step "Wi-Fi configured with WPA2 for SSID: $WIFI_SSID"
+            fi
         else
             # Fallback to plaintext if wpa_passphrase fails
-            print_warning "wpa_passphrase not available, using plaintext password with WPA3/WPA2 support"
+            print_warning "wpa_passphrase not available, using plaintext password"
+
+            # Determine WiFi security based on Pi model
+            if [ "$PI_MODEL" = "5" ]; then
+                WPA_KEY_MGMT="SAE WPA-PSK"
+                WPA_IEEE80211W="1"
+                NM_KEY_MGMT="sae,wpa-psk"
+                NM_PMF="1"
+            else
+                WPA_KEY_MGMT="WPA-PSK"
+                WPA_IEEE80211W="0"
+                NM_KEY_MGMT="wpa-psk"
+                NM_PMF="0"
+            fi
 
             cat > "$MOUNT_BOOT/wpa_supplicant.conf" <<EOF
 country=US
@@ -419,13 +440,12 @@ update_config=1
 network={
     ssid="$WIFI_SSID"
     psk="$WIFI_PASSWORD"
-    # WPA3-Personal (SAE) with WPA2-PSK fallback
-    key_mgmt=SAE WPA-PSK
-    ieee80211w=1
+    key_mgmt=$WPA_KEY_MGMT
+    ieee80211w=$WPA_IEEE80211W
     priority=1
 }
 EOF
-            print_step "Wrote wpa_supplicant.conf to boot partition (plaintext with WPA3/WPA2)"
+            print_step "Wrote wpa_supplicant.conf to boot partition (plaintext)"
 
             # Also write to firmware subdirectory if it exists
             if [ -d "$MOUNT_BOOT/firmware" ]; then
@@ -441,16 +461,15 @@ update_config=1
 network={
     ssid="$WIFI_SSID"
     psk="$WIFI_PASSWORD"
-    # WPA3-Personal (SAE) with WPA2-PSK fallback
-    key_mgmt=SAE WPA-PSK
-    ieee80211w=1
+    key_mgmt=$WPA_KEY_MGMT
+    ieee80211w=$WPA_IEEE80211W
     priority=1
 }
 EOF
-            print_step "Wrote wpa_supplicant.conf to rootfs (plaintext with WPA3/WPA2)"
+            print_step "Wrote wpa_supplicant.conf to rootfs (plaintext)"
 
             # Also create NetworkManager connection file (plaintext)
-            print_step "Creating NetworkManager connection file (plaintext with WPA3/WPA2)..."
+            print_step "Creating NetworkManager connection file (plaintext)..."
             mkdir -p "$MOUNT_ROOT/etc/NetworkManager/system-connections"
             cat > "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection" <<NMEOF
 [connection]
@@ -466,9 +485,9 @@ ssid=$WIFI_SSID
 
 [wifi-security]
 auth-alg=open
-key-mgmt=sae,wpa-psk
+key-mgmt=$NM_KEY_MGMT
 psk=$WIFI_PASSWORD
-pmf=1
+pmf=$NM_PMF
 
 [ipv4]
 method=auto
@@ -481,7 +500,11 @@ NMEOF
             chmod 600 "$MOUNT_ROOT/etc/NetworkManager/system-connections/$WIFI_SSID.nmconnection"
             print_step "Created NetworkManager connection: $WIFI_SSID.nmconnection"
 
-            print_step "Wi-Fi configured with WPA3/WPA2 compatibility (plaintext) for SSID: $WIFI_SSID"
+            if [ "$PI_MODEL" = "5" ]; then
+                print_step "Wi-Fi configured with WPA3/WPA2 compatibility (plaintext) for SSID: $WIFI_SSID"
+            else
+                print_step "Wi-Fi configured with WPA2 (plaintext) for SSID: $WIFI_SSID"
+            fi
         fi
     else
         # No WiFi credentials provided, create basic config
