@@ -566,7 +566,7 @@ class TestMaskTesting:
         t, signal = generate_sine_wave()
 
         with pytest.raises(ValueError, match="Mask .* not found"):
-            analyzer.test_mask("SCOPE_001", 1, "nonexistent", t, signal)
+            analyzer.test_mask("SCOPE_001", 1, t, signal, "nonexistent")
 
 
 class TestEventSearch:
@@ -727,7 +727,8 @@ class TestReferenceWaveform:
             channel=1,
             timestamp=datetime.now(),
             time_data=t.tolist(),
-            voltage_data=signal.tolist()
+            voltage_data=signal.tolist(),
+            sample_rate=100000.0
         )
 
         analyzer.add_reference_waveform(reference)
@@ -747,24 +748,21 @@ class TestReferenceWaveform:
             channel=1,
             timestamp=datetime.now(),
             time_data=t.tolist(),
-            voltage_data=signal.tolist()
+            voltage_data=signal.tolist(),
+            sample_rate=100000.0
         )
 
         analyzer.add_reference_waveform(reference)
 
         result = analyzer.compare_to_reference(
-            equipment_id="SCOPE_001",
-            channel=1,
-            reference_id="ref_001",
-            time_data=t,
-            voltage_data=signal
+            "SCOPE_001", 1, t, signal, "ref_001"
         )
 
         assert result.equipment_id == "SCOPE_001"
-        assert result.reference_id == "ref_001"
+        assert result.reference_name == "ref_001"
         # Identical signals should have zero difference
-        assert result.rms_difference < 1e-10
-        assert result.max_difference < 1e-10
+        assert result.voltage_rms_error < 1e-10
+        assert result.voltage_max_error < 1e-10
 
     def test_compare_to_reference_different(self):
         """Test comparing different waveforms."""
@@ -778,7 +776,8 @@ class TestReferenceWaveform:
             channel=1,
             timestamp=datetime.now(),
             time_data=t.tolist(),
-            voltage_data=ref_signal.tolist()
+            voltage_data=ref_signal.tolist(),
+            sample_rate=100000.0
         )
 
         analyzer.add_reference_waveform(reference)
@@ -791,8 +790,8 @@ class TestReferenceWaveform:
         )
 
         # Should detect difference
-        assert result.rms_difference > 0
-        assert result.max_difference > 0
+        assert result.voltage_rms_error > 0
+        assert result.voltage_max_error > 0
 
     def test_compare_to_nonexistent_reference(self):
         """Test comparing to nonexistent reference raises error."""
@@ -819,14 +818,7 @@ class TestParameterTrending:
 
         # Add several trend points
         for i in range(5):
-            analyzer.update_trend(
-                equipment_id="SCOPE_001",
-                channel=1,
-                parameter=TrendParameter.FREQUENCY,
-                value=1000.0 + i * 10.0,
-                timestamp=datetime.now() + timedelta(seconds=i),
-                config=config
-            )
+            analyzer.update_trend("SCOPE_001", 1, TrendParameter.FREQUENCY, 1000.0 + i * 10.0)
 
         # Verify trend was created
         trend_key = ("SCOPE_001", 1, TrendParameter.FREQUENCY)
@@ -840,11 +832,7 @@ class TestParameterTrending:
 
         # Add trend points
         for i in range(10):
-            analyzer.update_trend(
-                "SCOPE_001", 1, TrendParameter.AMPLITUDE,
-                value=1.0 + i * 0.1,
-                config=config
-            )
+            analyzer.update_trend("SCOPE_001", 1, TrendParameter.AMPLITUDE, 1.0 + i * 0.1)
 
         # Retrieve trend data
         trend = analyzer.get_trend_data(
@@ -867,11 +855,7 @@ class TestParameterTrending:
 
         # Add more points than max_points
         for i in range(10):
-            analyzer.update_trend(
-                "SCOPE_001", 1, TrendParameter.FREQUENCY,
-                value=1000.0 + i,
-                config=config
-            )
+            analyzer.update_trend("SCOPE_001", 1, TrendParameter.FREQUENCY, 1000.0 + i)
 
         trend = analyzer.get_trend_data(
             "SCOPE_001", 1, TrendParameter.FREQUENCY
@@ -889,11 +873,7 @@ class TestParameterTrending:
         # Add trend points with known values
         values = [1.0, 2.0, 3.0, 4.0, 5.0]
         for val in values:
-            analyzer.update_trend(
-                "SCOPE_001", 1, TrendParameter.AMPLITUDE,
-                value=val,
-                config=config
-            )
+            analyzer.update_trend("SCOPE_001", 1, TrendParameter.AMPLITUDE, val)
 
         trend = analyzer.get_trend_data(
             "SCOPE_001", 1, TrendParameter.AMPLITUDE
