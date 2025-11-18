@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, TYPE_CHECKING
 
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
@@ -16,6 +16,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from .models import (JobExecution, JobHistory, JobStatus, ScheduleConfig,
                      ScheduleStatistics, ScheduleType, TriggerType)
 from .storage import SchedulerStorage
+
+if TYPE_CHECKING:
+    from websocket_server import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,16 @@ class SchedulerManager:
         )  # Track running jobs for conflict detection
         self._storage = SchedulerStorage(db_path)
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._stream_manager: Optional["StreamManager"] = None
+
+    def set_stream_manager(self, stream_manager: "StreamManager"):
+        """Set the WebSocket stream manager for broadcasting scheduler events.
+
+        Args:
+            stream_manager: WebSocket stream manager instance
+        """
+        self._stream_manager = stream_manager
+        logger.info("WebSocket stream manager set for scheduler broadcasting")
 
     async def start(self):
         """Start the scheduler and load persisted jobs."""
@@ -106,6 +119,10 @@ class SchedulerManager:
             await self._add_to_scheduler(config)
 
         logger.info(f"Created job: {config.job_id} ({config.name})")
+
+        # Broadcast job_created event via WebSocket
+        await self._broadcast_job_created(config)
+
         return config
 
     async def update_job(self, job_id: str, config: ScheduleConfig) -> ScheduleConfig:
@@ -143,6 +160,10 @@ class SchedulerManager:
             await self._add_to_scheduler(config)
 
         logger.info(f"Updated job: {job_id}")
+
+        # Broadcast job_updated event via WebSocket
+        await self._broadcast_job_updated(config)
+
         return config
 
     async def delete_job(self, job_id: str) -> bool:
@@ -167,6 +188,10 @@ class SchedulerManager:
 
         del self._jobs[job_id]
         logger.info(f"Deleted job: {job_id}")
+
+        # Broadcast job_deleted event via WebSocket
+        await self._broadcast_job_deleted(job_id)
+
         return True
 
     async def pause_job(self, job_id: str) -> bool:
@@ -516,6 +541,9 @@ class SchedulerManager:
         execution.actual_time = execution.started_at
         self._running_jobs.add(config.job_id)
 
+        # Broadcast job_started event via WebSocket
+        await self._broadcast_job_started(config, execution)
+
         try:
             # Apply profile if specified
             if config.profile_id:
@@ -540,10 +568,16 @@ class SchedulerManager:
 
             logger.info(f"Job {config.job_id} completed successfully")
 
+            # Broadcast job_completed event via WebSocket
+            await self._broadcast_job_completed(config, execution)
+
         except Exception as e:
             execution.status = JobStatus.FAILED
             execution.error = str(e)
             logger.error(f"Job {config.job_id} failed: {e}")
+
+            # Broadcast job_failed event via WebSocket
+            await self._broadcast_job_failed(config, execution, e)
 
             # Create alarm if enabled
             if config.on_failure_alarm:
@@ -706,6 +740,152 @@ class SchedulerManager:
         return {
             "test_result": result.dict() if hasattr(result, "dict") else str(result)
         }
+
+    async def _broadcast_job_created(self, config: ScheduleConfig):
+        """Broadcast job created event via WebSocket.
+
+        Args:
+            config: Job configuration that was created
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_created",
+                "data": {
+                    "job_id": config.job_id,
+                    "name": config.name,
+                    "schedule_type": config.schedule_type.value,
+                    "trigger_type": config.trigger_type.value,
+                    "enabled": config.enabled,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job created: {config.job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job created: {e}")
+
+    async def _broadcast_job_updated(self, config: ScheduleConfig):
+        """Broadcast job updated event via WebSocket.
+
+        Args:
+            config: Job configuration that was updated
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_updated",
+                "data": {
+                    "job_id": config.job_id,
+                    "name": config.name,
+                    "schedule_type": config.schedule_type.value,
+                    "trigger_type": config.trigger_type.value,
+                    "enabled": config.enabled,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job updated: {config.job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job updated: {e}")
+
+    async def _broadcast_job_deleted(self, job_id: str):
+        """Broadcast job deleted event via WebSocket.
+
+        Args:
+            job_id: ID of job that was deleted
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_deleted",
+                "data": {
+                    "job_id": job_id,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job deleted: {job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job deleted: {e}")
+
+    async def _broadcast_job_started(self, config: ScheduleConfig, execution: JobExecution):
+        """Broadcast job started event via WebSocket.
+
+        Args:
+            config: Job configuration
+            execution: Job execution instance
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_started",
+                "data": {
+                    "job_id": config.job_id,
+                    "execution_id": execution.execution_id,
+                    "started_at": execution.started_at.isoformat() if execution.started_at else None,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job started: {config.job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job started: {e}")
+
+    async def _broadcast_job_completed(self, config: ScheduleConfig, execution: JobExecution):
+        """Broadcast job completed event via WebSocket.
+
+        Args:
+            config: Job configuration
+            execution: Job execution instance
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_completed",
+                "data": {
+                    "job_id": config.job_id,
+                    "execution_id": execution.execution_id,
+                    "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+                    "result": "success",
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job completed: {config.job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job completed: {e}")
+
+    async def _broadcast_job_failed(self, config: ScheduleConfig, execution: JobExecution, error: Exception):
+        """Broadcast job failed event via WebSocket.
+
+        Args:
+            config: Job configuration
+            execution: Job execution instance
+            error: Exception that caused failure
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "job_failed",
+                "data": {
+                    "job_id": config.job_id,
+                    "execution_id": execution.execution_id,
+                    "failed_at": execution.completed_at.isoformat() if execution.completed_at else datetime.now().isoformat(),
+                    "error": str(error),
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted job failed: {config.job_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast job failed: {e}")
 
 
 # Global scheduler manager
