@@ -488,7 +488,7 @@ class DiagnosticsManager:
 
         # Default to all equipment
         if not equipment_ids:
-            equipment_ids = list(equipment_manager._equipment.keys())
+            equipment_ids = list(equipment_manager.equipment.keys())
 
         # Run health checks on all equipment
         equipment_health = []
