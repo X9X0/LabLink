@@ -1600,3 +1600,93 @@ class LabLinkClient:
         response = self._session.post(f"{self.api_base_url}/system/update/rollback")
         response.raise_for_status()
         return response.json()
+
+    def configure_auto_rebuild(
+        self, enabled: bool, rebuild_command: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Configure automatic Docker rebuild after updates.
+
+        Args:
+            enabled: Enable/disable auto-rebuild
+            rebuild_command: Optional custom rebuild command
+
+        Returns:
+            Configuration result
+        """
+        payload = {"enabled": enabled}
+        if rebuild_command:
+            payload["rebuild_command"] = rebuild_command
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/configure-rebuild", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def execute_rebuild(self) -> Dict[str, Any]:
+        """Execute Docker rebuild and restart.
+
+        WARNING: This will rebuild Docker containers and restart the server.
+
+        Returns:
+            Rebuild result
+        """
+        response = self._session.post(f"{self.api_base_url}/system/update/rebuild")
+        response.raise_for_status()
+        return response.json()
+
+    def configure_scheduled_checks(
+        self,
+        enabled: bool,
+        interval_hours: int = 24,
+        git_remote: str = "origin",
+        git_branch: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Configure automatic scheduled update checking.
+
+        Args:
+            enabled: Enable/disable scheduled checks
+            interval_hours: Hours between checks (default: 24)
+            git_remote: Git remote to check (default: origin)
+            git_branch: Git branch to check (default: current branch)
+
+        Returns:
+            Configuration result
+        """
+        payload = {
+            "enabled": enabled,
+            "interval_hours": interval_hours,
+            "git_remote": git_remote,
+        }
+        if git_branch:
+            payload["git_branch"] = git_branch
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/configure-scheduled", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def start_scheduled_checks(self) -> Dict[str, Any]:
+        """Start scheduled update checking.
+
+        Returns:
+            Start result
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/scheduled/start"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def stop_scheduled_checks(self) -> Dict[str, Any]:
+        """Stop scheduled update checking.
+
+        Returns:
+            Stop result
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/scheduled/stop"
+        )
+        response.raise_for_status()
+        return response.json()

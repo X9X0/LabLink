@@ -136,3 +136,141 @@ async def rollback_system():
     except Exception as e:
         logger.error(f"Error rolling back: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to rollback: {str(e)}")
+
+
+# ==================== Auto-Rebuild Endpoints ====================
+
+
+class AutoRebuildConfigRequest(BaseModel):
+    """Request model for configuring auto-rebuild."""
+
+    enabled: bool
+    rebuild_command: Optional[str] = None
+
+
+@router.post("/system/update/configure-rebuild", summary="Configure auto-rebuild")
+async def configure_auto_rebuild(request: AutoRebuildConfigRequest):
+    """Configure automatic Docker rebuild after updates.
+
+    Args:
+        request: Auto-rebuild configuration
+
+    Returns:
+        Configuration result
+    """
+    try:
+        result = update_manager.configure_auto_rebuild(
+            enabled=request.enabled, command=request.rebuild_command
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error configuring auto-rebuild: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to configure auto-rebuild: {str(e)}"
+        )
+
+
+@router.post("/system/update/rebuild", summary="Execute Docker rebuild")
+async def execute_rebuild():
+    """Execute Docker rebuild and restart.
+
+    WARNING: This will rebuild Docker containers and restart the server.
+    The Docker socket must be mounted or Docker CLI must be available.
+
+    Returns:
+        Rebuild result
+    """
+    try:
+        result = await update_manager.execute_rebuild()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error executing rebuild: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to execute rebuild: {str(e)}"
+        )
+
+
+# ==================== Scheduled Check Endpoints ====================
+
+
+class ScheduledCheckConfigRequest(BaseModel):
+    """Request model for configuring scheduled checks."""
+
+    enabled: bool
+    interval_hours: int = 24
+    git_remote: str = "origin"
+    git_branch: Optional[str] = None
+
+
+@router.post("/system/update/configure-scheduled", summary="Configure scheduled checks")
+async def configure_scheduled_checks(request: ScheduledCheckConfigRequest):
+    """Configure automatic scheduled update checking.
+
+    Args:
+        request: Scheduled check configuration
+
+    Returns:
+        Configuration result
+    """
+    try:
+        result = update_manager.configure_scheduled_checks(
+            enabled=request.enabled,
+            interval_hours=request.interval_hours,
+            git_remote=request.git_remote,
+            git_branch=request.git_branch,
+        )
+
+        # If enabled, start the scheduled checks
+        if request.enabled:
+            start_result = await update_manager.start_scheduled_checks()
+            result["started"] = start_result.get("success", False)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error configuring scheduled checks: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to configure scheduled checks: {str(e)}"
+        )
+
+
+@router.post("/system/update/scheduled/start", summary="Start scheduled checks")
+async def start_scheduled_checks():
+    """Start the scheduled update checking task.
+
+    Returns:
+        Start result
+    """
+    try:
+        result = await update_manager.start_scheduled_checks()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error starting scheduled checks: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start scheduled checks: {str(e)}"
+        )
+
+
+@router.post("/system/update/scheduled/stop", summary="Stop scheduled checks")
+async def stop_scheduled_checks():
+    """Stop the scheduled update checking task.
+
+    Returns:
+        Stop result
+    """
+    try:
+        result = await update_manager.stop_scheduled_checks()
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error stopping scheduled checks: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to stop scheduled checks: {str(e)}"
+        )

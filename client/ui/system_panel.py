@@ -5,6 +5,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
@@ -14,6 +15,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -100,6 +102,15 @@ class SystemPanel(QWidget):
         header = QLabel("<h2>System Management</h2>")
         layout.addWidget(header)
 
+        # Update notification banner (hidden by default)
+        self.notification_banner = QLabel()
+        self.notification_banner.setWordWrap(True)
+        self.notification_banner.setStyleSheet(
+            "background-color: #FFA500; color: white; padding: 10px; border-radius: 5px; font-weight: bold;"
+        )
+        self.notification_banner.hide()
+        layout.addWidget(self.notification_banner)
+
         # Server Information Group
         server_info_group = QGroupBox("Server Information")
         server_info_layout = QVBoxLayout()
@@ -143,9 +154,56 @@ class SystemPanel(QWidget):
         self.rollback_btn.clicked.connect(self.rollback)
         button_layout.addWidget(self.rollback_btn)
 
+        self.rebuild_btn = QPushButton("Rebuild Now")
+        self.rebuild_btn.clicked.connect(self.execute_rebuild)
+        button_layout.addWidget(self.rebuild_btn)
+
         update_layout.addLayout(button_layout)
         update_group.setLayout(update_layout)
         layout.addWidget(update_group)
+
+        # Auto-Rebuild Configuration Group
+        auto_rebuild_group = QGroupBox("Automatic Rebuild")
+        auto_rebuild_layout = QVBoxLayout()
+
+        self.auto_rebuild_checkbox = QCheckBox("Enable automatic Docker rebuild after updates")
+        auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
+
+        auto_rebuild_btn_layout = QHBoxLayout()
+        self.configure_rebuild_btn = QPushButton("Configure Auto-Rebuild")
+        self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
+        auto_rebuild_btn_layout.addWidget(self.configure_rebuild_btn)
+        auto_rebuild_btn_layout.addStretch()
+
+        auto_rebuild_layout.addLayout(auto_rebuild_btn_layout)
+        auto_rebuild_group.setLayout(auto_rebuild_layout)
+        layout.addWidget(auto_rebuild_group)
+
+        # Scheduled Checks Configuration Group
+        scheduled_group = QGroupBox("Scheduled Update Checks")
+        scheduled_layout = QVBoxLayout()
+
+        self.scheduled_checkbox = QCheckBox("Enable automatic update checking")
+        scheduled_layout.addWidget(self.scheduled_checkbox)
+
+        interval_layout = QHBoxLayout()
+        interval_layout.addWidget(QLabel("Check interval (hours):"))
+        self.interval_spinbox = QSpinBox()
+        self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
+        self.interval_spinbox.setValue(24)
+        interval_layout.addWidget(self.interval_spinbox)
+        interval_layout.addStretch()
+        scheduled_layout.addLayout(interval_layout)
+
+        scheduled_btn_layout = QHBoxLayout()
+        self.configure_scheduled_btn = QPushButton("Configure Scheduled Checks")
+        self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
+        scheduled_btn_layout.addWidget(self.configure_scheduled_btn)
+        scheduled_btn_layout.addStretch()
+
+        scheduled_layout.addLayout(scheduled_btn_layout)
+        scheduled_group.setLayout(scheduled_layout)
+        layout.addWidget(scheduled_group)
 
         # Update Logs Group
         logs_group = QGroupBox("Update Logs")
@@ -237,6 +295,15 @@ class SystemPanel(QWidget):
             error = status_data.get("error")
             if error and not self.logs_text.toPlainText().endswith(f"ERROR: {error}"):
                 self.logs_text.append(f"\n❌ ERROR: {error}")
+
+            # Show/hide notification banner
+            if available_version and status == "idle":
+                self.notification_banner.setText(
+                    f"🔔 Update Available: {available_version} (Current: {current_version}) - Click 'Update Server' to install"
+                )
+                self.notification_banner.show()
+            else:
+                self.notification_banner.hide()
 
         except Exception as e:
             logger.error(f"Error updating status display: {e}")
@@ -416,6 +483,147 @@ class SystemPanel(QWidget):
 
         finally:
             self.rollback_btn.setEnabled(True)
+
+    def configure_auto_rebuild(self):
+        """Configure automatic rebuild."""
+        if not self.client:
+            return
+
+        try:
+            enabled = self.auto_rebuild_checkbox.isChecked()
+
+            self.logs_text.append(
+                f"\n🔧 Configuring auto-rebuild: {'enabled' if enabled else 'disabled'}..."
+            )
+
+            result = self.client.configure_auto_rebuild(enabled=enabled)
+
+            if result.get("success"):
+                message = f"Auto-rebuild {'enabled' if enabled else 'disabled'}"
+                if result.get("rebuild_command"):
+                    message += f"\nRebuild command: {result['rebuild_command']}"
+
+                self.logs_text.append(f"\n✅ {message}")
+                QMessageBox.information(self, "Auto-Rebuild Configured", message)
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"\n❌ Configuration failed: {error}")
+                QMessageBox.critical(
+                    self, "Configuration Failed", f"Failed to configure auto-rebuild:\n{error}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error configuring auto-rebuild: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to configure auto-rebuild:\n{str(e)}"
+            )
+
+    def execute_rebuild(self):
+        """Execute manual rebuild."""
+        if not self.client:
+            return
+
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Confirm Rebuild",
+            "Are you sure you want to rebuild the Docker containers?\n\n"
+            "This will rebuild and restart the server.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            self.logs_text.append("\n🔨 Executing Docker rebuild...")
+            self.rebuild_btn.setEnabled(False)
+
+            result = self.client.execute_rebuild()
+
+            if result.get("success"):
+                message = result.get("message", "Rebuild completed")
+                self.logs_text.append(f"\n✅ {message}")
+                QMessageBox.information(self, "Rebuild Complete", message)
+            else:
+                error = result.get("error", "Unknown error")
+                manual_instructions = result.get("manual_instructions", "")
+
+                self.logs_text.append(f"\n❌ Rebuild failed: {error}")
+
+                if manual_instructions:
+                    self.logs_text.append(f"\n📋 Manual instructions:\n{manual_instructions}")
+                    QMessageBox.warning(
+                        self,
+                        "Rebuild Failed",
+                        f"{error}\n\n{manual_instructions}",
+                    )
+                else:
+                    QMessageBox.critical(self, "Rebuild Failed", f"Rebuild failed:\n{error}")
+
+            self._update_status_display()
+
+        except Exception as e:
+            logger.error(f"Error executing rebuild: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to execute rebuild:\n{str(e)}")
+
+        finally:
+            self.rebuild_btn.setEnabled(True)
+
+    def configure_scheduled(self):
+        """Configure scheduled update checks."""
+        if not self.client:
+            return
+
+        try:
+            enabled = self.scheduled_checkbox.isChecked()
+            interval_hours = self.interval_spinbox.value()
+
+            # Show config dialog for git settings
+            dialog = UpdateDialog(self)
+            dialog.setWindowTitle("Scheduled Check Configuration")
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            remote, branch = dialog.get_config()
+
+            self.logs_text.append(
+                f"\n⏰ Configuring scheduled checks: {'enabled' if enabled else 'disabled'}..."
+            )
+            self.logs_text.append(f"   Interval: {interval_hours} hours")
+            self.logs_text.append(f"   Remote: {remote}/{branch or 'current branch'}")
+
+            result = self.client.configure_scheduled_checks(
+                enabled=enabled,
+                interval_hours=interval_hours,
+                git_remote=remote,
+                git_branch=branch,
+            )
+
+            if result.get("success"):
+                message = f"Scheduled checks {'enabled' if enabled else 'disabled'}"
+                if enabled:
+                    message += f"\nInterval: {interval_hours} hours"
+                    message += f"\nMonitoring: {remote}/{branch or 'current branch'}"
+
+                self.logs_text.append(f"\n✅ {message}")
+                QMessageBox.information(self, "Scheduled Checks Configured", message)
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"\n❌ Configuration failed: {error}")
+                QMessageBox.critical(
+                    self, "Configuration Failed", f"Failed to configure scheduled checks:\n{error}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error configuring scheduled checks: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
+            )
 
     def closeEvent(self, event):
         """Handle widget close event."""

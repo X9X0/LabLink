@@ -54,6 +54,18 @@ class UpdateManager:
         # Check if git repository exists
         self.is_git_repo = (self.root_dir / ".git").exists()
 
+        # Auto-rebuild configuration
+        self.auto_rebuild_enabled = False
+        self.rebuild_command: Optional[str] = None
+        self.last_update_check: Optional[datetime] = None
+
+        # Scheduled update checking
+        self.scheduled_check_enabled = False
+        self.check_interval_hours = 24  # Default: check once per day
+        self.scheduled_check_task: Optional[asyncio.Task] = None
+        self.git_remote = "origin"
+        self.git_branch: Optional[str] = None
+
     def _add_log(self, message: str, level: str = "info"):
         """Add a log entry.
 
@@ -89,7 +101,132 @@ class UpdateManager:
             "error": self.update_error,
             "is_docker": self.is_docker,
             "is_git_repo": self.is_git_repo,
+            "auto_rebuild_enabled": self.auto_rebuild_enabled,
+            "last_update_check": self.last_update_check.isoformat() if self.last_update_check else None,
         }
+
+    def configure_auto_rebuild(self, enabled: bool, command: Optional[str] = None) -> Dict:
+        """Configure automatic rebuild after updates.
+
+        Args:
+            enabled: Enable/disable auto-rebuild
+            command: Optional custom rebuild command (default: docker compose rebuild)
+
+        Returns:
+            Configuration result
+        """
+        self.auto_rebuild_enabled = enabled
+
+        if command:
+            self.rebuild_command = command
+        elif self.is_docker:
+            # Default Docker rebuild command from host
+            self.rebuild_command = "docker compose build && docker compose up -d"
+        else:
+            self.rebuild_command = None
+
+        self._add_log(f"Auto-rebuild {'enabled' if enabled else 'disabled'}")
+        if self.rebuild_command:
+            self._add_log(f"Rebuild command: {self.rebuild_command}")
+
+        return {
+            "success": True,
+            "auto_rebuild_enabled": self.auto_rebuild_enabled,
+            "rebuild_command": self.rebuild_command,
+        }
+
+    async def execute_rebuild(self) -> Dict:
+        """Execute Docker rebuild and restart.
+
+        This attempts to rebuild the Docker containers from within the container.
+        This requires the Docker socket to be mounted or SSH access to the host.
+
+        Returns:
+            Rebuild result
+        """
+        if not self.is_docker:
+            return {
+                "success": False,
+                "error": "Not running in Docker - rebuild not applicable",
+            }
+
+        self._add_log("Starting Docker rebuild...")
+        self.status = UpdateStatus.RESTARTING
+        self.update_progress = 60.0
+
+        try:
+            # Check if we can access Docker socket (mounted volume)
+            docker_socket = Path("/var/run/docker.sock")
+
+            if docker_socket.exists():
+                self._add_log("Docker socket detected - attempting rebuild from container")
+
+                # Try to use docker CLI from within container
+                # This requires docker client to be installed in the container
+                result = subprocess.run(
+                    ["which", "docker"],
+                    capture_output=True,
+                    text=True,
+                )
+
+                if result.returncode == 0:
+                    # Docker CLI available - can rebuild
+                    self._add_log("Executing: docker compose build")
+                    result = subprocess.run(
+                        ["docker", "compose", "build"],
+                        cwd=self.root_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=600,  # 10 minute timeout
+                    )
+
+                    if result.returncode != 0:
+                        raise Exception(f"Docker build failed: {result.stderr}")
+
+                    self._add_log("Build complete - restarting containers")
+                    self.update_progress = 90.0
+
+                    # Restart containers
+                    result = subprocess.run(
+                        ["docker", "compose", "up", "-d"],
+                        cwd=self.root_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+
+                    if result.returncode != 0:
+                        raise Exception(f"Docker restart failed: {result.stderr}")
+
+                    self._add_log("✅ Rebuild and restart complete!")
+                    self.update_progress = 100.0
+                    self.status = UpdateStatus.COMPLETED
+
+                    return {
+                        "success": True,
+                        "message": "Docker containers rebuilt and restarted successfully",
+                    }
+                else:
+                    raise Exception("Docker CLI not available in container")
+            else:
+                raise Exception("Docker socket not mounted - cannot rebuild from container")
+
+        except Exception as e:
+            error_msg = f"Rebuild failed: {str(e)}"
+            self._add_log(error_msg, level="error")
+            self.update_error = str(e)
+            self.status = UpdateStatus.FAILED
+
+            return {
+                "success": False,
+                "error": str(e),
+                "manual_instructions": (
+                    "Please run these commands on the Docker host:\n"
+                    f"cd {self.root_dir}\n"
+                    "docker compose build\n"
+                    "docker compose up -d"
+                ),
+            }
 
     async def check_for_updates(
         self, git_remote: str = "origin", git_branch: Optional[str] = None
@@ -106,6 +243,7 @@ class UpdateManager:
         self.status = UpdateStatus.CHECKING
         self.update_logs = []
         self.update_error = None
+        self.last_update_check = datetime.now()
         self._add_log("Checking for updates...")
 
         try:
@@ -292,21 +430,51 @@ class UpdateManager:
                     "Running in Docker - rebuild required", level="warning"
                 )
                 self.status = UpdateStatus.INSTALLING
-                self._add_log(
-                    "Server update downloaded. Docker rebuild needed to apply changes."
-                )
-                self._add_log(
-                    "Run: sudo docker compose build && sudo systemctl restart lablink.service"
-                )
-                self.update_progress = 100.0
-                self.status = UpdateStatus.COMPLETED
 
-                return {
-                    "success": True,
-                    "message": "Update downloaded. Docker rebuild required.",
-                    "requires_rebuild": True,
-                    "rebuild_command": "sudo docker compose build && sudo systemctl restart lablink.service",
-                }
+                # Check if auto-rebuild is enabled
+                if self.auto_rebuild_enabled:
+                    self._add_log("Auto-rebuild enabled - attempting automatic rebuild")
+                    self.update_progress = 50.0
+
+                    # Attempt automatic rebuild
+                    rebuild_result = await self.execute_rebuild()
+
+                    if rebuild_result.get("success"):
+                        # Rebuild successful!
+                        return rebuild_result
+                    else:
+                        # Rebuild failed - provide manual instructions
+                        self._add_log(
+                            "Auto-rebuild failed - manual rebuild required",
+                            level="warning",
+                        )
+                        return {
+                            "success": True,
+                            "message": "Update downloaded but auto-rebuild failed.",
+                            "requires_rebuild": True,
+                            "rebuild_command": "sudo docker compose build && sudo systemctl restart lablink.service",
+                            "rebuild_error": rebuild_result.get("error"),
+                            "manual_instructions": rebuild_result.get(
+                                "manual_instructions"
+                            ),
+                        }
+                else:
+                    # Auto-rebuild not enabled - provide manual instructions
+                    self._add_log(
+                        "Server update downloaded. Docker rebuild needed to apply changes."
+                    )
+                    self._add_log(
+                        "Run: sudo docker compose build && sudo systemctl restart lablink.service"
+                    )
+                    self.update_progress = 100.0
+                    self.status = UpdateStatus.COMPLETED
+
+                    return {
+                        "success": True,
+                        "message": "Update downloaded. Docker rebuild required.",
+                        "requires_rebuild": True,
+                        "rebuild_command": "sudo docker compose build && sudo systemctl restart lablink.service",
+                    }
 
             # Not in Docker - can try to restart directly
             self._add_log("Update complete - restart required")
@@ -387,6 +555,129 @@ class UpdateManager:
             self.status = UpdateStatus.FAILED
 
             return {"success": False, "error": str(e)}
+
+    async def _scheduled_update_check_loop(self):
+        """Background task for scheduled update checking."""
+        logger.info(
+            f"Starting scheduled update checks (interval: {self.check_interval_hours}h)"
+        )
+
+        while self.scheduled_check_enabled:
+            try:
+                # Check for updates
+                logger.info("Running scheduled update check...")
+                result = await self.check_for_updates(
+                    git_remote=self.git_remote, git_branch=self.git_branch
+                )
+
+                if result.get("updates_available"):
+                    logger.info(
+                        f"Update available: {result.get('available_version')} "
+                        f"({result.get('commits_behind', 0)} commits behind)"
+                    )
+                else:
+                    logger.info("No updates available")
+
+            except Exception as e:
+                logger.error(f"Scheduled update check failed: {e}")
+
+            # Wait for next check interval
+            await asyncio.sleep(self.check_interval_hours * 3600)
+
+        logger.info("Scheduled update checking stopped")
+
+    def configure_scheduled_checks(
+        self,
+        enabled: bool,
+        interval_hours: int = 24,
+        git_remote: str = "origin",
+        git_branch: Optional[str] = None,
+    ) -> Dict:
+        """Configure scheduled update checking.
+
+        Args:
+            enabled: Enable/disable scheduled checks
+            interval_hours: Hours between checks (default: 24)
+            git_remote: Git remote to check (default: origin)
+            git_branch: Git branch to check (default: current branch)
+
+        Returns:
+            Configuration result
+        """
+        self.scheduled_check_enabled = enabled
+        self.check_interval_hours = interval_hours
+        self.git_remote = git_remote
+        if git_branch:
+            self.git_branch = git_branch
+
+        self._add_log(f"Scheduled checks {'enabled' if enabled else 'disabled'}")
+        if enabled:
+            self._add_log(f"Check interval: {interval_hours} hours")
+            self._add_log(f"Monitoring: {git_remote}/{git_branch or 'current branch'}")
+
+        return {
+            "success": True,
+            "scheduled_check_enabled": self.scheduled_check_enabled,
+            "check_interval_hours": self.check_interval_hours,
+            "git_remote": self.git_remote,
+            "git_branch": self.git_branch,
+        }
+
+    async def start_scheduled_checks(self):
+        """Start the scheduled update checking task."""
+        if not self.scheduled_check_enabled:
+            return {
+                "success": False,
+                "error": "Scheduled checks not enabled - configure first",
+            }
+
+        if self.scheduled_check_task and not self.scheduled_check_task.done():
+            return {
+                "success": False,
+                "error": "Scheduled checks already running",
+            }
+
+        # Start background task
+        self.scheduled_check_task = asyncio.create_task(
+            self._scheduled_update_check_loop()
+        )
+
+        self._add_log("Started scheduled update checks")
+        logger.info("Scheduled update checks started")
+
+        return {
+            "success": True,
+            "message": "Scheduled update checks started",
+        }
+
+    async def stop_scheduled_checks(self):
+        """Stop the scheduled update checking task."""
+        if not self.scheduled_check_task or self.scheduled_check_task.done():
+            return {
+                "success": False,
+                "error": "Scheduled checks not running",
+            }
+
+        # Stop background task
+        self.scheduled_check_enabled = False
+
+        # Wait for task to complete
+        try:
+            await asyncio.wait_for(self.scheduled_check_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            self.scheduled_check_task.cancel()
+            try:
+                await self.scheduled_check_task
+            except asyncio.CancelledError:
+                pass
+
+        self._add_log("Stopped scheduled update checks")
+        logger.info("Scheduled update checks stopped")
+
+        return {
+            "success": True,
+            "message": "Scheduled update checks stopped",
+        }
 
 
 # Global update manager instance
