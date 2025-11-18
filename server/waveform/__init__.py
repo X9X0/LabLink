@@ -9,8 +9,10 @@ and visualization capabilities including:
 - Persistence mode
 - Histogram display
 - XY mode
+- Advanced analysis tools (spectral analysis, jitter, eye diagrams, masks, search, trending)
 """
 
+from .advanced_analysis import AdvancedWaveformAnalyzer
 from .analyzer import WaveformAnalyzer
 from .manager import WaveformManager
 from .models import (CursorData, CursorType, EnhancedMeasurements,
@@ -31,4 +33,5 @@ __all__ = [
     "EnhancedMeasurements",
     "WaveformAnalyzer",
     "WaveformManager",
+    "AdvancedWaveformAnalyzer",
 ]
