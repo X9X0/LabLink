@@ -3,8 +3,8 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)
-![Coverage](https://img.shields.io/badge/coverage-26%25-yellow.svg)
+![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
+![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
 ![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
 
 A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol and BK Precision scopes, power supplies, and loads).
@@ -385,7 +385,8 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Advanced Waveform Analysis Tools](server/ADVANCED_WAVEFORM_ANALYSIS.md) - Spectral analysis, jitter, eye diagrams, masks
 - [Data Analysis Pipeline](server/ANALYSIS_USER_GUIDE.md) - Signal processing, curve fitting, SPC, and reporting
 - [Firmware Update System](server/FIRMWARE_USER_GUIDE.md) - Remote firmware management and deployment
-- [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
+- [Test Coverage Improvement Plan](docs/TEST_COVERAGE_IMPROVEMENT_PLAN.md) - Comprehensive test coverage roadmap and progress
+- [Development Roadmap](ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
 
@@ -504,6 +505,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - ✅ **Phase 2**: Test Coverage Sprint (137 passing tests, 26% overall, 70%+ critical paths)
 - ✅ **Phase 3**: Production Hardening (security fixes, performance benchmarks, profiling)
 - ✅ **Phase 4**: v1.0.0 Release (CHANGELOG, documentation, release notes)
+- ✅ **Phase 1 Test Coverage** (November 2025): 362 new tests, 52-54% overall coverage, 85%+ critical paths
 
 **Security & Quality:**
 - ✅ All critical vulnerabilities fixed (FastAPI, Starlette upgraded)
