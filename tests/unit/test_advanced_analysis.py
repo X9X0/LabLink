@@ -522,7 +522,7 @@ class TestMaskTesting:
 
         assert result.equipment_id == "SCOPE_001"
         assert result.passed is True
-        assert result.total_violations == 0
+        assert result.failed_samples == 0
 
     def test_mask_test_fail(self):
         """Test mask test that fails."""
@@ -556,7 +556,7 @@ class TestMaskTesting:
         )
 
         # Signal should violate mask
-        assert result.total_violations > 0
+        assert result.failed_samples > 0
         assert result.passed is False
 
     def test_mask_test_nonexistent_mask(self):
