@@ -16,9 +16,10 @@ from api import (acquisition_router, alarms_router, analysis_router,
                  backup_router, calibration_enhanced_router,
                  calibration_router, data_router, database_router,
                  diagnostics_router, discovery_router, equipment_router,
-                 locks_router, performance_router, profiles_router,
-                 safety_router, scheduler_router, security_router,
-                 state_router, testing_router, waveform_router)
+                 firmware_router, locks_router, performance_router,
+                 profiles_router, safety_router, scheduler_router,
+                 security_router, state_router, testing_router,
+                 waveform_router)
 from config.settings import settings
 from config.validator import validate_config
 from logging_config import LoggingMiddleware, get_logger, setup_logging
@@ -546,6 +547,7 @@ app.include_router(testing_router, tags=["testing"])
 app.include_router(backup_router, tags=["backup"])
 app.include_router(discovery_router, tags=["discovery"])
 app.include_router(security_router, tags=["security"])
+app.include_router(firmware_router, tags=["firmware"])
 
 
 @app.get("/api")

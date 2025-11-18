@@ -11,6 +11,7 @@ from .database import router as database_router
 from .diagnostics import router as diagnostics_router
 from .discovery import router as discovery_router
 from .equipment import router as equipment_router
+from .firmware import router as firmware_router
 from .locks import router as locks_router
 from .performance import router as performance_router
 from .profiles import router as profiles_router
@@ -42,4 +43,5 @@ __all__ = [
     "backup_router",
     "discovery_router",
     "security_router",
+    "firmware_router",
 ]

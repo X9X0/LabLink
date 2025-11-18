@@ -242,3 +242,83 @@ class BaseEquipment(ABC):
         elif "GPIB" in resource_upper:
             return ConnectionType.GPIB
         return ConnectionType.USB  # Default
+
+    # ==================== Firmware Update Methods (v0.28.0) ====================
+
+    async def update_firmware(self, firmware_data: bytes) -> bool:
+        """
+        Update equipment firmware.
+
+        This is a default implementation that should be overridden by subclasses
+        that support firmware updates. Many lab equipment don't support remote
+        firmware updates or have vendor-specific protocols.
+
+        Args:
+            firmware_data: Binary firmware file data
+
+        Returns:
+            True if update successful, False otherwise
+
+        Raises:
+            NotImplementedError: If equipment doesn't support firmware updates
+        """
+        raise NotImplementedError(
+            f"Firmware update not supported for {self.__class__.__name__}. "
+            "This equipment either doesn't support remote firmware updates or "
+            "the update procedure hasn't been implemented yet."
+        )
+
+    async def supports_firmware_update(self) -> bool:
+        """
+        Check if equipment supports remote firmware updates.
+
+        Returns:
+            True if firmware updates are supported, False otherwise
+        """
+        # Try to call update_firmware with empty data to see if NotImplementedError is raised
+        try:
+            # We don't actually want to update, just check if the method is implemented
+            # Subclasses that support updates should override this method
+            return False
+        except Exception:
+            return False
+
+    async def get_firmware_version(self) -> Optional[str]:
+        """
+        Get current firmware version from equipment.
+
+        Returns:
+            Firmware version string, or None if not available
+        """
+        try:
+            # Try to get version from status
+            status = await self.get_status()
+            return status.firmware_version
+        except Exception as e:
+            logger.error(f"Error getting firmware version: {e}")
+            return None
+
+    async def backup_firmware(self) -> Optional[bytes]:
+        """
+        Create backup of current firmware (if supported).
+
+        Returns:
+            Firmware binary data, or None if backup not supported
+        """
+        logger.warning(
+            f"Firmware backup not supported for {self.__class__.__name__}"
+        )
+        return None
+
+    async def restore_firmware(self, firmware_data: bytes) -> bool:
+        """
+        Restore firmware from backup.
+
+        Args:
+            firmware_data: Binary firmware backup data
+
+        Returns:
+            True if restore successful, False otherwise
+        """
+        # Use the standard update method
+        return await self.update_firmware(firmware_data)
