@@ -4,10 +4,13 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING, Any
 
 from .models import (AlarmAcknowledgment, AlarmCondition, AlarmConfig,
                      AlarmEvent, AlarmSeverity, AlarmState, AlarmStatistics)
+
+if TYPE_CHECKING:
+    from websocket_server import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,16 @@ class AlarmManager:
         self._event_history: List[AlarmEvent] = []
         self._max_history_size = 1000
         self._lock = asyncio.Lock()
+        self._stream_manager: Optional["StreamManager"] = None
+
+    def set_stream_manager(self, stream_manager: "StreamManager"):
+        """Set the WebSocket stream manager for broadcasting alarm events.
+
+        Args:
+            stream_manager: WebSocket stream manager instance
+        """
+        self._stream_manager = stream_manager
+        logger.info("WebSocket stream manager set for alarm broadcasting")
 
     async def create_alarm(self, config: AlarmConfig) -> AlarmConfig:
         """
@@ -194,6 +207,9 @@ class AlarmManager:
             logger.info(
                 f"Acknowledged alarm event: {acknowledgment.event_id} by {acknowledgment.acknowledged_by}"
             )
+
+            # Broadcast alarm_updated event via WebSocket
+            await self._broadcast_alarm_updated(event)
 
             return True
 
@@ -450,6 +466,9 @@ class AlarmManager:
         # Send notifications
         await self._send_notifications(event, config)
 
+        # Broadcast alarm_event via WebSocket
+        await self._broadcast_alarm_event(event, config)
+
         return event
 
     async def _clear_alarm(self, alarm_id: str) -> Optional[AlarmEvent]:
@@ -473,6 +492,9 @@ class AlarmManager:
 
         logger.info(f"Alarm cleared: {alarm_id}")
 
+        # Broadcast alarm_cleared event via WebSocket
+        await self._broadcast_alarm_cleared(event)
+
         return event
 
     async def _send_notifications(self, event: AlarmEvent, config: AlarmConfig):
@@ -488,6 +510,83 @@ class AlarmManager:
                 logger.error(
                     f"Failed to send {method} notification for alarm {config.alarm_id}: {e}"
                 )
+
+    async def _broadcast_alarm_event(self, event: AlarmEvent, config: AlarmConfig):
+        """Broadcast new alarm event via WebSocket.
+
+        Args:
+            event: Alarm event that was triggered
+            config: Alarm configuration
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "alarm_event",
+                "data": {
+                    "event_id": event.event_id,
+                    "alarm_id": event.alarm_id,
+                    "alarm_name": config.name,
+                    "severity": event.severity.value,
+                    "state": event.state.value,
+                    "equipment_id": event.equipment_id,
+                    "parameter": event.parameter,
+                    "value": event.value,
+                    "threshold": event.threshold,
+                    "message": event.message,
+                    "timestamp": event.triggered_at.isoformat(),
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted alarm event: {event.event_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast alarm event: {e}")
+
+    async def _broadcast_alarm_updated(self, event: AlarmEvent):
+        """Broadcast alarm updated event via WebSocket.
+
+        Args:
+            event: Alarm event that was updated
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "alarm_updated",
+                "data": {
+                    "event_id": event.event_id,
+                    "state": event.state.value,
+                    "acknowledged_at": event.acknowledged_at.isoformat() if event.acknowledged_at else None,
+                    "acknowledged_by": event.acknowledged_by,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted alarm updated: {event.event_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast alarm updated: {e}")
+
+    async def _broadcast_alarm_cleared(self, event: AlarmEvent):
+        """Broadcast alarm cleared event via WebSocket.
+
+        Args:
+            event: Alarm event that was cleared
+        """
+        if not self._stream_manager:
+            return
+
+        try:
+            message = {
+                "type": "alarm_cleared",
+                "data": {
+                    "event_id": event.event_id,
+                }
+            }
+            await self._stream_manager.broadcast(message)
+            logger.debug(f"Broadcasted alarm cleared: {event.event_id}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast alarm cleared: {e}")
 
 
 # Import here to avoid circular dependency
