@@ -151,6 +151,15 @@ async def lifespan(app: FastAPI):
     await integrator.start_monitoring()
     logger.info("Equipment-alarm monitoring started")
 
+    # Wire alarm manager to WebSocket stream manager for real-time notifications
+    from websocket_server import stream_manager
+    alarm_manager.set_stream_manager(stream_manager)
+    logger.info("Alarm manager connected to WebSocket for real-time notifications")
+
+    # Wire scheduler manager to WebSocket stream manager for real-time notifications
+    scheduler_manager.set_stream_manager(stream_manager)
+    logger.info("Scheduler manager connected to WebSocket for real-time notifications")
+
     # Initialize calibration manager (v0.12.0)
     from equipment.calibration import initialize_calibration_manager
 

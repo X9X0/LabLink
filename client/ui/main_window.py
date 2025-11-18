@@ -24,6 +24,7 @@ from client.ui.sd_card_writer import SDCardWriter
 from client.ui.server_selector import ServerSelector
 from client.ui.ssh_deploy_wizard import SSHDeployWizard
 from client.ui.sync_panel import SyncPanel
+from client.ui.test_sequence_panel import TestSequencePanel
 from client.utils.server_manager import get_server_manager
 from client.utils.token_storage import get_token_storage
 
@@ -118,6 +119,10 @@ class MainWindow(QMainWindow):
         # Synchronization panel
         self.sync_panel = SyncPanel()
         self.tab_widget.addTab(self.sync_panel, "Synchronization")
+
+        # Test Sequence panel
+        self.test_sequence_panel = TestSequencePanel()
+        self.tab_widget.addTab(self.test_sequence_panel, "Test Sequences")
 
         # Connect signals
         self.connection_changed.connect(self._on_connection_changed)
@@ -394,6 +399,7 @@ class MainWindow(QMainWindow):
         self.scheduler_panel.set_client(self.client)
         self.diagnostics_panel.set_client(self.client)
         self.sync_panel.set_client(self.client)
+        self.test_sequence_panel.set_client(self.client)
 
         # Emit signal
         self.connection_changed.emit(True)
