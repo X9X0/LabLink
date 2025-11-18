@@ -87,6 +87,16 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] XY mode (channel vs channel plots)
   - [x] Continuous acquisition (up to 100 Hz)
   - [x] 25+ waveform API endpoints
+
+- [x] **Advanced waveform analysis tools** (professional signal analysis and characterization)
+  - [x] Spectral analysis (spectrograms, cross-correlation, transfer functions)
+  - [x] Comprehensive jitter analysis (TIE, period, cycle-to-cycle, half-period, N-period)
+  - [x] Eye diagram generation and analysis (serial data quality assessment)
+  - [x] Mask testing framework (polygon, standard, and auto-generated masks)
+  - [x] Waveform search and event detection (edges, pulses, runts, glitches, patterns)
+  - [x] Reference waveform comparison (golden unit testing with tolerances)
+  - [x] Parameter trending (long-term monitoring with drift analysis)
+  - [x] 20+ advanced analysis API endpoints
 - [x] **Data analysis pipeline** (comprehensive signal processing and quality control)
   - [x] Signal filtering (Butterworth, Chebyshev, Bessel, Elliptic, FIR filters)
   - [x] Filter types: lowpass, highpass, bandpass, bandstop/notch
@@ -240,7 +250,6 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ### In Development
 
-- [ ] Advanced waveform analysis tools
 - [ ] Automated test sequence builder
 - [ ] Remote firmware update capability
 
@@ -353,6 +362,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
 - [Equipment Diagnostics](server/DIAGNOSTICS_SYSTEM.md) - Health monitoring and performance diagnostics
 - [Waveform Capture & Analysis](server/WAVEFORM_USER_GUIDE.md) - Advanced oscilloscope functionality
+- [Advanced Waveform Analysis Tools](server/ADVANCED_WAVEFORM_ANALYSIS.md) - Spectral analysis, jitter, eye diagrams, masks
 - [Data Analysis Pipeline](server/ANALYSIS_USER_GUIDE.md) - Signal processing, curve fitting, SPC, and reporting
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
