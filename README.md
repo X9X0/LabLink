@@ -76,7 +76,19 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Communication statistics (success rate, response times, error tracking)
   - [x] System-wide diagnostics and resource monitoring
   - [x] Diagnostic report generation
+  - [x] 143 comprehensive unit and integration tests (~95% coverage)
+  - [x] Statistics recording integration (connection events, command metrics)
   - [x] 11 diagnostics API endpoints
+- [x] **Remote server updates** (one-click server management from client GUI)
+  - [x] Git-based version tracking and update checking
+  - [x] One-click server updates with progress monitoring
+  - [x] Automatic Docker container rebuild after updates
+  - [x] Scheduled update checks (configurable 1-168 hour intervals)
+  - [x] Update notification banner in client GUI
+  - [x] Rollback to previous version capability
+  - [x] Real-time update logs and progress tracking
+  - [x] System Management panel with intuitive controls
+  - [x] 11 system management API endpoints
 - [x] **Waveform capture & analysis** (professional oscilloscope functionality)
   - [x] High-speed waveform acquisition with averaging and decimation
   - [x] 30+ enhanced automatic measurements (voltage, time, signal quality, statistical)
