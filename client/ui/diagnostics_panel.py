@@ -158,7 +158,65 @@ class DiagnosticsPanel(QWidget):
 
     def run_benchmark(self):
         """Run performance benchmark on selected equipment."""
-        # TODO: Implement benchmark functionality
-        QMessageBox.information(
-            self, "Info", "Benchmark functionality not yet fully implemented"
-        )
+        if not self.client:
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
+            return
+
+        # Get selected equipment from table
+        selected_rows = self.health_table.selectedIndexes()
+        if not selected_rows:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select an equipment from the table to benchmark",
+            )
+            return
+
+        # Get equipment ID from first column of selected row
+        row = selected_rows[0].row()
+        equipment_id = self.health_table.item(row, 0).text()
+
+        try:
+            # Run benchmark (returns benchmark dict directly)
+            benchmark = self.client.run_benchmark(equipment_id)
+
+            if benchmark:
+                # Format benchmark results
+                message = f"Performance Benchmark for {equipment_id}:\n\n"
+                message += f"Overall Score: {benchmark.get('performance_score', 0):.1f}/100\n\n"
+
+                message += "Command Latency:\n"
+                latencies = benchmark.get("command_latency_ms", {})
+                for cmd, latency in latencies.items():
+                    if latency >= 0:
+                        message += f"  {cmd}: {latency:.2f} ms\n"
+                    else:
+                        message += f"  {cmd}: FAILED\n"
+
+                throughput = benchmark.get("throughput_commands_per_sec", 0)
+                if throughput > 0:
+                    message += f"\nThroughput: {throughput:.2f} commands/sec\n"
+
+                cpu = benchmark.get("cpu_usage_percent")
+                memory = benchmark.get("memory_usage_mb")
+                if cpu is not None:
+                    message += f"CPU Usage: {cpu:.1f}%\n"
+                if memory is not None:
+                    message += f"Memory Usage: {memory:.1f} MB\n"
+
+                QMessageBox.information(self, "Benchmark Results", message)
+
+                # Refresh health data
+                self.refresh()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Benchmark Failed",
+                    f"Could not run benchmark on {equipment_id}",
+                )
+
+        except Exception as e:
+            logger.error(f"Error running benchmark: {e}")
+            QMessageBox.critical(self, "Error", f"Benchmark failed: {str(e)}")

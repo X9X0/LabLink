@@ -70,25 +70,73 @@ class BaseEquipment(ABC):
         if not self.instrument or not self.connected:
             raise RuntimeError("Equipment not connected")
 
+        import time
+        start_time = time.time()
+        success = False
+        error_msg = None
+
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self.instrument.write, command)
+            success = True
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error writing command '{command}': {e}")
             raise
+        finally:
+            # Record command statistics for diagnostics
+            response_time_ms = (time.time() - start_time) * 1000
+            try:
+                from diagnostics import diagnostics_manager
+                if hasattr(self, 'cached_info') and self.cached_info:
+                    diagnostics_manager.record_command(
+                        equipment_id=self.cached_info.id,
+                        success=success,
+                        response_time_ms=response_time_ms,
+                        bytes_sent=len(command.encode()),
+                        error=error_msg,
+                    )
+            except Exception:
+                # Don't let diagnostics recording interfere with operations
+                pass
 
     async def _query(self, command: str) -> str:
         """Query the instrument and return response."""
         if not self.instrument or not self.connected:
             raise RuntimeError("Equipment not connected")
 
+        import time
+        start_time = time.time()
+        success = False
+        error_msg = None
+        response = ""
+
         try:
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(None, self.instrument.query, command)
+            success = True
             return response.strip()
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error querying '{command}': {e}")
             raise
+        finally:
+            # Record command statistics for diagnostics
+            response_time_ms = (time.time() - start_time) * 1000
+            try:
+                from diagnostics import diagnostics_manager
+                if hasattr(self, 'cached_info') and self.cached_info:
+                    diagnostics_manager.record_command(
+                        equipment_id=self.cached_info.id,
+                        success=success,
+                        response_time_ms=response_time_ms,
+                        bytes_sent=len(command.encode()),
+                        bytes_received=len(response.encode()) if response else 0,
+                        error=error_msg,
+                    )
+            except Exception:
+                # Don't let diagnostics recording interfere with operations
+                pass
 
     async def _query_binary(self, command: str) -> bytes:
         """Query the instrument and return binary response."""
