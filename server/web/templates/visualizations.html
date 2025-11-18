@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LabLink - Advanced Visualizations</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/visualizations.css">
+
+    <!-- Chart.js for 2D charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Three.js for 3D visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h1>LabLink</h1>
+                <span class="navbar-subtitle">Advanced Visualizations</span>
+            </div>
+
+            <div class="navbar-actions">
+                <a href="/dashboard.html" class="btn btn-secondary btn-sm">Dashboard</a>
+                <a href="/profiles.html" class="btn btn-secondary btn-sm">Profiles</a>
+                <a href="/settings.html" class="btn btn-secondary btn-sm">Settings</a>
+
+                <button class="btn btn-icon" id="darkModeToggle" title="Toggle dark mode">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon" style="display: none;">🌙</span>
+                </button>
+
+                <div class="user-menu">
+                    <span class="user-name" id="userName">User</span>
+                    <button class="btn btn-secondary btn-sm" id="logoutButton">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Alert for notifications -->
+        <div class="alert alert-info" id="alert" style="display: none;"></div>
+
+        <!-- Equipment Selector -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Data Source</h2>
+            </div>
+            <div class="equipment-selector">
+                <div class="form-group">
+                    <label for="vizEquipmentSelect">Equipment:</label>
+                    <select id="vizEquipmentSelect" class="form-control">
+                        <option value="">Select equipment...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="vizChannelSelect">Channel:</label>
+                    <select id="vizChannelSelect" class="form-control">
+                        <option value="1">Channel 1</option>
+                        <option value="2">Channel 2</option>
+                        <option value="3">Channel 3</option>
+                        <option value="4">Channel 4</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" id="loadDataButton">
+                    <span class="btn-text">Load Data</span>
+                    <span class="btn-spinner" style="display: none;"><span class="spinner"></span></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Visualization Tabs -->
+        <div class="section">
+            <div class="viz-tabs">
+                <button class="viz-tab active" data-tab="3d-waveform">3D Waveform</button>
+                <button class="viz-tab" data-tab="fft-waterfall">FFT Waterfall</button>
+                <button class="viz-tab" data-tab="spc-charts">SPC Charts</button>
+                <button class="viz-tab" data-tab="correlation">Correlation</button>
+            </div>
+
+            <!-- 3D Waveform Tab -->
+            <div class="viz-tab-content active" id="tab-3d-waveform">
+                <div class="viz-panel">
+                    <div class="viz-panel-header">
+                        <h3>3D Waveform Visualization</h3>
+                        <div class="viz-controls">
+                            <button class="btn btn-sm btn-secondary" id="reset3DView">Reset View</button>
+                            <button class="btn btn-sm btn-secondary" id="animate3D">
+                                <span id="animate3DText">Start Animation</span>
+                            </button>
+                            <label class="control-label">
+                                <input type="checkbox" id="show3DGrid"> Show Grid
+                            </label>
+                            <label class="control-label">
+                                <input type="checkbox" id="show3DAxes" checked> Show Axes
+                            </label>
+                        </div>
+                    </div>
+                    <div class="viz-container">
+                        <div id="waveform3D" class="viz-canvas-container"></div>
+                    </div>
+                    <div class="viz-info">
+                        <p><strong>Controls:</strong> Left-click to rotate, Right-click to pan, Scroll to zoom</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FFT Waterfall Tab -->
+            <div class="viz-tab-content" id="tab-fft-waterfall">
+                <div class="viz-panel">
+                    <div class="viz-panel-header">
+                        <h3>FFT Waterfall Display</h3>
+                        <div class="viz-controls">
+                            <label class="control-label">
+                                Window:
+                                <select id="waterfallWindow" class="form-control form-control-sm">
+                                    <option value="hann">Hann</option>
+                                    <option value="hamming">Hamming</option>
+                                    <option value="blackman">Blackman</option>
+                                    <option value="bartlett">Bartlett</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </label>
+                            <label class="control-label">
+                                FFT Size:
+                                <select id="waterfallFFTSize" class="form-control form-control-sm">
+                                    <option value="256">256</option>
+                                    <option value="512" selected>512</option>
+                                    <option value="1024">1024</option>
+                                    <option value="2048">2048</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-sm btn-primary" id="updateWaterfall">Update</button>
+                            <button class="btn btn-sm btn-secondary" id="clearWaterfall">Clear</button>
+                        </div>
+                    </div>
+                    <div class="viz-container">
+                        <canvas id="waterfallCanvas" class="viz-canvas"></canvas>
+                    </div>
+                    <div class="viz-info">
+                        <div class="waterfall-stats">
+                            <span id="waterfallFreqRange">Frequency Range: -</span>
+                            <span id="waterfallTimeSpan">Time Span: -</span>
+                            <span id="waterfallResolution">Resolution: -</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SPC Charts Tab -->
+            <div class="viz-tab-content" id="tab-spc-charts">
+                <div class="viz-panel">
+                    <div class="viz-panel-header">
+                        <h3>Statistical Process Control Charts</h3>
+                        <div class="viz-controls">
+                            <label class="control-label">
+                                Chart Type:
+                                <select id="spcChartType" class="form-control form-control-sm">
+                                    <option value="xbar-r">X-bar & R</option>
+                                    <option value="xbar-s">X-bar & S</option>
+                                    <option value="individuals">Individuals</option>
+                                    <option value="p-chart">P Chart</option>
+                                    <option value="c-chart">C Chart</option>
+                                </select>
+                            </label>
+                            <label class="control-label">
+                                Subgroup Size:
+                                <input type="number" id="spcSubgroupSize" class="form-control form-control-sm" value="5" min="2" max="10">
+                            </label>
+                            <button class="btn btn-sm btn-primary" id="generateSPC">Generate Chart</button>
+                        </div>
+                    </div>
+                    <div class="viz-container">
+                        <div class="spc-charts-grid">
+                            <div class="spc-chart-container">
+                                <canvas id="spcMainChart" class="viz-canvas"></canvas>
+                            </div>
+                            <div class="spc-chart-container">
+                                <canvas id="spcRangeChart" class="viz-canvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="viz-info">
+                        <div class="spc-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">UCL:</span>
+                                <span class="stat-value" id="spcUCL">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">CL:</span>
+                                <span class="stat-value" id="spcCL">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">LCL:</span>
+                                <span class="stat-value" id="spcLCL">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Cp:</span>
+                                <span class="stat-value" id="spcCp">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Cpk:</span>
+                                <span class="stat-value" id="spcCpk">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Violations:</span>
+                                <span class="stat-value stat-error" id="spcViolations">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Correlation Tab -->
+            <div class="viz-tab-content" id="tab-correlation">
+                <div class="viz-panel">
+                    <div class="viz-panel-header">
+                        <h3>Multi-Instrument Correlation</h3>
+                        <div class="viz-controls">
+                            <label class="control-label">
+                                Equipment 2:
+                                <select id="corrEquipment2" class="form-control form-control-sm">
+                                    <option value="">Select second equipment...</option>
+                                </select>
+                            </label>
+                            <label class="control-label">
+                                Channel 2:
+                                <select id="corrChannel2" class="form-control form-control-sm">
+                                    <option value="1">Channel 1</option>
+                                    <option value="2">Channel 2</option>
+                                    <option value="3">Channel 3</option>
+                                    <option value="4">Channel 4</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-sm btn-primary" id="calculateCorrelation">Calculate</button>
+                        </div>
+                    </div>
+                    <div class="viz-container">
+                        <div class="correlation-grid">
+                            <div class="correlation-chart-container">
+                                <h4>Time-Aligned Overlay</h4>
+                                <canvas id="correlationOverlay" class="viz-canvas"></canvas>
+                            </div>
+                            <div class="correlation-chart-container">
+                                <h4>Scatter Plot</h4>
+                                <canvas id="correlationScatter" class="viz-canvas"></canvas>
+                            </div>
+                            <div class="correlation-chart-container">
+                                <h4>Cross-Correlation</h4>
+                                <canvas id="correlationCross" class="viz-canvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="viz-info">
+                        <div class="correlation-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Correlation Coefficient:</span>
+                                <span class="stat-value" id="corrCoefficient">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Time Lag:</span>
+                                <span class="stat-value" id="corrTimeLag">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Peak Correlation:</span>
+                                <span class="stat-value" id="corrPeak">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">R² Value:</span>
+                                <span class="stat-value" id="corrRSquared">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/viz-3d-waveform.js"></script>
+    <script src="/static/js/viz-waterfall.js"></script>
+    <script src="/static/js/viz-spc.js"></script>
+    <script src="/static/js/viz-correlation.js"></script>
+    <script src="/static/js/visualizations.js"></script>
+</body>
+</html>

@@ -45,6 +45,12 @@ async def settings_page():
     return FileResponse(TEMPLATES_DIR / "settings.html")
 
 
+@router.get("/visualizations.html", response_class=HTMLResponse)
+async def visualizations_page():
+    """Serve the advanced visualizations page."""
+    return FileResponse(TEMPLATES_DIR / "visualizations.html")
+
+
 def register_web_routes(app):
     """Register web routes and static files with the FastAPI app."""
     # Mount static files
