@@ -1,7 +1,7 @@
 # LabLink Development Roadmap
 
 **Current Version:** v1.0.0 (Production Release)
-**Last Updated:** 2025-11-14
+**Last Updated:** 2025-11-18
 **Status:** ✅ Production Ready - First production release with comprehensive features, security hardening, test coverage, and performance benchmarking
 
 ---
@@ -159,8 +159,16 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ### Equipment Management
 - ✅ Equipment drivers (Rigol MSO2072A, DS1104, DL3021A, BK 9206B, 9205B, 9130B, 1685B, 1902B)
-- ✅ Mock equipment drivers (oscilloscope, power supply, electronic load)
-- ✅ Equipment discovery (VISA, Zeroconf, GPIB)
+- ✅ Mock equipment drivers (November 2024):
+  - MockOscilloscope - Realistic waveforms (sine, square, triangle, noise) - 376 lines
+  - MockPowerSupply - CV/CC modes with load simulation - 264 lines
+  - MockElectronicLoad - CC/CV/CR/CP modes with thermal behavior - 349 lines
+  - Complete documentation: `docs/MOCK_EQUIPMENT.md`
+- ✅ Equipment discovery (VISA, mDNS/Zeroconf, GPIB):
+  - Server-side mDNS broadcasting (`server/utils/mdns.py`)
+  - Client-side discovery (`client/utils/mdns_discovery.py`)
+  - GUI discovery dialog (`client/ui/discovery_dialog.py`)
+  - Complete documentation: `docs/MDNS_DISCOVERY.md`
 - ✅ Profile system (save/load configurations)
 - ✅ State management (capture/restore/compare)
 
@@ -239,28 +247,36 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ## 🔮 Future Roadmap (v1.1.0+)
 
-### v1.1.0 - Mobile App (Planned: 4-6 weeks)
+### v1.1.0 - Mobile App MVP ✅ COMPLETE
 **Priority:** HIGH
-**Status:** ✅ API 100% mobile-ready (validation complete)
+**Status:** ✅ COMPLETE (November 15, 2025)
+**Code:** ~2,700 lines TypeScript (React Native + Expo)
 
-**Features:**
-- 📱 React Native mobile application
-- 📱 iOS and Android support
-- 📱 Username/password + OAuth2 login
-- 📱 Equipment list and real-time status
-- 📱 WebSocket streaming for live monitoring
-- 📱 Basic equipment controls
-- 📱 Push notifications for alarms
-- 📱 MFA/2FA support
-- 📱 Biometric authentication (TouchID/FaceID)
+**Implemented Features:**
+- ✅ React Native mobile application (iOS & Android)
+- ✅ Username/password login
+- ✅ MFA/2FA support (TOTP)
+- ✅ Biometric authentication (Face ID/Touch ID)
+- ✅ Equipment list with real-time status
+- ✅ Equipment detail and control (SCPI commands)
+- ✅ WebSocket streaming for live updates
+- ✅ Alarms monitoring and acknowledgment
+- ✅ Settings and server configuration
+- ✅ Secure token storage (Keychain/KeyStore)
+- ✅ Automatic token refresh
+- ✅ Mobile-optimized WebSocket reconnection
 
-**API Changes Required:** ✅ NONE (all optional enhancements)
+**v1.1.1 Planned Enhancements:**
+- 📋 Push notifications for alarms
+- 📋 Deep link support for OAuth callbacks
+- 📋 Improved error handling
+- 📋 Offline mode with data sync
 
-**Optional Enhancements:**
-- Deep link support for OAuth callbacks (`lablink://oauth-callback`)
-- Pagination for list endpoints (`?limit=20&offset=0`)
-
-See: `MOBILE_ARCHITECTURE_VALIDATION.md` (archived)
+**Documentation:**
+- `mobile/README.md` - User guide and setup
+- `mobile/DEVELOPMENT.md` - Development summary
+- `docs/MOBILE_API_REQUIREMENTS.md` - API documentation
+- `docs/archive/MOBILE_ARCHITECTURE_VALIDATION.md` - Architecture validation
 
 ---
 
@@ -490,15 +506,34 @@ See: `MOBILE_ARCHITECTURE_VALIDATION.md` (archived)
 ## 🗓️ Development Priorities
 
 ### Immediate (Q4 2025)
-1. ✅ v1.0.0 Production Release (COMPLETE)
-2. 📋 Monitor production deployment (48 hours)
-3. 📋 Address critical bugs (v1.0.1 if needed)
-4. 📋 Collect user feedback
+1. ✅ v1.0.0 Production Release (COMPLETE - November 14, 2025)
+2. ✅ Post-release critical bug fixes (COMPLETE - November 18, 2025)
+   - Fixed alarm events endpoint routing (Python bytecode cache issue)
+   - Fixed job creation validation (test payload format corrected)
+   - Completed WebSocket Phase 4 (Alarm panel real-time notifications)
+   - Completed WebSocket Phase 5 (Scheduler panel real-time updates)
+3. ✅ Mock equipment drivers (COMPLETE - Pre v1.0.0)
+   - MockOscilloscope with realistic waveforms (376 lines)
+   - MockPowerSupply with CV/CC modes (264 lines)
+   - MockElectronicLoad with thermal simulation (349 lines)
+   - Complete documentation (docs/MOCK_EQUIPMENT.md)
+4. ✅ Server discovery mDNS/Bonjour (COMPLETE - Pre v1.0.0)
+   - Server-side mDNS broadcasting
+   - Client-side discovery
+   - GUI discovery dialog
+   - Complete documentation (docs/MDNS_DISCOVERY.md)
+5. ✅ Mobile app v1.1.0 MVP (COMPLETE - November 15, 2025)
+   - React Native + Expo (~2,700 lines)
+   - Authentication (username/password, MFA, biometric)
+   - Equipment management with real-time updates
+   - Alarms monitoring
+   - Settings and profile management
 
 ### Short-term (Q1 2026)
-1. 📋 Mobile app development (v1.1.0)
-2. 📋 Advanced visualization (v1.2.0)
-3. 💡 Community feedback integration
+1. ✅ Mobile app v1.1.0 MVP (COMPLETE - November 15, 2025)
+2. 📋 Mobile app v1.1.1 enhancements (push notifications, deep linking)
+3. 📋 Advanced visualization (v1.2.0)
+4. 💡 Community feedback integration
 
 ### Medium-term (Q2-Q3 2026)
 1. 💡 Enterprise features (v1.3.0)
@@ -600,11 +635,11 @@ We welcome feedback and feature requests from the community:
 
 ---
 
-**Current Status:** v1.0.0 Production Release (100% Complete)
-**Next Release:** v1.1.0 Mobile App (Estimated 4-6 weeks)
-**Confidence Level:** HIGH (API 100% mobile-ready, no breaking changes needed)
+**Current Status:** v1.1.0 Mobile App MVP Complete (November 2025)
+**Next Release:** v1.1.1 Mobile App Enhancements (Push notifications, deep linking)
+**Also Ready:** v1.2.0 Advanced Visualization (2-3 weeks estimated)
 
 ---
 
 *This roadmap is a living document and will be updated as features are completed and priorities change.*
-*Last updated: November 14, 2025*
+*Last updated: November 18, 2025*
