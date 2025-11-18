@@ -19,6 +19,7 @@ from .safety import router as safety_router
 from .scheduler import router as scheduler_router
 from .security import router as security_router
 from .state import router as state_router
+from .system import router as system_router
 from .testing import router as testing_router
 from .waveform import router as waveform_router
 
@@ -44,4 +45,5 @@ __all__ = [
     "discovery_router",
     "security_router",
     "firmware_router",
+    "system_router",
 ]

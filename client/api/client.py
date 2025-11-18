@@ -1521,3 +1521,82 @@ class LabLinkClient:
         response = self._session.get(f"http://{self.host}:{self.api_port}/health")
         response.raise_for_status()
         return response.json()
+
+    # ==================== System Management Methods ====================
+
+    def get_server_version(self) -> Dict[str, Any]:
+        """Get server version information.
+
+        Returns:
+            Version information including version string and parsed components
+        """
+        response = self._session.get(f"{self.api_base_url}/system/version")
+        response.raise_for_status()
+        return response.json()
+
+    def get_update_status(self) -> Dict[str, Any]:
+        """Get current update status and progress.
+
+        Returns:
+            Update status information including progress, logs, and errors
+        """
+        response = self._session.get(f"{self.api_base_url}/system/update/status")
+        response.raise_for_status()
+        return response.json()
+
+    def check_for_updates(
+        self, git_remote: str = "origin", git_branch: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Check if server updates are available.
+
+        Args:
+            git_remote: Git remote name (default: origin)
+            git_branch: Git branch to check (default: current branch)
+
+        Returns:
+            Update availability information
+        """
+        payload = {"git_remote": git_remote}
+        if git_branch:
+            payload["git_branch"] = git_branch
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/check", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def start_server_update(
+        self, git_remote: str = "origin", git_branch: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Start server update process.
+
+        WARNING: This will pull latest code from git and may require a
+        Docker rebuild and service restart.
+
+        Args:
+            git_remote: Git remote name (default: origin)
+            git_branch: Git branch to pull from (default: current branch)
+
+        Returns:
+            Update result with instructions for rebuild if needed
+        """
+        payload = {"git_remote": git_remote}
+        if git_branch:
+            payload["git_branch"] = git_branch
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/start", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def rollback_server(self) -> Dict[str, Any]:
+        """Rollback server to previous version.
+
+        Returns:
+            Rollback result
+        """
+        response = self._session.post(f"{self.api_base_url}/system/update/rollback")
+        response.raise_for_status()
+        return response.json()
