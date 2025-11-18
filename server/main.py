@@ -18,8 +18,8 @@ from api import (acquisition_router, alarms_router, analysis_router,
                  diagnostics_router, discovery_router, equipment_router,
                  firmware_router, locks_router, performance_router,
                  profiles_router, safety_router, scheduler_router,
-                 security_router, state_router, testing_router,
-                 waveform_router)
+                 security_router, state_router, system_router,
+                 testing_router, waveform_router)
 from config.settings import settings
 from config.validator import validate_config
 from logging_config import LoggingMiddleware, get_logger, setup_logging
@@ -34,8 +34,10 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    from system import get_version
+
     logger.info("=" * 70)
-    logger.info(f"LabLink Server v0.27.0 - {settings.server_name}")
+    logger.info(f"LabLink Server v{get_version()} - {settings.server_name}")
     logger.info("=" * 70)
 
     # Validate configuration
@@ -557,6 +559,7 @@ app.include_router(backup_router, tags=["backup"])
 app.include_router(discovery_router, tags=["discovery"])
 app.include_router(security_router, tags=["security"])
 app.include_router(firmware_router, tags=["firmware"])
+app.include_router(system_router, prefix="/api", tags=["system"])
 
 
 @app.get("/api")

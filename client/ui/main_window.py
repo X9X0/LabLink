@@ -18,6 +18,7 @@ from client.ui.connection_dialog import ConnectionDialog
 from client.ui.diagnostics_panel import DiagnosticsPanel
 from client.ui.equipment_panel import EquipmentPanel
 from client.ui.login_dialog import LoginDialog
+from client.ui.system_panel import SystemPanel
 from client.ui.pi_image_builder import PiImageBuilderWizard
 from client.ui.scheduler_panel import SchedulerPanel
 from client.ui.sd_card_writer import SDCardWriter
@@ -123,6 +124,10 @@ class MainWindow(QMainWindow):
         # Test Sequence panel
         self.test_sequence_panel = TestSequencePanel()
         self.tab_widget.addTab(self.test_sequence_panel, "Test Sequences")
+
+        # System Management panel
+        self.system_panel = SystemPanel()
+        self.tab_widget.addTab(self.system_panel, "System")
 
         # Connect signals
         self.connection_changed.connect(self._on_connection_changed)
@@ -400,6 +405,7 @@ class MainWindow(QMainWindow):
         self.diagnostics_panel.set_client(self.client)
         self.sync_panel.set_client(self.client)
         self.test_sequence_panel.set_client(self.client)
+        self.system_panel.set_client(self.client)
 
         # Emit signal
         self.connection_changed.emit(True)

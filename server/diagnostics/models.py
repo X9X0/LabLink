@@ -141,6 +141,7 @@ class CommunicationDiagnostics(BaseModel):
     # Errors
     last_error: Optional[str] = None
     error_history: List[Dict[str, Any]] = Field(default_factory=list)
+    error_rate: Optional[float] = None  # Percentage of failed commands
 
 
 class PerformanceBenchmark(BaseModel):

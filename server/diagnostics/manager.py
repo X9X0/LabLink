@@ -219,6 +219,11 @@ class DiagnosticsManager:
         for err in stats.get("error_list", [])[-10:]:
             error_history.append(err)
 
+        # Calculate error rate
+        error_rate = None
+        if total > 0:
+            error_rate = (failed / total) * 100
+
         return CommunicationDiagnostics(
             equipment_id=equipment_id,
             total_commands=total,
@@ -234,6 +239,7 @@ class DiagnosticsManager:
             data_transfer_rate_bps=data_rate,
             last_error=stats.get("last_error"),
             error_history=error_history,
+            error_rate=error_rate,
         )
 
     async def _run_performance_benchmark(
@@ -482,7 +488,7 @@ class DiagnosticsManager:
 
         # Default to all equipment
         if not equipment_ids:
-            equipment_ids = list(equipment_manager._equipment.keys())
+            equipment_ids = list(equipment_manager.equipment.keys())
 
         # Run health checks on all equipment
         equipment_health = []
@@ -633,8 +639,8 @@ class DiagnosticsManager:
             error_code = await equipment.get_error_code()
             error_message = await equipment.get_error_message()
 
-            if error_code is None:
-                return {"has_error": False, "error_code": None, "error_message": None}
+            if error_code is None or error_code == 0:
+                return {"has_error": False, "error_code": error_code, "error_message": error_message}
 
             # Get detailed error information from database
             error_db = get_error_code_db()

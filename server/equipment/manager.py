@@ -90,6 +90,10 @@ class EquipmentManager:
                 # Store equipment
                 self.equipment[equipment_id] = equipment
 
+                # Record connection event for diagnostics
+                from diagnostics import diagnostics_manager
+                diagnostics_manager.record_connection(equipment_id)
+
                 logger.info(
                     f"Connected to {model} at {resource_string} with ID {equipment_id}"
                 )
@@ -188,6 +192,11 @@ class EquipmentManager:
 
                 await equipment.disconnect()
                 del self.equipment[equipment_id]
+
+                # Record disconnection event for diagnostics
+                from diagnostics import diagnostics_manager
+                diagnostics_manager.record_disconnection(equipment_id)
+
                 logger.info(f"Disconnected device {equipment_id}")
 
     def get_equipment(self, equipment_id: str) -> Optional[BaseEquipment]:
