@@ -217,8 +217,10 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 ### Automation
 - ✅ Job scheduler with cron-like scheduling
 - ✅ Automated test sequences with parameter sweeps
+- ✅ **Visual Test Sequence Builder** (GUI for test automation)
 - ✅ Multi-equipment coordination
 - ✅ Test templates and validation
+- ✅ Real-time execution monitoring and results
 
 ### Client Application
 - ✅ PyQt6 desktop GUI
@@ -232,6 +234,15 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 - ✅ Equipment control interfaces
 - ✅ Acquisition panel with live plotting
 - ✅ Alarm and scheduler management
+- ✅ **Test Sequence Builder** (visual GUI for automated test creation)
+  - ✅ Visual sequence builder with drag-free step management
+  - ✅ Support for all 9 step types (setup, command, measurement, delay, validation, sweep, conditional, loop, cleanup)
+  - ✅ Step editor dialog with type-specific configuration
+  - ✅ Template-based sequence creation (voltage accuracy, frequency response)
+  - ✅ Real-time execution monitoring with progress tracking
+  - ✅ Detailed results display with pass/fail status
+  - ✅ JSON export/import for sequences
+  - ✅ 8 test sequence API methods integrated
 
 ### Testing & CI/CD
 - ✅ Comprehensive test suite (137 tests passing)

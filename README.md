@@ -248,8 +248,19 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Remember last connected server
   - [x] Per-server connection history
 
+- [x] **Automated test sequence builder** (visual GUI for creating and managing test sequences)
+  - [x] Visual sequence builder with step editor
+  - [x] Support for all 9 step types (setup, command, measurement, delay, validation, sweep, conditional, loop, cleanup)
+  - [x] Template-based sequence creation (voltage accuracy, frequency response)
+  - [x] Real-time execution monitoring with progress tracking
+  - [x] Results display with pass/fail status
+  - [x] Step management (add, edit, delete, reorder)
+  - [x] Sequence export to JSON
+  - [x] 8 test sequence API methods in client
+
 ### In Development
 
+- [ ] Advanced waveform analysis tools
 - [ ] Automated test sequence builder
 - [ ] Remote firmware update capability
 
