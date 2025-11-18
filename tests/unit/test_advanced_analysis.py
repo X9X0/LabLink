@@ -474,7 +474,7 @@ class TestMaskTesting:
         )
 
         mask = MaskDefinition(
-            mask_id="test_mask",
+            mask_name="Test Mask",
             name="Test Mask",
             mode=MaskMode.POLYGON,
             polygons=[polygon]
@@ -501,7 +501,7 @@ class TestMaskTesting:
         )
 
         mask = MaskDefinition(
-            mask_id="test_mask",
+            mask_name="Test Mask",
             name="Test Mask",
             mode=MaskMode.POLYGON,
             polygons=[polygon]
@@ -515,7 +515,7 @@ class TestMaskTesting:
         result = analyzer.test_mask(
             equipment_id="SCOPE_001",
             channel=1,
-            mask_id="test_mask",
+            mask_name="Test Mask",
             time_data=t,
             voltage_data=signal
         )
@@ -540,7 +540,7 @@ class TestMaskTesting:
         )
 
         mask = MaskDefinition(
-            mask_id="test_mask",
+            mask_name="Test Mask",
             name="Test Mask",
             mode=MaskMode.POLYGON,
             polygons=[polygon]
@@ -552,7 +552,7 @@ class TestMaskTesting:
         t, signal = generate_sine_wave(amplitude=1.0)
 
         result = analyzer.test_mask(
-            "SCOPE_001", 1, "test_mask", t, signal
+            "SCOPE_001", 1, t, signal, "Test Mask"
         )
 
         # Signal should violate mask

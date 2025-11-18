@@ -402,7 +402,7 @@ class FirmwareManager:
             self._perform_update(update_id, request, equipment)
         )
 
-        return progress
+        return update_id
 
     async def _perform_update(
         self,
