@@ -2,6 +2,7 @@
 fastapi>=0.115.0  # Security: Fixes PYSEC-2024-38 (ReDoS), upgrades starlette to fix GHSA-f96h-pmfr-66vw, GHSA-2c2j-9gv5-cj73
 uvicorn[standard]==0.27.0
 websockets==12.0
+python-multipart>=0.0.18  # Required for FastAPI file uploads (Form/File parameters). Security: Fixes GHSA-2jv5-9r88-3w3p (ReDoS), GHSA-59g5-xgcq-4qw3 (DoS)
 
 # Equipment Communication
 pyvisa==1.14.1

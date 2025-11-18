@@ -248,6 +248,16 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Remember last connected server
   - [x] Per-server connection history
 
+- [x] **Remote firmware update system** (centralized firmware management and deployment)
+  - [x] Firmware package upload and storage with integrity verification
+  - [x] Multiple checksum algorithms (SHA-256, SHA-512, MD5, CRC32)
+  - [x] Compatibility checking (model, version constraints)
+  - [x] Multi-stage update pipeline with progress tracking
+  - [x] Automatic rollback on failure
+  - [x] Update history and audit trail
+  - [x] Firmware statistics and monitoring
+  - [x] 11 firmware management API endpoints
+  - [x] Equipment-specific update support (extensible framework)
 - [x] **Automated test sequence builder** (visual GUI for creating and managing test sequences)
   - [x] Visual sequence builder with step editor
   - [x] Support for all 9 step types (setup, command, measurement, delay, validation, sweep, conditional, loop, cleanup)
@@ -262,7 +272,6 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 - [ ] Advanced waveform analysis tools
 - [ ] Automated test sequence builder
-- [ ] Remote firmware update capability
 
 ## Supported Equipment
 
@@ -375,6 +384,7 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 - [Waveform Capture & Analysis](server/WAVEFORM_USER_GUIDE.md) - Advanced oscilloscope functionality
 - [Advanced Waveform Analysis Tools](server/ADVANCED_WAVEFORM_ANALYSIS.md) - Spectral analysis, jitter, eye diagrams, masks
 - [Data Analysis Pipeline](server/ANALYSIS_USER_GUIDE.md) - Signal processing, curve fitting, SPC, and reporting
+- [Firmware Update System](server/FIRMWARE_USER_GUIDE.md) - Remote firmware management and deployment
 - [Development Roadmap](server/ROADMAP.md) - Planned features and enhancements
 
 ## Project Status
