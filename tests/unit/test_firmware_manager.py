@@ -579,7 +579,7 @@ class TestFirmwareUpdate:
 
             # Mock the equipment manager
             mock_equipment = Mock()
-            mock_equipment.get_status = AsyncMock(return_value={"connected": True})
+            mock_equipment.get_status = AsyncMock(return_value=type("Status", (), {"firmware_version": "1.0.0", "connected": True})())
             mock_equipment.update_firmware = AsyncMock(return_value=True)
 
             with patch.object(manager, '_perform_update', new=AsyncMock(return_value=None)):
@@ -608,7 +608,7 @@ class TestFirmwareUpdate:
             )
 
             mock_equipment = Mock()
-            mock_equipment.get_status = AsyncMock(return_value={"connected": True})
+            mock_equipment.get_status = AsyncMock(return_value=type("Status", (), {"firmware_version": "1.0.0", "connected": True})())
 
             with patch.object(manager, '_perform_update', new=AsyncMock()):
                 update_id = await manager.start_update(request, mock_equipment)
