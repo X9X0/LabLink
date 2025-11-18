@@ -199,6 +199,36 @@ class LabLinkAPI {
         });
     }
 
+    // ==================== Waveform Endpoints ====================
+
+    async captureWaveform(equipmentId, channel, config = {}) {
+        const defaultConfig = {
+            channel: channel,
+            num_averages: 1,
+            high_resolution: false,
+            interpolation: false,
+            single_shot: false,
+            apply_smoothing: false,
+            ...config
+        };
+
+        return await this.request('/api/waveform/capture', {
+            method: 'POST',
+            body: JSON.stringify({
+                equipment_id: equipmentId,
+                config: defaultConfig
+            }),
+        });
+    }
+
+    async getCachedWaveform(equipmentId, channel) {
+        return await this.request(`/api/waveform/cached/${equipmentId}/${channel}`);
+    }
+
+    async getWaveformMeasurements(equipmentId, channel, useCached = true) {
+        return await this.request(`/api/waveform/measurements/${equipmentId}/${channel}`);
+    }
+
     // ==================== Profile Endpoints ====================
 
     async listProfiles() {
