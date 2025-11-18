@@ -302,8 +302,8 @@ class TestJitterAnalysis:
         assert result.channel == 1
         assert result.jitter_type == JitterType.TIE
         assert len(result.jitter_values) > 0
-        assert result.jitter_rms >= 0
-        assert result.jitter_pp >= 0
+        assert result.rms_jitter >= 0
+        assert result.pk_pk_jitter >= 0
 
     def test_calculate_jitter_period(self):
         """Test period jitter calculation."""
@@ -321,7 +321,7 @@ class TestJitterAnalysis:
         )
 
         assert result.jitter_type == JitterType.PERIOD
-        assert result.num_edges > 0
+        assert result.n_edges > 0
         assert len(result.jitter_values) > 0
 
     def test_calculate_jitter_cycle_to_cycle(self):
@@ -374,8 +374,8 @@ class TestJitterAnalysis:
         result_falling = analyzer.calculate_jitter("SCOPE_001", 1, t, signal, config_falling)
 
         # Both should find edges
-        assert result_rising.num_edges > 0
-        assert result_falling.num_edges > 0
+        assert result_rising.n_edges > 0
+        assert result_falling.n_edges > 0
 
     def test_jitter_insufficient_edges(self):
         """Test jitter calculation with insufficient edges raises error."""
@@ -416,7 +416,7 @@ class TestEyeDiagramAnalysis:
 
         assert result.equipment_id == "SCOPE_001"
         assert result.channel == 1
-        assert len(result.eye_traces) > 0
+        assert len(result.traces) > 0
         assert result.bit_rate == 1000
         assert result.parameters is not None
 
@@ -433,7 +433,7 @@ class TestEyeDiagramAnalysis:
         )
 
         # Should still generate eye diagram despite noise
-        assert len(result.eye_traces) > 0
+        assert len(result.traces) > 0
         assert result.parameters.eye_height > 0
 
     def test_eye_parameters_calculation(self):
@@ -452,7 +452,7 @@ class TestEyeDiagramAnalysis:
         assert params.eye_height > 0
         assert params.eye_width > 0
         assert params.crossing_percent >= 0 and params.crossing_percent <= 100
-        assert 0 <= params.duty_cycle_distortion <= 100
+        assert 0 <= params.eye_opening <= 100
 
 
 class TestMaskTesting:
@@ -464,6 +464,7 @@ class TestMaskTesting:
 
         # Create simple rectangular mask
         polygon = MaskPolygon(
+            name="test_mask",
             points=[
                 MaskPoint(time=0.0, voltage=0.5),
                 MaskPoint(time=1.0, voltage=0.5),
@@ -490,6 +491,7 @@ class TestMaskTesting:
 
         # Create mask that signal should not violate
         polygon = MaskPolygon(
+            name="test_mask",
             points=[
                 MaskPoint(time=0.0, voltage=2.0),
                 MaskPoint(time=0.1, voltage=2.0),
@@ -528,6 +530,7 @@ class TestMaskTesting:
 
         # Create mask that signal will violate
         polygon = MaskPolygon(
+            name="test_mask",
             points=[
                 MaskPoint(time=0.0, voltage=0.0),
                 MaskPoint(time=0.1, voltage=0.0),
@@ -719,10 +722,10 @@ class TestReferenceWaveform:
         t, signal = generate_sine_wave()
 
         reference = ReferenceWaveform(
-            reference_id="ref_001",
-            name="Test Reference",
+            name="ref_001",
             equipment_id="SCOPE_001",
             channel=1,
+            timestamp=datetime.now(),
             time_data=t.tolist(),
             voltage_data=signal.tolist()
         )
@@ -739,10 +742,10 @@ class TestReferenceWaveform:
         t, signal = generate_sine_wave()
 
         reference = ReferenceWaveform(
-            reference_id="ref_001",
-            name="Test Reference",
+            name="ref_001",
             equipment_id="SCOPE_001",
             channel=1,
+            timestamp=datetime.now(),
             time_data=t.tolist(),
             voltage_data=signal.tolist()
         )
@@ -770,10 +773,10 @@ class TestReferenceWaveform:
         t, ref_signal = generate_sine_wave(frequency=1000, amplitude=1.0)
 
         reference = ReferenceWaveform(
-            reference_id="ref_001",
-            name="Test Reference",
+            name="ref_001",
             equipment_id="SCOPE_001",
             channel=1,
+            timestamp=datetime.now(),
             time_data=t.tolist(),
             voltage_data=ref_signal.tolist()
         )
@@ -810,9 +813,8 @@ class TestParameterTrending:
         """Test updating trend data."""
         analyzer = AdvancedWaveformAnalyzer()
 
-        config = TrendConfig(
-            max_points=100,
-            auto_remove_old=True
+        config = TrendConfig(parameter=TrendParameter.FREQUENCY, max_samples=100,
+            
         )
 
         # Add several trend points
@@ -834,7 +836,7 @@ class TestParameterTrending:
         """Test retrieving trend data."""
         analyzer = AdvancedWaveformAnalyzer()
 
-        config = TrendConfig()
+        config = TrendConfig(parameter=TrendParameter.FREQUENCY)
 
         # Add trend points
         for i in range(10):
@@ -859,9 +861,8 @@ class TestParameterTrending:
         """Test trend respects max_points limit."""
         analyzer = AdvancedWaveformAnalyzer()
 
-        config = TrendConfig(
-            max_points=5,
-            auto_remove_old=True
+        config = TrendConfig(parameter=TrendParameter.FREQUENCY, max_samples=5,
+            
         )
 
         # Add more points than max_points
@@ -883,7 +884,7 @@ class TestParameterTrending:
         """Test trend statistics are calculated."""
         analyzer = AdvancedWaveformAnalyzer()
 
-        config = TrendConfig()
+        config = TrendConfig(parameter=TrendParameter.FREQUENCY)
 
         # Add trend points with known values
         values = [1.0, 2.0, 3.0, 4.0, 5.0]

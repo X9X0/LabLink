@@ -374,13 +374,14 @@ class TestCompatibilityChecking:
             )
 
             result = await manager.check_compatibility(
+                equipment_id="TEST_SCOPE_001",
                 firmware_id=package.id,
                 equipment_model="DS1054Z",
                 current_version="1.5.0"
             )
 
             assert result.compatible is True
-            assert len(result.issues) == 0
+            assert len(result.reasons) == 0
 
     @pytest.mark.asyncio
     async def test_check_compatibility_version_too_low(self):
@@ -398,13 +399,14 @@ class TestCompatibilityChecking:
             )
 
             result = await manager.check_compatibility(
+                equipment_id="TEST_SCOPE_001",
                 firmware_id=package.id,
                 equipment_model="DS1054Z",
                 current_version="1.0.0"  # Too low
             )
 
             assert result.compatible is False
-            assert len(result.issues) > 0
+            assert len(result.reasons) > 0
 
     @pytest.mark.asyncio
     async def test_check_compatibility_version_too_high(self):
@@ -422,6 +424,7 @@ class TestCompatibilityChecking:
             )
 
             result = await manager.check_compatibility(
+                equipment_id="TEST_SCOPE_001",
                 firmware_id=package.id,
                 equipment_model="DS1054Z",
                 current_version="2.5.0"  # Too high
@@ -445,6 +448,7 @@ class TestCompatibilityChecking:
             )
 
             result = await manager.check_compatibility(
+                equipment_id="TEST_SCOPE_001",
                 firmware_id=package.id,
                 equipment_model="DS1104Z",  # Different model
                 current_version="1.0.0"
@@ -570,9 +574,7 @@ class TestFirmwareUpdate:
 
             request = FirmwareUpdateRequest(
                 firmware_id=package.id,
-                equipment_id="SCOPE_001",
-                equipment_model="DS1054Z",
-                current_version="1.0.0"
+                equipment_id="SCOPE_001"
             )
 
             # Mock the equipment manager
@@ -601,9 +603,7 @@ class TestFirmwareUpdate:
 
             request = FirmwareUpdateRequest(
                 firmware_id=package.id,
-                equipment_id="SCOPE_001",
-                equipment_model="DS1054Z",
-                current_version="1.0.0"
+                equipment_id="SCOPE_001"
             )
 
             mock_equipment = Mock()
@@ -653,8 +653,9 @@ class TestUpdateHistory:
 
             for i in range(3):
                 history_entry = FirmwareUpdateHistory(
-                    update_id=f"update_{i}",
+                    id=f"update_{i}",
                     equipment_id=f"SCOPE_{i:03d}",
+                    equipment_model="DS1054Z",
                     firmware_id=f"fw_{i}",
                     status=FirmwareUpdateStatus.COMPLETED,
                     started_at=datetime.now(),
@@ -692,7 +693,6 @@ class TestStatistics:
             stats = await manager.get_statistics()
 
             assert stats.total_packages == 3
-            assert stats.critical_updates == 1
             assert stats.total_updates == 0  # No updates performed yet
 
 

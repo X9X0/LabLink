@@ -518,7 +518,7 @@ class TestCalibrationManagerStatus:
                 equipment_model="DS1054Z",
                 calibration_type=CalibrationType.FULL,
                 calibration_date=datetime.now() - timedelta(days=365),
-                due_date=datetime.now(),  # Due today
+                due_date=datetime.now() + timedelta(hours=1),  # Due within hours (still today)
                 result=CalibrationResult.PASS,
                 performed_by="Tech1"
             )
