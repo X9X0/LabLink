@@ -1347,6 +1347,159 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()["states"]
 
+    # ==================== Test Sequence Methods ====================
+
+    def create_test_sequence(self, sequence_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new test sequence.
+
+        Args:
+            sequence_data: Test sequence configuration
+
+        Returns:
+            Created sequence details
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/testing/sequences", json=sequence_data
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_test_sequence(self, sequence_id: str) -> Dict[str, Any]:
+        """Get a test sequence by ID.
+
+        Args:
+            sequence_id: Sequence ID
+
+        Returns:
+            Test sequence details
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/testing/sequences/{sequence_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_test_templates(self) -> Dict[str, Any]:
+        """List available test templates.
+
+        Returns:
+            List of templates
+        """
+        response = self._session.get(f"{self.api_base_url}/testing/templates")
+        response.raise_for_status()
+        return response.json()
+
+    def create_from_template(
+        self,
+        template_name: str,
+        equipment_id: str,
+        test_points: Optional[List[float]] = None,
+        start_freq: Optional[float] = None,
+        stop_freq: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Create test sequence from template.
+
+        Args:
+            template_name: Template name
+            equipment_id: Equipment ID
+            test_points: Test points for voltage accuracy template
+            start_freq: Start frequency for frequency response
+            stop_freq: Stop frequency for frequency response
+
+        Returns:
+            Created test sequence
+        """
+        params = {"equipment_id": equipment_id}
+        if test_points:
+            params["test_points"] = test_points
+        if start_freq:
+            params["start_freq"] = start_freq
+        if stop_freq:
+            params["stop_freq"] = stop_freq
+
+        response = self._session.post(
+            f"{self.api_base_url}/testing/templates/{template_name}", params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def execute_test_sequence(
+        self,
+        sequence_data: Dict[str, Any],
+        executed_by: str,
+        environment: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute a test sequence.
+
+        Args:
+            sequence_data: Test sequence configuration
+            executed_by: User executing the test
+            environment: Optional environment data (temperature, humidity, etc.)
+
+        Returns:
+            Execution details
+        """
+        payload = {
+            "sequence": sequence_data,
+            "executed_by": executed_by,
+            "environment": environment or {},
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/testing/execute", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
+        """Get status of a test execution.
+
+        Args:
+            execution_id: Execution ID
+
+        Returns:
+            Execution status and results
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/testing/executions/{execution_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def abort_test_execution(self, execution_id: str) -> Dict[str, Any]:
+        """Abort a running test execution.
+
+        Args:
+            execution_id: Execution ID
+
+        Returns:
+            Abort confirmation
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/testing/executions/{execution_id}/abort"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_active_test_executions(self) -> Dict[str, Any]:
+        """Get all active test executions.
+
+        Returns:
+            List of active executions
+        """
+        response = self._session.get(f"{self.api_base_url}/testing/executions/active")
+        response.raise_for_status()
+        return response.json()
+
+    def get_testing_info(self) -> Dict[str, Any]:
+        """Get information about the test automation system.
+
+        Returns:
+            System information and capabilities
+        """
+        response = self._session.get(f"{self.api_base_url}/testing/info")
+        response.raise_for_status()
+        return response.json()
+
     # ==================== Utility Methods ====================
 
     def get_server_info(self) -> Dict[str, Any]:
