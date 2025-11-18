@@ -1690,3 +1690,38 @@ class LabLinkClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ==================== Raspberry Pi Discovery Methods ====================
+
+    def scan_raspberry_pis(
+        self, network: Optional[str] = None, timeout: float = 2.0
+    ) -> Dict[str, Any]:
+        """Scan network for Raspberry Pi devices.
+
+        Args:
+            network: Network to scan in CIDR notation (e.g., "192.168.1.0/24")
+                    If None, auto-detects local network
+            timeout: Timeout for each host check in seconds
+
+        Returns:
+            Scan results with discovered Raspberry Pis
+        """
+        params = {"timeout": timeout}
+        if network:
+            params["network"] = network
+
+        response = self._session.post(
+            f"{self.api_base_url}/discovery/pi/scan", params=params
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_pi_discovery_status(self) -> Dict[str, Any]:
+        """Get Raspberry Pi discovery status.
+
+        Returns:
+            Discovery status including scan progress and cached results
+        """
+        response = self._session.get(f"{self.api_base_url}/discovery/pi/status")
+        response.raise_for_status()
+        return response.json()

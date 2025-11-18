@@ -9,6 +9,7 @@ from .models import (ConnectionHistoryEntry, ConnectionStatistics,
                      DiscoveredDevice, DiscoveryConfig, DiscoveryMethod,
                      DiscoveryScanRequest, DiscoveryScanResult,
                      DiscoveryStatus, LastKnownGood, SmartRecommendation)
+from .pi_discovery import DiscoveredPi, PiDiscovery, pi_discovery
 from .visa_scanner import VISAScanner
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "DiscoveryStatus",
     "DiscoveryScanRequest",
     "DiscoveryScanResult",
+    "DiscoveredPi",
     # Manager
     "DiscoveryManager",
     "initialize_discovery_manager",
@@ -35,4 +37,6 @@ __all__ = [
     "VISAScanner",
     "MDNSScanner",
     "ConnectionHistoryTracker",
+    "PiDiscovery",
+    "pi_discovery",
 ]

@@ -25,6 +25,8 @@ class DiagnosticsManager:
         self._tests: Dict[str, DiagnosticTest] = {}
         self._results: Dict[str, DiagnosticResult] = {}
         self._health_cache: Dict[str, EquipmentHealth] = {}
+        self._health_cache_time: Dict[str, datetime] = {}
+        self._cache_ttl_seconds = 30  # Cache health checks for 30 seconds
         self._benchmarks: Dict[str, List[PerformanceBenchmark]] = defaultdict(list)
         self._max_benchmark_history = 100
 
@@ -56,18 +58,39 @@ class DiagnosticsManager:
 
     # ==================== Health Checks ====================
 
-    async def check_equipment_health(self, equipment_id: str) -> EquipmentHealth:
-        """Perform comprehensive health check on equipment."""
+    async def check_equipment_health(self, equipment_id: str, use_cache: bool = True) -> EquipmentHealth:
+        """Perform comprehensive health check on equipment.
+
+        Args:
+            equipment_id: Equipment ID to check
+            use_cache: If True, return cached result if available and fresh
+
+        Returns:
+            Equipment health status
+        """
+        # Check cache first if enabled
+        if use_cache and equipment_id in self._health_cache:
+            cache_time = self._health_cache_time.get(equipment_id)
+            if cache_time:
+                age = (datetime.now() - cache_time).total_seconds()
+                if age < self._cache_ttl_seconds:
+                    # Cache is fresh, return cached result
+                    return self._health_cache[equipment_id]
+
         from equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
-            return EquipmentHealth(
+            health = EquipmentHealth(
                 equipment_id=equipment_id,
                 health_status=HealthStatus.OFFLINE,
                 health_score=0.0,
                 active_issues=["Equipment not found"],
             )
+            # Cache the result
+            self._health_cache[equipment_id] = health
+            self._health_cache_time[equipment_id] = datetime.now()
+            return health
 
         # Run all diagnostic tests
         connection_diag = await self._check_connection(equipment_id)
@@ -140,7 +163,9 @@ class DiagnosticsManager:
             ),
         )
 
+        # Cache the result with timestamp
         self._health_cache[equipment_id] = health
+        self._health_cache_time[equipment_id] = datetime.now()
         return health
 
     async def _check_connection(self, equipment_id: str) -> ConnectionDiagnostics:

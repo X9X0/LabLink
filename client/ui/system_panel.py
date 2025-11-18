@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -24,6 +24,35 @@ from PyQt6.QtWidgets import (
 from client.api.client import LabLinkClient
 
 logger = logging.getLogger(__name__)
+
+
+class AsyncWorker(QThread):
+    """Worker thread for async operations to prevent GUI blocking."""
+
+    finished = pyqtSignal(object)  # Emits result when done
+    error = pyqtSignal(str)  # Emits error message if failed
+
+    def __init__(self, func, *args, **kwargs):
+        """Initialize worker.
+
+        Args:
+            func: Function to execute
+            *args: Positional arguments for func
+            **kwargs: Keyword arguments for func
+        """
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        """Execute the function in background thread."""
+        try:
+            result = self.func(*self.args, **self.kwargs)
+            self.finished.emit(result)
+        except Exception as e:
+            logger.error(f"Async worker error: {e}")
+            self.error.emit(str(e))
 
 
 class UpdateDialog(QDialog):
@@ -313,28 +342,36 @@ class SystemPanel(QWidget):
         self._update_status_display()
 
     def check_for_updates(self):
-        """Check for available updates."""
+        """Check for available updates (async to avoid blocking GUI)."""
         if not self.client:
             return
 
+        # Show config dialog
+        dialog = UpdateDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        remote, branch = dialog.get_config()
+
+        self.logs_text.append(
+            f"\n🔍 Checking for updates from {remote}/{branch or 'current branch'}..."
+        )
+        self.check_updates_btn.setEnabled(False)
+        self.check_updates_btn.setText("Checking...")
+
+        # Run check in background thread
+        self.check_worker = AsyncWorker(
+            self.client.check_for_updates,
+            git_remote=remote,
+            git_branch=branch
+        )
+        self.check_worker.finished.connect(self._on_check_updates_complete)
+        self.check_worker.error.connect(self._on_check_updates_error)
+        self.check_worker.start()
+
+    def _on_check_updates_complete(self, result):
+        """Handle check updates completion."""
         try:
-            # Show config dialog
-            dialog = UpdateDialog(self)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-
-            remote, branch = dialog.get_config()
-
-            self.logs_text.append(
-                f"\n🔍 Checking for updates from {remote}/{branch or 'current branch'}..."
-            )
-            self.check_updates_btn.setEnabled(False)
-
-            # Check for updates
-            result = self.client.check_for_updates(
-                git_remote=remote, git_branch=branch
-            )
-
             if result.get("updates_available"):
                 available = result.get("available_version", "unknown")
                 current = result.get("current_version", "unknown")
@@ -358,13 +395,17 @@ class SystemPanel(QWidget):
 
             self._update_status_display()
 
-        except Exception as e:
-            logger.error(f"Error checking for updates: {e}")
-            self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to check for updates:\n{str(e)}")
-
         finally:
             self.check_updates_btn.setEnabled(True)
+            self.check_updates_btn.setText("Check for Updates")
+
+    def _on_check_updates_error(self, error):
+        """Handle check updates error."""
+        logger.error(f"Error checking for updates: {error}")
+        self.logs_text.append(f"\n❌ Error: {error}")
+        QMessageBox.critical(self, "Error", f"Failed to check for updates:\n{error}")
+        self.check_updates_btn.setEnabled(True)
+        self.check_updates_btn.setText("Check for Updates")
 
     def start_update(self):
         """Start server update process."""
