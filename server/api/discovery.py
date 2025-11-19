@@ -483,3 +483,118 @@ async def get_discovery_info():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Raspberry Pi Discovery ===
+
+
+@router.post("/pi/scan")
+async def scan_raspberry_pis(
+    network: Optional[str] = None,
+    timeout: float = 2.0
+):
+    """Scan network for Raspberry Pi devices.
+
+    Discovers Raspberry Pis on the local network and identifies which ones
+    are running LabLink server.
+
+    **Query Parameters:**
+    - network: Network CIDR to scan (e.g., "192.168.1.0/24"). Auto-detects if not provided.
+    - timeout: Timeout in seconds for each host check (default: 2.0)
+
+    **Returns:**
+    - List of discovered Raspberry Pis with LabLink status
+
+    **Example Response:**
+    ```json
+    {
+      "success": true,
+      "scan_time_sec": 45.2,
+      "pis_found": 2,
+      "lablink_servers": 1,
+      "discovered_pis": [
+        {
+          "ip_address": "192.168.1.100",
+          "hostname": "lablink-pi",
+          "mac_address": "B8:27:EB:XX:XX:XX",
+          "is_lablink": true,
+          "lablink_version": "0.28.0",
+          "lablink_name": "LabLink",
+          "reachable": true,
+          "response_time_ms": 15.3
+        }
+      ]
+    }
+    ```
+    """
+    try:
+        from discovery import pi_discovery
+        import time
+
+        start_time = time.time()
+
+        # Run discovery
+        discovered_pis = await pi_discovery.discover_network(network=network, timeout=timeout)
+
+        scan_time = time.time() - start_time
+        lablink_count = sum(1 for pi in discovered_pis if pi.is_lablink)
+
+        return {
+            "success": True,
+            "scan_time_sec": round(scan_time, 1),
+            "pis_found": len(discovered_pis),
+            "lablink_servers": lablink_count,
+            "discovered_pis": [
+                {
+                    "ip_address": pi.ip_address,
+                    "hostname": pi.hostname,
+                    "mac_address": pi.mac_address,
+                    "is_lablink": pi.is_lablink,
+                    "lablink_version": pi.lablink_version,
+                    "lablink_name": pi.lablink_name,
+                    "os_info": pi.os_info,
+                    "reachable": pi.reachable,
+                    "response_time_ms": pi.response_time_ms,
+                }
+                for pi in discovered_pis
+            ],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pi/status")
+async def get_pi_discovery_status():
+    """Get Raspberry Pi discovery status.
+
+    **Returns:**
+    - Discovery status and cached results
+
+    **Example Response:**
+    ```json
+    {
+      "scan_in_progress": false,
+      "last_scan_results": [...]
+    }
+    ```
+    """
+    try:
+        from discovery import pi_discovery
+
+        return {
+            "scan_in_progress": pi_discovery.scan_in_progress,
+            "last_scan_count": len(pi_discovery.discovered_pis),
+            "last_scan_results": [
+                {
+                    "ip_address": pi.ip_address,
+                    "hostname": pi.hostname,
+                    "is_lablink": pi.is_lablink,
+                    "lablink_version": pi.lablink_version,
+                }
+                for pi in pi_discovery.discovered_pis
+            ],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

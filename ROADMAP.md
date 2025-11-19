@@ -1,7 +1,7 @@
 # LabLink Development Roadmap
 
 **Current Version:** v1.0.0 (Production Release)
-**Next Version:** v1.1.0 (Firmware Update System - In Progress)
+**Next Version:** v1.3.0 (Diagnostics & Remote Updates - In Progress)
 **Last Updated:** 2025-11-18
 **Status:** ✅ Production Ready - First production release with comprehensive features, security hardening, test coverage, and performance benchmarking
 
@@ -358,7 +358,71 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ---
 
-### v1.3.0+ - Enterprise Features
+### v1.3.0 - Diagnostics & Remote Updates ⏳ IN PROGRESS
+**Priority:** HIGH
+**Status:** ⏳ IN PROGRESS (November 18, 2025)
+**Code:** ~4,500 lines Python + PyQt6
+
+**Implemented Features:**
+- ✅ Comprehensive diagnostics test suite (143 tests)
+  - Equipment health monitoring unit tests (54 tests)
+  - Error code database tests (57 tests)
+  - Diagnostics API endpoint tests (32 tests)
+- ✅ Statistics recording integration
+  - Connection/disconnection event tracking
+  - Command execution statistics (success rate, response time, bytes)
+  - Automatic recording in equipment manager
+- ✅ Remote server update system
+  - Version tracking (VERSION file)
+  - Git-based update checking and installation
+  - Automatic Docker rebuild capability
+  - Scheduled update checks (configurable interval)
+  - Update notifications in client GUI
+  - Rollback functionality
+  - Real-time update progress monitoring
+- ✅ System Management GUI panel
+  - Server version display
+  - One-click update checking and installation
+  - Auto-rebuild configuration
+  - Scheduled update check configuration
+  - Update notification banner
+  - Detailed update logs viewer
+
+**API Endpoints (11 new):**
+- `GET /api/system/version` - Get server version
+- `GET /api/system/update/status` - Monitor update progress
+- `POST /api/system/update/check` - Check for updates
+- `POST /api/system/update/start` - Start update process
+- `POST /api/system/update/rollback` - Rollback to previous version
+- `POST /api/system/update/configure-rebuild` - Configure auto-rebuild
+- `POST /api/system/update/rebuild` - Execute Docker rebuild
+- `POST /api/system/update/configure-scheduled` - Configure scheduled checks
+- `POST /api/system/update/scheduled/start` - Start scheduled checking
+- `POST /api/system/update/scheduled/stop` - Stop scheduled checking
+- `POST /api/diagnostics/report` - Generate full diagnostic report (fixed)
+
+**Bug Fixes:**
+- Fixed equipment manager attribute access in diagnostic report generation
+- Added missing `error_rate` field to CommunicationDiagnostics model
+- Corrected error code handling (code 0 = no error)
+
+**Test Coverage:**
+- Diagnostics: 143 tests, ~95% coverage
+- Update system: Integration tested with Docker
+
+**Documentation:**
+- System Management panel user guide (embedded in UI)
+- Update system architecture (in code comments)
+
+**Next Steps (v1.3.1):**
+- 📋 Automated integration tests for update system
+- 📋 Update rollback UI improvements
+- 📋 Server health dashboard enhancements
+- 📋 Advanced diagnostics visualization
+
+---
+
+### v1.4.0+ - Enterprise Features
 **Priority:** MEDIUM-LOW
 **Timeline:** Quarterly releases
 

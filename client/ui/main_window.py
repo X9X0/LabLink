@@ -18,6 +18,7 @@ from client.ui.connection_dialog import ConnectionDialog
 from client.ui.diagnostics_panel import DiagnosticsPanel
 from client.ui.equipment_panel import EquipmentPanel
 from client.ui.login_dialog import LoginDialog
+from client.ui.pi_discovery_panel import PiDiscoveryPanel
 from client.ui.system_panel import SystemPanel
 from client.ui.pi_image_builder import PiImageBuilderWizard
 from client.ui.scheduler_panel import SchedulerPanel
@@ -128,6 +129,10 @@ class MainWindow(QMainWindow):
         # System Management panel
         self.system_panel = SystemPanel()
         self.tab_widget.addTab(self.system_panel, "System")
+
+        # Pi Discovery panel
+        self.pi_discovery_panel = PiDiscoveryPanel(client=None)
+        self.tab_widget.addTab(self.pi_discovery_panel, "Pi Discovery")
 
         # Connect signals
         self.connection_changed.connect(self._on_connection_changed)
@@ -406,6 +411,7 @@ class MainWindow(QMainWindow):
         self.sync_panel.set_client(self.client)
         self.test_sequence_panel.set_client(self.client)
         self.system_panel.set_client(self.client)
+        self.pi_discovery_panel.set_client(self.client)
 
         # Emit signal
         self.connection_changed.emit(True)
@@ -545,6 +551,7 @@ class MainWindow(QMainWindow):
             self.scheduler_panel.refresh()
             self.diagnostics_panel.refresh()
             self.sync_panel.refresh()
+            self.pi_discovery_panel.refresh()
 
         except Exception as e:
             logger.error(f"Error refreshing data: {e}")
