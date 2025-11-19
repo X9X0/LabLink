@@ -55,6 +55,8 @@ class VISAScanner:
         devices = []
 
         try:
+            # Create resource manager for this scan
+            # (will reuse existing if available)
             rm = self._get_resource_manager()
 
             # Build query string based on configuration
@@ -77,6 +79,10 @@ class VISAScanner:
         except Exception as e:
             logger.error(f"VISA scan failed: {e}")
             raise
+
+        finally:
+            # Close resource manager after scan to prevent file descriptor leaks
+            self.close()
 
         return devices
 

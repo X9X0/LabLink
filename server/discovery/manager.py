@@ -620,6 +620,33 @@ class DiscoveryManager:
         if self.config.enable_history:
             self.history.cleanup()
 
+    def shutdown(self):
+        """Shutdown discovery manager and release resources."""
+        logger.info("Shutting down discovery manager...")
+
+        # Stop auto-discovery if running
+        if self.is_running:
+            import asyncio
+            # Run stop in event loop if available
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.stop_auto_discovery())
+                else:
+                    loop.run_until_complete(self.stop_auto_discovery())
+            except:
+                self.is_running = False
+
+        # Close VISA scanner to release file descriptors
+        if self.visa_scanner:
+            try:
+                self.visa_scanner.close()
+                logger.info("VISA scanner closed")
+            except Exception as e:
+                logger.error(f"Error closing VISA scanner: {e}")
+
+        logger.info("Discovery manager shutdown complete")
+
 
 # Global discovery manager instance
 _discovery_manager: Optional[DiscoveryManager] = None
