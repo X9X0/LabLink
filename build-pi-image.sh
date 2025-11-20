@@ -656,6 +656,7 @@ echo "[LabLink] Installing Docker..."
 if curl -fsSL https://get.docker.com | sh; then
     echo "[LabLink] Docker installed successfully"
     usermod -aG docker admin
+    echo "[LabLink] Added admin user to docker group"
 else
     echo "[LabLink] ERROR: Docker installation failed"
     echo "[LabLink] Service will retry on next boot"
@@ -832,7 +833,7 @@ chmod +x /usr/local/bin/lablink-status
 cat > /usr/local/bin/lablink-start <<'STARTSCRIPT'
 #!/bin/bash
 echo "Starting LabLink..."
-cd /opt/lablink && docker compose up -d
+cd /opt/lablink && sudo docker compose up -d
 sleep 3
 lablink-status
 STARTSCRIPT
@@ -841,7 +842,7 @@ chmod +x /usr/local/bin/lablink-start
 cat > /usr/local/bin/lablink-stop <<'STOPSCRIPT'
 #!/bin/bash
 echo "Stopping LabLink..."
-cd /opt/lablink && docker compose down
+cd /opt/lablink && sudo docker compose down
 echo "LabLink stopped."
 STOPSCRIPT
 chmod +x /usr/local/bin/lablink-stop
@@ -849,7 +850,7 @@ chmod +x /usr/local/bin/lablink-stop
 cat > /usr/local/bin/lablink-restart <<'RESTARTSCRIPT'
 #!/bin/bash
 echo "Restarting LabLink..."
-cd /opt/lablink && docker compose restart
+cd /opt/lablink && sudo docker compose restart
 sleep 3
 lablink-status
 RESTARTSCRIPT
@@ -857,7 +858,7 @@ chmod +x /usr/local/bin/lablink-restart
 
 cat > /usr/local/bin/lablink-logs <<'LOGSSCRIPT'
 #!/bin/bash
-cd /opt/lablink && docker compose logs -f --tail=100
+cd /opt/lablink && sudo docker compose logs -f --tail=100
 LOGSSCRIPT
 chmod +x /usr/local/bin/lablink-logs
 

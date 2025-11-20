@@ -170,6 +170,15 @@ class PiDiscoveryPanel(QWidget):
 
     def _on_scan(self):
         """Start network scan for Raspberry Pis."""
+        # Check if client is connected
+        if not self.client:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "Please connect to a LabLink server before scanning for Raspberry Pis.",
+            )
+            return
+
         if self.scan_worker and self.scan_worker.isRunning():
             QMessageBox.warning(
                 self, "Scan In Progress", "A scan is already in progress. Please wait."
