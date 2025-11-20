@@ -311,3 +311,81 @@ async def record_disconnection_event(equipment_id: str, error: Optional[str] = N
     diagnostics_manager.record_disconnection(equipment_id, error)
 
     return {"success": True, "message": "Disconnection event recorded"}
+
+
+# ==================== System Diagnostics Script ====================
+
+
+@router.post("/diagnostics/pi-diagnostics", summary="Run Pi diagnostic script")
+async def run_pi_diagnostics():
+    """Run comprehensive Raspberry Pi diagnostic script.
+
+    This endpoint executes the diagnose-pi.sh script to check:
+    - System information
+    - Network status
+    - Docker status
+    - LabLink installation
+    - Service status
+    - Container status
+    - Port listeners
+    - Recent logs
+
+    Returns:
+        Script output and recommendations
+    """
+    import asyncio
+    import os
+    from pathlib import Path
+
+    try:
+        # Find the diagnostic script
+        script_path = Path("/opt/lablink/diagnose-pi.sh")
+
+        # If not found in /opt/lablink, try relative to server directory
+        if not script_path.exists():
+            # Try parent directory (LabLink root)
+            script_path = Path(__file__).parent.parent.parent / "diagnose-pi.sh"
+
+        if not script_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Diagnostic script not found. Please ensure diagnose-pi.sh is installed."
+            )
+
+        # Make sure script is executable
+        script_path.chmod(0o755)
+
+        # Run the diagnostic script with sudo (needed for some checks)
+        process = await asyncio.create_subprocess_exec(
+            "sudo", str(script_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT
+        )
+
+        # Wait for completion with timeout
+        try:
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=60.0)
+            output = stdout.decode('utf-8', errors='replace')
+            return_code = process.returncode
+        except asyncio.TimeoutError:
+            process.kill()
+            raise HTTPException(
+                status_code=504,
+                detail="Diagnostic script timed out after 60 seconds"
+            )
+
+        return {
+            "success": return_code == 0,
+            "output": output,
+            "return_code": return_code,
+            "script_path": str(script_path)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running Pi diagnostics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run diagnostics: {str(e)}"
+        )

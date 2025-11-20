@@ -29,6 +29,7 @@ python-dateutil==2.8.2
 psutil==5.9.8
 apscheduler==3.10.4
 zeroconf==0.132.2
+requests==2.32.4  # HTTP library for Pi discovery. Security: Fixes GHSA-9wx4-h78v-vm56 (cert verification), GHSA-9hjg-9r4m-mvj7 (netrc leak)
 
 # Testing
 pytest==7.4.4

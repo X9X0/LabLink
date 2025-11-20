@@ -699,6 +699,25 @@ else
     echo "[LabLink] WARNING: .env.example not found"
 fi
 
+# Ensure Docker daemon is fully ready
+echo "[LabLink] Ensuring Docker daemon is ready..."
+for i in {1..30}; do
+    if docker info >/dev/null 2>&1; then
+        echo "[LabLink] Docker daemon is ready"
+        break
+    fi
+    echo "[LabLink] Waiting for Docker daemon (attempt $i/30)..."
+    sleep 2
+done
+
+# Verify Docker is working
+if ! docker info >/dev/null 2>&1; then
+    echo "[LabLink] ✗ ERROR: Docker daemon is not responding"
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
+    exit 1
+fi
+
 # Start LabLink
 echo "[LabLink] Starting LabLink with Docker Compose..."
 if docker compose up -d; then
@@ -706,10 +725,22 @@ if docker compose up -d; then
 
     # Wait for containers to be healthy
     echo "[LabLink] Waiting for services to be ready..."
-    sleep 5
+    local max_wait=60
+    local waited=0
+    local containers_up=false
+
+    while [ $waited -lt $max_wait ]; do
+        if docker compose ps 2>/dev/null | grep -q "Up"; then
+            containers_up=true
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+        echo "[LabLink] Waiting for containers... ($waited/${max_wait}s)"
+    done
 
     # Check container status
-    if docker compose ps | grep -q "Up"; then
+    if [ "$containers_up" = true ]; then
         echo "[LabLink] ✓ LabLink started successfully"
 
         # Show container status
@@ -717,11 +748,18 @@ if docker compose up -d; then
         docker compose ps
     else
         echo "[LabLink] ⚠ WARNING: Containers started but may not be healthy"
+        echo "[LabLink] Container status:"
         docker compose ps
+        echo "[LabLink] Logs:"
+        docker compose logs --tail=20
     fi
 else
     echo "[LabLink] ✗ ERROR: Failed to start LabLink"
-    echo "[LabLink] Check logs with: cd /opt/lablink && docker compose logs"
+    echo "[LabLink] Docker Compose logs:"
+    docker compose logs --tail=50
+    echo "[LabLink] Service will retry on next boot"
+    echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
+    exit 1
 fi
 
 # Enable LabLink on boot
@@ -733,13 +771,21 @@ After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=forking
 RemainAfterExit=yes
 WorkingDirectory=/opt/lablink
+# Ensure Docker is fully ready before starting
+ExecStartPre=/bin/sleep 2
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
-# Wait a bit after starting to ensure containers are up
-ExecStartPost=/bin/sleep 3
+# Wait for containers to be healthy
+ExecStartPost=/bin/bash -c 'for i in {1..30}; do if /usr/bin/docker compose ps 2>/dev/null | grep -q "Up"; then exit 0; fi; sleep 1; done; exit 0'
+# Restart on failure with backoff
+Restart=on-failure
+RestartSec=10s
+# Give Docker Compose enough time to start containers
+TimeoutStartSec=120
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

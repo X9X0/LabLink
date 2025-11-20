@@ -1295,6 +1295,32 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()["system"]
 
+    def run_pi_diagnostics(self) -> Dict[str, Any]:
+        """Run comprehensive Raspberry Pi diagnostic script.
+
+        This runs the diagnose-pi.sh script on the server to check:
+        - System information
+        - Network status
+        - Docker status
+        - LabLink installation and service status
+        - Container status
+        - Port listeners
+        - Recent logs and recommendations
+
+        Returns:
+            Dictionary containing:
+            - success: Whether the script ran successfully
+            - output: Full diagnostic output
+            - return_code: Script exit code
+            - script_path: Path to the diagnostic script
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/diagnostics/pi-diagnostics",
+            timeout=90  # Allow up to 90 seconds for diagnostics to complete
+        )
+        response.raise_for_status()
+        return response.json()
+
     # ==================== State Management API ====================
 
     def capture_state(
