@@ -32,6 +32,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    sudo \
+    iproute2 \
+    iputils-ping \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
@@ -43,6 +47,10 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy server code
 COPY server/ /app/server/
 COPY shared/ /app/shared/
+
+# Copy diagnostic script
+COPY diagnose-pi.sh /app/diagnose-pi.sh
+RUN chmod +x /app/diagnose-pi.sh
 
 # Create data directories
 RUN mkdir -p /app/data /app/logs /app/backups /app/states /app/config
