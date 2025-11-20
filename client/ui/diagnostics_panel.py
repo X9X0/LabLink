@@ -66,6 +66,11 @@ class DiagnosticsPanel(QWidget):
         benchmark_btn.clicked.connect(self.run_benchmark)
         button_layout.addWidget(benchmark_btn)
 
+        pi_diagnostics_btn = QPushButton("Run Pi Diagnostics")
+        pi_diagnostics_btn.clicked.connect(self.run_pi_diagnostics)
+        pi_diagnostics_btn.setToolTip("Run comprehensive diagnostic script on the Raspberry Pi server")
+        button_layout.addWidget(pi_diagnostics_btn)
+
         layout.addLayout(button_layout)
 
     def set_client(self, client: LabLinkClient):
@@ -220,3 +225,117 @@ class DiagnosticsPanel(QWidget):
         except Exception as e:
             logger.error(f"Error running benchmark: {e}")
             QMessageBox.critical(self, "Error", f"Benchmark failed: {str(e)}")
+
+    def run_pi_diagnostics(self):
+        """Run comprehensive Pi diagnostic script on the server."""
+        if not self.client:
+            QMessageBox.warning(
+                self, "Not Connected", "Please connect to a server first"
+            )
+            return
+
+        try:
+            # Show progress dialog
+            from PyQt6.QtWidgets import QProgressDialog
+            progress = QProgressDialog(
+                "Running Pi diagnostics...\nThis may take up to 60 seconds.",
+                "Cancel",
+                0, 0,
+                self
+            )
+            progress.setWindowTitle("Pi Diagnostics")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.show()
+
+            # Process events to show the dialog
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+
+            # Run diagnostics
+            result = self.client.run_pi_diagnostics()
+
+            progress.close()
+
+            # Create and show results dialog
+            from PyQt6.QtWidgets import QDialog, QTextEdit, QVBoxLayout
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Raspberry Pi Diagnostics")
+            dialog.resize(900, 700)
+
+            layout = QVBoxLayout(dialog)
+
+            # Add output in a scrollable text area
+            output_text = QTextEdit()
+            output_text.setReadOnly(True)
+            output_text.setFontFamily("Monospace")
+            output_text.setFontPointSize(9)
+            output_text.setText(result.get("output", "No output"))
+            layout.addWidget(output_text)
+
+            # Add status info
+            from PyQt6.QtWidgets import QLabel
+            success = result.get("success", False)
+            return_code = result.get("return_code", -1)
+            status_text = f"Status: {'✓ Success' if success else '✗ Failed'} (exit code: {return_code})"
+            status_label = QLabel(status_text)
+            if success:
+                status_label.setStyleSheet("color: green; font-weight: bold; padding: 5px;")
+            else:
+                status_label.setStyleSheet("color: red; font-weight: bold; padding: 5px;")
+            layout.addWidget(status_label)
+
+            # Add buttons
+            from PyQt6.QtWidgets import QDialogButtonBox, QHBoxLayout, QPushButton
+            button_layout = QHBoxLayout()
+
+            # Copy to clipboard button
+            copy_btn = QPushButton("Copy to Clipboard")
+            def copy_output():
+                from PyQt6.QtWidgets import QApplication
+                clipboard = QApplication.clipboard()
+                clipboard.setText(result.get("output", ""))
+                QMessageBox.information(dialog, "Copied", "Diagnostic output copied to clipboard")
+            copy_btn.clicked.connect(copy_output)
+            button_layout.addWidget(copy_btn)
+
+            # Save to file button
+            save_btn = QPushButton("Save to File")
+            def save_output():
+                from PyQt6.QtWidgets import QFileDialog
+                from datetime import datetime
+                default_name = f"pi-diagnostics-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+                filename, _ = QFileDialog.getSaveFileName(
+                    dialog,
+                    "Save Diagnostic Output",
+                    default_name,
+                    "Text Files (*.txt);;All Files (*)"
+                )
+                if filename:
+                    try:
+                        with open(filename, 'w') as f:
+                            f.write(result.get("output", ""))
+                        QMessageBox.information(dialog, "Saved", f"Diagnostics saved to:\n{filename}")
+                    except Exception as e:
+                        QMessageBox.critical(dialog, "Error", f"Failed to save file:\n{str(e)}")
+            save_btn.clicked.connect(save_output)
+            button_layout.addWidget(save_btn)
+
+            button_layout.addStretch()
+
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(dialog.accept)
+            button_layout.addWidget(close_btn)
+
+            layout.addLayout(button_layout)
+
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Error running Pi diagnostics: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to run Pi diagnostics:\n\n{str(e)}\n\n"
+                "Make sure the diagnose-pi.sh script is installed on the server."
+            )
