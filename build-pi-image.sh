@@ -870,6 +870,7 @@ echo "  lablink-start          - Start LabLink"
 echo "  lablink-stop           - Stop LabLink"
 echo "  lablink-restart        - Restart LabLink"
 echo "  lablink-logs           - View LabLink logs"
+echo "  lablink-update         - Update code and rebuild containers"
 echo ""
 STATUSSCRIPT
 
@@ -908,6 +909,93 @@ cd /opt/lablink && sudo docker compose logs -f --tail=100
 LOGSSCRIPT
 chmod +x /usr/local/bin/lablink-logs
 
+cat > /usr/local/bin/lablink-update <<'UPDATESCRIPT'
+#!/bin/bash
+# LabLink Update Script
+# Updates code from git and rebuilds containers
+
+echo "╔═══════════════════════════════════════════════════════╗"
+echo "║                                                       ║"
+echo "║            LabLink Update & Rebuild                   ║"
+echo "║                                                       ║"
+echo "╚═══════════════════════════════════════════════════════╝"
+echo ""
+
+cd /opt/lablink || exit 1
+
+echo "Step 1: Checking current version..."
+CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+echo "  Current commit: $CURRENT_COMMIT"
+echo ""
+
+echo "Step 2: Pulling latest code from git..."
+if git pull; then
+    NEW_COMMIT=$(git rev-parse --short HEAD)
+    echo "  ✓ Code updated to: $NEW_COMMIT"
+
+    if [ "$CURRENT_COMMIT" = "$NEW_COMMIT" ]; then
+        echo "  Already up to date!"
+        read -p "Rebuild anyway? (y/N): " rebuild
+        if [ "$rebuild" != "y" ] && [ "$rebuild" != "Y" ]; then
+            echo "No rebuild needed. Exiting."
+            exit 0
+        fi
+    fi
+else
+    echo "  ✗ Git pull failed"
+    echo "  Continuing with rebuild anyway..."
+fi
+echo ""
+
+echo "Step 3: Stopping containers..."
+docker compose down
+echo ""
+
+echo "Step 4: Rebuilding containers (this may take 2-3 minutes)..."
+if docker compose build --no-cache; then
+    echo "  ✓ Rebuild successful"
+else
+    echo "  ✗ Rebuild failed"
+    echo "  Check logs above for errors"
+    exit 1
+fi
+echo ""
+
+echo "Step 5: Starting containers..."
+if docker compose up -d; then
+    echo "  ✓ Containers started"
+else
+    echo "  ✗ Failed to start containers"
+    exit 1
+fi
+echo ""
+
+echo "Step 6: Waiting for services to be ready..."
+sleep 5
+
+# Wait for containers to be healthy
+MAX_WAIT=30
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if docker compose ps 2>/dev/null | grep -q "Up"; then
+        echo "  ✓ Services are ready"
+        break
+    fi
+    sleep 2
+    WAITED=$((WAITED + 2))
+done
+echo ""
+
+echo "╔═══════════════════════════════════════════════════════╗"
+echo "║            Update Complete!                           ║"
+echo "╚═══════════════════════════════════════════════════════╝"
+echo ""
+
+# Show final status
+lablink-status
+UPDATESCRIPT
+chmod +x /usr/local/bin/lablink-update
+
 echo "[LabLink] First boot setup complete!"
 echo "[LabLink] ════════════════════════════════════════════════════════"
 echo "[LabLink] "
@@ -918,6 +1006,7 @@ echo "[LabLink] "
 echo "[LabLink] Useful commands:"
 echo "[LabLink]   lablink-status  - Check LabLink status"
 echo "[LabLink]   lablink-logs    - View logs"
+echo "[LabLink]   lablink-update  - Update to latest code"
 echo "[LabLink] "
 echo "[LabLink] ════════════════════════════════════════════════════════"
 echo "[LabLink] Completed at: $(date)"
@@ -1012,6 +1101,7 @@ echo "Quick Commands:"
 echo "  lablink-status   - Show detailed status"
 echo "  lablink-logs     - View logs"
 echo "  lablink-restart  - Restart services"
+echo "  lablink-update   - Update to latest code"
 echo ""
 echo "For help: https://github.com/X9X0/LabLink"
 echo ""
