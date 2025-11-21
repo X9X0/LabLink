@@ -1,12 +1,15 @@
-"""Raspberry Pi Network Discovery Panel for LabLink."""
+"""Raspberry Pi Network Discovery Dialog for LabLink."""
 
+import asyncio
 import logging
+import time
 from typing import Optional
 
 try:
-    from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+    from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QColor
     from PyQt6.QtWidgets import (
+        QDialog,
         QGroupBox,
         QHBoxLayout,
         QHeaderView,
@@ -17,12 +20,13 @@ try:
         QTableWidget,
         QTableWidgetItem,
         QVBoxLayout,
-        QWidget,
     )
 
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
+
+from client.utils.pi_discovery import PiDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -30,45 +34,58 @@ logger = logging.getLogger(__name__)
 class ScanWorker(QThread):
     """Worker thread for Raspberry Pi network scanning."""
 
-    finished = pyqtSignal(dict)  # Emits scan results
+    finished = pyqtSignal(list, float)  # Emits (discovered_pis, scan_time)
     error = pyqtSignal(str)  # Emits error message
 
-    def __init__(self, client, network: Optional[str] = None, timeout: float = 2.0):
+    def __init__(self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20):
         super().__init__()
-        self.client = client
         self.network = network
         self.timeout = timeout
+        self.batch_size = batch_size
+        self.discovery = PiDiscovery()
 
     def run(self):
         """Execute the network scan in background thread."""
         try:
-            result = self.client.scan_raspberry_pis(
-                network=self.network, timeout=self.timeout
+            # Run async discovery in this thread
+            start_time = time.time()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            discovered_pis = loop.run_until_complete(
+                self.discovery.discover_network(
+                    network=self.network,
+                    timeout=self.timeout,
+                    batch_size=self.batch_size
+                )
             )
-            self.finished.emit(result)
+            loop.close()
+            scan_time = time.time() - start_time
+
+            self.finished.emit(discovered_pis, scan_time)
         except Exception as e:
             logger.error(f"Scan error: {e}")
             self.error.emit(str(e))
 
 
-class PiDiscoveryPanel(QWidget):
-    """Panel for discovering Raspberry Pi devices on the network."""
+class PiDiscoveryDialog(QDialog):
+    """Dialog for discovering Raspberry Pi devices on the network."""
 
-    def __init__(self, client, parent=None):
-        """Initialize Pi Discovery Panel.
+    def __init__(self, parent=None):
+        """Initialize Pi Discovery Dialog.
 
         Args:
-            client: LabLink API client
             parent: Parent widget
         """
         if not PYQT_AVAILABLE:
-            raise ImportError("PyQt6 is required for PiDiscoveryPanel")
+            raise ImportError("PyQt6 is required for PiDiscoveryDialog")
 
         super().__init__(parent)
 
-        self.client = client
         self.scan_worker = None
         self.discovered_pis = []
+
+        self.setWindowTitle("Raspberry Pi Network Discovery")
+        self.resize(900, 600)
 
         self._setup_ui()
 
@@ -91,6 +108,30 @@ class PiDiscoveryPanel(QWidget):
         self.network_input.setPlaceholderText("e.g., 192.168.1.0/24 (leave empty for auto-detect)")
         network_layout.addWidget(self.network_input)
         scan_layout.addLayout(network_layout)
+
+        # Scan parameters
+        params_layout = QHBoxLayout()
+
+        # Timeout input
+        params_layout.addWidget(QLabel("Timeout (seconds):"))
+        self.timeout_input = QLineEdit()
+        self.timeout_input.setText("3.0")
+        self.timeout_input.setMaximumWidth(80)
+        self.timeout_input.setToolTip("Timeout for each host check (1-10 seconds)")
+        params_layout.addWidget(self.timeout_input)
+
+        params_layout.addSpacing(20)
+
+        # Batch size input
+        params_layout.addWidget(QLabel("Batch Size:"))
+        self.batch_size_input = QLineEdit()
+        self.batch_size_input.setText("10")
+        self.batch_size_input.setMaximumWidth(80)
+        self.batch_size_input.setToolTip("Number of hosts to scan concurrently (1-50)")
+        params_layout.addWidget(self.batch_size_input)
+
+        params_layout.addStretch()
+        scan_layout.addLayout(params_layout)
 
         # Scan button and status
         scan_btn_layout = QHBoxLayout()
@@ -170,15 +211,6 @@ class PiDiscoveryPanel(QWidget):
 
     def _on_scan(self):
         """Start network scan for Raspberry Pis."""
-        # Check if client is connected
-        if not self.client:
-            QMessageBox.warning(
-                self,
-                "Not Connected",
-                "Please connect to a LabLink server before scanning for Raspberry Pis.",
-            )
-            return
-
         if self.scan_worker and self.scan_worker.isRunning():
             QMessageBox.warning(
                 self, "Scan In Progress", "A scan is already in progress. Please wait."
@@ -188,6 +220,42 @@ class PiDiscoveryPanel(QWidget):
         # Get network from input
         network = self.network_input.text().strip() or None
 
+        # Get timeout from input
+        try:
+            timeout = float(self.timeout_input.text())
+            if timeout < 1.0 or timeout > 10.0:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Timeout",
+                    "Timeout must be between 1 and 10 seconds."
+                )
+                return
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Timeout",
+                "Timeout must be a valid number."
+            )
+            return
+
+        # Get batch size from input
+        try:
+            batch_size = int(self.batch_size_input.text())
+            if batch_size < 1 or batch_size > 50:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Batch Size",
+                    "Batch size must be between 1 and 50."
+                )
+                return
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Batch Size",
+                "Batch size must be a valid integer."
+            )
+            return
+
         # Update UI
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Scanning...")
@@ -196,35 +264,31 @@ class PiDiscoveryPanel(QWidget):
         self.results_table.setRowCount(0)
 
         # Start scan in background
-        self.scan_worker = ScanWorker(self.client, network=network, timeout=2.0)
+        self.scan_worker = ScanWorker(network=network, timeout=timeout, batch_size=batch_size)
         self.scan_worker.finished.connect(self._on_scan_complete)
         self.scan_worker.error.connect(self._on_scan_error)
         self.scan_worker.start()
 
-    def _on_scan_complete(self, result: dict):
+    def _on_scan_complete(self, discovered_pis: list, scan_time: float):
         """Handle scan completion.
 
         Args:
-            result: Scan results dictionary
+            discovered_pis: List of DiscoveredPi objects
+            scan_time: Time taken for scan in seconds
         """
         self.scan_btn.setEnabled(True)
         self.scan_btn.setText("Scan Network")
 
-        if not result.get("success"):
-            self._on_scan_error("Scan failed")
-            return
-
         # Update status
-        pis_found = result.get("pis_found", 0)
-        lablink_count = result.get("lablink_servers", 0)
-        scan_time = result.get("scan_time_sec", 0)
+        pis_found = len(discovered_pis)
+        lablink_count = sum(1 for pi in discovered_pis if pi.is_lablink)
 
-        status_msg = f"Found {pis_found} Raspberry Pi(s) ({lablink_count} LabLink) in {scan_time}s"
+        status_msg = f"Found {pis_found} Raspberry Pi(s) ({lablink_count} LabLink) in {scan_time:.1f}s"
         self.scan_status.setText(status_msg)
         self.scan_status.setStyleSheet("color: #4CAF50;")
 
         # Update table
-        self.discovered_pis = result.get("discovered_pis", [])
+        self.discovered_pis = discovered_pis
         self._update_table()
 
         # Show message if no Pis found
@@ -257,11 +321,11 @@ class PiDiscoveryPanel(QWidget):
 
         for i, pi in enumerate(self.discovered_pis):
             # IP Address
-            ip_item = QTableWidgetItem(pi.get("ip_address", ""))
+            ip_item = QTableWidgetItem(pi.ip_address)
             ip_item.setData(Qt.ItemDataRole.UserRole, pi)
 
             # Color code based on LabLink status
-            if pi.get("is_lablink"):
+            if pi.is_lablink:
                 ip_item.setForeground(QColor("#4CAF50"))
                 ip_item.setData(Qt.ItemDataRole.FontRole, "bold")
             else:
@@ -270,20 +334,20 @@ class PiDiscoveryPanel(QWidget):
             self.results_table.setItem(i, 0, ip_item)
 
             # Hostname
-            hostname = pi.get("hostname", "Unknown")
+            hostname = pi.hostname or "Unknown"
             hostname_item = QTableWidgetItem(hostname)
-            if pi.get("is_lablink"):
+            if pi.is_lablink:
                 hostname_item.setForeground(QColor("#4CAF50"))
             else:
                 hostname_item.setForeground(QColor("#FF9800"))
             self.results_table.setItem(i, 1, hostname_item)
 
             # MAC Address
-            mac = pi.get("mac_address", "Unknown")
+            mac = pi.mac_address or "Unknown"
             self.results_table.setItem(i, 2, QTableWidgetItem(mac))
 
             # Type
-            if pi.get("is_lablink"):
+            if pi.is_lablink:
                 type_str = "LabLink Server"
                 type_item = QTableWidgetItem(type_str)
                 type_item.setForeground(QColor("#4CAF50"))
@@ -295,13 +359,12 @@ class PiDiscoveryPanel(QWidget):
             self.results_table.setItem(i, 3, type_item)
 
             # Version (for LabLink servers)
-            version = pi.get("lablink_version", "-")
+            version = pi.lablink_version or "-"
             self.results_table.setItem(i, 4, QTableWidgetItem(version))
 
             # Response Time
-            response_time = pi.get("response_time_ms")
-            if response_time is not None:
-                time_str = f"{response_time:.1f} ms"
+            if pi.response_time_ms is not None:
+                time_str = f"{pi.response_time_ms:.1f} ms"
             else:
                 time_str = "-"
             self.results_table.setItem(i, 5, QTableWidgetItem(time_str))
@@ -315,7 +378,7 @@ class PiDiscoveryPanel(QWidget):
             pi_data = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
 
             # Enable connect button only for LabLink servers
-            if pi_data and pi_data.get("is_lablink"):
+            if pi_data and pi_data.is_lablink:
                 self.connect_btn.setEnabled(True)
             else:
                 self.connect_btn.setEnabled(False)
@@ -331,13 +394,13 @@ class PiDiscoveryPanel(QWidget):
         row = item.row()
         pi_data = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
 
-        if pi_data and pi_data.get("is_lablink"):
+        if pi_data and pi_data.is_lablink:
             self._on_connect_to_pi()
         else:
             # Show info about regular Pi
-            ip = pi_data.get("ip_address", "Unknown")
-            hostname = pi_data.get("hostname", "Unknown")
-            mac = pi_data.get("mac_address", "Unknown")
+            ip = pi_data.ip_address
+            hostname = pi_data.hostname or "Unknown"
+            mac = pi_data.mac_address or "Unknown"
 
             QMessageBox.information(
                 self,
@@ -359,7 +422,7 @@ class PiDiscoveryPanel(QWidget):
         row = selected[0].row()
         pi_data = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
 
-        if not pi_data or not pi_data.get("is_lablink"):
+        if not pi_data or not pi_data.is_lablink:
             QMessageBox.warning(
                 self,
                 "Not a LabLink Server",
@@ -369,9 +432,9 @@ class PiDiscoveryPanel(QWidget):
             return
 
         # Get connection details
-        ip = pi_data.get("ip_address")
-        name = pi_data.get("lablink_name", "LabLink")
-        version = pi_data.get("lablink_version", "unknown")
+        ip = pi_data.ip_address
+        name = pi_data.lablink_name or "LabLink"
+        version = pi_data.lablink_version or "unknown"
 
         # Confirm connection
         reply = QMessageBox.question(
@@ -382,57 +445,13 @@ class PiDiscoveryPanel(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # Update client connection
-                self.client.host = ip
-                self.client.api_base_url = f"http://{ip}:8000/api"
-
-                # Test connection
-                if self.client.connect():
-                    QMessageBox.information(
-                        self,
-                        "Connected",
-                        f"Successfully connected to {name} at {ip}",
-                    )
-                else:
-                    QMessageBox.critical(
-                        self,
-                        "Connection Failed",
-                        f"Failed to connect to {name} at {ip}.\n\n"
-                        "Please check the server is running and accessible.",
-                    )
-            except Exception as e:
-                logger.error(f"Connection error: {e}")
-                QMessageBox.critical(
-                    self, "Connection Error", f"Error connecting to server:\n\n{str(e)}"
-                )
-
-    def set_client(self, client):
-        """Set API client.
-
-        Args:
-            client: LabLink API client
-        """
-        self.client = client
-        self.refresh()
-
-    def refresh(self):
-        """Refresh the panel (called when switching tabs)."""
-        if not self.client:
-            return
-
-        # Auto-load cached results on first view
-        if self.results_table.rowCount() == 0:
-            try:
-                status = self.client.get_pi_discovery_status()
-                if status.get("success"):
-                    cached_pis = status.get("discovered_pis", [])
-                    if len(cached_pis) > 0:
-                        self.discovered_pis = cached_pis
-                        self._update_table()
-                        self.scan_status.setText(
-                            f"Showing {len(cached_pis)} cached result(s)"
-                        )
-                        self.scan_status.setStyleSheet("color: #666;")
-            except Exception as e:
-                logger.debug(f"Failed to load cached results: {e}")
+            # Close dialog and pass connection info to parent
+            QMessageBox.information(
+                self,
+                "Connection Requested",
+                f"Please use the File menu to connect to {name} at {ip}:8000.\n\n"
+                f"Host: {ip}\n"
+                f"API Port: 8000\n"
+                f"WS Port: 8001",
+            )
+            self.accept()
