@@ -1,5 +1,6 @@
 """LabLink Server - Main application entry point."""
 
+import argparse
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -592,6 +593,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="LabLink Server")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging (verbose output)"
+    )
+    args = parser.parse_args()
+
+    # Override debug setting if --debug flag is provided
+    if args.debug:
+        settings.debug = True
+        logger.info("🐛 DEBUG MODE ENABLED via command-line flag")
 
     uvicorn.run(
         "main:app",

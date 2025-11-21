@@ -21,6 +21,7 @@ import platform
 import json
 import shutil
 import logging
+import time
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
@@ -1153,6 +1154,11 @@ class LabLinkLauncher(QMainWindow):
         self._check_cache = {}
         self._cache_timeout = 30  # seconds
 
+        # Easter egg: Debug mode
+        self._click_count = 0
+        self._last_click_time = 0
+        self.debug_mode = False
+
         # Initialize UI
         self.init_ui()
 
@@ -1172,18 +1178,19 @@ class LabLinkLauncher(QMainWindow):
         main_layout.setSpacing(15)
         central_widget.setLayout(main_layout)
 
-        # Header
-        header = QLabel("LabLink System Launcher")
-        header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("""
+        # Header (with Easter egg - click 7 times for debug mode!)
+        self.header = QLabel("LabLink System Launcher")
+        self.header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        self.header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.header.setStyleSheet("""
             padding: 20px;
             background-color: #1a252f;
             color: white;
             border-radius: 8px;
             border: 2px solid #0d1419;
         """)
-        main_layout.addWidget(header)
+        self.header.mousePressEvent = self._header_clicked
+        main_layout.addWidget(self.header)
 
         # Status indicators section
         status_group = QGroupBox("System Status")
@@ -1431,6 +1438,91 @@ class LabLinkLauncher(QMainWindow):
             return result.returncode == 0
         except FileNotFoundError:
             return False
+
+    def _header_clicked(self, event):
+        """Easter egg: Enable debug mode by clicking header 7 times."""
+        current_time = time.time()
+
+        # Reset click count if more than 2 seconds since last click
+        if current_time - self._last_click_time > 2.0:
+            self._click_count = 0
+
+        self._click_count += 1
+        self._last_click_time = current_time
+
+        # Activate debug mode after 7 clicks
+        if self._click_count == 7:
+            if not self.debug_mode:
+                self.debug_mode = True
+                self._click_count = 0  # Reset
+
+                # Change header to indicate debug mode
+                self.header.setStyleSheet("""
+                    padding: 20px;
+                    background-color: #c0392b;
+                    color: white;
+                    border-radius: 8px;
+                    border: 2px solid #e74c3c;
+                """)
+                self.header.setText("LabLink System Launcher [DEBUG MODE]")
+
+                # Show funny Easter egg message
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Icon.Information)
+                msg.setWindowTitle("🐛 Debug Mode Unlocked!")
+                msg.setText("Well well well... looks like someone found the secret button! 🕵️")
+                msg.setInformativeText(
+                    "Debug mode is now ENABLED! 🎉\n\n"
+                    "The server and client will now launch with verbose logging.\n"
+                    "Prepare for an avalanche of debug messages! 🌊\n\n"
+                    "Click the header 7 more times to disable debug mode."
+                )
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.setStyleSheet("""
+                    QMessageBox {
+                        background-color: #2c3e50;
+                    }
+                    QLabel {
+                        color: #ecf0f1;
+                        font-size: 11pt;
+                    }
+                    QPushButton {
+                        background-color: #27ae60;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        min-width: 80px;
+                    }
+                    QPushButton:hover {
+                        background-color: #2ecc71;
+                    }
+                """)
+                msg.exec()
+                logger.info("🐛 DEBUG MODE ENABLED via Easter egg!")
+            else:
+                # Disable debug mode
+                self.debug_mode = False
+                self._click_count = 0
+
+                # Restore normal header
+                self.header.setStyleSheet("""
+                    padding: 20px;
+                    background-color: #1a252f;
+                    color: white;
+                    border-radius: 8px;
+                    border: 2px solid #0d1419;
+                """)
+                self.header.setText("LabLink System Launcher")
+
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Icon.Information)
+                msg.setWindowTitle("Debug Mode Disabled")
+                msg.setText("Debug mode has been disabled.")
+                msg.setInformativeText("Server and client will now launch normally.")
+                msg.exec()
+                logger.info("Debug mode disabled")
 
     def check_all(self):
         """Check all system components."""
@@ -1853,16 +1945,19 @@ class LabLinkLauncher(QMainWindow):
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
+            # Add --debug flag if debug mode is enabled
+            debug_flag = " --debug" if self.debug_mode else ""
+
             # Launch in new terminal
             # Server has mixed imports - needs both server/ as cwd AND LabLink root in PYTHONPATH
             if platform.system() == "Linux":
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
                 subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py'
+                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
                 subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py{debug_flag}'], shell=True)
 
             self._show_auto_close_message(
                 "Server Starting",
@@ -1898,8 +1993,13 @@ class LabLinkLauncher(QMainWindow):
         try:
             # Launch client using python -m to handle imports correctly
             # Change to LabLink root and run as module
+            # Add --debug flag if debug mode is enabled
+            args = [python_exe, '-m', 'client.main']
+            if self.debug_mode:
+                args.append('--debug')
+
             subprocess.Popen(
-                [python_exe, '-m', 'client.main'],
+                args,
                 cwd=str(lablink_root)
             )
 
