@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """LabLink GUI Client - Main entry point."""
 
+import argparse
 import asyncio
 import logging
 import sys
@@ -18,10 +19,15 @@ from PyQt6.QtWidgets import QApplication
 from client.ui.main_window import MainWindow
 
 
-def setup_logging():
-    """Set up logging configuration."""
+def setup_logging(debug=False):
+    """Set up logging configuration.
+
+    Args:
+        debug: Enable debug logging if True
+    """
+    level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(
-        level=logging.INFO,
+        level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler("lablink_client.log")],
     )
@@ -29,11 +35,23 @@ def setup_logging():
 
 def main():
     """Main application entry point."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="LabLink GUI Client")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging (verbose output)"
+    )
+    args = parser.parse_args()
+
     # Set up logging
-    setup_logging()
+    setup_logging(debug=args.debug)
     logger = logging.getLogger(__name__)
 
-    logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support")
+    if args.debug:
+        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support (DEBUG MODE)")
+    else:
+        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support")
 
     # Enable high DPI support
     QApplication.setHighDpiScaleFactorRoundingPolicy(
