@@ -6,7 +6,7 @@ python-multipart>=0.0.18  # Required for FastAPI file uploads (Form/File paramet
 
 # Equipment Communication
 pyvisa==1.14.1
-pyvisa-py==0.7.1
+pyvisa-py==0.8.1
 pyserial==3.5
 
 # USB/Device Access
