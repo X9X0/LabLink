@@ -46,7 +46,7 @@ class PiDiscovery:
         self.scan_in_progress = False
 
     async def discover_network(
-        self, network: Optional[str] = None, timeout: float = 2.0
+        self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20
     ) -> List[DiscoveredPi]:
         """Discover Raspberry Pis on the network.
 
@@ -54,6 +54,7 @@ class PiDiscovery:
             network: Network to scan (CIDR notation, e.g., "192.168.1.0/24")
                     If None, auto-detect local network
             timeout: Timeout for each host check in seconds
+            batch_size: Number of hosts to scan concurrently
 
         Returns:
             List of discovered Raspberry Pis
@@ -70,7 +71,7 @@ class PiDiscovery:
             if not network:
                 network = self._get_local_network()
 
-            logger.info(f"Scanning network: {network}")
+            logger.info(f"Scanning network: {network} (timeout={timeout}s, batch_size={batch_size})")
 
             # Parse network CIDR
             try:
@@ -89,10 +90,10 @@ class PiDiscovery:
 
             logger.info(f"Scanning {len(hosts)} hosts...")
 
-            # Scan hosts in parallel (batches of 20 to avoid overwhelming network)
-            batch_size = 20
+            # Scan hosts in parallel (batches to avoid overwhelming network)
             for i in range(0, len(hosts), batch_size):
                 batch = hosts[i:i + batch_size]
+                logger.debug(f"Scanning batch {i//batch_size + 1}/{(len(hosts) + batch_size - 1)//batch_size}: {batch[0]} - {batch[-1]}")
                 tasks = [self._check_host(ip, timeout) for ip in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -144,14 +145,23 @@ class PiDiscovery:
         """
         try:
             # Quick ping check first
+            logger.debug(f"[{ip}] Pinging host...")
             reachable, response_time = await self._ping_host(ip, timeout)
 
             if not reachable:
+                logger.debug(f"[{ip}] Ping failed - host not reachable")
                 return None
 
+            logger.debug(f"[{ip}] Ping successful ({response_time}ms)")
+
             # Get MAC address and hostname
+            logger.debug(f"[{ip}] Looking up MAC address...")
             mac_address = await self._get_mac_address(ip)
+            logger.debug(f"[{ip}] MAC address: {mac_address or 'Not found'}")
+
+            logger.debug(f"[{ip}] Looking up hostname...")
             hostname = await self._get_hostname(ip)
+            logger.debug(f"[{ip}] Hostname: {hostname or 'Not found'}")
 
             # Check if MAC address matches Raspberry Pi vendor prefixes
             is_pi = False
@@ -160,6 +170,7 @@ class PiDiscovery:
                 for prefix in RPI_MAC_PREFIXES:
                     if mac_upper.startswith(prefix):
                         is_pi = True
+                        logger.debug(f"[{ip}] Identified as Pi by MAC prefix: {prefix}")
                         break
 
             # If MAC doesn't match, check hostname for pi-like patterns
@@ -167,13 +178,17 @@ class PiDiscovery:
                 hostname_lower = hostname.lower()
                 if any(pattern in hostname_lower for pattern in ["raspberry", "raspberrypi", "pi"]):
                     is_pi = True
+                    logger.debug(f"[{ip}] Identified as Pi by hostname pattern")
 
             # If not a Pi, skip further probing
             if not is_pi:
+                logger.debug(f"[{ip}] Not identified as Raspberry Pi - skipping")
                 return None
 
             # Probe for LabLink
+            logger.debug(f"[{ip}] Probing for LabLink server...")
             is_lablink, lablink_info = await self._probe_lablink(ip, timeout)
+            logger.debug(f"[{ip}] LabLink probe result: {is_lablink}")
 
             pi = DiscoveredPi(
                 ip_address=ip,
@@ -194,7 +209,7 @@ class PiDiscovery:
             return pi
 
         except Exception as e:
-            logger.debug(f"Error checking host {ip}: {e}")
+            logger.warning(f"[{ip}] Error checking host: {e}", exc_info=True)
             return None
 
     async def _ping_host(self, ip: str, timeout: float) -> tuple[bool, Optional[float]]:

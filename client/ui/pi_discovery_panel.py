@@ -37,10 +37,11 @@ class ScanWorker(QThread):
     finished = pyqtSignal(list, float)  # Emits (discovered_pis, scan_time)
     error = pyqtSignal(str)  # Emits error message
 
-    def __init__(self, network: Optional[str] = None, timeout: float = 2.0):
+    def __init__(self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20):
         super().__init__()
         self.network = network
         self.timeout = timeout
+        self.batch_size = batch_size
         self.discovery = PiDiscovery()
 
     def run(self):
@@ -51,7 +52,11 @@ class ScanWorker(QThread):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             discovered_pis = loop.run_until_complete(
-                self.discovery.discover_network(network=self.network, timeout=self.timeout)
+                self.discovery.discover_network(
+                    network=self.network,
+                    timeout=self.timeout,
+                    batch_size=self.batch_size
+                )
             )
             loop.close()
             scan_time = time.time() - start_time
@@ -103,6 +108,30 @@ class PiDiscoveryDialog(QDialog):
         self.network_input.setPlaceholderText("e.g., 192.168.1.0/24 (leave empty for auto-detect)")
         network_layout.addWidget(self.network_input)
         scan_layout.addLayout(network_layout)
+
+        # Scan parameters
+        params_layout = QHBoxLayout()
+
+        # Timeout input
+        params_layout.addWidget(QLabel("Timeout (seconds):"))
+        self.timeout_input = QLineEdit()
+        self.timeout_input.setText("3.0")
+        self.timeout_input.setMaximumWidth(80)
+        self.timeout_input.setToolTip("Timeout for each host check (1-10 seconds)")
+        params_layout.addWidget(self.timeout_input)
+
+        params_layout.addSpacing(20)
+
+        # Batch size input
+        params_layout.addWidget(QLabel("Batch Size:"))
+        self.batch_size_input = QLineEdit()
+        self.batch_size_input.setText("10")
+        self.batch_size_input.setMaximumWidth(80)
+        self.batch_size_input.setToolTip("Number of hosts to scan concurrently (1-50)")
+        params_layout.addWidget(self.batch_size_input)
+
+        params_layout.addStretch()
+        scan_layout.addLayout(params_layout)
 
         # Scan button and status
         scan_btn_layout = QHBoxLayout()
@@ -191,6 +220,42 @@ class PiDiscoveryDialog(QDialog):
         # Get network from input
         network = self.network_input.text().strip() or None
 
+        # Get timeout from input
+        try:
+            timeout = float(self.timeout_input.text())
+            if timeout < 1.0 or timeout > 10.0:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Timeout",
+                    "Timeout must be between 1 and 10 seconds."
+                )
+                return
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Timeout",
+                "Timeout must be a valid number."
+            )
+            return
+
+        # Get batch size from input
+        try:
+            batch_size = int(self.batch_size_input.text())
+            if batch_size < 1 or batch_size > 50:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Batch Size",
+                    "Batch size must be between 1 and 50."
+                )
+                return
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Batch Size",
+                "Batch size must be a valid integer."
+            )
+            return
+
         # Update UI
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Scanning...")
@@ -199,7 +264,7 @@ class PiDiscoveryDialog(QDialog):
         self.results_table.setRowCount(0)
 
         # Start scan in background
-        self.scan_worker = ScanWorker(network=network, timeout=2.0)
+        self.scan_worker = ScanWorker(network=network, timeout=timeout, batch_size=batch_size)
         self.scan_worker.finished.connect(self._on_scan_complete)
         self.scan_worker.error.connect(self._on_scan_error)
         self.scan_worker.start()
