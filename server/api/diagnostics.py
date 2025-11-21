@@ -318,9 +318,9 @@ async def record_disconnection_event(equipment_id: str, error: Optional[str] = N
 
 @router.post("/diagnostics/pi-diagnostics", summary="Run Pi diagnostic script")
 async def run_pi_diagnostics():
-    """Run comprehensive Raspberry Pi diagnostic script.
+    """Run comprehensive Raspberry Pi diagnostic script on the host system.
 
-    This endpoint executes the diagnose-pi.sh script to check:
+    This endpoint executes the diagnose-pi.sh script ON THE HOST (not in container) to check:
     - System information
     - Network status
     - Docker status
@@ -330,56 +330,40 @@ async def run_pi_diagnostics():
     - Port listeners
     - Recent logs
 
+    The script runs on the host using Docker API and nsenter to break out of
+    the container's isolation and access the actual Pi's system.
+
     Returns:
         Script output and recommendations
     """
     import asyncio
-    import os
     from pathlib import Path
 
     try:
-        # Find the diagnostic script
-        script_path = Path("/opt/lablink/diagnose-pi.sh")
+        # Verify /opt/lablink is mounted (this is only available on Pi deployments)
+        lablink_dir = Path("/opt/lablink")
+        if not lablink_dir.exists():
+            raise HTTPException(
+                status_code=503,
+                detail="Pi diagnostics only available on Raspberry Pi deployments. "
+                       "/opt/lablink directory not found (not mounted in docker-compose.yml)"
+            )
 
-        # If not found in /opt/lablink, try relative to server directory
-        if not script_path.exists():
-            # Try parent directory (LabLink root)
-            script_path = Path(__file__).parent.parent.parent / "diagnose-pi.sh"
-
+        # Verify script exists on host (mounted at /opt/lablink)
+        script_path = lablink_dir / "diagnose-pi.sh"
         if not script_path.exists():
             raise HTTPException(
                 status_code=404,
-                detail="Diagnostic script not found. Please ensure diagnose-pi.sh is installed."
+                detail="Diagnostic script not found at /opt/lablink/diagnose-pi.sh on host. "
+                       "Please ensure the script is installed on the Pi."
             )
 
-        # Make sure script is executable
-        script_path.chmod(0o755)
+        # Use Docker API to run the script on the host
+        # We run in a separate thread to avoid blocking the async event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _run_diagnostic_on_host, str(script_path))
 
-        # Run the diagnostic script with sudo (needed for some checks)
-        process = await asyncio.create_subprocess_exec(
-            "sudo", str(script_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT
-        )
-
-        # Wait for completion with timeout
-        try:
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=60.0)
-            output = stdout.decode('utf-8', errors='replace')
-            return_code = process.returncode
-        except asyncio.TimeoutError:
-            process.kill()
-            raise HTTPException(
-                status_code=504,
-                detail="Diagnostic script timed out after 60 seconds"
-            )
-
-        return {
-            "success": return_code == 0,
-            "output": output,
-            "return_code": return_code,
-            "script_path": str(script_path)
-        }
+        return result
 
     except HTTPException:
         raise
@@ -388,4 +372,86 @@ async def run_pi_diagnostics():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to run diagnostics: {str(e)}"
+        )
+
+
+def _run_diagnostic_on_host(script_path: str) -> dict:
+    """Execute diagnostic script on the host system using Docker API.
+
+    This function uses the Docker Python API to run a privileged container that:
+    1. Shares the host's PID namespace (pid_mode='host')
+    2. Uses nsenter to enter the host's mount namespace
+    3. Executes the diagnostic script in the host's context
+
+    Args:
+        script_path: Path to the diagnostic script on the host
+
+    Returns:
+        Dict with success status, output, and return code
+    """
+    import docker
+
+    try:
+        client = docker.from_env()
+
+        # Run a privileged Alpine container that uses nsenter to execute the script
+        # on the actual host (not in container isolation)
+        #
+        # Explanation of the command:
+        # - nsenter enters the namespaces of another process (PID 1 = host init)
+        # - --target 1: Target PID 1 (the host's init process)
+        # - --mount: Enter the host's mount namespace (filesystem)
+        # - --uts: Enter the host's UTS namespace (hostname)
+        # - --ipc: Enter the host's IPC namespace
+        # - --net: Enter the host's network namespace
+        # - --pid: Enter the host's PID namespace
+        # - Then execute the script in that context
+        container_output = client.containers.run(
+            image="alpine:latest",
+            command=[
+                "nsenter", "--target", "1",
+                "--mount", "--uts", "--ipc", "--net", "--pid",
+                "--", "/bin/sh", script_path
+            ],
+            remove=True,
+            privileged=True,
+            pid_mode="host",
+            stdout=True,
+            stderr=True,
+            detach=False
+        )
+
+        # Decode output
+        output = container_output.decode('utf-8', errors='replace')
+
+        return {
+            "success": True,
+            "output": output,
+            "return_code": 0,
+            "script_path": script_path
+        }
+
+    except docker.errors.ContainerError as e:
+        # Container exited with non-zero code
+        output = e.stderr.decode('utf-8', errors='replace') if e.stderr else str(e)
+        return {
+            "success": False,
+            "output": output,
+            "return_code": e.exit_status,
+            "script_path": script_path
+        }
+    except docker.errors.ImageNotFound:
+        raise HTTPException(
+            status_code=500,
+            detail="Alpine Docker image not found. Please pull alpine:latest first."
+        )
+    except docker.errors.APIError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Docker API error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error running diagnostic on host: {str(e)}"
         )

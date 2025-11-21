@@ -22,6 +22,11 @@ services:
       # Configuration (optional - mount your own config)
       - ./config:/app/config:ro
 
+      # Pi-specific mounts for diagnostics (comment out these two lines for non-Pi development)
+      # These enable the Pi diagnostics feature to run scripts on the host system
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access
+      - /opt/lablink:/opt/lablink:ro  # Host LabLink directory
+
     environment:
       # Server configuration
       - LABLINK_HOST=0.0.0.0
