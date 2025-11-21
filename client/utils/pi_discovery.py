@@ -180,15 +180,20 @@ class PiDiscovery:
                     is_pi = True
                     logger.debug(f"[{ip}] Identified as Pi by hostname pattern")
 
-            # If not a Pi, skip further probing
-            if not is_pi:
-                logger.debug(f"[{ip}] Not identified as Raspberry Pi - skipping")
-                return None
-
-            # Probe for LabLink
+            # Probe for LabLink (always probe reachable hosts, even if not identified as Pi)
+            # This handles cases where MAC masquerading hides the real Pi MAC address
             logger.debug(f"[{ip}] Probing for LabLink server...")
             is_lablink, lablink_info = await self._probe_lablink(ip, timeout)
             logger.debug(f"[{ip}] LabLink probe result: {is_lablink}")
+
+            # If not identified as Pi by MAC/hostname AND not running LabLink, skip it
+            if not is_pi and not is_lablink:
+                logger.debug(f"[{ip}] Not identified as Raspberry Pi and no LabLink found - skipping")
+                return None
+
+            # If LabLink is found but Pi wasn't identified by MAC/hostname, flag it as discovered via LabLink
+            if not is_pi and is_lablink:
+                logger.info(f"[{ip}] Pi discovered via LabLink probe (MAC masquerading detected: {mac_address})")
 
             pi = DiscoveredPi(
                 ip_address=ip,
