@@ -278,10 +278,49 @@ class PiDiscovery:
             import platform
             system = platform.system().lower()
 
+            # Try multiple methods to get MAC address
             if system == "windows":
                 cmd = ["arp", "-a", ip]
             else:  # Linux/Mac
-                cmd = ["arp", "-n", ip]
+                # Try modern 'ip neigh' first, fallback to 'arp'
+                try:
+                    # Try ip neigh (modern way)
+                    process = await asyncio.create_subprocess_exec(
+                        "/usr/sbin/ip", "neigh", "show", ip,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, _ = await asyncio.wait_for(
+                        process.communicate(),
+                        timeout=2.0
+                    )
+
+                    if process.returncode == 0:
+                        output = stdout.decode()
+                        # Format: "10.10.0.42 dev wlan0 lladdr dc:a6:32:xx:xx:xx REACHABLE"
+                        for line in output.split("\n"):
+                            if "lladdr" in line.lower():
+                                parts = line.split()
+                                try:
+                                    lladdr_idx = parts.index("lladdr")
+                                    if lladdr_idx + 1 < len(parts):
+                                        mac = parts[lladdr_idx + 1].upper()
+                                        if len(mac) == 17:  # MAC format check
+                                            return mac
+                                except (ValueError, IndexError):
+                                    pass
+                except FileNotFoundError:
+                    pass  # ip command not found, try arp
+
+                # Fallback to arp command with full path
+                for arp_path in ["/usr/sbin/arp", "/sbin/arp", "arp"]:
+                    try:
+                        cmd = [arp_path, "-n", ip]
+                        break
+                    except:
+                        continue
+                else:
+                    cmd = ["arp", "-n", ip]
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
