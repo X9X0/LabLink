@@ -60,7 +60,7 @@ class DiscoverDevicesResponse(BaseModel):
     resources: List[str]
 
 
-@router.get("/discover", response_model=DiscoverDevicesResponse)
+@router.post("/discover", response_model=DiscoverDevicesResponse)
 async def discover_devices():
     """Discover available VISA devices."""
     try:

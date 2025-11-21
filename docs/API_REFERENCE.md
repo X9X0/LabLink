@@ -35,7 +35,7 @@ Detailed health status with connected device count.
 
 ### Equipment Management
 
-#### GET /api/equipment/discover
+#### POST /api/equipment/discover
 Discover available VISA devices on the system.
 
 **Response:**

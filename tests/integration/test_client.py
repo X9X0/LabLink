@@ -25,7 +25,7 @@ def test_server():
 
         # Test device discovery
         print("3. Testing device discovery...")
-        response = requests.get(f"{SERVER_URL}/api/equipment/discover", timeout=5)
+        response = requests.post(f"{SERVER_URL}/api/equipment/discover", timeout=5)
         if response.status_code == 200:
             devices = response.json()
             print(f"   Found {len(devices.get('resources', []))} devices:")

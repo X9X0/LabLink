@@ -112,7 +112,7 @@ python test_client.py
    curl http://localhost:8000/health
 
    # Discover devices
-   curl http://localhost:8000/api/equipment/discover
+   curl -X POST http://localhost:8000/api/equipment/discover
    ```
 
 3. **View API documentation**
@@ -147,7 +147,7 @@ New equipment can be added by:
 ### Discover Available Devices
 
 ```bash
-curl http://localhost:8000/api/equipment/discover
+curl -X POST http://localhost:8000/api/equipment/discover
 ```
 
 ### Connect to a Device
