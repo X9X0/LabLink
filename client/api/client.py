@@ -1751,3 +1751,32 @@ class LabLinkClient:
         response = self._session.get(f"{self.api_base_url}/discovery/pi/status")
         response.raise_for_status()
         return response.json()
+
+    def get_discovery_settings(self) -> Dict[str, Any]:
+        """Get discovery system settings.
+
+        Returns:
+            Discovery scanning configuration including serial, GPIB, USB, TCPIP settings
+        """
+        response = self._session.get(f"{self.api_base_url}/discovery/settings")
+        response.raise_for_status()
+        return response.json()
+
+    def update_discovery_settings(self, **settings) -> Dict[str, Any]:
+        """Update discovery system settings.
+
+        Args:
+            **settings: Discovery settings to update (scan_serial, scan_gpib, scan_usb, scan_tcpip, etc.)
+
+        Returns:
+            Result with updated settings
+
+        Example:
+            client.update_discovery_settings(scan_serial=True, scan_gpib=True)
+        """
+        response = self._session.post(
+            f"{self.api_base_url}/discovery/settings",
+            params=settings
+        )
+        response.raise_for_status()
+        return response.json()

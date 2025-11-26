@@ -598,3 +598,143 @@ async def get_pi_discovery_status():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Discovery Settings ===
+
+
+@router.get("/settings")
+async def get_discovery_settings():
+    """Get discovery system settings.
+
+    Returns current configuration for discovery scanning options.
+
+    **Returns:**
+    - scan_tcpip: Scan TCPIP resources
+    - scan_usb: Scan USB resources
+    - scan_gpib: Scan GPIB resources
+    - scan_serial: Scan serial resources
+    - enable_mdns: Enable mDNS discovery
+    - enable_visa: Enable VISA scanning
+    - enable_auto_discovery: Enable automatic periodic scanning
+    - test_connections: Test discovered devices
+    - query_idn: Query *IDN? for identification
+
+    **Example Response:**
+    ```json
+    {
+      "scan_tcpip": true,
+      "scan_usb": true,
+      "scan_gpib": false,
+      "scan_serial": false,
+      "enable_mdns": true,
+      "enable_visa": true,
+      "enable_auto_discovery": true,
+      "test_connections": true,
+      "query_idn": true
+    }
+    ```
+    """
+    try:
+        from server.config.settings import settings
+
+        return {
+            "scan_tcpip": settings.discovery_scan_tcpip,
+            "scan_usb": settings.discovery_scan_usb,
+            "scan_gpib": settings.discovery_scan_gpib,
+            "scan_serial": settings.discovery_scan_serial,
+            "enable_mdns": settings.enable_mdns_discovery,
+            "enable_visa": settings.enable_visa_discovery,
+            "enable_auto_discovery": settings.enable_auto_discovery,
+            "test_connections": settings.discovery_test_connections,
+            "query_idn": settings.discovery_query_idn,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/settings")
+async def update_discovery_settings(
+    scan_tcpip: Optional[bool] = None,
+    scan_usb: Optional[bool] = None,
+    scan_gpib: Optional[bool] = None,
+    scan_serial: Optional[bool] = None,
+    enable_mdns: Optional[bool] = None,
+    enable_visa: Optional[bool] = None,
+    enable_auto_discovery: Optional[bool] = None,
+    test_connections: Optional[bool] = None,
+    query_idn: Optional[bool] = None,
+):
+    """Update discovery system settings.
+
+    Updates discovery scanning configuration. Only provided parameters will be updated.
+
+    **Query Parameters:**
+    - scan_tcpip: Enable/disable TCPIP scanning
+    - scan_usb: Enable/disable USB scanning
+    - scan_gpib: Enable/disable GPIB scanning
+    - scan_serial: Enable/disable serial scanning
+    - enable_mdns: Enable/disable mDNS discovery
+    - enable_visa: Enable/disable VISA scanning
+    - enable_auto_discovery: Enable/disable automatic periodic scanning
+    - test_connections: Enable/disable connection testing
+    - query_idn: Enable/disable *IDN? queries
+
+    **Returns:**
+    - success: Whether update was successful
+    - updated_settings: The new settings values
+
+    **Example:**
+    ```
+    POST /api/discovery/settings?scan_serial=true&scan_gpib=true
+    ```
+    """
+    try:
+        from server.config.settings import settings
+
+        updated = {}
+
+        if scan_tcpip is not None:
+            settings.discovery_scan_tcpip = scan_tcpip
+            updated["scan_tcpip"] = scan_tcpip
+
+        if scan_usb is not None:
+            settings.discovery_scan_usb = scan_usb
+            updated["scan_usb"] = scan_usb
+
+        if scan_gpib is not None:
+            settings.discovery_scan_gpib = scan_gpib
+            updated["scan_gpib"] = scan_gpib
+
+        if scan_serial is not None:
+            settings.discovery_scan_serial = scan_serial
+            updated["scan_serial"] = scan_serial
+
+        if enable_mdns is not None:
+            settings.enable_mdns_discovery = enable_mdns
+            updated["enable_mdns"] = enable_mdns
+
+        if enable_visa is not None:
+            settings.enable_visa_discovery = enable_visa
+            updated["enable_visa"] = enable_visa
+
+        if enable_auto_discovery is not None:
+            settings.enable_auto_discovery = enable_auto_discovery
+            updated["enable_auto_discovery"] = enable_auto_discovery
+
+        if test_connections is not None:
+            settings.discovery_test_connections = test_connections
+            updated["test_connections"] = test_connections
+
+        if query_idn is not None:
+            settings.discovery_query_idn = query_idn
+            updated["query_idn"] = query_idn
+
+        return {
+            "success": True,
+            "message": f"Updated {len(updated)} setting(s)",
+            "updated_settings": updated,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
