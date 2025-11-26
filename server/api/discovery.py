@@ -694,6 +694,7 @@ async def update_discovery_settings(
 
         updated = {}
 
+        # Update global settings
         if scan_tcpip is not None:
             settings.discovery_scan_tcpip = scan_tcpip
             updated["scan_tcpip"] = scan_tcpip
@@ -729,6 +730,47 @@ async def update_discovery_settings(
         if query_idn is not None:
             settings.discovery_query_idn = query_idn
             updated["query_idn"] = query_idn
+
+        # Update discovery manager's config in real-time
+        try:
+            manager = get_discovery_manager()
+
+            # Update discovery manager config
+            if scan_tcpip is not None:
+                manager.config.scan_tcpip = scan_tcpip
+            if scan_usb is not None:
+                manager.config.scan_usb = scan_usb
+            if scan_gpib is not None:
+                manager.config.scan_gpib = scan_gpib
+            if scan_serial is not None:
+                manager.config.scan_serial = scan_serial
+            if enable_mdns is not None:
+                manager.config.enable_mdns = enable_mdns
+            if enable_visa is not None:
+                manager.config.enable_visa_scan = enable_visa
+            if enable_auto_discovery is not None:
+                manager.config.enable_auto_discovery = enable_auto_discovery
+            if test_connections is not None:
+                manager.config.test_connections = test_connections
+            if query_idn is not None:
+                manager.config.query_idn = query_idn
+
+            # Update VISA scanner config (it references the manager's config)
+            if scan_tcpip is not None:
+                manager.visa_scanner.config.scan_tcpip = scan_tcpip
+            if scan_usb is not None:
+                manager.visa_scanner.config.scan_usb = scan_usb
+            if scan_gpib is not None:
+                manager.visa_scanner.config.scan_gpib = scan_gpib
+            if scan_serial is not None:
+                manager.visa_scanner.config.scan_serial = scan_serial
+            if test_connections is not None:
+                manager.visa_scanner.config.test_connections = test_connections
+            if query_idn is not None:
+                manager.visa_scanner.config.query_idn = query_idn
+
+        except Exception as e:
+            logger.warning(f"Could not update discovery manager config: {e}")
 
         return {
             "success": True,
