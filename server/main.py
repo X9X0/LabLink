@@ -47,6 +47,14 @@ async def lifespan(app: FastAPI):
         logger.error("Configuration validation failed!")
         sys.exit(1)
 
+    # Load persisted runtime settings (overrides .env defaults)
+    logger.info("Loading persisted runtime settings...")
+    try:
+        from config.persistence import apply_persisted_settings
+        apply_persisted_settings(settings)
+    except Exception as e:
+        logger.warning(f"Could not load persisted settings: {e}")
+
     logger.info(f"API Port: {settings.api_port}")
     logger.info(f"WebSocket Port: {settings.ws_port}")
     logger.info(f"Log Level: {settings.log_level}")
