@@ -89,10 +89,24 @@ class EquipmentManager:
         async with self._lock:
             try:
                 # Ensure resource manager is initialized (lazy initialization)
+                # Always create a new one if None or invalid
                 if not self.resource_manager:
                     logger.warning("Resource manager not initialized, initializing now...")
                     self.resource_manager = ResourceManager("@py")
                     logger.info("Resource manager initialized (lazy)")
+                else:
+                    # Try to use existing resource manager, recreate if closed
+                    try:
+                        # Test if resource manager is valid by attempting to list resources
+                        _ = self.resource_manager.list_resources
+                    except Exception:
+                        logger.warning("Resource manager invalid, recreating...")
+                        try:
+                            self.resource_manager.close()
+                        except Exception:
+                            pass
+                        self.resource_manager = ResourceManager("@py")
+                        logger.info("Resource manager recreated")
 
                 # Create appropriate equipment instance based on model
                 equipment = self._create_equipment_instance(
