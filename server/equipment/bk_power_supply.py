@@ -50,9 +50,10 @@ class BKPowerSupplyBase(BaseEquipment):
                     self.instrument.parity = 0  # None
                     self.instrument.stop_bits = 10  # 1 stop bit (constant value)
                     self.instrument.flow_control = 0  # None
-                    self.instrument.read_termination = '\n'
-                    self.instrument.write_termination = '\n'
-                    logger.info(f"Configured serial port: 9600 8N1")
+                    # BK Precision devices typically use CR+LF termination
+                    self.instrument.read_termination = '\r\n'
+                    self.instrument.write_termination = '\r\n'
+                    logger.info(f"Configured serial port: 9600 8N1 with CR+LF termination")
 
                 # Set timeout (10 seconds)
                 self.instrument.timeout = 10000
