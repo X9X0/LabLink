@@ -130,6 +130,36 @@ async def get_device_status(equipment_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{equipment_id}/readings")
+async def get_device_readings(equipment_id: str):
+    """Get current readings from a device."""
+    try:
+        equipment = equipment_manager.get_equipment(equipment_id)
+        if equipment is None:
+            raise HTTPException(status_code=404, detail="Device not found")
+
+        # Get readings from the equipment
+        if hasattr(equipment, 'get_readings'):
+            readings = await equipment.get_readings()
+            # Convert to dict for JSON response
+            if hasattr(readings, 'dict'):
+                return readings.dict()
+            elif hasattr(readings, '__dict__'):
+                return readings.__dict__
+            else:
+                return {"data": str(readings)}
+        else:
+            raise HTTPException(
+                status_code=501,
+                detail=f"Equipment type {equipment.__class__.__name__} does not support readings"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting device readings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{equipment_id}/command", response_model=CommandResponse)
 async def execute_command(equipment_id: str, command: Command):
     """Execute a command on a device."""
