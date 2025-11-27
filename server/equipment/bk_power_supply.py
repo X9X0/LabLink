@@ -324,3 +324,16 @@ class BK1685B(BKPowerSupplyBase):
         # 1685B specs: 0-18V, 0-5A
         self.max_voltage = 18.0
         self.max_current = 5.0
+
+
+class BK1902B(BKPowerSupplyBase):
+    """Driver for BK Precision 1902B DC Power Supply."""
+
+    def __init__(self, resource_manager, resource_string: str):
+        """Initialize BK 1902B."""
+        super().__init__(resource_manager, resource_string)
+        self.model = "1902B"
+        self.num_channels = 1
+        # 1902B specs: 1-60V, 0-15A, 900W
+        self.max_voltage = 60.0
+        self.max_current = 15.0

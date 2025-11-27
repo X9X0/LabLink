@@ -10,8 +10,7 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_electronic_load import BK1902B
-from .bk_power_supply import BK1685B, BK9130B, BK9205B, BK9206B
+from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
 from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_oscilloscope import MockOscilloscope
 from .mock.mock_power_supply import MockPowerSupply
@@ -169,8 +168,6 @@ class EquipmentManager:
             return BK9130B(self.resource_manager, resource_string)
         elif "1685" in model_upper:
             return BK1685B(self.resource_manager, resource_string)
-
-        # BK Precision electronic loads
         elif "1902" in model_upper:
             return BK1902B(self.resource_manager, resource_string)
 
