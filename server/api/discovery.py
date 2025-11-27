@@ -774,7 +774,7 @@ async def update_discovery_settings(
 
         # Persist settings to configuration file so they survive server restarts
         try:
-            from server.config.persistence import save_discovery_settings
+            from config.persistence import save_discovery_settings
 
             # Convert keys to match settings attribute names
             persist_settings = {}
@@ -800,8 +800,10 @@ async def update_discovery_settings(
             save_discovery_settings(persist_settings)
             logger.info(f"Persisted {len(persist_settings)} discovery settings")
 
+        except ImportError as e:
+            logger.warning(f"Could not import persistence module: {e} - settings will not persist")
         except Exception as e:
-            logger.error(f"Failed to persist discovery settings: {e}")
+            logger.error(f"Failed to persist discovery settings: {e}", exc_info=True)
             # Don't fail the request if persistence fails
 
         return {
