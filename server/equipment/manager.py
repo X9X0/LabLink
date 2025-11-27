@@ -54,17 +54,33 @@ class EquipmentManager:
             self.resource_manager.close()
 
     async def discover_devices(self) -> List[str]:
-        """Discover available VISA devices."""
-        if not self.resource_manager:
-            return []
-
+        """Discover available VISA devices using discovery manager."""
         try:
-            resources = self.resource_manager.list_resources()
-            logger.info(f"Discovered VISA resources: {resources}")
-            return list(resources)
+            # Use discovery manager for comprehensive discovery with filtering
+            from discovery import get_discovery_manager
+
+            discovery_manager = get_discovery_manager()
+            result = await discovery_manager.scan()
+
+            # Extract resource names from discovered devices
+            resources = [device.resource_name for device in result.devices]
+            logger.info(f"Discovered {len(resources)} VISA resources via discovery manager")
+            return resources
+
         except Exception as e:
-            logger.error(f"Error discovering devices: {e}")
-            return []
+            # Fallback to direct VISA scanning if discovery manager not available
+            logger.warning(f"Discovery manager not available, falling back to direct VISA scan: {e}")
+
+            if not self.resource_manager:
+                return []
+
+            try:
+                resources = self.resource_manager.list_resources()
+                logger.info(f"Discovered VISA resources (fallback): {resources}")
+                return list(resources)
+            except Exception as e2:
+                logger.error(f"Error discovering devices: {e2}")
+                return []
 
     async def connect_device(
         self, resource_string: str, equipment_type: EquipmentType, model: str
