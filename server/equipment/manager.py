@@ -98,7 +98,7 @@ class EquipmentManager:
                     # Try to use existing resource manager, recreate if closed
                     try:
                         # Test if resource manager is valid by attempting to list resources
-                        _ = self.resource_manager.list_resources
+                        _ = self.resource_manager.list_resources()
                     except Exception:
                         logger.warning("Resource manager invalid, recreating...")
                         try:
