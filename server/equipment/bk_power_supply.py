@@ -33,6 +33,44 @@ class BKPowerSupplyBase(BaseEquipment):
         self._current_voltage = 0.0  # Track current voltage for slew rate limiting
         self._current_current = 0.0  # Track current current for slew rate limiting
 
+    async def connect(self):
+        """Connect to the BK power supply with serial port configuration."""
+        async with self._lock:
+            try:
+                # Open the resource
+                self.instrument = self.resource_manager.open_resource(
+                    self.resource_string
+                )
+
+                # Configure serial port settings for BK Precision devices
+                # Baud rate: 9600, Data bits: 8, Parity: None, Stop bits: 1
+                if "ASRL" in self.resource_string:  # Serial/ASRL connection
+                    self.instrument.baud_rate = 9600
+                    self.instrument.data_bits = 8
+                    self.instrument.parity = 0  # None
+                    self.instrument.stop_bits = 10  # 1 stop bit (constant value)
+                    self.instrument.flow_control = 0  # None
+                    self.instrument.read_termination = '\n'
+                    self.instrument.write_termination = '\n'
+                    logger.info(f"Configured serial port: 9600 8N1")
+
+                # Set timeout (10 seconds)
+                self.instrument.timeout = 10000
+
+                # Verify connection with IDN query
+                idn = await self._query("*IDN?")
+                logger.info(f"Connected to device: {idn}")
+
+                self.connected = True
+
+                # Cache equipment info
+                self.cached_info = await self.get_info()
+
+            except Exception as e:
+                logger.error(f"Failed to connect to {self.resource_string}: {e}")
+                self.connected = False
+                raise
+
     def _initialize_safety(self, equipment_id: str):
         """Initialize safety validator with appropriate limits."""
         if not settings.enable_safety_limits:
