@@ -1,8 +1,7 @@
 """Equipment drivers for LabLink."""
 
 from .base import BaseEquipment
-from .bk_electronic_load import BK1902B
-from .bk_power_supply import BK1685B, BK9130B, BK9205B, BK9206B
+from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
 from .manager import equipment_manager
 from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_oscilloscope import MockOscilloscope
