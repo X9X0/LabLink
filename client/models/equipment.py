@@ -50,17 +50,28 @@ class Equipment:
     @classmethod
     def from_api_dict(cls, data: Dict[str, Any]) -> "Equipment":
         """Create Equipment from API response dictionary."""
+        # Map field names from server API response to client model
+        # Server uses "id", client uses "equipment_id"
+        equipment_id = data.get("id") or data.get("equipment_id", "")
+
+        # Server uses "resource_string", client uses "resource_name"
+        resource_name = data.get("resource_string") or data.get("resource_name", "")
+
+        # Use nickname as name if available, otherwise use model
+        name = data.get("nickname") or data.get("name") or data.get("model", "Unknown")
+
+        # Assume connected status based on presence in list (equipment list only returns connected devices)
+        connection_status = data.get("connection_status", "connected")
+
         return cls(
-            equipment_id=data.get("equipment_id", ""),
-            name=data.get("name", "Unknown"),
+            equipment_id=equipment_id,
+            name=name,
             equipment_type=EquipmentType(data.get("type", "unknown")),
             manufacturer=data.get("manufacturer", "Unknown"),
             model=data.get("model", "Unknown"),
-            resource_name=data.get("resource_name", ""),
-            connection_status=ConnectionStatus(
-                data.get("connection_status", "disconnected")
-            ),
-            idn=data.get("idn"),
+            resource_name=resource_name,
+            connection_status=ConnectionStatus(connection_status),
+            idn=data.get("idn") or data.get("serial_number"),
             capabilities=data.get("capabilities", []),
             current_readings=data.get("readings"),
             last_update=datetime.now(),
