@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import aiohttp
 import requests
 
 try:
@@ -1780,3 +1781,78 @@ class LabLinkClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ==================== Async Equipment Discovery Methods ====================
+
+    async def discover_equipment_async(self) -> Dict[str, Any]:
+        """Discover available VISA equipment asynchronously (non-blocking).
+
+        This method uses async HTTP to avoid blocking the UI thread during
+        equipment discovery, which can take 5-30+ seconds.
+
+        Returns:
+            Discovery response with list of discovered resources
+
+        Example:
+            resources = await client.discover_equipment_async()
+        """
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.api_base_url}/equipment/discover",
+                headers=self._session.headers  # Include auth headers if present
+            ) as response:
+                response.raise_for_status()
+                return await response.json()
+
+    async def connect_device_async(
+        self, resource_string: str, equipment_type: str, model: str
+    ) -> Dict[str, Any]:
+        """Connect to a discovered device asynchronously (non-blocking).
+
+        Args:
+            resource_string: VISA resource string (e.g., "ASRL/dev/ttyUSB0::INSTR")
+            equipment_type: Equipment type (e.g., "power_supply")
+            model: Equipment model (e.g., "BK1902B")
+
+        Returns:
+            Connection response with equipment ID
+
+        Example:
+            result = await client.connect_device_async(
+                "ASRL/dev/ttyUSB0::INSTR", "power_supply", "BK1902B"
+            )
+        """
+        payload = {
+            "resource_string": resource_string,
+            "equipment_type": equipment_type,
+            "model": model,
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.api_base_url}/equipment/connect",
+                json=payload,
+                headers=self._session.headers  # Include auth headers if present
+            ) as response:
+                response.raise_for_status()
+                return await response.json()
+
+    async def update_discovery_settings_async(self, **settings) -> Dict[str, Any]:
+        """Update discovery system settings asynchronously (non-blocking).
+
+        Args:
+            **settings: Discovery settings to update
+
+        Returns:
+            Result with updated settings
+
+        Example:
+            await client.update_discovery_settings_async(scan_serial=True)
+        """
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.api_base_url}/discovery/settings",
+                params=settings,
+                headers=self._session.headers  # Include auth headers if present
+            ) as response:
+                response.raise_for_status()
+                return await response.json()

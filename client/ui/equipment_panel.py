@@ -497,26 +497,39 @@ class EquipmentPanel(QWidget):
             )
             return
 
+        # Show settings dialog
+        settings_dialog = DiscoverySettingsDialog(self.client, self)
+        if settings_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Get settings and start async discovery
+        settings = settings_dialog.get_settings()
+        logger.info(f"Applying discovery settings: {settings}")
+
+        # Show progress message
+        QMessageBox.information(
+            self, "Discovery Started",
+            "Equipment discovery is now running in the background.\n\n"
+            "This may take 10-30 seconds. The UI will remain responsive.\n\n"
+            "A dialog will appear when discovery completes.",
+            QMessageBox.StandardButton.Ok
+        )
+
+        # Start async discovery (non-blocking)
+        asyncio.create_task(self._discover_equipment_async(settings))
+
+    async def _discover_equipment_async(self, settings: dict):
+        """Perform equipment discovery asynchronously (non-blocking).
+
+        Args:
+            settings: Discovery settings dictionary
+        """
         try:
-            # Show settings dialog
-            settings_dialog = DiscoverySettingsDialog(self.client, self)
-            if settings_dialog.exec() != QDialog.DialogCode.Accepted:
-                return
+            # Update settings on server (async)
+            await self.client.update_discovery_settings_async(**settings)
 
-            # Get and apply settings
-            settings = settings_dialog.get_settings()
-            logger.info(f"Applying discovery settings: {settings}")
-
-            # Update settings on server
-            self.client.update_discovery_settings(**settings)
-
-            # Call discover endpoint
-            response = self.client._session.post(
-                f"{self.client.api_base_url}/equipment/discover"
-            )
-            response.raise_for_status()
-
-            data = response.json()
+            # Call discover endpoint (async - this is the long-running operation)
+            data = await self.client.discover_equipment_async()
             resources = data.get("resources", [])
             discovered_count = len(resources)
 
