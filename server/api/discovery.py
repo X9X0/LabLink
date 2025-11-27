@@ -772,40 +772,6 @@ async def update_discovery_settings(
         except Exception as e:
             logger.warning(f"Could not update discovery manager config: {e}")
 
-        # Persist settings to configuration file so they survive server restarts
-        try:
-            from config.persistence import save_discovery_settings
-
-            # Convert keys to match settings attribute names
-            persist_settings = {}
-            if "scan_tcpip" in updated:
-                persist_settings["discovery_scan_tcpip"] = updated["scan_tcpip"]
-            if "scan_usb" in updated:
-                persist_settings["discovery_scan_usb"] = updated["scan_usb"]
-            if "scan_gpib" in updated:
-                persist_settings["discovery_scan_gpib"] = updated["scan_gpib"]
-            if "scan_serial" in updated:
-                persist_settings["discovery_scan_serial"] = updated["scan_serial"]
-            if "enable_mdns" in updated:
-                persist_settings["enable_mdns_discovery"] = updated["enable_mdns"]
-            if "enable_visa" in updated:
-                persist_settings["enable_visa_discovery"] = updated["enable_visa"]
-            if "enable_auto_discovery" in updated:
-                persist_settings["enable_auto_discovery"] = updated["enable_auto_discovery"]
-            if "test_connections" in updated:
-                persist_settings["discovery_test_connections"] = updated["test_connections"]
-            if "query_idn" in updated:
-                persist_settings["discovery_query_idn"] = updated["query_idn"]
-
-            save_discovery_settings(persist_settings)
-            logger.info(f"Persisted {len(persist_settings)} discovery settings")
-
-        except ImportError as e:
-            logger.warning(f"Could not import persistence module: {e} - settings will not persist")
-        except Exception as e:
-            logger.error(f"Failed to persist discovery settings: {e}", exc_info=True)
-            # Don't fail the request if persistence fails
-
         return {
             "success": True,
             "message": f"Updated {len(updated)} setting(s)",
