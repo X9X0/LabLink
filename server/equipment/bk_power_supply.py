@@ -139,29 +139,28 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def get_status(self) -> EquipmentStatus:
         """Get power supply status."""
+        # Try to get firmware info from *IDN?, but don't fail if it doesn't work
+        firmware = None
         try:
             idn = await self._query("*IDN?")
             parts = idn.split(",")
             firmware = parts[3] if len(parts) > 3 else None
+        except Exception:
+            # *IDN? not supported or timed out, continue without firmware info
+            pass
 
-            capabilities = {
-                "num_channels": self.num_channels,
-                "max_voltage": self.max_voltage,
-                "max_current": self.max_current,
-            }
+        capabilities = {
+            "num_channels": self.num_channels,
+            "max_voltage": self.max_voltage,
+            "max_current": self.max_current,
+        }
 
-            return EquipmentStatus(
-                id=self.cached_info.id if self.cached_info else "unknown",
-                connected=self.connected,
-                firmware_version=firmware,
-                capabilities=capabilities,
-            )
-        except Exception as e:
-            return EquipmentStatus(
-                id=self.cached_info.id if self.cached_info else "unknown",
-                connected=False,
-                error=str(e),
-            )
+        return EquipmentStatus(
+            id=self.cached_info.id if self.cached_info else "unknown",
+            connected=self.connected,
+            firmware_version=firmware,
+            capabilities=capabilities,
+        )
 
     async def execute_command(self, command: str, parameters: dict) -> Any:
         """Execute a command on the power supply."""
