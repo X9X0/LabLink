@@ -1848,10 +1848,18 @@ class LabLinkClient:
         Example:
             await client.update_discovery_settings_async(scan_serial=True)
         """
+        # Convert boolean values to strings for aiohttp query parameters
+        str_settings = {}
+        for key, value in settings.items():
+            if isinstance(value, bool):
+                str_settings[key] = "true" if value else "false"
+            else:
+                str_settings[key] = value
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{self.api_base_url}/discovery/settings",
-                params=settings,
+                params=str_settings,
                 headers=self._session.headers  # Include auth headers if present
             ) as response:
                 response.raise_for_status()
