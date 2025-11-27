@@ -51,6 +51,7 @@ class EquipmentManager:
 
         if self.resource_manager:
             self.resource_manager.close()
+            self.resource_manager = None
 
     async def discover_devices(self) -> List[str]:
         """Discover available VISA devices using discovery manager."""
@@ -87,6 +88,12 @@ class EquipmentManager:
         """Connect to a device and add it to the manager."""
         async with self._lock:
             try:
+                # Ensure resource manager is initialized (lazy initialization)
+                if not self.resource_manager:
+                    logger.warning("Resource manager not initialized, initializing now...")
+                    self.resource_manager = ResourceManager("@py")
+                    logger.info("Resource manager initialized (lazy)")
+
                 # Create appropriate equipment instance based on model
                 equipment = self._create_equipment_instance(
                     resource_string, equipment_type, model
