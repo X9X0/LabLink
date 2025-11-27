@@ -497,7 +497,7 @@ class EquipmentPanel(QWidget):
             )
             return
 
-        # Show settings dialog
+        # Show settings dialog (blocking is OK here - happens before async work)
         settings_dialog = DiscoverySettingsDialog(self.client, self)
         if settings_dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -505,15 +505,6 @@ class EquipmentPanel(QWidget):
         # Get settings and start async discovery
         settings = settings_dialog.get_settings()
         logger.info(f"Applying discovery settings: {settings}")
-
-        # Show progress message
-        QMessageBox.information(
-            self, "Discovery Started",
-            "Equipment discovery is now running in the background.\n\n"
-            "This may take 10-30 seconds. The UI will remain responsive.\n\n"
-            "A dialog will appear when discovery completes.",
-            QMessageBox.StandardButton.Ok
-        )
 
         # Start async discovery (non-blocking)
         asyncio.create_task(self._discover_equipment_async(settings))
@@ -533,24 +524,41 @@ class EquipmentPanel(QWidget):
             resources = data.get("resources", [])
             discovered_count = len(resources)
 
+            # Use QTimer to schedule UI updates on the main Qt thread
+            # This prevents blocking the event loop from async context
+            from PyQt6.QtCore import QTimer
+
             if discovered_count > 0:
-                # Show connect dialog for discovered devices
-                from client.ui.connect_dialog import ConnectDeviceDialog
-                connect_dialog = ConnectDeviceDialog(resources, self.client, self)
-                if connect_dialog.exec() == QDialog.DialogCode.Accepted:
-                    # Device was connected, refresh the list
-                    self.refresh()
+                # Schedule the dialog to show on the main thread
+                QTimer.singleShot(0, lambda: self._show_connect_dialog(resources))
             else:
-                QMessageBox.information(
+                QTimer.singleShot(0, lambda: QMessageBox.information(
                     self, "Discovery Complete",
                     "No devices found.\n\nTry enabling different scan types (Serial, GPIB) or check your connections."
-                )
-
-            self.refresh()
+                ))
+                QTimer.singleShot(100, self.refresh)
 
         except Exception as e:
             logger.error(f"Error discovering equipment: {e}")
-            QMessageBox.warning(self, "Error", f"Discovery failed: {str(e)}")
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: QMessageBox.warning(
+                self, "Error", f"Discovery failed: {str(e)}"
+            ))
+
+    def _show_connect_dialog(self, resources):
+        """Show connect dialog on main thread after discovery completes.
+
+        Args:
+            resources: List of discovered resource strings
+        """
+        from client.ui.connect_dialog import ConnectDeviceDialog
+        connect_dialog = ConnectDeviceDialog(resources, self.client, self)
+        if connect_dialog.exec() == QDialog.DialogCode.Accepted:
+            # Device was connected, refresh the list
+            self.refresh()
+        else:
+            # User cancelled, still refresh in case something changed
+            self.refresh()
 
     def connect_equipment(self):
         """Connect to selected equipment."""
