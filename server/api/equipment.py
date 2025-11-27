@@ -134,9 +134,18 @@ async def get_device_status(equipment_id: str):
 async def get_device_readings(equipment_id: str):
     """Get current readings from a device."""
     try:
+        # Debug logging
+        all_equipment_ids = list(equipment_manager.equipment.keys())
+        logger.info(f"Getting readings for equipment_id: {equipment_id}")
+        logger.info(f"Available equipment IDs: {all_equipment_ids}")
+
         equipment = equipment_manager.get_equipment(equipment_id)
         if equipment is None:
-            raise HTTPException(status_code=404, detail="Device not found")
+            logger.error(f"Equipment {equipment_id} not found in manager. Available: {all_equipment_ids}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Device {equipment_id} not found. Available: {all_equipment_ids}"
+            )
 
         # Get readings from the equipment
         if hasattr(equipment, 'get_readings'):
@@ -156,7 +165,7 @@ async def get_device_readings(equipment_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting device readings: {e}")
+        logger.error(f"Error getting device readings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
