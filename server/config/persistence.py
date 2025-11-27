@@ -7,9 +7,10 @@ from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
-# Path to persistent config file
-CONFIG_DIR = Path("./config")
-RUNTIME_CONFIG_FILE = CONFIG_DIR / "runtime_settings.json"
+# Path to persistent config file - use data directory instead of config directory
+# to avoid permission issues and ensure it's in a writable location
+DATA_DIR = Path("./data")
+RUNTIME_CONFIG_FILE = DATA_DIR / "runtime_settings.json"
 
 
 def save_discovery_settings(settings: Dict[str, Any]) -> None:
@@ -19,8 +20,8 @@ def save_discovery_settings(settings: Dict[str, Any]) -> None:
         settings: Dictionary of discovery settings to persist
     """
     try:
-        # Ensure config directory exists
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        # Ensure data directory exists
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         # Load existing config or create new one
         if RUNTIME_CONFIG_FILE.exists():
