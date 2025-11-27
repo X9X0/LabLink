@@ -521,11 +521,12 @@ class EquipmentPanel(QWidget):
             discovered_count = len(resources)
 
             if discovered_count > 0:
-                QMessageBox.information(
-                    self, "Discovery Complete",
-                    f"Discovered {discovered_count} device(s):\n\n" + "\n".join(resources[:5]) +
-                    (f"\n...and {discovered_count - 5} more" if discovered_count > 5 else "")
-                )
+                # Show connect dialog for discovered devices
+                from client.ui.connect_dialog import ConnectDeviceDialog
+                connect_dialog = ConnectDeviceDialog(resources, self.client, self)
+                if connect_dialog.exec() == QDialog.DialogCode.Accepted:
+                    # Device was connected, refresh the list
+                    self.refresh()
             else:
                 QMessageBox.information(
                     self, "Discovery Complete",
