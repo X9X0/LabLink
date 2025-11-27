@@ -538,9 +538,7 @@ class EquipmentPanel(QWidget):
                 from client.ui.connect_dialog import ConnectDeviceDialog
                 connect_dialog = ConnectDeviceDialog(resources, self.client, self)
                 if connect_dialog.exec() == QDialog.DialogCode.Accepted:
-                    # Device was connected, wait a moment for server to update
-                    # then refresh the list
-                    await asyncio.sleep(0.5)
+                    # Device was connected, refresh the list
                     self.refresh()
             else:
                 QMessageBox.information(

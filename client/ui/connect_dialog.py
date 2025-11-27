@@ -1,6 +1,5 @@
 """Dialog for connecting to discovered equipment."""
 
-import asyncio
 import logging
 from typing import List
 
@@ -129,28 +128,21 @@ class ConnectDeviceDialog(QDialog):
         equipment_type = self.type_combo.currentText()
         model = self.model_combo.currentText()
 
-        # Disable connect button during connection
-        self.connect_btn.setEnabled(False)
-        self.connect_btn.setText("Connecting...")
-
-        # Start async connection (non-blocking)
-        asyncio.create_task(self._connect_device_async(resource_string, equipment_type, model))
-
-    async def _connect_device_async(self, resource_string: str, equipment_type: str, model: str):
-        """Perform device connection asynchronously (non-blocking).
-
-        Args:
-            resource_string: VISA resource string
-            equipment_type: Equipment type
-            model: Equipment model
-        """
         try:
-            # Call API to connect (async)
+            # Call API to connect (synchronous - connection is fast, no need for async)
             logger.info(f"Connecting to {resource_string} as {equipment_type} ({model})")
 
-            result = await self.client.connect_device_async(
-                resource_string, equipment_type, model
+            response = self.client._session.post(
+                f"{self.client.api_base_url}/equipment/connect",
+                json={
+                    "resource_string": resource_string,
+                    "equipment_type": equipment_type,
+                    "model": model,
+                },
             )
+            response.raise_for_status()
+
+            result = response.json()
 
             if result.get("equipment_id"):
                 self.connected = True
@@ -166,15 +158,9 @@ class ConnectDeviceDialog(QDialog):
                     "Failed",
                     f"Connection failed: {result.get('message', 'Unknown error')}",
                 )
-                # Re-enable button on failure
-                self.connect_btn.setEnabled(True)
-                self.connect_btn.setText("Connect")
 
         except Exception as e:
             logger.error(f"Error connecting to device: {e}")
             QMessageBox.critical(
                 self, "Error", f"Failed to connect to device:\n\n{str(e)}"
             )
-            # Re-enable button on error
-            self.connect_btn.setEnabled(True)
-            self.connect_btn.setText("Connect")
