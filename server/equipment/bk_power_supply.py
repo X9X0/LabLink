@@ -58,9 +58,15 @@ class BKPowerSupplyBase(BaseEquipment):
                 # Set timeout (10 seconds)
                 self.instrument.timeout = 10000
 
-                # Verify connection with IDN query
-                idn = await self._query("*IDN?")
-                logger.info(f"Connected to device: {idn}")
+                # Try to verify connection with IDN query
+                # Some BK Precision models may not support *IDN? immediately
+                try:
+                    idn = await self._query("*IDN?")
+                    logger.info(f"Connected to device: {idn}")
+                except Exception as e:
+                    logger.warning(f"*IDN? query failed: {e}, attempting connection anyway")
+                    # Device might not support *IDN? or need initialization
+                    # Continue connection attempt
 
                 self.connected = True
 
@@ -100,12 +106,21 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def get_info(self) -> EquipmentInfo:
         """Get power supply information."""
-        idn = await self._query("*IDN?")
-        parts = idn.split(",")
+        # Try to get IDN, but use defaults if it fails
+        manufacturer = self.manufacturer
+        model = self.model
+        serial = None
 
-        manufacturer = parts[0] if len(parts) > 0 else self.manufacturer
-        model = parts[1] if len(parts) > 1 else self.model
-        serial = parts[2] if len(parts) > 2 else None
+        try:
+            idn = await self._query("*IDN?")
+            parts = idn.split(",")
+            manufacturer = parts[0].strip() if len(parts) > 0 else self.manufacturer
+            model = parts[1].strip() if len(parts) > 1 else self.model
+            serial = parts[2].strip() if len(parts) > 2 else None
+            logger.info(f"Got device info from *IDN?: {manufacturer} {model}")
+        except Exception as e:
+            logger.warning(f"Could not query *IDN?, using defaults: {e}")
+            # Use default values set in __init__
 
         equipment_id = f"ps_{uuid.uuid4().hex[:8]}"
 
