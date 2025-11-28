@@ -1,5 +1,6 @@
 """BK Precision power supply drivers."""
 
+import asyncio
 import logging
 import uuid
 from typing import Any, Dict
@@ -42,9 +43,46 @@ class BKPowerSupplyBase(BaseEquipment):
         return response
 
     async def _bk_query(self, command: str) -> str:
-        """Send BK Precision command and parse response."""
-        response = await self._query(command)
-        return self._parse_bk_response(response)
+        """Send BK Precision command and parse response.
+
+        BK responses are formatted as: DATA\rOK\r
+        We need to read the full response, not just until the first \r
+        """
+        await self._ensure_connected()
+
+        loop = asyncio.get_event_loop()
+
+        # Send command (write_termination = '\r' is already set)
+        await loop.run_in_executor(None, self.instrument.write, command)
+
+        # Read full response - keep reading until we get OK\r or timeout
+        # Use read_bytes to get raw data instead of relying on read_termination
+        full_response = b''
+        start_time = loop.time()
+        timeout = self.instrument.timeout / 1000.0  # Convert ms to seconds
+
+        while True:
+            try:
+                # Read one byte at a time until we get the full response
+                chunk = await loop.run_in_executor(None, self.instrument.read_bytes, 1)
+                full_response += chunk
+
+                # Check if we've received the complete response (ends with OK\r)
+                if full_response.endswith(b'OK\r'):
+                    break
+
+                # Timeout check
+                if loop.time() - start_time > timeout:
+                    raise TimeoutError(f"Timeout waiting for OK terminator. Got: {full_response}")
+
+            except Exception as e:
+                if full_response:
+                    logger.error(f"Error reading response after {len(full_response)} bytes: {e}")
+                raise
+
+        # Decode and parse
+        response_str = full_response.decode('ascii', errors='ignore')
+        return self._parse_bk_response(response_str)
 
     async def connect(self):
         """Connect to the BK power supply with serial port configuration."""
