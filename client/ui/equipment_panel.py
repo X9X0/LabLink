@@ -601,12 +601,16 @@ class EquipmentPanel(QWidget):
 
             result = self.client.disconnect_equipment(equipment_id)
 
-            if result.get("success"):
+            # Server returns {"equipment_id": "...", "status": "disconnected"}
+            if result.get("status") == "disconnected":
                 QMessageBox.information(
                     self, "Success", "Equipment disconnected successfully"
                 )
+                # Clear selected equipment and UI
+                self.selected_equipment = None
+                self.readings_display.clear()
+                self.info_display.clear()
                 self.refresh()
-                self._on_equipment_selected()  # Refresh details
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Disconnection failed")
