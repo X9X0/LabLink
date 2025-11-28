@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import sys
+import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -452,13 +453,18 @@ class LabLinkClient:
 
         Args:
             equipment_id: Equipment ID
-            command: Command name
+            command: Command name (action to perform)
             parameters: Command parameters
 
         Returns:
             Command result
         """
-        payload = {"command": command, "parameters": parameters or {}}
+        payload = {
+            "command_id": str(uuid.uuid4()),
+            "equipment_id": equipment_id,
+            "action": command,
+            "parameters": parameters or {},
+        }
         response = self._session.post(
             f"{self.api_base_url}/equipment/{equipment_id}/command", json=payload
         )
