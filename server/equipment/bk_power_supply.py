@@ -37,6 +37,9 @@ class BKPowerSupplyBase(BaseEquipment):
         """Connect to the BK power supply with serial port configuration."""
         async with self._lock:
             try:
+                # Refresh resource manager if needed
+                self._refresh_resource_manager()
+
                 # Open the resource
                 self.instrument = self.resource_manager.open_resource(
                     self.resource_string
