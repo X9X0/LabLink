@@ -51,6 +51,10 @@ class LabLinkClient:
 
         self._session = requests.Session()
 
+        # Session ID for equipment lock management
+        self.session_id = str(uuid.uuid4())
+        logger.info(f"Client session ID: {self.session_id}")
+
         # Authentication state
         self.access_token = None
         self.refresh_token = None
@@ -464,6 +468,7 @@ class LabLinkClient:
             "equipment_id": equipment_id,
             "action": command,
             "parameters": parameters or {},
+            "session_id": self.session_id,
         }
         response = self._session.post(
             f"{self.api_base_url}/equipment/{equipment_id}/command", json=payload
@@ -568,6 +573,56 @@ class LabLinkClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ==================== Equipment Lock Methods ====================
+
+    def acquire_lock(
+        self, equipment_id: str, lock_mode: str = "EXCLUSIVE", timeout_seconds: int = 300
+    ) -> Dict[str, Any]:
+        """Acquire a lock on equipment.
+
+        Args:
+            equipment_id: Equipment ID to lock
+            lock_mode: Lock mode ("EXCLUSIVE" or "OBSERVER")
+            timeout_seconds: Lock timeout in seconds (0 = no timeout)
+
+        Returns:
+            Lock acquisition result
+        """
+        payload = {
+            "equipment_id": equipment_id,
+            "session_id": self.session_id,
+            "lock_mode": lock_mode,
+            "timeout_seconds": timeout_seconds,
+            "queue_if_busy": False,
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/locks/acquire", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def release_lock(self, equipment_id: str) -> Dict[str, Any]:
+        """Release a lock on equipment.
+
+        Args:
+            equipment_id: Equipment ID to unlock
+
+        Returns:
+            Lock release result
+        """
+        payload = {
+            "equipment_id": equipment_id,
+            "session_id": self.session_id,
+            "force": False,
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/locks/release", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    # ==================== Acquisition Methods ====================
 
     def get_acquisition_status(self, acquisition_id: str) -> Dict[str, Any]:
         """Get acquisition session status.

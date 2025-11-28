@@ -470,9 +470,26 @@ class ControlPanel(QWidget):
         """Handle equipment selection."""
         selected_items = self.equipment_list_widget.selectedItems()
         if not selected_items:
+            # Release lock on previously selected equipment
+            if self.selected_equipment and self.client:
+                try:
+                    self.client.release_lock(self.selected_equipment.equipment_id)
+                    logger.info(f"Released lock on {self.selected_equipment.equipment_id}")
+                except Exception as e:
+                    logger.error(f"Error releasing lock: {e}")
+            self.selected_equipment = None
+            self._stop_data_acquisition()
             return
 
         equipment_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+
+        # Release lock on previously selected equipment
+        if self.selected_equipment and self.selected_equipment.equipment_id != equipment_id and self.client:
+            try:
+                self.client.release_lock(self.selected_equipment.equipment_id)
+                logger.info(f"Released lock on {self.selected_equipment.equipment_id}")
+            except Exception as e:
+                logger.error(f"Error releasing lock: {e}")
 
         # Find equipment in list
         for equipment in self.equipment_list:
@@ -481,6 +498,16 @@ class ControlPanel(QWidget):
                 self.equipment_info_label.setText(
                     f"{equipment.name} - {equipment.manufacturer} {equipment.model}"
                 )
+
+                # Acquire exclusive lock for control
+                if self.client:
+                    try:
+                        self.client.acquire_lock(equipment_id, lock_mode="EXCLUSIVE")
+                        logger.info(f"Acquired exclusive lock on {equipment_id}")
+                    except Exception as e:
+                        logger.error(f"Error acquiring lock: {e}")
+                        # Continue anyway - maybe locks are disabled
+
                 self.equipment_selected.emit(equipment_id)
                 # Start reading data
                 self._start_data_acquisition()
