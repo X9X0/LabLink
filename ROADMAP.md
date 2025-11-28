@@ -83,6 +83,19 @@ LabLink has evolved through 27 development iterations (v0.1.0 through v0.27.0) b
   - ✅ All 5 high-risk areas mitigated
   - ✅ Documentation: `docs/TEST_COVERAGE_IMPROVEMENT_PLAN.md`
 
+**Equipment Discovery UX Improvements** (November 2025)
+- **Async Discovery Implementation**: Non-blocking equipment discovery
+  - ✅ Async HTTP with aiohttp for 10-30s VISA scans
+  - ✅ UI remains fully responsive during discovery
+  - ✅ QTimer-based dialog scheduling prevents Qt event loop blocking
+  - ✅ Boolean parameter conversion for aiohttp compatibility
+- **Equipment Connection Fixes**: Reliable device connection workflow
+  - ✅ Field name mapping (server `id` ↔ client `equipment_id`)
+  - ✅ Resource string mapping (`resource_string` ↔ `resource_name`)
+  - ✅ Equipment readings endpoint (`GET /equipment/{id}/readings`)
+  - ✅ BK Precision 1902B power supply support (60V/15A, 900W)
+- **Impact**: Eliminated "Python3 has stopped responding" errors, equipment now appears correctly in UI after connection
+
 For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive/](docs/archive/).
 
 ---

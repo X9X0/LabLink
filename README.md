@@ -31,8 +31,14 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
   - [x] Equipment and acquisition data streaming
   - [x] <100ms latency for real-time events (vs 5-10s polling)
   - [x] 80% reduction in server load (event-driven vs polling)
-- [x] Device discovery via VISA
+- [x] **Equipment discovery & connection** (async VISA scanning with responsive UI)
+  - [x] Non-blocking async discovery (UI remains responsive during 10-30s scans)
+  - [x] Multi-interface support (TCPIP, USB, GPIB, Serial)
+  - [x] Real-time connection dialog with equipment type/model selection
+  - [x] Automatic device identification and classification
+  - [x] BK Precision power supply support (1685B, 9130B, 9205B, 9206B, 1902B)
 - [x] Multi-device connection management
+- [x] Equipment readings endpoint (voltage, current, power, status)
 - [x] Configurable data buffering and formats
 - [x] Complete equipment drivers for Rigol and BK Precision devices
 - [x] Comprehensive configuration management (65+ settings)

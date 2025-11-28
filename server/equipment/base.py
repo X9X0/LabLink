@@ -67,7 +67,7 @@ class BaseEquipment(ABC):
 
     async def _write(self, command: str):
         """Write a command to the instrument."""
-        if not self.instrument or not self.connected:
+        if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
         import time
@@ -102,7 +102,7 @@ class BaseEquipment(ABC):
 
     async def _query(self, command: str) -> str:
         """Query the instrument and return response."""
-        if not self.instrument or not self.connected:
+        if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
         import time
@@ -140,7 +140,7 @@ class BaseEquipment(ABC):
 
     async def _query_binary(self, command: str) -> bytes:
         """Query the instrument and return binary response."""
-        if not self.instrument or not self.connected:
+        if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
         try:

@@ -60,7 +60,7 @@ class DiscoverDevicesResponse(BaseModel):
     resources: List[str]
 
 
-@router.get("/discover", response_model=DiscoverDevicesResponse)
+@router.post("/discover", response_model=DiscoverDevicesResponse)
 async def discover_devices():
     """Discover available VISA devices."""
     try:
@@ -127,6 +127,45 @@ async def get_device_status(equipment_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting device status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{equipment_id}/readings")
+async def get_device_readings(equipment_id: str):
+    """Get current readings from a device."""
+    try:
+        # Debug logging
+        all_equipment_ids = list(equipment_manager.equipment.keys())
+        logger.info(f"Getting readings for equipment_id: {equipment_id}")
+        logger.info(f"Available equipment IDs: {all_equipment_ids}")
+
+        equipment = equipment_manager.get_equipment(equipment_id)
+        if equipment is None:
+            logger.error(f"Equipment {equipment_id} not found in manager. Available: {all_equipment_ids}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Device {equipment_id} not found. Available: {all_equipment_ids}"
+            )
+
+        # Get readings from the equipment
+        if hasattr(equipment, 'get_readings'):
+            readings = await equipment.get_readings()
+            # Convert to dict for JSON response
+            if hasattr(readings, 'dict'):
+                return readings.dict()
+            elif hasattr(readings, '__dict__'):
+                return readings.__dict__
+            else:
+                return {"data": str(readings)}
+        else:
+            raise HTTPException(
+                status_code=501,
+                detail=f"Equipment type {equipment.__class__.__name__} does not support readings"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting device readings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

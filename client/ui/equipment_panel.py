@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Set
 
 from models.equipment import ConnectionStatus, Equipment
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
-from PyQt6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
+                             QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem,
                              QMessageBox, QPushButton, QSplitter, QTextEdit,
                              QVBoxLayout, QWidget)
@@ -14,6 +15,83 @@ from PyQt6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel,
 from client.api.client import LabLinkClient
 
 logger = logging.getLogger(__name__)
+
+
+class DiscoverySettingsDialog(QDialog):
+    """Dialog for configuring discovery settings."""
+
+    def __init__(self, client, parent=None):
+        """Initialize discovery settings dialog."""
+        super().__init__(parent)
+        self.client = client
+        self.setWindowTitle("Discovery Settings")
+        self.setModal(True)
+        self.resize(400, 300)
+
+        layout = QVBoxLayout(self)
+
+        # Header
+        header = QLabel("<h3>Equipment Discovery Settings</h3>")
+        layout.addWidget(header)
+
+        info = QLabel("Enable the types of equipment you want to discover:")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        # Settings group
+        settings_group = QGroupBox("Scan Types")
+        settings_layout = QVBoxLayout()
+
+        self.tcpip_checkbox = QCheckBox("TCPIP/Network devices")
+        settings_layout.addWidget(self.tcpip_checkbox)
+
+        self.usb_checkbox = QCheckBox("USB devices")
+        settings_layout.addWidget(self.usb_checkbox)
+
+        self.serial_checkbox = QCheckBox("Serial devices (COM/ttyUSB)")
+        settings_layout.addWidget(self.serial_checkbox)
+
+        self.gpib_checkbox = QCheckBox("GPIB devices")
+        settings_layout.addWidget(self.gpib_checkbox)
+
+        settings_group.setLayout(settings_layout)
+        layout.addWidget(settings_group)
+
+        # Load current settings
+        self._load_settings()
+
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _load_settings(self):
+        """Load current discovery settings from server."""
+        try:
+            settings = self.client.get_discovery_settings()
+            self.tcpip_checkbox.setChecked(settings.get("scan_tcpip", True))
+            self.usb_checkbox.setChecked(settings.get("scan_usb", True))
+            self.serial_checkbox.setChecked(settings.get("scan_serial", False))
+            self.gpib_checkbox.setChecked(settings.get("scan_gpib", False))
+        except Exception as e:
+            logger.error(f"Error loading discovery settings: {e}")
+            # Use defaults
+            self.tcpip_checkbox.setChecked(True)
+            self.usb_checkbox.setChecked(True)
+            self.serial_checkbox.setChecked(False)
+            self.gpib_checkbox.setChecked(False)
+
+    def get_settings(self):
+        """Get selected settings as a dictionary."""
+        return {
+            "scan_tcpip": self.tcpip_checkbox.isChecked(),
+            "scan_usb": self.usb_checkbox.isChecked(),
+            "scan_serial": self.serial_checkbox.isChecked(),
+            "scan_gpib": self.gpib_checkbox.isChecked(),
+        }
 
 
 class WebSocketSignals(QObject):
@@ -419,25 +497,68 @@ class EquipmentPanel(QWidget):
             )
             return
 
+        # Show settings dialog (blocking is OK here - happens before async work)
+        settings_dialog = DiscoverySettingsDialog(self.client, self)
+        if settings_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Get settings and start async discovery
+        settings = settings_dialog.get_settings()
+        logger.info(f"Applying discovery settings: {settings}")
+
+        # Start async discovery (non-blocking)
+        asyncio.create_task(self._discover_equipment_async(settings))
+
+    async def _discover_equipment_async(self, settings: dict):
+        """Perform equipment discovery asynchronously (non-blocking).
+
+        Args:
+            settings: Discovery settings dictionary
+        """
         try:
-            # Call discover endpoint
-            response = self.client._session.post(
-                f"{self.client.api_base_url}/equipment/discover"
-            )
-            response.raise_for_status()
+            # Update settings on server (async)
+            await self.client.update_discovery_settings_async(**settings)
 
-            data = response.json()
-            discovered_count = data.get("discovered_count", 0)
+            # Call discover endpoint (async - this is the long-running operation)
+            data = await self.client.discover_equipment_async()
+            resources = data.get("resources", [])
+            discovered_count = len(resources)
 
-            QMessageBox.information(
-                self, "Discovery Complete", f"Discovered {discovered_count} device(s)"
-            )
+            # Use QTimer to schedule UI updates on the main Qt thread
+            # This prevents blocking the event loop from async context
+            from PyQt6.QtCore import QTimer
 
-            self.refresh()
+            if discovered_count > 0:
+                # Schedule the dialog to show on the main thread
+                QTimer.singleShot(0, lambda: self._show_connect_dialog(resources))
+            else:
+                QTimer.singleShot(0, lambda: QMessageBox.information(
+                    self, "Discovery Complete",
+                    "No devices found.\n\nTry enabling different scan types (Serial, GPIB) or check your connections."
+                ))
+                QTimer.singleShot(100, self.refresh)
 
         except Exception as e:
             logger.error(f"Error discovering equipment: {e}")
-            QMessageBox.warning(self, "Error", f"Discovery failed: {str(e)}")
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: QMessageBox.warning(
+                self, "Error", f"Discovery failed: {str(e)}"
+            ))
+
+    def _show_connect_dialog(self, resources):
+        """Show connect dialog on main thread after discovery completes.
+
+        Args:
+            resources: List of discovered resource strings
+        """
+        from client.ui.connect_dialog import ConnectDeviceDialog
+        connect_dialog = ConnectDeviceDialog(resources, self.client, self)
+        if connect_dialog.exec() == QDialog.DialogCode.Accepted:
+            # Device was connected, refresh the list
+            self.refresh()
+        else:
+            # User cancelled, still refresh in case something changed
+            self.refresh()
 
     def connect_equipment(self):
         """Connect to selected equipment."""

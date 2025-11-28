@@ -33,6 +33,51 @@ class BKPowerSupplyBase(BaseEquipment):
         self._current_voltage = 0.0  # Track current voltage for slew rate limiting
         self._current_current = 0.0  # Track current current for slew rate limiting
 
+    async def connect(self):
+        """Connect to the BK power supply with serial port configuration."""
+        async with self._lock:
+            try:
+                # Open the resource
+                self.instrument = self.resource_manager.open_resource(
+                    self.resource_string
+                )
+
+                # Configure serial port settings for BK Precision devices
+                # Baud rate: 9600, Data bits: 8, Parity: None, Stop bits: 1
+                if "ASRL" in self.resource_string:  # Serial/ASRL connection
+                    self.instrument.baud_rate = 9600
+                    self.instrument.data_bits = 8
+                    self.instrument.parity = 0  # None
+                    self.instrument.stop_bits = 10  # 1 stop bit (constant value)
+                    self.instrument.flow_control = 0  # None
+                    # BK Precision devices typically use CR+LF termination
+                    self.instrument.read_termination = '\r\n'
+                    self.instrument.write_termination = '\r\n'
+                    logger.info(f"Configured serial port: 9600 8N1 with CR+LF termination")
+
+                # Set timeout (10 seconds)
+                self.instrument.timeout = 10000
+
+                # Try to verify connection with IDN query
+                # Some BK Precision models may not support *IDN? immediately
+                try:
+                    idn = await self._query("*IDN?")
+                    logger.info(f"Connected to device: {idn}")
+                except Exception as e:
+                    logger.warning(f"*IDN? query failed: {e}, attempting connection anyway")
+                    # Device might not support *IDN? or need initialization
+                    # Continue connection attempt
+
+                self.connected = True
+
+                # Cache equipment info
+                self.cached_info = await self.get_info()
+
+            except Exception as e:
+                logger.error(f"Failed to connect to {self.resource_string}: {e}")
+                self.connected = False
+                raise
+
     def _initialize_safety(self, equipment_id: str):
         """Initialize safety validator with appropriate limits."""
         if not settings.enable_safety_limits:
@@ -61,12 +106,21 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def get_info(self) -> EquipmentInfo:
         """Get power supply information."""
-        idn = await self._query("*IDN?")
-        parts = idn.split(",")
+        # Try to get IDN, but use defaults if it fails
+        manufacturer = self.manufacturer
+        model = self.model
+        serial = None
 
-        manufacturer = parts[0] if len(parts) > 0 else self.manufacturer
-        model = parts[1] if len(parts) > 1 else self.model
-        serial = parts[2] if len(parts) > 2 else None
+        try:
+            idn = await self._query("*IDN?")
+            parts = idn.split(",")
+            manufacturer = parts[0].strip() if len(parts) > 0 else self.manufacturer
+            model = parts[1].strip() if len(parts) > 1 else self.model
+            serial = parts[2].strip() if len(parts) > 2 else None
+            logger.info(f"Got device info from *IDN?: {manufacturer} {model}")
+        except Exception as e:
+            logger.warning(f"Could not query *IDN?, using defaults: {e}")
+            # Use default values set in __init__
 
         equipment_id = f"ps_{uuid.uuid4().hex[:8]}"
 
@@ -85,29 +139,28 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def get_status(self) -> EquipmentStatus:
         """Get power supply status."""
+        # Try to get firmware info from *IDN?, but don't fail if it doesn't work
+        firmware = None
         try:
             idn = await self._query("*IDN?")
             parts = idn.split(",")
             firmware = parts[3] if len(parts) > 3 else None
+        except Exception:
+            # *IDN? not supported or timed out, continue without firmware info
+            pass
 
-            capabilities = {
-                "num_channels": self.num_channels,
-                "max_voltage": self.max_voltage,
-                "max_current": self.max_current,
-            }
+        capabilities = {
+            "num_channels": self.num_channels,
+            "max_voltage": self.max_voltage,
+            "max_current": self.max_current,
+        }
 
-            return EquipmentStatus(
-                id=self.cached_info.id if self.cached_info else "unknown",
-                connected=self.connected,
-                firmware_version=firmware,
-                capabilities=capabilities,
-            )
-        except Exception as e:
-            return EquipmentStatus(
-                id=self.cached_info.id if self.cached_info else "unknown",
-                connected=False,
-                error=str(e),
-            )
+        return EquipmentStatus(
+            id=self.cached_info.id if self.cached_info else "unknown",
+            connected=self.connected,
+            firmware_version=firmware,
+            capabilities=capabilities,
+        )
 
     async def execute_command(self, command: str, parameters: dict) -> Any:
         """Execute a command on the power supply."""
@@ -324,3 +377,16 @@ class BK1685B(BKPowerSupplyBase):
         # 1685B specs: 0-18V, 0-5A
         self.max_voltage = 18.0
         self.max_current = 5.0
+
+
+class BK1902B(BKPowerSupplyBase):
+    """Driver for BK Precision 1902B DC Power Supply."""
+
+    def __init__(self, resource_manager, resource_string: str):
+        """Initialize BK 1902B."""
+        super().__init__(resource_manager, resource_string)
+        self.model = "1902B"
+        self.num_channels = 1
+        # 1902B specs: 1-60V, 0-15A, 900W
+        self.max_voltage = 60.0
+        self.max_current = 15.0

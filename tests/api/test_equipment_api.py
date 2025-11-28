@@ -21,7 +21,7 @@ class TestEquipmentDiscovery:
         # Patch the manager in the equipment module
         with patch("api.equipment.equipment_manager", mock_equipment_manager):
             # Act
-            response = client.get("/api/equipment/discover")
+            response = client.post("/api/equipment/discover")
 
             # Assert
             assert response.status_code == 200
@@ -38,7 +38,7 @@ class TestEquipmentDiscovery:
 
         with patch("api.equipment.equipment_manager", mock_equipment_manager):
             # Act
-            response = client.get("/api/equipment/discover")
+            response = client.post("/api/equipment/discover")
 
             # Assert
             assert response.status_code == 200
@@ -52,7 +52,7 @@ class TestEquipmentDiscovery:
 
         with patch("api.equipment.equipment_manager", mock_equipment_manager):
             # Act
-            response = client.get("/api/equipment/discover")
+            response = client.post("/api/equipment/discover")
 
             # Assert
             assert response.status_code == 500
@@ -304,7 +304,7 @@ class TestEquipmentWorkflow:
              patch("server.api.equipment.lock_manager", mock_lock_manager):
 
             # Step 1: Discover devices
-            discover_response = client.get("/api/equipment/discover")
+            discover_response = client.post("/api/equipment/discover")
             assert discover_response.status_code == 200
             resources = discover_response.json()["resources"]
             assert len(resources) > 0

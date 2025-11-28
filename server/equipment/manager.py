@@ -10,8 +10,7 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_electronic_load import BK1902B
-from .bk_power_supply import BK1685B, BK9130B, BK9205B, BK9206B
+from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
 from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_oscilloscope import MockOscilloscope
 from .mock.mock_power_supply import MockPowerSupply
@@ -52,19 +51,36 @@ class EquipmentManager:
 
         if self.resource_manager:
             self.resource_manager.close()
+            self.resource_manager = None
 
     async def discover_devices(self) -> List[str]:
-        """Discover available VISA devices."""
-        if not self.resource_manager:
-            return []
-
+        """Discover available VISA devices using discovery manager."""
         try:
-            resources = self.resource_manager.list_resources()
-            logger.info(f"Discovered VISA resources: {resources}")
-            return list(resources)
+            # Use discovery manager for comprehensive discovery with filtering
+            from discovery import get_discovery_manager
+
+            discovery_manager = get_discovery_manager()
+            result = await discovery_manager.scan()
+
+            # Extract resource names from discovered devices
+            resources = [device.resource_name for device in result.devices]
+            logger.info(f"Discovered {len(resources)} VISA resources via discovery manager")
+            return resources
+
         except Exception as e:
-            logger.error(f"Error discovering devices: {e}")
-            return []
+            # Fallback to direct VISA scanning if discovery manager not available
+            logger.warning(f"Discovery manager not available, falling back to direct VISA scan: {e}")
+
+            if not self.resource_manager:
+                return []
+
+            try:
+                resources = self.resource_manager.list_resources()
+                logger.info(f"Discovered VISA resources (fallback): {resources}")
+                return list(resources)
+            except Exception as e2:
+                logger.error(f"Error discovering devices: {e2}")
+                return []
 
     async def connect_device(
         self, resource_string: str, equipment_type: EquipmentType, model: str
@@ -72,6 +88,26 @@ class EquipmentManager:
         """Connect to a device and add it to the manager."""
         async with self._lock:
             try:
+                # Ensure resource manager is initialized (lazy initialization)
+                # Always create a new one if None or invalid
+                if not self.resource_manager:
+                    logger.warning("Resource manager not initialized, initializing now...")
+                    self.resource_manager = ResourceManager("@py")
+                    logger.info("Resource manager initialized (lazy)")
+                else:
+                    # Try to use existing resource manager, recreate if closed
+                    try:
+                        # Test if resource manager is valid by attempting to list resources
+                        _ = self.resource_manager.list_resources()
+                    except Exception:
+                        logger.warning("Resource manager invalid, recreating...")
+                        try:
+                            self.resource_manager.close()
+                        except Exception:
+                            pass
+                        self.resource_manager = ResourceManager("@py")
+                        logger.info("Resource manager recreated")
+
                 # Create appropriate equipment instance based on model
                 equipment = self._create_equipment_instance(
                     resource_string, equipment_type, model
@@ -153,8 +189,6 @@ class EquipmentManager:
             return BK9130B(self.resource_manager, resource_string)
         elif "1685" in model_upper:
             return BK1685B(self.resource_manager, resource_string)
-
-        # BK Precision electronic loads
         elif "1902" in model_upper:
             return BK1902B(self.resource_manager, resource_string)
 
