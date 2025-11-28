@@ -57,6 +57,37 @@ class BaseEquipment(ABC):
         except Exception:
             return False
 
+    def _is_resource_manager_valid(self) -> bool:
+        """Check if the resource manager is still valid."""
+        if not self.resource_manager:
+            return False
+
+        try:
+            # Try to list resources to check if manager is still valid
+            _ = self.resource_manager.list_resources()
+            return True
+        except Exception:
+            return False
+
+    def _refresh_resource_manager(self):
+        """Refresh the resource manager if it's invalid."""
+        if not self._is_resource_manager_valid():
+            logger.warning(f"Resource manager invalid, creating new one for {self.resource_string}")
+            try:
+                # Close the old one if possible
+                if self.resource_manager:
+                    try:
+                        self.resource_manager.close()
+                    except Exception:
+                        pass
+                # Create a new resource manager
+                from pyvisa import ResourceManager
+                self.resource_manager = ResourceManager("@py")
+                logger.info("Created new resource manager")
+            except Exception as e:
+                logger.error(f"Failed to create new resource manager: {e}")
+                raise
+
     async def _ensure_connected(self):
         """Ensure the instrument is connected and session is valid.
 
@@ -80,6 +111,9 @@ class BaseEquipment(ABC):
             try:
                 # Set flag to prevent recursion during connection
                 self._is_connecting = True
+
+                # Ensure resource manager is valid before opening resource
+                self._refresh_resource_manager()
 
                 # Open the resource
                 self.instrument = self.resource_manager.open_resource(
