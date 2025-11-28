@@ -613,16 +613,32 @@ class ControlPanel(QWidget):
 
         try:
             readings = self.client.get_readings(self.selected_equipment.equipment_id)
-            voltage = readings.get("voltage_actual", 0.0)
+            voltage_actual = readings.get("voltage_actual", 0.0)
+            voltage_set = readings.get("voltage_set", 0.0)
 
-            # Update displays
-            self.voltage_display.setText(f"{voltage:.2f} V")
-            self.voltage_gauge.set_value(voltage)
+            # Update control knobs to show setpoint (without triggering callbacks)
+            self.voltage_dial.blockSignals(True)
+            self.voltage_spinbox.blockSignals(True)
+            self.voltage_dial.setValue(int(voltage_set * 10))
+            self.voltage_spinbox.setValue(voltage_set)
+            self.voltage_dial.blockSignals(False)
+            self.voltage_spinbox.blockSignals(False)
+
+            # Update displays with actual measured values
+            self.voltage_display.setText(f"{voltage_actual:.2f} V")
+            self.voltage_gauge.set_value(voltage_actual)
 
             # Update graph
             timestamp = len(self.voltage_data)
-            self.voltage_data.append(voltage)
+            self.voltage_data.append(voltage_actual)
             self.time_data.append(timestamp)
+
+            # Update output button state
+            output_enabled = readings.get("output_enabled", False)
+            self.output_button.blockSignals(True)
+            self.output_button.setChecked(output_enabled)
+            self.output_button.setText("Output: ON" if output_enabled else "Output: OFF")
+            self.output_button.blockSignals(False)
 
             # Update mode indicators
             if readings.get("in_cv_mode"):
@@ -646,15 +662,24 @@ class ControlPanel(QWidget):
 
         try:
             readings = self.client.get_readings(self.selected_equipment.equipment_id)
-            current = readings.get("current_actual", 0.0)
+            current_actual = readings.get("current_actual", 0.0)
+            current_set = readings.get("current_set", 0.0)
 
-            # Update displays
-            self.current_display.setText(f"{current:.3f} A")
-            self.current_gauge.set_value(current)
+            # Update control knobs to show setpoint (without triggering callbacks)
+            self.current_dial.blockSignals(True)
+            self.current_spinbox.blockSignals(True)
+            self.current_dial.setValue(int(current_set * 100))
+            self.current_spinbox.setValue(current_set)
+            self.current_dial.blockSignals(False)
+            self.current_spinbox.blockSignals(False)
+
+            # Update displays with actual measured values
+            self.current_display.setText(f"{current_actual:.3f} A")
+            self.current_gauge.set_value(current_actual)
 
             # Update graph
             timestamp = len(self.current_data)
-            self.current_data.append(current)
+            self.current_data.append(current_actual)
 
             # Update graph series
             self._update_graph()
