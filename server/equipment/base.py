@@ -1,6 +1,7 @@
 """Base class for all equipment."""
 
 import asyncio
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Optional
@@ -12,6 +13,23 @@ from shared.models.equipment import (ConnectionType, EquipmentInfo,
                                      EquipmentStatus, EquipmentType)
 
 logger = logging.getLogger(__name__)
+
+
+def generate_equipment_id(resource_string: str, prefix: str) -> str:
+    """Generate a deterministic equipment ID from the resource string.
+
+    Args:
+        resource_string: The VISA resource string (e.g., "TCPIP::192.168.1.100::INSTR")
+        prefix: The prefix to use for the ID (e.g., "ps_", "scope_", "load_")
+
+    Returns:
+        A deterministic equipment ID (e.g., "ps_a1b2c3d4")
+    """
+    # Create a hash of the resource string
+    hash_obj = hashlib.sha256(resource_string.encode())
+    # Take first 8 characters of hex digest for a compact ID
+    hash_hex = hash_obj.hexdigest()[:8]
+    return f"{prefix}{hash_hex}"
 
 
 class BaseEquipment(ABC):

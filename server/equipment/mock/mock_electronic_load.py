@@ -72,7 +72,9 @@ class MockElectronicLoad:
 
     async def get_info(self) -> EquipmentInfo:
         """Get electronic load information."""
-        equipment_id = f"load_{uuid.uuid4().hex[:8]}"
+        # Generate deterministic ID from resource string
+        from ..base import generate_equipment_id
+        equipment_id = generate_equipment_id(self.resource_string, "load_")
 
         return EquipmentInfo(
             id=equipment_id,
