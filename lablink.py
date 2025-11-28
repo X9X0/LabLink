@@ -854,6 +854,7 @@ class CheckWorker(QThread):
             'pyvisa-py': 'pyvisa_py',
             'PyQt6-Qt6': 'PyQt6',  # PyQt6-Qt6 is just Qt binaries, check PyQt6 instead
             'PyQt6-Charts': 'PyQt6.QtCharts',  # PyQt6-Charts imports as PyQt6.QtCharts
+            'PyQt6-Charts-Qt6': 'PyQt6.QtCharts',  # PyQt6-Charts-Qt6 is just binaries, check PyQt6.QtCharts instead
             'pyserial': 'serial',  # pyserial package imports as 'serial'
             'pyusb': 'usb',  # pyusb package imports as 'usb'
             'PyJWT': 'jwt',  # PyJWT package imports as 'jwt'
