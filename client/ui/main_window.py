@@ -15,6 +15,7 @@ from client.api.client import LabLinkClient
 from client.ui.acquisition_panel import AcquisitionPanel
 from client.ui.alarm_panel import AlarmPanel
 from client.ui.connection_dialog import ConnectionDialog
+from client.ui.control_panel import ControlPanel
 from client.ui.diagnostics_panel import DiagnosticsPanel
 from client.ui.equipment_panel import EquipmentPanel
 from client.ui.login_dialog import LoginDialog
@@ -101,6 +102,10 @@ class MainWindow(QMainWindow):
         # Equipment control panel
         self.equipment_panel = EquipmentPanel()
         self.tab_widget.addTab(self.equipment_panel, "Equipment")
+
+        # Control panel for equipment control and visualization
+        self.control_panel = ControlPanel()
+        self.tab_widget.addTab(self.control_panel, "Control")
 
         # Data acquisition panel
         self.acquisition_panel = AcquisitionPanel()
@@ -411,6 +416,7 @@ class MainWindow(QMainWindow):
 
         # Set client for all panels
         self.equipment_panel.set_client(self.client)
+        self.control_panel.set_client(self.client)
         self.acquisition_panel.set_client(self.client)
         self.alarm_panel.set_client(self.client)
         self.scheduler_panel.set_client(self.client)
