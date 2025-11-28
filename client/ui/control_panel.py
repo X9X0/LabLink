@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QPushButton, QRadioButton, QSplitter,
     QVBoxLayout, QWidget
 )
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtGui import QFont, QPalette, QColor, QPainter
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from client.api.client import LabLinkClient
