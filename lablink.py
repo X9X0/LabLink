@@ -879,7 +879,13 @@ class CheckWorker(QThread):
             for pkg, import_name in import_checks:
                 # Use proper multiline try/except blocks
                 batch_check += f"try:\n"
-                batch_check += f"    __import__('{import_name}')\n"
+                # Handle dotted imports (e.g., 'PyQt6.QtCharts') correctly
+                if '.' in import_name:
+                    # For dotted imports, use fromlist to actually import the submodule
+                    parts = import_name.rsplit('.', 1)
+                    batch_check += f"    __import__('{import_name}', fromlist=['{parts[1]}'])\n"
+                else:
+                    batch_check += f"    __import__('{import_name}')\n"
                 batch_check += f"    results['{pkg}'] = 'OK'\n"
                 batch_check += f"except Exception:\n"
                 batch_check += f"    results['{pkg}'] = 'MISS'\n"
