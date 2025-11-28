@@ -33,6 +33,19 @@ class BKPowerSupplyBase(BaseEquipment):
         self._current_voltage = 0.0  # Track current voltage for slew rate limiting
         self._current_current = 0.0  # Track current current for slew rate limiting
 
+    def _parse_bk_response(self, response: str) -> str:
+        """Parse BK Precision response and remove OK suffix."""
+        # BK responses end with \rOK\r
+        response = response.strip()
+        if response.endswith('OK'):
+            response = response[:-2].strip()
+        return response
+
+    async def _bk_query(self, command: str) -> str:
+        """Send BK Precision command and parse response."""
+        response = await self._query(command)
+        return self._parse_bk_response(response)
+
     async def connect(self):
         """Connect to the BK power supply with serial port configuration."""
         async with self._lock:
@@ -61,23 +74,21 @@ class BKPowerSupplyBase(BaseEquipment):
                     self.instrument.parity = 0  # None
                     self.instrument.stop_bits = 10  # 1 stop bit (constant value)
                     self.instrument.flow_control = 0  # None
-                    # BK Precision devices typically use CR+LF termination
-                    self.instrument.read_termination = '\r\n'
-                    self.instrument.write_termination = '\r\n'
-                    logger.info(f"Configured serial port: 9600 8N1 with CR+LF termination")
+                    # BK Precision 1900B series uses CR only (not CR+LF)
+                    self.instrument.read_termination = '\r'
+                    self.instrument.write_termination = '\r'
+                    logger.info(f"Configured serial port: 9600 8N1 with CR termination")
 
-                # Set timeout (10 seconds)
-                self.instrument.timeout = 10000
+                # Set timeout (2 seconds - BK responds quickly)
+                self.instrument.timeout = 2000
 
-                # Try to verify connection with IDN query
-                # Some BK Precision models may not support *IDN? immediately
+                # Verify connection with GMAX command (BK Precision proprietary)
+                # GMAX returns max voltage and current: VVVCCC format
                 try:
-                    idn = await self._query("*IDN?")
-                    logger.info(f"Connected to device: {idn}")
+                    gmax_response = await self._bk_query("GMAX")
+                    logger.info(f"Connected to BK device, GMAX response: {gmax_response}")
                 except Exception as e:
-                    logger.warning(f"*IDN? query failed: {e}, attempting connection anyway")
-                    # Device might not support *IDN? or need initialization
-                    # Continue connection attempt
+                    logger.warning(f"GMAX query failed: {e}, attempting connection anyway")
 
                 self.connected = True
 
@@ -117,21 +128,21 @@ class BKPowerSupplyBase(BaseEquipment):
 
     async def get_info(self) -> EquipmentInfo:
         """Get power supply information."""
-        # Try to get IDN, but use defaults if it fails
+        # BK Precision 1900B series doesn't support *IDN? - use model info
         manufacturer = self.manufacturer
         model = self.model
         serial = None
 
+        # Try to get GMAX to verify connection and get max values
         try:
-            idn = await self._query("*IDN?")
-            parts = idn.split(",")
-            manufacturer = parts[0].strip() if len(parts) > 0 else self.manufacturer
-            model = parts[1].strip() if len(parts) > 1 else self.model
-            serial = parts[2].strip() if len(parts) > 2 else None
-            logger.info(f"Got device info from *IDN?: {manufacturer} {model}")
+            gmax_response = await self._bk_query("GMAX")
+            # GMAX format: VVVCCC (voltage*10, current*10)
+            if len(gmax_response) >= 6:
+                max_v = int(gmax_response[:3]) / 10.0
+                max_i = int(gmax_response[3:6]) / 10.0
+                logger.info(f"Verified BK device: max {max_v}V, {max_i}A")
         except Exception as e:
-            logger.warning(f"Could not query *IDN?, using defaults: {e}")
-            # Use default values set in __init__
+            logger.warning(f"Could not query GMAX: {e}")
 
         # Generate deterministic ID from resource string
         from .base import generate_equipment_id
@@ -211,8 +222,9 @@ class BKPowerSupplyBase(BaseEquipment):
                     voltage, self._current_voltage
                 )
 
-        # Set voltage
-        await self._write(f"VOLT {voltage}")
+        # Set voltage using BK Precision protocol: VOLT{vvv} where vvv = voltage * 10
+        voltage_cmd = int(voltage * 10)
+        await self._write(f"VOLT{voltage_cmd:03d}")
         self._current_voltage = voltage
 
     async def set_current(self, current: float, channel: int = 1):
@@ -236,8 +248,9 @@ class BKPowerSupplyBase(BaseEquipment):
                     current, self._current_current
                 )
 
-        # Set current
-        await self._write(f"CURR {current}")
+        # Set current using BK Precision protocol: CURR{ccc} where ccc = current * 10
+        current_cmd = int(current * 10)
+        await self._write(f"CURR{current_cmd:03d}")
         self._current_current = current
 
     async def set_output(self, enabled: bool, channel: int = 1):
@@ -246,32 +259,37 @@ class BKPowerSupplyBase(BaseEquipment):
         if enabled and emergency_stop_manager.is_active():
             raise RuntimeError("Emergency stop is active - cannot enable output")
 
-        await self._write(f"OUTP {'ON' if enabled else 'OFF'}")
+        # BK Precision protocol: SOUT0 = ON, SOUT1 = OFF
+        await self._write(f"SOUT{'0' if enabled else '1'}")
 
     async def get_readings(self, channel: int = 1) -> PowerSupplyData:
-        """Get current voltage and current readings."""
-        voltage_str = await self._query("MEAS:VOLT?")
-        current_str = await self._query("MEAS:CURR?")
+        """Get current voltage and current readings using BK Precision protocol."""
+        # GETD returns: VVVVIIIIIM (voltage*100, current*1000, mode)
+        getd_response = await self._bk_query("GETD")
 
-        voltage = float(voltage_str)
-        current = float(current_str)
+        if len(getd_response) < 9:
+            raise ValueError(f"Invalid GETD response: {getd_response}")
 
-        # Get output state
-        output_state = await self._query("OUTP?")
-        output_enabled = (
-            output_state.strip() == "1" or output_state.strip().upper() == "ON"
-        )
+        voltage = int(getd_response[:4]) / 100.0  # VVVV / 100
+        current = int(getd_response[4:8]) / 1000.0  # IIII / 1000
+        mode = int(getd_response[8])  # 0=CV, 1=CC
 
-        # Get setpoints
-        voltage_set_str = await self._query("VOLT?")
-        current_set_str = await self._query("CURR?")
+        # Get output state: GOUT returns 0 (OFF) or 1 (ON)
+        gout_response = await self._bk_query("GOUT")
+        output_enabled = gout_response.strip() == "1"
 
-        voltage_set = float(voltage_set_str)
-        current_set = float(current_set_str)
+        # Get setpoints: GETS returns VVVCCC (voltage*10, current*10)
+        gets_response = await self._bk_query("GETS")
 
-        # Determine CV/CC mode (if current is close to limit, likely in CC mode)
-        in_cc_mode = abs(current - current_set) < 0.01
-        in_cv_mode = not in_cc_mode
+        if len(gets_response) < 6:
+            raise ValueError(f"Invalid GETS response: {gets_response}")
+
+        voltage_set = int(gets_response[:3]) / 10.0  # VVV / 10
+        current_set = int(gets_response[3:6]) / 10.0  # CCC / 10
+
+        # Determine CV/CC mode from mode byte
+        in_cc_mode = (mode == 1)
+        in_cv_mode = (mode == 0)
 
         return PowerSupplyData(
             equipment_id=self.cached_info.id if self.cached_info else "unknown",
@@ -286,13 +304,19 @@ class BKPowerSupplyBase(BaseEquipment):
         )
 
     async def get_setpoints(self, channel: int = 1) -> Dict[str, float]:
-        """Get voltage and current setpoints."""
-        voltage_str = await self._query("VOLT?")
-        current_str = await self._query("CURR?")
+        """Get voltage and current setpoints using BK Precision protocol."""
+        # GETS returns: VVVCCC (voltage*10, current*10)
+        gets_response = await self._bk_query("GETS")
+
+        if len(gets_response) < 6:
+            raise ValueError(f"Invalid GETS response: {gets_response}")
+
+        voltage_set = int(gets_response[:3]) / 10.0  # VVV / 10
+        current_set = int(gets_response[3:6]) / 10.0  # CCC / 10
 
         return {
-            "voltage": float(voltage_str),
-            "current": float(current_str),
+            "voltage": voltage_set,
+            "current": current_set,
         }
 
 
