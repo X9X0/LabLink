@@ -684,7 +684,7 @@ class ControlPanel(QWidget):
 
         try:
             equipment_list = self.client.list_equipment()
-            self.equipment_list = [Equipment(**eq) for eq in equipment_list]
+            self.equipment_list = [Equipment.from_api_dict(eq) for eq in equipment_list]
 
             # Update list widget
             self.equipment_list_widget.clear()
