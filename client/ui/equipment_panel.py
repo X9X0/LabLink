@@ -609,7 +609,13 @@ class EquipmentPanel(QWidget):
                 # Clear selected equipment and UI
                 self.selected_equipment = None
                 self.readings_display.clear()
-                self.info_display.clear()
+                # Clear equipment detail labels
+                self.name_label.clear()
+                self.type_label.clear()
+                self.manufacturer_label.clear()
+                self.model_label.clear()
+                self.resource_label.clear()
+                self.status_label.clear()
                 self.refresh()
             else:
                 QMessageBox.warning(
