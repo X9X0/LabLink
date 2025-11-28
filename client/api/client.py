@@ -10,8 +10,12 @@ from typing import Any, Callable, Dict, List, Optional
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import aiohttp
 import requests
+
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None
 
 try:
     from utils.websocket_manager import (MessageType, StreamType,
@@ -1795,7 +1799,16 @@ class LabLinkClient:
 
         Example:
             resources = await client.discover_equipment_async()
+
+        Raises:
+            ImportError: If aiohttp is not installed
         """
+        if aiohttp is None:
+            raise ImportError(
+                "aiohttp is required for async discovery. "
+                "Install with: pip install aiohttp"
+            )
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{self.api_base_url}/equipment/discover",
@@ -1821,7 +1834,16 @@ class LabLinkClient:
             result = await client.connect_device_async(
                 "ASRL/dev/ttyUSB0::INSTR", "power_supply", "BK1902B"
             )
+
+        Raises:
+            ImportError: If aiohttp is not installed
         """
+        if aiohttp is None:
+            raise ImportError(
+                "aiohttp is required for async connection. "
+                "Install with: pip install aiohttp"
+            )
+
         payload = {
             "resource_string": resource_string,
             "equipment_type": equipment_type,
@@ -1847,7 +1869,16 @@ class LabLinkClient:
 
         Example:
             await client.update_discovery_settings_async(scan_serial=True)
+
+        Raises:
+            ImportError: If aiohttp is not installed
         """
+        if aiohttp is None:
+            raise ImportError(
+                "aiohttp is required for async settings update. "
+                "Install with: pip install aiohttp"
+            )
+
         # Convert boolean values to strings for aiohttp query parameters
         str_settings = {}
         for key, value in settings.items():
