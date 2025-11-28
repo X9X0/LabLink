@@ -43,11 +43,44 @@ class BaseEquipment(ABC):
         self.connected = False
         self.cached_info: Optional[EquipmentInfo] = None
         self._lock = asyncio.Lock()
+        self._is_connecting = False  # Flag to prevent recursion during connection
+
+    def _is_instrument_valid(self) -> bool:
+        """Check if the instrument session is still valid."""
+        if not self.instrument:
+            return False
+
+        try:
+            # Try to access the session attribute to check if it's still valid
+            _ = self.instrument.session
+            return True
+        except Exception:
+            return False
+
+    async def _ensure_connected(self):
+        """Ensure the instrument is connected and session is valid.
+
+        Automatically reconnects if the session has become invalid.
+        """
+        # Skip validation during initial connection to prevent recursion
+        if self._is_connecting:
+            return
+
+        if not self._is_instrument_valid():
+            logger.warning(f"Invalid instrument session detected for {self.resource_string}, reconnecting...")
+            # Clear the old invalid instrument
+            self.instrument = None
+            self.connected = False
+            # Reconnect
+            await self.connect()
 
     async def connect(self):
         """Connect to the equipment."""
         async with self._lock:
             try:
+                # Set flag to prevent recursion during connection
+                self._is_connecting = True
+
                 # Open the resource
                 self.instrument = self.resource_manager.open_resource(
                     self.resource_string
@@ -69,6 +102,9 @@ class BaseEquipment(ABC):
                 logger.error(f"Failed to connect to {self.resource_string}: {e}")
                 self.connected = False
                 raise
+            finally:
+                # Always clear the connecting flag
+                self._is_connecting = False
 
     async def disconnect(self):
         """Disconnect from the equipment."""
@@ -85,6 +121,9 @@ class BaseEquipment(ABC):
 
     async def _write(self, command: str):
         """Write a command to the instrument."""
+        # Ensure we have a valid connection, reconnect if needed
+        await self._ensure_connected()
+
         if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
@@ -120,6 +159,9 @@ class BaseEquipment(ABC):
 
     async def _query(self, command: str) -> str:
         """Query the instrument and return response."""
+        # Ensure we have a valid connection, reconnect if needed
+        await self._ensure_connected()
+
         if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
@@ -158,6 +200,9 @@ class BaseEquipment(ABC):
 
     async def _query_binary(self, command: str) -> bytes:
         """Query the instrument and return binary response."""
+        # Ensure we have a valid connection, reconnect if needed
+        await self._ensure_connected()
+
         if not self.instrument:
             raise RuntimeError("Equipment not connected")
 
