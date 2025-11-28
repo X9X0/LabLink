@@ -440,7 +440,7 @@ class LabLinkClient:
             Response dictionary
         """
         response = self._session.post(
-            f"{self.api_base_url}/equipment/{equipment_id}/disconnect"
+            f"{self.api_base_url}/equipment/disconnect/{equipment_id}"
         )
         response.raise_for_status()
         return response.json()

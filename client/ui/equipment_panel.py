@@ -622,14 +622,11 @@ class EquipmentPanel(QWidget):
             return
 
         try:
-            result = self.client.get_readings(self.selected_equipment.equipment_id)
+            readings = self.client.get_readings(self.selected_equipment.equipment_id)
 
-            if result.get("success"):
-                readings = result.get("readings", {})
-                self.selected_equipment.current_readings = readings
-                self.readings_display.setPlainText(self._format_readings(readings))
-            else:
-                QMessageBox.warning(self, "Failed", "Could not retrieve readings")
+            # Server returns readings data directly (PowerSupplyData, ScopeData, etc.)
+            self.selected_equipment.current_readings = readings
+            self.readings_display.setPlainText(self._format_readings(readings))
 
         except Exception as e:
             logger.error(f"Error getting readings: {e}")
