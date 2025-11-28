@@ -35,7 +35,9 @@ class RigolDL3021A(BaseEquipment):
         model = parts[1] if len(parts) > 1 else self.model
         serial = parts[2] if len(parts) > 2 else None
 
-        equipment_id = f"load_{uuid.uuid4().hex[:8]}"
+        # Generate deterministic ID from resource string
+        from .base import generate_equipment_id
+        equipment_id = generate_equipment_id(self.resource_string, "load_")
 
         return EquipmentInfo(
             id=equipment_id,

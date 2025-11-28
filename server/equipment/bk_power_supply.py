@@ -122,7 +122,9 @@ class BKPowerSupplyBase(BaseEquipment):
             logger.warning(f"Could not query *IDN?, using defaults: {e}")
             # Use default values set in __init__
 
-        equipment_id = f"ps_{uuid.uuid4().hex[:8]}"
+        # Generate deterministic ID from resource string
+        from .base import generate_equipment_id
+        equipment_id = generate_equipment_id(self.resource_string, "ps_")
 
         # Initialize safety validator
         self._initialize_safety(equipment_id)

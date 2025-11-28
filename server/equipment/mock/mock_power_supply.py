@@ -64,7 +64,9 @@ class MockPowerSupply:
 
     async def get_info(self) -> EquipmentInfo:
         """Get power supply information."""
-        equipment_id = f"ps_{uuid.uuid4().hex[:8]}"
+        # Generate deterministic ID from resource string
+        from ..base import generate_equipment_id
+        equipment_id = generate_equipment_id(self.resource_string, "ps_")
 
         return EquipmentInfo(
             id=equipment_id,
