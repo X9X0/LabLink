@@ -502,7 +502,7 @@ class ControlPanel(QWidget):
                 # Acquire exclusive lock for control
                 if self.client:
                     try:
-                        self.client.acquire_lock(equipment_id, lock_mode="EXCLUSIVE")
+                        self.client.acquire_lock(equipment_id, lock_mode="exclusive")
                         logger.info(f"Acquired exclusive lock on {equipment_id}")
                     except Exception as e:
                         logger.error(f"Error acquiring lock: {e}")

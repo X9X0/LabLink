@@ -577,13 +577,13 @@ class LabLinkClient:
     # ==================== Equipment Lock Methods ====================
 
     def acquire_lock(
-        self, equipment_id: str, lock_mode: str = "EXCLUSIVE", timeout_seconds: int = 300
+        self, equipment_id: str, lock_mode: str = "exclusive", timeout_seconds: int = 300
     ) -> Dict[str, Any]:
         """Acquire a lock on equipment.
 
         Args:
             equipment_id: Equipment ID to lock
-            lock_mode: Lock mode ("EXCLUSIVE" or "OBSERVER")
+            lock_mode: Lock mode ("exclusive" or "observer")
             timeout_seconds: Lock timeout in seconds (0 = no timeout)
 
         Returns:
