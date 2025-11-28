@@ -99,7 +99,12 @@ class BaseEquipment(ABC):
 
         if not self._is_instrument_valid():
             logger.warning(f"Invalid instrument session detected for {self.resource_string}, reconnecting...")
-            # Clear the old invalid instrument
+            # Close the old invalid instrument
+            if self.instrument is not None:
+                try:
+                    self.instrument.close()
+                except Exception:
+                    pass  # Ignore errors when closing invalid sessions
             self.instrument = None
             self.connected = False
             # Reconnect
@@ -114,6 +119,14 @@ class BaseEquipment(ABC):
 
                 # Ensure resource manager is valid before opening resource
                 self._refresh_resource_manager()
+
+                # Close old instrument if it exists
+                if self.instrument is not None:
+                    try:
+                        self.instrument.close()
+                    except Exception:
+                        pass  # Ignore errors when closing invalid sessions
+                    self.instrument = None
 
                 # Open the resource
                 self.instrument = self.resource_manager.open_resource(

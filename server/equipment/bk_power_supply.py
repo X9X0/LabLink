@@ -40,6 +40,14 @@ class BKPowerSupplyBase(BaseEquipment):
                 # Refresh resource manager if needed
                 self._refresh_resource_manager()
 
+                # Close old instrument if it exists
+                if self.instrument is not None:
+                    try:
+                        self.instrument.close()
+                    except Exception:
+                        pass  # Ignore errors when closing invalid sessions
+                    self.instrument = None
+
                 # Open the resource
                 self.instrument = self.resource_manager.open_resource(
                     self.resource_string
