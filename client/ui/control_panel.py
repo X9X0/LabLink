@@ -83,13 +83,20 @@ class AnalogGauge(QWidget):
             y2 = center_y - tick_outer_radius * math.sin(rad)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Draw value labels (positioned 3x font height above tick marks)
+        # Draw value labels (variable radius: outer at top, inner at bottom edges)
         painter.setFont(QFont("Arial", 8))
-        label_radius = size / 2 - 8  # 3 * font_height (24px) up from previous position
+        base_radius = size / 2 - 8  # Perfect at 12 o'clock
         for i in range(11):
             value = self.min_value + (self.max_value - self.min_value) * i / 10
             angle = 225 - (i * 27)
             rad = math.radians(angle)
+
+            # Vary radius: full at top (90°), reduced at bottom edges (225° and -45°)
+            # Distance from top: 0 at 90°, max at 225° and -45°
+            angle_from_top = abs(angle - 90)
+            radius_reduction = (angle_from_top / 135) * 30  # Reduce up to 30px at extremes
+            label_radius = base_radius - radius_reduction
+
             x = center_x + label_radius * math.cos(rad)
             y = center_y - label_radius * math.sin(rad)
             painter.drawText(int(x - 15), int(y + 5), 30, 20, Qt.AlignmentFlag.AlignCenter, f"{value:.1f}")
