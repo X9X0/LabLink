@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
@@ -137,6 +138,9 @@ class ControlPanel(QWidget):
         self.voltage_data = deque(maxlen=100)
         self.current_data = deque(maxlen=100)
         self.time_data = deque(maxlen=100)
+
+        # Track last command time to prevent reading updates from overwriting user actions
+        self._last_output_command_time = 0
 
         # Timers
         self.voltage_timer = QTimer()
@@ -633,11 +637,15 @@ class ControlPanel(QWidget):
             return
 
         try:
+            # Mark that we just sent a command - don't let readings overwrite button for 2 seconds
+            self._last_output_command_time = time.time()
+
             self.client.send_command(
                 self.selected_equipment.equipment_id,
                 "set_output",
                 {"enabled": enabled, "channel": 1}
             )
+            logger.info(f"Set output to {'ON' if enabled else 'OFF'}")
         except Exception as e:
             logger.error(f"Error sending output command: {e}")
 
@@ -682,12 +690,15 @@ class ControlPanel(QWidget):
             self.voltage_data.append(voltage_actual)
             self.time_data.append(timestamp)
 
-            # Update output button state
-            output_enabled = readings.get("output_enabled", False)
-            self.output_button.blockSignals(True)
-            self.output_button.setChecked(output_enabled)
-            self.output_button.setText("Output: ON" if output_enabled else "Output: OFF")
-            self.output_button.blockSignals(False)
+            # Update output button state (only if we haven't sent a command recently)
+            # This prevents readings from overwriting user's button clicks
+            time_since_command = time.time() - self._last_output_command_time
+            if time_since_command > 2.0:  # Wait 2 seconds after command before updating
+                output_enabled = readings.get("output_enabled", False)
+                self.output_button.blockSignals(True)
+                self.output_button.setChecked(output_enabled)
+                self.output_button.setText("Output: ON" if output_enabled else "Output: OFF")
+                self.output_button.blockSignals(False)
 
             # Update mode indicators
             if readings.get("in_cv_mode"):
