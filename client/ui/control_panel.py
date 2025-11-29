@@ -83,9 +83,9 @@ class AnalogGauge(QWidget):
             y2 = center_y - tick_outer_radius * math.sin(rad)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Draw value labels (nested just outside tick marks on same circular arc)
+        # Draw value labels (positioned 3x font height above tick marks)
         painter.setFont(QFont("Arial", 8))
-        label_radius = size / 2 - 32  # Close to tick marks but not touching
+        label_radius = size / 2 - 8  # 3 * font_height (24px) up from previous position
         for i in range(11):
             value = self.min_value + (self.max_value - self.min_value) * i / 10
             angle = 225 - (i * 27)
