@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import sys
+import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -49,6 +50,10 @@ class LabLinkClient:
         self.api_base_url = f"http://{host}:{api_port}/api"
 
         self._session = requests.Session()
+
+        # Session ID for equipment lock management
+        self.session_id = str(uuid.uuid4())
+        logger.info(f"Client session ID: {self.session_id}")
 
         # Authentication state
         self.access_token = None
@@ -415,6 +420,19 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()["equipment"]
 
+    def get_equipment_status(self, equipment_id: str) -> Dict[str, Any]:
+        """Get equipment status including capabilities.
+
+        Args:
+            equipment_id: Equipment ID
+
+        Returns:
+            Equipment status dictionary with capabilities
+        """
+        response = self._session.get(f"{self.api_base_url}/equipment/{equipment_id}/status")
+        response.raise_for_status()
+        return response.json()
+
     def connect_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Connect to equipment.
 
@@ -452,13 +470,19 @@ class LabLinkClient:
 
         Args:
             equipment_id: Equipment ID
-            command: Command name
+            command: Command name (action to perform)
             parameters: Command parameters
 
         Returns:
             Command result
         """
-        payload = {"command": command, "parameters": parameters or {}}
+        payload = {
+            "command_id": str(uuid.uuid4()),
+            "equipment_id": equipment_id,
+            "action": command,
+            "parameters": parameters or {},
+            "session_id": self.session_id,
+        }
         response = self._session.post(
             f"{self.api_base_url}/equipment/{equipment_id}/command", json=payload
         )
@@ -562,6 +586,57 @@ class LabLinkClient:
         )
         response.raise_for_status()
         return response.json()
+
+    # ==================== Equipment Lock Methods ====================
+
+    def acquire_lock(
+        self, equipment_id: str, lock_mode: str = "exclusive", timeout_seconds: int = 300
+    ) -> Dict[str, Any]:
+        """Acquire a lock on equipment.
+
+        Args:
+            equipment_id: Equipment ID to lock
+            lock_mode: Lock mode ("exclusive" or "observer")
+            timeout_seconds: Lock timeout in seconds (0 = no timeout)
+
+        Returns:
+            Lock acquisition result
+        """
+        payload = {
+            "equipment_id": equipment_id,
+            "session_id": self.session_id,
+            "lock_mode": lock_mode,
+            "timeout_seconds": timeout_seconds,
+            "queue_if_busy": False,
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/locks/acquire", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def release_lock(self, equipment_id: str, force: bool = False) -> Dict[str, Any]:
+        """Release a lock on equipment.
+
+        Args:
+            equipment_id: Equipment ID to unlock
+            force: Force release even if not owner (for clearing stale locks)
+
+        Returns:
+            Lock release result
+        """
+        payload = {
+            "equipment_id": equipment_id,
+            "session_id": self.session_id,
+            "force": force,
+        }
+        response = self._session.post(
+            f"{self.api_base_url}/locks/release", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    # ==================== Acquisition Methods ====================
 
     def get_acquisition_status(self, acquisition_id: str) -> Dict[str, Any]:
         """Get acquisition session status.

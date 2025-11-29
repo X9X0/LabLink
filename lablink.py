@@ -853,6 +853,8 @@ class CheckWorker(QThread):
             'uvicorn': 'uvicorn',
             'pyvisa-py': 'pyvisa_py',
             'PyQt6-Qt6': 'PyQt6',  # PyQt6-Qt6 is just Qt binaries, check PyQt6 instead
+            'PyQt6-Charts': 'PyQt6.QtCharts',  # PyQt6-Charts imports as PyQt6.QtCharts
+            'PyQt6-Charts-Qt6': 'PyQt6.QtCharts',  # PyQt6-Charts-Qt6 is just binaries, check PyQt6.QtCharts instead
             'pyserial': 'serial',  # pyserial package imports as 'serial'
             'pyusb': 'usb',  # pyusb package imports as 'usb'
             'PyJWT': 'jwt',  # PyJWT package imports as 'jwt'
@@ -878,7 +880,13 @@ class CheckWorker(QThread):
             for pkg, import_name in import_checks:
                 # Use proper multiline try/except blocks
                 batch_check += f"try:\n"
-                batch_check += f"    __import__('{import_name}')\n"
+                # Handle dotted imports (e.g., 'PyQt6.QtCharts') correctly
+                if '.' in import_name:
+                    # For dotted imports, use fromlist to actually import the submodule
+                    parts = import_name.rsplit('.', 1)
+                    batch_check += f"    __import__('{import_name}', fromlist=['{parts[1]}'])\n"
+                else:
+                    batch_check += f"    __import__('{import_name}')\n"
                 batch_check += f"    results['{pkg}'] = 'OK'\n"
                 batch_check += f"except Exception:\n"
                 batch_check += f"    results['{pkg}'] = 'MISS'\n"
