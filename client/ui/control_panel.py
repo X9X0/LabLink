@@ -577,14 +577,30 @@ class ControlPanel(QWidget):
             self._send_output_command(False)
 
     def _on_voltage_refresh_changed(self, value):
-        """Handle voltage refresh rate change."""
+        """Handle voltage refresh rate change.
+
+        Note: Since voltage and current are now read together in a single
+        get_readings() call, this sets the refresh rate for both.
+        """
         interval = int(1000 / value)  # Convert Hz to ms
-        self.voltage_timer.setInterval(interval)
+        self.readings_timer.setInterval(interval)
+        # Sync the current refresh spinbox to match
+        self.current_refresh_spinbox.blockSignals(True)
+        self.current_refresh_spinbox.setValue(value)
+        self.current_refresh_spinbox.blockSignals(False)
 
     def _on_current_refresh_changed(self, value):
-        """Handle current refresh rate change."""
+        """Handle current refresh rate change.
+
+        Note: Since voltage and current are now read together in a single
+        get_readings() call, this sets the refresh rate for both.
+        """
         interval = int(1000 / value)  # Convert Hz to ms
-        self.current_timer.setInterval(interval)
+        self.readings_timer.setInterval(interval)
+        # Sync the voltage refresh spinbox to match
+        self.voltage_refresh_spinbox.blockSignals(True)
+        self.voltage_refresh_spinbox.setValue(value)
+        self.voltage_refresh_spinbox.blockSignals(False)
 
     def _on_display_mode_changed(self, mode):
         """Handle display mode change."""
