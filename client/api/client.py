@@ -602,11 +602,12 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
-    def release_lock(self, equipment_id: str) -> Dict[str, Any]:
+    def release_lock(self, equipment_id: str, force: bool = False) -> Dict[str, Any]:
         """Release a lock on equipment.
 
         Args:
             equipment_id: Equipment ID to unlock
+            force: Force release even if not owner (for clearing stale locks)
 
         Returns:
             Lock release result
@@ -614,7 +615,7 @@ class LabLinkClient:
         payload = {
             "equipment_id": equipment_id,
             "session_id": self.session_id,
-            "force": False,
+            "force": force,
         }
         response = self._session.post(
             f"{self.api_base_url}/locks/release", json=payload

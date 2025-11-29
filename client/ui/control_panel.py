@@ -502,11 +502,33 @@ class ControlPanel(QWidget):
                 # Acquire exclusive lock for control
                 if self.client:
                     try:
+                        # First, try to force-release any existing lock (clears stale locks from previous sessions)
+                        # This will silently fail if there's no lock - that's OK
+                        try:
+                            self.client.release_lock(equipment_id, force=True)
+                            logger.info(f"Force-released any existing lock on {equipment_id}")
+                        except Exception as e:
+                            logger.debug(f"Could not force-release lock (may not exist): {e}")
+                            pass  # Ignore errors - lock might not exist
+
+                        # Now try to acquire the lock
                         self.client.acquire_lock(equipment_id, lock_mode="exclusive")
                         logger.info(f"Acquired exclusive lock on {equipment_id}")
                     except Exception as e:
                         logger.error(f"Error acquiring lock: {e}")
-                        # Continue anyway - maybe locks are disabled
+                        # Show user-friendly error if lock acquisition failed
+                        if "409" in str(e) or "Conflict" in str(e):
+                            from PyQt6.QtWidgets import QMessageBox
+                            QMessageBox.warning(
+                                self,
+                                "Equipment Locked",
+                                f"Cannot control {equipment.name} - it is locked by another session.\n\n"
+                                "This can happen if:\n"
+                                "• Another client is using this equipment\n"
+                                "• A previous session didn't release the lock\n\n"
+                                "You can view readings, but cannot send control commands.",
+                            )
+                        # Continue anyway - allow read-only access
 
                 self.equipment_selected.emit(equipment_id)
                 # Start reading data
