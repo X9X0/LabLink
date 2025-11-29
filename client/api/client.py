@@ -420,6 +420,19 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()["equipment"]
 
+    def get_equipment_status(self, equipment_id: str) -> Dict[str, Any]:
+        """Get equipment status including capabilities.
+
+        Args:
+            equipment_id: Equipment ID
+
+        Returns:
+            Equipment status dictionary with capabilities
+        """
+        response = self._session.get(f"{self.api_base_url}/equipment/{equipment_id}/status")
+        response.raise_for_status()
+        return response.json()
+
     def connect_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Connect to equipment.
 

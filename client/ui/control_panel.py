@@ -680,8 +680,9 @@ class ControlPanel(QWidget):
         if not self.selected_equipment:
             return
 
-        # Start timers
-        self.readings_timer.start(1000)  # 1 Hz default
+        # Delay starting the timer to give the equipment time to settle after lock acquisition
+        # This helps prevent empty serial responses from the BK power supply
+        QTimer.singleShot(500, lambda: self.readings_timer.start(1000))  # 500ms delay, then 1 Hz
 
     def _stop_data_acquisition(self):
         """Stop acquiring data."""
