@@ -471,6 +471,15 @@ class ControlPanel(QWidget):
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         layout.addWidget(chart_view)
 
+        # Add clear button at bottom right
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        clear_button = QPushButton("Clear Graph")
+        clear_button.setMaximumWidth(120)
+        clear_button.clicked.connect(self._clear_graph)
+        button_layout.addWidget(clear_button)
+        layout.addLayout(button_layout)
+
         return widget
 
     def _on_equipment_selected(self):
@@ -779,6 +788,22 @@ class ControlPanel(QWidget):
         # Update x-axis range
         if self.time_data:
             self.axis_x.setRange(max(0, len(self.time_data) - 100), len(self.time_data))
+
+    def _clear_graph(self):
+        """Clear all graph data."""
+        # Clear data storage
+        self.voltage_data.clear()
+        self.current_data.clear()
+        self.time_data.clear()
+
+        # Clear chart series
+        self.voltage_series.clear()
+        self.current_series.clear()
+
+        # Reset x-axis
+        self.axis_x.setRange(0, 100)
+
+        logger.info("Graph data cleared")
 
     def refresh_equipment_list(self):
         """Refresh the equipment list from server."""
