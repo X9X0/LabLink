@@ -327,34 +327,20 @@ class ControlPanel(QWidget):
         bottom_layout.addWidget(mode_group)
 
         # Refresh rate controls
-        refresh_group = QGroupBox("Refresh Rates")
-        refresh_layout = QVBoxLayout(refresh_group)
+        refresh_group = QGroupBox("Refresh Rate")
+        refresh_layout = QHBoxLayout(refresh_group)
 
-        # Voltage refresh rate
-        v_refresh_layout = QHBoxLayout()
-        v_refresh_layout.addWidget(QLabel("Voltage (Hz):"))
-        self.voltage_refresh_spinbox = QDoubleSpinBox()
-        self.voltage_refresh_spinbox.setMinimum(0.1)
-        self.voltage_refresh_spinbox.setMaximum(10.0)
-        self.voltage_refresh_spinbox.setValue(1.0)
-        self.voltage_refresh_spinbox.setDecimals(1)
-        self.voltage_refresh_spinbox.setSingleStep(0.1)
-        self.voltage_refresh_spinbox.valueChanged.connect(self._on_voltage_refresh_changed)
-        v_refresh_layout.addWidget(self.voltage_refresh_spinbox)
-        refresh_layout.addLayout(v_refresh_layout)
-
-        # Current refresh rate
-        i_refresh_layout = QHBoxLayout()
-        i_refresh_layout.addWidget(QLabel("Current (Hz):"))
-        self.current_refresh_spinbox = QDoubleSpinBox()
-        self.current_refresh_spinbox.setMinimum(0.1)
-        self.current_refresh_spinbox.setMaximum(10.0)
-        self.current_refresh_spinbox.setValue(1.0)
-        self.current_refresh_spinbox.setDecimals(1)
-        self.current_refresh_spinbox.setSingleStep(0.1)
-        self.current_refresh_spinbox.valueChanged.connect(self._on_current_refresh_changed)
-        i_refresh_layout.addWidget(self.current_refresh_spinbox)
-        refresh_layout.addLayout(i_refresh_layout)
+        # Single refresh rate control for all readings
+        refresh_layout.addWidget(QLabel("Update Rate (Hz):"))
+        self.refresh_spinbox = QDoubleSpinBox()
+        self.refresh_spinbox.setMinimum(0.1)
+        self.refresh_spinbox.setMaximum(10.0)
+        self.refresh_spinbox.setValue(1.0)
+        self.refresh_spinbox.setDecimals(1)
+        self.refresh_spinbox.setSingleStep(0.1)
+        self.refresh_spinbox.setToolTip("How often to query voltage and current readings from the equipment")
+        self.refresh_spinbox.valueChanged.connect(self._on_refresh_changed)
+        refresh_layout.addWidget(self.refresh_spinbox)
 
         bottom_layout.addWidget(refresh_group)
 
@@ -576,31 +562,14 @@ class ControlPanel(QWidget):
             self.output_button.setText("Output: OFF")
             self._send_output_command(False)
 
-    def _on_voltage_refresh_changed(self, value):
-        """Handle voltage refresh rate change.
+    def _on_refresh_changed(self, value):
+        """Handle refresh rate change.
 
-        Note: Since voltage and current are now read together in a single
-        get_readings() call, this sets the refresh rate for both.
+        Updates how often voltage and current readings are queried from
+        the equipment. All readings are fetched together in a single call.
         """
         interval = int(1000 / value)  # Convert Hz to ms
         self.readings_timer.setInterval(interval)
-        # Sync the current refresh spinbox to match
-        self.current_refresh_spinbox.blockSignals(True)
-        self.current_refresh_spinbox.setValue(value)
-        self.current_refresh_spinbox.blockSignals(False)
-
-    def _on_current_refresh_changed(self, value):
-        """Handle current refresh rate change.
-
-        Note: Since voltage and current are now read together in a single
-        get_readings() call, this sets the refresh rate for both.
-        """
-        interval = int(1000 / value)  # Convert Hz to ms
-        self.readings_timer.setInterval(interval)
-        # Sync the voltage refresh spinbox to match
-        self.voltage_refresh_spinbox.blockSignals(True)
-        self.voltage_refresh_spinbox.setValue(value)
-        self.voltage_refresh_spinbox.blockSignals(False)
 
     def _on_display_mode_changed(self, mode):
         """Handle display mode change."""
