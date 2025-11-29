@@ -1,5 +1,5 @@
 # Dockerfile for LabLink Server
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 LABEL maintainer="LabLink Project"
 LABEL version="0.10.0"
