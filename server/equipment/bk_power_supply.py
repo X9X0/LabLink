@@ -47,96 +47,104 @@ class BKPowerSupplyBase(BaseEquipment):
 
         BK responses are formatted as: DATA\rOK\r
         We need to read the full response, not just until the first \r
+
+        Uses locking to ensure serial commands execute one at a time,
+        preventing collisions when multiple requests happen simultaneously.
         """
         await self._ensure_connected()
 
-        loop = asyncio.get_event_loop()
+        # Lock to prevent concurrent serial port access
+        async with self._lock:
+            loop = asyncio.get_event_loop()
 
-        # Send command (write_termination = '\r' is already set)
-        await loop.run_in_executor(None, self.instrument.write, command)
+            # Send command (write_termination = '\r' is already set)
+            await loop.run_in_executor(None, self.instrument.write, command)
 
-        # Read full response - keep reading until we get OK\r or timeout
-        # Use read_bytes to get raw data instead of relying on read_termination
-        full_response = b''
-        start_time = loop.time()
-        timeout = self.instrument.timeout / 1000.0  # Convert ms to seconds
+            # Read full response - keep reading until we get OK\r or timeout
+            # Use read_bytes to get raw data instead of relying on read_termination
+            full_response = b''
+            start_time = loop.time()
+            timeout = self.instrument.timeout / 1000.0  # Convert ms to seconds
 
-        while True:
-            try:
-                # Read one byte at a time until we get the full response
-                chunk = await loop.run_in_executor(None, self.instrument.read_bytes, 1)
-                full_response += chunk
+            while True:
+                try:
+                    # Read one byte at a time until we get the full response
+                    chunk = await loop.run_in_executor(None, self.instrument.read_bytes, 1)
+                    full_response += chunk
 
-                # Check if we've received the complete response (ends with OK\r)
-                if full_response.endswith(b'OK\r'):
-                    break
+                    # Check if we've received the complete response (ends with OK\r)
+                    if full_response.endswith(b'OK\r'):
+                        break
 
-                # Timeout check
-                if loop.time() - start_time > timeout:
-                    raise TimeoutError(f"Timeout waiting for OK terminator. Got: {full_response}")
+                    # Timeout check
+                    if loop.time() - start_time > timeout:
+                        raise TimeoutError(f"Timeout waiting for OK terminator. Got: {full_response}")
 
-            except Exception as e:
-                if full_response:
-                    logger.error(f"Error reading response after {len(full_response)} bytes: {e}")
-                raise
+                except Exception as e:
+                    if full_response:
+                        logger.error(f"Error reading response after {len(full_response)} bytes: {e}")
+                    raise
 
-        # Decode and parse
-        response_str = full_response.decode('ascii', errors='ignore')
-        return self._parse_bk_response(response_str)
+            # Decode and parse
+            response_str = full_response.decode('ascii', errors='ignore')
+            return self._parse_bk_response(response_str)
 
     async def connect(self):
-        """Connect to the BK power supply with serial port configuration."""
-        async with self._lock:
-            try:
-                # Refresh resource manager if needed
-                self._refresh_resource_manager()
+        """Connect to the BK power supply with serial port configuration.
 
-                # Close old instrument if it exists
-                if self.instrument is not None:
-                    try:
-                        self.instrument.close()
-                    except Exception:
-                        pass  # Ignore errors when closing invalid sessions
-                    self.instrument = None
+        Note: Serial communication protection is handled by _bk_query() locking,
+        not here, to avoid deadlock when calling _bk_query() during connect.
+        """
+        try:
+            # Refresh resource manager if needed
+            self._refresh_resource_manager()
 
-                # Open the resource
-                self.instrument = self.resource_manager.open_resource(
-                    self.resource_string
-                )
-
-                # Configure serial port settings for BK Precision devices
-                # Baud rate: 9600, Data bits: 8, Parity: None, Stop bits: 1
-                if "ASRL" in self.resource_string:  # Serial/ASRL connection
-                    self.instrument.baud_rate = 9600
-                    self.instrument.data_bits = 8
-                    self.instrument.parity = 0  # None
-                    self.instrument.stop_bits = 10  # 1 stop bit (constant value)
-                    self.instrument.flow_control = 0  # None
-                    # BK Precision 1900B series uses CR only (not CR+LF)
-                    self.instrument.read_termination = '\r'
-                    self.instrument.write_termination = '\r'
-                    logger.info(f"Configured serial port: 9600 8N1 with CR termination")
-
-                # Set timeout (2 seconds - BK responds quickly)
-                self.instrument.timeout = 2000
-
-                # Verify connection with GMAX command (BK Precision proprietary)
-                # GMAX returns max voltage and current: VVVCCC format
+            # Close old instrument if it exists
+            if self.instrument is not None:
                 try:
-                    gmax_response = await self._bk_query("GMAX")
-                    logger.info(f"Connected to BK device, GMAX response: {gmax_response}")
-                except Exception as e:
-                    logger.warning(f"GMAX query failed: {e}, attempting connection anyway")
+                    self.instrument.close()
+                except Exception:
+                    pass  # Ignore errors when closing invalid sessions
+                self.instrument = None
 
-                self.connected = True
+            # Open the resource
+            self.instrument = self.resource_manager.open_resource(
+                self.resource_string
+            )
 
-                # Cache equipment info
-                self.cached_info = await self.get_info()
+            # Configure serial port settings for BK Precision devices
+            # Baud rate: 9600, Data bits: 8, Parity: None, Stop bits: 1
+            if "ASRL" in self.resource_string:  # Serial/ASRL connection
+                self.instrument.baud_rate = 9600
+                self.instrument.data_bits = 8
+                self.instrument.parity = 0  # None
+                self.instrument.stop_bits = 10  # 1 stop bit (constant value)
+                self.instrument.flow_control = 0  # None
+                # BK Precision 1900B series uses CR only (not CR+LF)
+                self.instrument.read_termination = '\r'
+                self.instrument.write_termination = '\r'
+                logger.info(f"Configured serial port: 9600 8N1 with CR termination")
 
+            # Set timeout (2 seconds - BK responds quickly)
+            self.instrument.timeout = 2000
+
+            # Verify connection with GMAX command (BK Precision proprietary)
+            # GMAX returns max voltage and current: VVVCCC format
+            try:
+                gmax_response = await self._bk_query("GMAX")
+                logger.info(f"Connected to BK device, GMAX response: {gmax_response}")
             except Exception as e:
-                logger.error(f"Failed to connect to {self.resource_string}: {e}")
-                self.connected = False
-                raise
+                logger.warning(f"GMAX query failed: {e}, attempting connection anyway")
+
+            self.connected = True
+
+            # Cache equipment info
+            self.cached_info = await self.get_info()
+
+        except Exception as e:
+            logger.error(f"Failed to connect to {self.resource_string}: {e}")
+            self.connected = False
+            raise
 
     def _initialize_safety(self, equipment_id: str):
         """Initialize safety validator with appropriate limits."""
