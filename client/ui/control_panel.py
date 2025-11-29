@@ -142,11 +142,9 @@ class ControlPanel(QWidget):
         # Track last command time to prevent reading updates from overwriting user actions
         self._last_output_command_time = 0
 
-        # Timers
-        self.voltage_timer = QTimer()
-        self.current_timer = QTimer()
-        self.voltage_timer.timeout.connect(self._update_voltage)
-        self.current_timer.timeout.connect(self._update_current)
+        # Timer for reading updates (single timer to prevent serial port overload)
+        self.readings_timer = QTimer()
+        self.readings_timer.timeout.connect(self._update_readings)
 
         self._setup_ui()
 
@@ -655,25 +653,32 @@ class ControlPanel(QWidget):
             return
 
         # Start timers
-        self.voltage_timer.start(1000)  # 1 Hz default
-        self.current_timer.start(1000)  # 1 Hz default
+        self.readings_timer.start(1000)  # 1 Hz default
 
     def _stop_data_acquisition(self):
         """Stop acquiring data."""
-        self.voltage_timer.stop()
-        self.current_timer.stop()
+        self.readings_timer.stop()
 
-    def _update_voltage(self):
-        """Update voltage reading."""
+    def _update_readings(self):
+        """Update voltage and current readings from equipment.
+
+        Uses a single get_readings() call to update both voltage and current,
+        preventing serial port overload from multiple simultaneous commands.
+        """
         if not self.selected_equipment or not self.client:
             return
 
         try:
+            # Get all readings in one call (sends 3 serial commands: GETD, GOUT, GETS)
             readings = self.client.get_readings(self.selected_equipment.equipment_id)
+
+            # Extract values
             voltage_actual = readings.get("voltage_actual", 0.0)
             voltage_set = readings.get("voltage_set", 0.0)
+            current_actual = readings.get("current_actual", 0.0)
+            current_set = readings.get("current_set", 0.0)
 
-            # Update control knobs to show setpoint (without triggering callbacks)
+            # Update voltage control knobs to show setpoint (without triggering callbacks)
             self.voltage_dial.blockSignals(True)
             self.voltage_spinbox.blockSignals(True)
             self.voltage_dial.setValue(int(voltage_set * 10))
@@ -681,13 +686,26 @@ class ControlPanel(QWidget):
             self.voltage_dial.blockSignals(False)
             self.voltage_spinbox.blockSignals(False)
 
-            # Update displays with actual measured values
+            # Update voltage displays with actual measured values
             self.voltage_display.setText(f"{voltage_actual:.2f} V")
             self.voltage_gauge.set_value(voltage_actual)
 
-            # Update graph
+            # Update current control knobs to show setpoint (without triggering callbacks)
+            self.current_dial.blockSignals(True)
+            self.current_spinbox.blockSignals(True)
+            self.current_dial.setValue(int(current_set * 100))
+            self.current_spinbox.setValue(current_set)
+            self.current_dial.blockSignals(False)
+            self.current_spinbox.blockSignals(False)
+
+            # Update current displays with actual measured values
+            self.current_display.setText(f"{current_actual:.3f} A")
+            self.current_gauge.set_value(current_actual)
+
+            # Update graph data
             timestamp = len(self.voltage_data)
             self.voltage_data.append(voltage_actual)
+            self.current_data.append(current_actual)
             self.time_data.append(timestamp)
 
             # Update output button state (only if we haven't sent a command recently)
@@ -712,40 +730,11 @@ class ControlPanel(QWidget):
                 self.cv_indicator.setText("CV: OFF")
                 self.cv_indicator.setStyleSheet("QLabel { background-color: gray; color: white; padding: 5px; }")
 
-        except Exception as e:
-            logger.error(f"Error updating voltage: {e}")
-
-    def _update_current(self):
-        """Update current reading."""
-        if not self.selected_equipment or not self.client:
-            return
-
-        try:
-            readings = self.client.get_readings(self.selected_equipment.equipment_id)
-            current_actual = readings.get("current_actual", 0.0)
-            current_set = readings.get("current_set", 0.0)
-
-            # Update control knobs to show setpoint (without triggering callbacks)
-            self.current_dial.blockSignals(True)
-            self.current_spinbox.blockSignals(True)
-            self.current_dial.setValue(int(current_set * 100))
-            self.current_spinbox.setValue(current_set)
-            self.current_dial.blockSignals(False)
-            self.current_spinbox.blockSignals(False)
-
-            # Update displays with actual measured values
-            self.current_display.setText(f"{current_actual:.3f} A")
-            self.current_gauge.set_value(current_actual)
-
-            # Update graph
-            timestamp = len(self.current_data)
-            self.current_data.append(current_actual)
-
-            # Update graph series
+            # Update graph visualization
             self._update_graph()
 
         except Exception as e:
-            logger.error(f"Error updating current: {e}")
+            logger.error(f"Error updating readings: {e}")
 
     def _update_graph(self):
         """Update the graph with current data."""
