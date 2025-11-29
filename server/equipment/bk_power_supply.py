@@ -65,6 +65,7 @@ class BKPowerSupplyBase(BaseEquipment):
                 pass  # Ignore flush errors
 
             # Send command (write_termination = '\r' is already set)
+            logger.debug(f"Sending BK command: {command}")
             await loop.run_in_executor(None, self.instrument.write, command)
 
             # Read full response - keep reading until we get OK\r or timeout
@@ -94,6 +95,7 @@ class BKPowerSupplyBase(BaseEquipment):
 
             # Decode and parse
             response_str = full_response.decode('ascii', errors='ignore')
+            logger.debug(f"Received BK response ({len(full_response)} bytes): {repr(response_str)}")
             return self._parse_bk_response(response_str)
 
     async def connect(self):
