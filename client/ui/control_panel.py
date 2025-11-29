@@ -81,14 +81,14 @@ class AnalogGauge(QWidget):
             y2 = center_y - (size / 2 - 5) * math.sin(rad)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Draw value labels
+        # Draw value labels (positioned outside the tick marks for readability)
         painter.setFont(QFont("Arial", 8))
         for i in range(11):
             value = self.min_value + (self.max_value - self.min_value) * i / 10
             angle = 225 - (i * 27)
             rad = math.radians(angle)
-            x = center_x + (size / 2 - 30) * math.cos(rad)
-            y = center_y - (size / 2 - 30) * math.sin(rad)
+            x = center_x + (size / 2 - 45) * math.cos(rad)
+            y = center_y - (size / 2 - 45) * math.sin(rad)
             painter.drawText(int(x - 15), int(y + 5), 30, 20, Qt.AlignmentFlag.AlignCenter, f"{value:.1f}")
 
         # Draw needle
