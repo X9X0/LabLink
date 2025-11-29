@@ -57,6 +57,13 @@ class BKPowerSupplyBase(BaseEquipment):
         async with self._lock:
             loop = asyncio.get_event_loop()
 
+            # Flush input buffer to clear any junk from previous failed reads
+            try:
+                if hasattr(self.instrument, 'flush') and hasattr(self.instrument.flush, '__call__'):
+                    await loop.run_in_executor(None, self.instrument.flush, 1)  # Flush input (VI_READ_BUF)
+            except Exception:
+                pass  # Ignore flush errors
+
             # Send command (write_termination = '\r' is already set)
             await loop.run_in_executor(None, self.instrument.write, command)
 
