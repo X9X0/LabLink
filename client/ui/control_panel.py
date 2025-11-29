@@ -70,25 +70,28 @@ class AnalogGauge(QWidget):
         painter.setBrush(QBrush(Qt.GlobalColor.lightGray))
         painter.drawEllipse(QPointF(center_x, center_y), size / 2, size / 2)
 
-        # Draw tick marks
+        # Draw tick marks (short radial lines at each graduation)
         painter.setPen(QPen(Qt.GlobalColor.black, 2))
+        tick_inner_radius = size / 2 - 20
+        tick_outer_radius = size / 2 - 10
         for i in range(11):
             angle = 225 - (i * 27)  # 270 degrees range
             rad = math.radians(angle)
-            x1 = center_x + (size / 2 - 15) * math.cos(rad)
-            y1 = center_y - (size / 2 - 15) * math.sin(rad)
-            x2 = center_x + (size / 2 - 5) * math.cos(rad)
-            y2 = center_y - (size / 2 - 5) * math.sin(rad)
+            x1 = center_x + tick_inner_radius * math.cos(rad)
+            y1 = center_y - tick_inner_radius * math.sin(rad)
+            x2 = center_x + tick_outer_radius * math.cos(rad)
+            y2 = center_y - tick_outer_radius * math.sin(rad)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Draw value labels (positioned outside the tick marks for readability)
+        # Draw value labels (nested just outside tick marks on same circular arc)
         painter.setFont(QFont("Arial", 8))
+        label_radius = size / 2 - 32  # Close to tick marks but not touching
         for i in range(11):
             value = self.min_value + (self.max_value - self.min_value) * i / 10
             angle = 225 - (i * 27)
             rad = math.radians(angle)
-            x = center_x + (size / 2 - 45) * math.cos(rad)
-            y = center_y - (size / 2 - 45) * math.sin(rad)
+            x = center_x + label_radius * math.cos(rad)
+            y = center_y - label_radius * math.sin(rad)
             painter.drawText(int(x - 15), int(y + 5), 30, 20, Qt.AlignmentFlag.AlignCenter, f"{value:.1f}")
 
         # Draw needle
