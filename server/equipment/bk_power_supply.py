@@ -312,9 +312,9 @@ class BKPowerSupplyBase(BaseEquipment):
         current = int(getd_response[4:8]) / 1000.0  # IIII / 1000
         mode = int(getd_response[8])  # 0=CV, 1=CC
 
-        # Get output state: GOUT returns 0 (OFF) or 1 (ON)
+        # Get output state: GOUT returns 0 (ON) or 1 (OFF) - inverted like SOUT
         gout_response = await self._bk_query("GOUT")
-        output_enabled = gout_response.strip() == "1"
+        output_enabled = gout_response.strip() == "0"
 
         # Get setpoints: GETS returns VVVCCC (voltage*10, current*10)
         gets_response = await self._bk_query("GETS")

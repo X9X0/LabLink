@@ -154,7 +154,8 @@ def main():
         print("\n4. Testing GOUT (Get output state)")
         response = send_command(ser, "GOUT")
         if response:
-            state = "ON" if response.strip() == "1" else "OFF"
+            # GOUT returns "0" for ON, "1" for OFF (inverted like SOUT)
+            state = "ON" if response.strip() == "0" else "OFF"
             print(f"    Output state: {state}")
 
         print("\n" + "=" * 60)
@@ -185,7 +186,8 @@ def main():
                 elif cmd == "GMAX" and response:
                     parse_gmax(response)
                 elif cmd == "GOUT" and response:
-                    state = "ON" if response.strip() == "1" else "OFF"
+                    # GOUT returns "0" for ON, "1" for OFF (inverted like SOUT)
+                    state = "ON" if response.strip() == "0" else "OFF"
                     print(f"    Output: {state}")
 
             except KeyboardInterrupt:
