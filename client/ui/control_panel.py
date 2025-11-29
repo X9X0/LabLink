@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
 
-from models.equipment import ConnectionStatus, Equipment
+from client.models.equipment import ConnectionStatus, Equipment
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QDial, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel,
@@ -106,15 +106,24 @@ class AnalogGauge(QWidget):
         painter.setBrush(QBrush(Qt.GlobalColor.red))
         painter.drawEllipse(QPointF(center_x, center_y), 5, 5)
 
-        # Draw title
+        # Draw unit label at top center (like a real power supply meter)
         painter.setPen(QPen(Qt.GlobalColor.black))
-        painter.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        painter.drawText(0, int(center_y + size / 2 - 40), width, 30, Qt.AlignmentFlag.AlignCenter, self.title)
+        painter.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        painter.drawText(0, int(center_y - size / 2 + 30), width, 30, Qt.AlignmentFlag.AlignCenter, self.unit)
 
-        # Draw current value
+        # Draw title below the unit
+        painter.setFont(QFont("Arial", 10))
+        painter.drawText(0, int(center_y - size / 2 + 55), width, 20, Qt.AlignmentFlag.AlignCenter, self.title)
+
+        # Draw current value in the center
         painter.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        value_text = f"{self.current_value:.2f} {self.unit}"
-        painter.drawText(0, int(center_y + size / 2 - 10), width, 30, Qt.AlignmentFlag.AlignCenter, value_text)
+        value_text = f"{self.current_value:.2f}"
+        painter.drawText(0, int(center_y - 10), width, 30, Qt.AlignmentFlag.AlignCenter, value_text)
+
+        # Draw "LabLink" branding at bottom (subtle)
+        painter.setPen(QPen(QColor(100, 100, 100)))  # Gray color for subtlety
+        painter.setFont(QFont("Arial", 8, QFont.Weight.Normal))
+        painter.drawText(0, int(center_y + size / 2 - 20), width, 20, Qt.AlignmentFlag.AlignCenter, "LabLink")
 
 
 class ControlPanel(QWidget):
@@ -518,6 +527,30 @@ class ControlPanel(QWidget):
                             )
                         # Continue anyway - allow read-only access
 
+                # Get equipment status to configure controls based on capabilities
+                try:
+                    status = self.client.get_equipment_status(equipment_id)
+                    capabilities = status.get("capabilities", {})
+                    max_voltage = capabilities.get("max_voltage", 60.0)
+                    max_current = capabilities.get("max_current", 5.0)
+
+                    # Update voltage controls
+                    self.voltage_dial.setMaximum(int(max_voltage * 10))
+                    self.voltage_spinbox.setMaximum(max_voltage)
+                    self.voltage_gauge.max_value = max_voltage
+
+                    # Update current controls
+                    self.current_dial.setMaximum(int(max_current * 10))
+                    self.current_spinbox.setMaximum(max_current)
+                    self.current_gauge.max_value = max_current
+
+                    logger.info(f"Configured controls for {equipment.name}: "
+                                f"max_voltage={max_voltage}V, max_current={max_current}A")
+                except Exception as e:
+                    logger.error(f"Error configuring controls from capabilities: {e}")
+                    # Use defaults if status fetch fails
+                    pass
+
                 self.equipment_selected.emit(equipment_id)
                 # Start reading data
                 self._start_data_acquisition()
@@ -678,7 +711,7 @@ class ControlPanel(QWidget):
             # Update current control knobs to show setpoint (without triggering callbacks)
             self.current_dial.blockSignals(True)
             self.current_spinbox.blockSignals(True)
-            self.current_dial.setValue(int(current_set * 100))
+            self.current_dial.setValue(int(current_set * 10))
             self.current_spinbox.setValue(current_set)
             self.current_dial.blockSignals(False)
             self.current_spinbox.blockSignals(False)
