@@ -45,6 +45,7 @@ logs/
 *_debug.log
 
 # Configuration
+.env
 config.local.json
 *.key
 *.pem
