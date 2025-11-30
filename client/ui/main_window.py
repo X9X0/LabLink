@@ -370,6 +370,9 @@ class MainWindow(QMainWindow):
                 # Show login dialog
                 if self.login_dialog is None:
                     self.login_dialog = LoginDialog(self.client, self)
+                else:
+                    # Update client reference in case we're reconnecting with a new client instance
+                    self.login_dialog.api_client = self.client
 
                 if self.login_dialog.exec():
                     # Login successful
