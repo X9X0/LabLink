@@ -70,6 +70,7 @@ class MDNSScanner:
             )
 
         devices = []
+        browser = None
 
         try:
             # Create zeroconf instance
@@ -105,6 +106,15 @@ class MDNSScanner:
             raise
 
         finally:
+            # Close browser first to prevent file descriptor leaks
+            if browser:
+                try:
+                    browser.cancel()
+                    logger.debug("Cancelled mDNS service browser")
+                except Exception as e:
+                    logger.warning(f"Error cancelling service browser: {e}")
+
+            # Then close zeroconf
             if self.zeroconf:
                 self.zeroconf.close()
                 self.zeroconf = None
