@@ -61,12 +61,14 @@ class DiscoverDevicesResponse(BaseModel):
     devices: List[DiscoveredDevice]
 
 
-@router.post("/discover", response_model=DiscoverDevicesResponse)
+@router.post("/discover")
 async def discover_devices():
     """Discover available VISA devices with full device information."""
     try:
         devices = await equipment_manager.discover_devices()
-        return DiscoverDevicesResponse(devices=devices)
+        # Convert DiscoveredDevice objects to dicts for JSON serialization
+        devices_dict = [device.model_dump() for device in devices]
+        return {"devices": devices_dict}
     except Exception as e:
         logger.error(f"Error discovering devices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
