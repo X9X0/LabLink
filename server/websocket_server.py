@@ -35,6 +35,16 @@ class StreamManager:
             f"WebSocket disconnected. Total connections: {len(self.active_connections)}"
         )
 
+        # If no more clients connected, stop all streaming tasks to prevent resource leaks
+        if len(self.active_connections) == 0:
+            logger.info("No active connections remaining, stopping all streaming tasks")
+            tasks_to_cancel = list(self.streaming_tasks.items())
+            for task_key, task in tasks_to_cancel:
+                if not task.done():
+                    task.cancel()
+                    logger.debug(f"Cancelled streaming task: {task_key}")
+            self.streaming_tasks.clear()
+
     async def send_to_client(self, websocket: WebSocket, message: dict):
         """Send a message to a specific client."""
         try:
