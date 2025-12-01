@@ -445,17 +445,266 @@ class BK9130B(BKPowerSupplyBase):
         return await super().get_readings(channel)
 
 
-class BK9205B(BKPowerSupplyBase):
-    """Driver for BK Precision 9205B Multi-Range DC Power Supply."""
+class BK9205B(BaseEquipment):
+    """Driver for BK Precision 9205B Multi-Range DC Power Supply.
+
+    Note: The BK 9205B uses standard SCPI commands via USB, unlike older
+    BK models (1685B, 1902B) which use proprietary serial protocol.
+    """
 
     def __init__(self, resource_manager, resource_string: str):
         """Initialize BK 9205B."""
         super().__init__(resource_manager, resource_string)
+        self.manufacturer = "BK Precision"
         self.model = "9205B"
         self.num_channels = 1
         # Multi-range: 60V/10A or 120V/5A
         self.max_voltage = 120.0
         self.max_current = 10.0
+
+        # Initialize safety validator
+        self.safety_validator = None
+        self._current_voltage = 0.0
+        self._current_current = 0.0
+
+    async def connect(self):
+        """Connect to the BK 9205B power supply."""
+        try:
+            # Refresh resource manager if needed
+            self._refresh_resource_manager()
+
+            # Close old instrument if it exists
+            if self.instrument is not None:
+                try:
+                    self.instrument.close()
+                except Exception:
+                    pass
+                self.instrument = None
+
+            # Open the resource
+            self.instrument = self.resource_manager.open_resource(
+                self.resource_string
+            )
+
+            # Set timeout and termination for USB/SCPI communication
+            self.instrument.timeout = 5000  # 5 seconds
+            self.instrument.write_termination = '\n'
+            self.instrument.read_termination = '\n'
+
+            # Verify connection with *IDN?
+            idn = await self._query("*IDN?")
+            logger.info(f"Connected to BK 9205B: {idn}")
+
+            # Check for errors
+            error = await self._query("SYST:ERR?")
+            if not error.startswith("0"):
+                logger.warning(f"Device error after connect: {error}")
+
+            self.connected = True
+
+            # Cache equipment info
+            self.cached_info = await self.get_info()
+
+        except Exception as e:
+            logger.error(f"Failed to connect to {self.resource_string}: {e}")
+            self.connected = False
+            raise
+
+    def _initialize_safety(self, equipment_id: str):
+        """Initialize safety validator with appropriate limits."""
+        if not settings.enable_safety_limits:
+            logger.info(f"Safety limits disabled for {equipment_id}")
+            return
+
+        # Get default limits for power supply
+        default_limits = get_default_limits("power_supply")
+
+        # Override with equipment-specific limits
+        safety_limits = SafetyLimits(
+            max_voltage=self.max_voltage,
+            max_current=self.max_current,
+            max_power=default_limits.max_power,
+            voltage_slew_rate=(
+                default_limits.voltage_slew_rate if settings.enforce_slew_rate else None
+            ),
+            current_slew_rate=(
+                default_limits.current_slew_rate if settings.enforce_slew_rate else None
+            ),
+            require_interlock=False,
+        )
+
+        self.safety_validator = SafetyValidator(safety_limits, equipment_id)
+        logger.info(f"Safety validator initialized for {equipment_id}")
+
+    async def get_info(self) -> EquipmentInfo:
+        """Get power supply information."""
+        try:
+            idn = await self._query("*IDN?")
+            # *IDN? returns: B&K Precision, 9205B, SERIAL, FIRMWARE
+            parts = idn.split(",")
+            manufacturer = parts[0].strip() if len(parts) > 0 else self.manufacturer
+            model = parts[1].strip() if len(parts) > 1 else self.model
+            serial = parts[2].strip() if len(parts) > 2 else None
+        except Exception as e:
+            logger.warning(f"Could not query *IDN?: {e}")
+            manufacturer = self.manufacturer
+            model = self.model
+            serial = None
+
+        # Generate deterministic ID from resource string
+        from .base import generate_equipment_id
+        equipment_id = generate_equipment_id(self.resource_string, "ps_")
+
+        # Initialize safety validator
+        self._initialize_safety(equipment_id)
+
+        return EquipmentInfo(
+            id=equipment_id,
+            type=EquipmentType.POWER_SUPPLY,
+            manufacturer=manufacturer,
+            model=model,
+            serial_number=serial,
+            connection_type=self._determine_connection_type(),
+            resource_string=self.resource_string,
+        )
+
+    async def get_status(self) -> EquipmentStatus:
+        """Get power supply status."""
+        firmware = None
+        try:
+            idn = await self._query("*IDN?")
+            parts = idn.split(",")
+            firmware = parts[3].strip() if len(parts) > 3 else None
+        except Exception:
+            pass
+
+        capabilities = {
+            "num_channels": self.num_channels,
+            "max_voltage": self.max_voltage,
+            "max_current": self.max_current,
+        }
+
+        return EquipmentStatus(
+            id=self.cached_info.id if self.cached_info else "unknown",
+            connected=self.connected,
+            firmware_version=firmware,
+            capabilities=capabilities,
+        )
+
+    async def execute_command(self, command: str, parameters: dict) -> Any:
+        """Execute a command on the power supply."""
+        if command == "set_voltage":
+            return await self.set_voltage(**parameters)
+        elif command == "set_current":
+            return await self.set_current(**parameters)
+        elif command == "set_output":
+            return await self.set_output(**parameters)
+        elif command == "get_readings":
+            return await self.get_readings(**parameters)
+        elif command == "get_setpoints":
+            return await self.get_setpoints(**parameters)
+        else:
+            raise ValueError(f"Unknown command: {command}")
+
+    async def set_voltage(self, voltage: float, channel: int = 1):
+        """Set output voltage using SCPI."""
+        # Check emergency stop
+        if emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - operation blocked")
+
+        # Basic range check
+        if voltage < 0 or voltage > self.max_voltage:
+            raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+
+        # Safety checks if enabled
+        if self.safety_validator and settings.enable_safety_limits:
+            self.safety_validator.check_voltage(voltage)
+
+            if settings.enforce_slew_rate:
+                voltage = await self.safety_validator.apply_voltage_slew_limit(
+                    voltage, self._current_voltage
+                )
+
+        # SCPI command
+        await self._write(f"VOLT {voltage}")
+        self._current_voltage = voltage
+
+    async def set_current(self, current: float, channel: int = 1):
+        """Set current limit using SCPI."""
+        # Check emergency stop
+        if emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - operation blocked")
+
+        # Basic range check
+        if current < 0 or current > self.max_current:
+            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+
+        # Safety checks if enabled
+        if self.safety_validator and settings.enable_safety_limits:
+            self.safety_validator.check_current(current)
+
+            if settings.enforce_slew_rate:
+                current = await self.safety_validator.apply_current_slew_limit(
+                    current, self._current_current
+                )
+
+        # SCPI command
+        await self._write(f"CURR {current}")
+        self._current_current = current
+
+    async def set_output(self, enabled: bool, channel: int = 1):
+        """Enable or disable output using SCPI."""
+        # Check emergency stop (only when enabling output)
+        if enabled and emergency_stop_manager.is_active():
+            raise RuntimeError("Emergency stop is active - cannot enable output")
+
+        # SCPI command
+        await self._write(f"OUTP {'ON' if enabled else 'OFF'}")
+
+    async def get_readings(self, channel: int = 1) -> PowerSupplyData:
+        """Get current voltage and current readings using SCPI."""
+        # Query actual measurements
+        voltage = float(await self._query("MEAS:VOLT?"))
+        current = float(await self._query("MEAS:CURR?"))
+
+        # Query setpoints
+        voltage_set = float(await self._query("VOLT?"))
+        current_set = float(await self._query("CURR?"))
+
+        # Query output state
+        output_response = await self._query("OUTP?")
+        output_enabled = output_response.strip() in ["1", "ON"]
+
+        # Determine CV/CC mode based on actual vs setpoint
+        # If actual voltage is close to setpoint, we're in CV mode
+        # If actual current is close to limit, we're in CC mode
+        voltage_tolerance = 0.1  # 100mV
+        current_tolerance = 0.01  # 10mA
+
+        in_cv_mode = abs(voltage - voltage_set) < voltage_tolerance
+        in_cc_mode = abs(current - current_set) < current_tolerance and current > 0.01
+
+        return PowerSupplyData(
+            equipment_id=self.cached_info.id if self.cached_info else "unknown",
+            channel=channel,
+            voltage_set=voltage_set,
+            current_set=current_set,
+            voltage_actual=voltage,
+            current_actual=current,
+            output_enabled=output_enabled,
+            in_cv_mode=in_cv_mode,
+            in_cc_mode=in_cc_mode,
+        )
+
+    async def get_setpoints(self, channel: int = 1) -> Dict[str, float]:
+        """Get voltage and current setpoints using SCPI."""
+        voltage_set = float(await self._query("VOLT?"))
+        current_set = float(await self._query("CURR?"))
+
+        return {
+            "voltage": voltage_set,
+            "current": current_set,
+        }
 
 
 class BK1685B(BKPowerSupplyBase):
