@@ -237,8 +237,6 @@ class VISAScanner:
             device_id=self._generate_device_id(resource_name),
             resource_name=resource_name,
             discovery_method=DiscoveryMethod.VISA,
-            discovered_at=datetime.now(),
-            last_seen=datetime.now(),
             status=ConnectionStatus.AVAILABLE,
         )
 
