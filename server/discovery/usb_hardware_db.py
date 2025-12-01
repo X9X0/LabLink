@@ -249,16 +249,22 @@ def extract_usb_ids_from_serial_port(port_path: str) -> Optional[tuple[str, str]
     Returns:
         Tuple of (vid, pid) in hex without 0x prefix, or None if not found
     """
+    import logging
     import os
     import re
+
+    logger = logging.getLogger(__name__)
 
     # Extract port number from /dev/ttyUSBx or /dev/ttyACMx
     match = re.search(r'tty(USB|ACM)(\d+)', port_path)
     if not match:
+        logger.debug(f"Could not extract port type from {port_path}")
         return None
 
     port_type = match.group(1)  # USB or ACM
     port_num = match.group(2)   # Port number
+
+    logger.debug(f"Looking for USB IDs for {port_type}{port_num} at {port_path}")
 
     # Try to find the USB device in sysfs
     # Path is typically /sys/class/tty/ttyUSBx/device/../../idVendor
@@ -272,6 +278,7 @@ def extract_usb_ids_from_serial_port(port_path: str) -> Optional[tuple[str, str]
     pid = None
 
     for vid_path in sysfs_paths:
+        logger.debug(f"Trying sysfs path: {vid_path}")
         if os.path.exists(vid_path):
             pid_path = vid_path.replace("idVendor", "idProduct")
             try:
@@ -280,10 +287,15 @@ def extract_usb_ids_from_serial_port(port_path: str) -> Optional[tuple[str, str]
                 with open(pid_path, 'r') as f:
                     pid = f.read().strip()
                 if vid and pid:
+                    logger.info(f"Found USB IDs for {port_path}: {vid}:{pid}")
                     return (vid.lower(), pid.lower())
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to read from {vid_path}: {e}")
                 continue
+        else:
+            logger.debug(f"Path does not exist: {vid_path}")
 
+    logger.warning(f"Could not find USB IDs for serial port {port_path}")
     return None
 
 

@@ -81,7 +81,7 @@ class VISAScanner:
             # List resources (blocking I/O, run in executor)
             loop = asyncio.get_event_loop()
             resources = await loop.run_in_executor(None, rm.list_resources, query)
-            logger.info(f"Found {len(resources)} VISA resources")
+            logger.info(f"Found {len(resources)} VISA resources: {list(resources)}")
 
             if self.progress_callback:
                 self.progress_callback(
@@ -148,6 +148,13 @@ class VISAScanner:
             # Filter out None results
             devices = [d for d in results if d is not None]
 
+            # Log which resources were filtered out
+            filtered_count = len(results) - len(devices)
+            if filtered_count > 0:
+                logger.warning(
+                    f"Filtered out {filtered_count} resources that could not be identified"
+                )
+
             if self.progress_callback:
                 self.progress_callback(
                     f"Discovery complete: {len(devices)} devices identified",
@@ -211,13 +218,19 @@ class VISAScanner:
 
         # Skip if interface not enabled
         if interface_type == "TCPIP" and not self.config.scan_tcpip:
+            logger.debug(f"Skipping TCPIP resource (disabled): {resource_name}")
             return None
         if interface_type == "USB" and not self.config.scan_usb:
+            logger.debug(f"Skipping USB resource (disabled): {resource_name}")
             return None
         if interface_type == "GPIB" and not self.config.scan_gpib:
+            logger.debug(f"Skipping GPIB resource (disabled): {resource_name}")
             return None
         if interface_type == "ASRL" and not self.config.scan_serial:
+            logger.debug(f"Skipping ASRL resource (disabled): {resource_name}")
             return None
+
+        logger.debug(f"Processing {interface_type} resource: {resource_name}")
 
         # Create base device
         device = DiscoveredDevice(
