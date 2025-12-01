@@ -109,25 +109,33 @@ def test_bk9205b():
         return False
 
     # Test basic SCPI commands
-    print("\n4. Testing SCPI commands...")
+    print("\n4. Testing commands (without device.clear() - BK 9205B doesn't like it)...")
 
+    # Test both standard SCPI and simpler commands
     commands = [
-        ("*IDN?", "Device identification"),
-        ("*OPC?", "Operation complete query"),
-        ("SYST:ERR?", "System error query"),
-        ("MEAS:VOLT?", "Measure output voltage"),
-        ("MEAS:CURR?", "Measure output current"),
+        # Standard SCPI (may not work)
+        ("*IDN?", "Device identification (standard SCPI)"),
+        ("*OPC?", "Operation complete query (standard SCPI)"),
+        ("SYST:ERR?", "System error query (standard SCPI)"),
+        ("MEAS:VOLT?", "Measure output voltage (standard SCPI)"),
+        ("MEAS:CURR?", "Measure output current (standard SCPI)"),
+        # Simple commands (more likely to work)
         ("VOLT?", "Query voltage setpoint"),
         ("CURR?", "Query current setpoint"),
         ("OUTP?", "Query output state"),
+        ("ISET?", "Query current setpoint (alternate)"),
+        ("VSET?", "Query voltage setpoint (alternate)"),
+        ("GETD", "Get device data (BK custom command)"),
+        ("GETS", "Get status (BK custom command)"),
+        ("GPAL", "Get all parameters (BK custom command)"),
     ]
 
     results = {}
 
     for cmd, description in commands:
-        print(f"\n   Testing: {cmd:15s} ({description})")
+        print(f"\n   Testing: {cmd:20s} ({description})")
         try:
-            device.clear()  # Clear any previous errors
+            # Don't call device.clear() - it causes VI_ERROR_NSUP_OPER on BK 9205B
             response = device.query(cmd)
             print(f"   Response: {response.strip()}")
             results[cmd] = response.strip()
@@ -138,7 +146,7 @@ def test_bk9205b():
             print(f"   ERROR: {e}")
             results[cmd] = f"ERROR: {e}"
 
-        time.sleep(0.2)  # Small delay between commands
+        time.sleep(0.3)  # Small delay between commands
 
     # Try setting safe test values (if output is off)
     print("\n5. Testing command writing (safe values)...")
