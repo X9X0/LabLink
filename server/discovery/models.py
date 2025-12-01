@@ -215,7 +215,7 @@ class DiscoveryConfig(BaseModel):
     scan_tcpip: bool = Field(True, description="Scan TCPIP resources")
     scan_usb: bool = Field(True, description="Scan USB resources")
     scan_gpib: bool = Field(False, description="Scan GPIB resources")
-    scan_serial: bool = Field(False, description="Scan serial resources")
+    scan_serial: bool = Field(True, description="Scan serial resources")  # Enable by default for USB-to-serial devices
 
     # Network settings (for mDNS)
     mdns_service_type: str = Field(
