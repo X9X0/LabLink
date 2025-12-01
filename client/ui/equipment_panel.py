@@ -608,8 +608,8 @@ class EquipmentPanel(QWidget):
 
             # Call discover endpoint (async - this is the long-running operation)
             data = await self.client.discover_equipment_async()
-            resources = data.get("resources", [])
-            discovered_count = len(resources)
+            devices = data.get("devices", [])
+            discovered_count = len(devices)
 
             # Close progress dialog
             if self.progress_dialog:
@@ -621,8 +621,8 @@ class EquipmentPanel(QWidget):
             from PyQt6.QtCore import QTimer
 
             if discovered_count > 0:
-                # Schedule the dialog to show on the main thread
-                QTimer.singleShot(0, lambda: self._show_connect_dialog(resources))
+                # Schedule the dialog to show on the main thread with full device info
+                QTimer.singleShot(0, lambda: self._show_connect_dialog(devices))
             else:
                 QTimer.singleShot(
                     0,
@@ -648,14 +648,14 @@ class EquipmentPanel(QWidget):
                 0, lambda: QMessageBox.warning(self, "Error", f"Discovery failed: {str(e)}")
             )
 
-    def _show_connect_dialog(self, resources):
+    def _show_connect_dialog(self, devices):
         """Show connect dialog on main thread after discovery completes.
 
         Args:
-            resources: List of discovered resource strings
+            devices: List of discovered device info dicts
         """
         from client.ui.connect_dialog import ConnectDeviceDialog
-        connect_dialog = ConnectDeviceDialog(resources, self.client, self)
+        connect_dialog = ConnectDeviceDialog(devices, self.client, self)
         if connect_dialog.exec() == QDialog.DialogCode.Accepted:
             # Device was connected, refresh the list
             self.refresh()

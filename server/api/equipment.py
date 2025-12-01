@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from server.config.settings import settings
+from server.discovery.models import DiscoveredDevice
 from server.equipment.locks import lock_manager
 from server.equipment.manager import equipment_manager
 from shared.models.commands import Command, CommandResponse
@@ -57,15 +58,15 @@ class ConnectDeviceRequest(BaseModel):
 class DiscoverDevicesResponse(BaseModel):
     """Response for device discovery."""
 
-    resources: List[str]
+    devices: List[DiscoveredDevice]
 
 
 @router.post("/discover", response_model=DiscoverDevicesResponse)
 async def discover_devices():
-    """Discover available VISA devices."""
+    """Discover available VISA devices with full device information."""
     try:
-        resources = await equipment_manager.discover_devices()
-        return DiscoverDevicesResponse(resources=resources)
+        devices = await equipment_manager.discover_devices()
+        return DiscoverDevicesResponse(devices=devices)
     except Exception as e:
         logger.error(f"Error discovering devices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
