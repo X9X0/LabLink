@@ -19,7 +19,7 @@ h5py==3.10.0
 scipy==1.11.4
 
 # Configuration
-pydantic==2.5.3
+pydantic==2.12.4
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 email-validator==2.1.0
