@@ -232,6 +232,10 @@ class VISAScanner:
 
         logger.debug(f"Processing {interface_type} resource: {resource_name}")
 
+        # Log ASRL resources at INFO level for visibility
+        if interface_type == "ASRL":
+            logger.info(f"Processing serial device: {resource_name}")
+
         # Create base device
         device = DiscoveredDevice(
             device_id=self._generate_device_id(resource_name),
@@ -258,6 +262,11 @@ class VISAScanner:
                 )
                 # Don't use generic USB-to-Serial chip info, wait for *IDN? or better identification
                 if usb_device_info.device_type != DeviceType.UNKNOWN:
+                    if interface_type == "ASRL":
+                        logger.info(
+                            f"Serial device identified from USB hardware DB: "
+                            f"{usb_device_info.manufacturer} {usb_device_info.model}"
+                        )
                     device.manufacturer = usb_device_info.manufacturer
                     device.model = usb_device_info.model
                     device.device_type = usb_device_info.device_type
@@ -272,11 +281,23 @@ class VISAScanner:
                         device.metadata["max_current"] = usb_device_info.max_current
                 else:
                     # Generic USB-to-Serial chip, don't use this info yet
+                    if interface_type == "ASRL":
+                        logger.info(
+                            f"Serial device uses generic USB-to-Serial chip "
+                            f"({usb_device_info.manufacturer} {usb_device_info.model}), "
+                            f"will try *IDN? for identification"
+                        )
                     logger.debug(
                         f"Found generic USB-to-Serial chip ({usb_device_info.manufacturer} "
                         f"{usb_device_info.model}), will try *IDN? for better identification"
                     )
                     usb_device_info = None  # Clear it so we try *IDN?
+            else:
+                if interface_type == "ASRL":
+                    logger.info(
+                        f"No USB hardware info found for serial device {resource_name}, "
+                        f"will try *IDN? query"
+                    )
 
         # Query device identification if enabled (will override USB database info if successful)
         if self.config.test_connections and self.config.query_idn:
@@ -343,6 +364,14 @@ class VISAScanner:
                     logger.debug(
                         f"*IDN? failed, but USB database provided identification"
                     )
+
+        # Log final device status before returning
+        if interface_type == "ASRL":
+            logger.info(
+                f"Returning serial device: {resource_name}, "
+                f"manufacturer={device.manufacturer}, model={device.model}, "
+                f"status={device.status}, confidence={device.confidence_score}"
+            )
 
         return device
 
