@@ -1,14 +1,16 @@
 """VISA resource scanner for equipment discovery."""
 
+import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import pyvisa
 
 from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
                      DiscoveryConfig, DiscoveryMethod)
+from .usb_hardware_db import get_device_info_from_resource
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +18,23 @@ logger = logging.getLogger(__name__)
 class VISAScanner:
     """Scans for VISA resources (TCPIP, USB, GPIB, Serial)."""
 
-    def __init__(self, config: DiscoveryConfig, visa_backend: str = "@py"):
+    def __init__(
+        self,
+        config: DiscoveryConfig,
+        visa_backend: str = "@py",
+        progress_callback: Optional[Callable[[str, dict], None]] = None,
+    ):
         """Initialize VISA scanner.
 
         Args:
             config: Discovery configuration
             visa_backend: PyVISA backend (@py, @ni, @sim)
+            progress_callback: Optional callback for progress updates (message, data)
         """
         self.config = config
         self.visa_backend = visa_backend
         self.rm: Optional[pyvisa.ResourceManager] = None
+        self.progress_callback = progress_callback
 
     def _get_resource_manager(self) -> pyvisa.ResourceManager:
         """Get or create VISA resource manager.
@@ -43,8 +52,8 @@ class VISAScanner:
 
         return self.rm
 
-    def scan(self) -> List[DiscoveredDevice]:
-        """Scan for VISA resources.
+    async def scan(self) -> List[DiscoveredDevice]:
+        """Scan for VISA resources asynchronously.
 
         Returns:
             List of discovered devices
@@ -63,21 +72,94 @@ class VISAScanner:
             query = self._build_query_string()
             logger.info(f"Scanning VISA resources: {query}")
 
-            # List resources
-            resources = rm.list_resources(query)
+            if self.progress_callback:
+                self.progress_callback(
+                    "Enumerating VISA resources...",
+                    {"stage": "enumeration", "query": query},
+                )
+
+            # List resources (blocking I/O, run in executor)
+            loop = asyncio.get_event_loop()
+            resources = await loop.run_in_executor(None, rm.list_resources, query)
             logger.info(f"Found {len(resources)} VISA resources")
 
-            # Process each resource
-            for resource_name in resources:
-                try:
-                    device = self._process_resource(resource_name)
-                    if device:
-                        devices.append(device)
-                except Exception as e:
-                    logger.warning(f"Failed to process resource {resource_name}: {e}")
+            if self.progress_callback:
+                self.progress_callback(
+                    f"Found {len(resources)} VISA resources",
+                    {
+                        "stage": "found_resources",
+                        "count": len(resources),
+                        "resources": list(resources),
+                    },
+                )
+
+            # Process resources in parallel (with controlled concurrency)
+            # Limit to 3 concurrent queries to avoid overwhelming devices
+            semaphore = asyncio.Semaphore(3)
+
+            async def process_with_semaphore(resource_name: str, index: int):
+                async with semaphore:
+                    if self.progress_callback:
+                        self.progress_callback(
+                            f"Querying device {index + 1}/{len(resources)}: {resource_name}",
+                            {
+                                "stage": "querying",
+                                "current": index + 1,
+                                "total": len(resources),
+                                "resource": resource_name,
+                            },
+                        )
+                    try:
+                        device = await self._process_resource(resource_name)
+                        if device and self.progress_callback:
+                            self.progress_callback(
+                                f"Identified: {device.manufacturer} {device.model}",
+                                {
+                                    "stage": "identified",
+                                    "device_id": device.device_id,
+                                    "manufacturer": device.manufacturer,
+                                    "model": device.model,
+                                    "resource": resource_name,
+                                },
+                            )
+                        return device
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to process resource {resource_name}: {e}"
+                        )
+                        if self.progress_callback:
+                            self.progress_callback(
+                                f"Failed to query {resource_name}: {str(e)}",
+                                {
+                                    "stage": "error",
+                                    "resource": resource_name,
+                                    "error": str(e),
+                                },
+                            )
+                        return None
+
+            # Process all resources concurrently
+            tasks = [
+                process_with_semaphore(resource, i)
+                for i, resource in enumerate(resources)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+
+            # Filter out None results
+            devices = [d for d in results if d is not None]
+
+            if self.progress_callback:
+                self.progress_callback(
+                    f"Discovery complete: {len(devices)} devices identified",
+                    {"stage": "complete", "device_count": len(devices)},
+                )
 
         except Exception as e:
             logger.error(f"VISA scan failed: {e}")
+            if self.progress_callback:
+                self.progress_callback(
+                    f"VISA scan error: {str(e)}", {"stage": "error", "error": str(e)}
+                )
             raise
 
         finally:
@@ -113,8 +195,10 @@ class VISAScanner:
         # We'll need to scan each type separately
         return "?*::INSTR"  # Scan all for now
 
-    def _process_resource(self, resource_name: str) -> Optional[DiscoveredDevice]:
-        """Process a single VISA resource.
+    async def _process_resource(
+        self, resource_name: str
+    ) -> Optional[DiscoveredDevice]:
+        """Process a single VISA resource asynchronously.
 
         Args:
             resource_name: VISA resource name
@@ -152,11 +236,33 @@ class VISAScanner:
             device.hostname = hostname
             device.port = port
 
-        # Query device identification if enabled
+        # Try USB hardware database first (faster, no device communication needed)
+        usb_device_info = None
+        if interface_type == "USB":
+            usb_device_info = get_device_info_from_resource(resource_name)
+            if usb_device_info:
+                logger.debug(
+                    f"Found USB device in hardware database: {usb_device_info}"
+                )
+                device.manufacturer = usb_device_info.manufacturer
+                device.model = usb_device_info.model
+                device.device_type = usb_device_info.device_type
+                device.confidence_score = 0.7  # Good confidence from USB ID
+                device.status = ConnectionStatus.AVAILABLE
+                # Store additional info in metadata
+                if usb_device_info.description:
+                    device.metadata["description"] = usb_device_info.description
+                if usb_device_info.max_voltage:
+                    device.metadata["max_voltage"] = usb_device_info.max_voltage
+                if usb_device_info.max_current:
+                    device.metadata["max_current"] = usb_device_info.max_current
+
+        # Query device identification if enabled (will override USB database info if successful)
         if self.config.test_connections and self.config.query_idn:
             try:
-                device_info = self._query_device_info(resource_name)
+                device_info = await self._query_device_info(resource_name)
                 if device_info:
+                    # *IDN? succeeded - use this info (highest confidence)
                     device.manufacturer = device_info.get("manufacturer")
                     device.model = device_info.get("model")
                     device.serial_number = device_info.get("serial_number")
@@ -164,10 +270,31 @@ class VISAScanner:
                     device.device_type = self._infer_device_type(device_info)
                     device.confidence_score = 0.9  # High confidence if we got *IDN?
                     device.status = ConnectionStatus.AVAILABLE
+                    logger.debug(
+                        f"Successfully queried *IDN? from {resource_name}: "
+                        f"{device.manufacturer} {device.model}"
+                    )
+                else:
+                    # *IDN? failed but we have USB database info
+                    if usb_device_info:
+                        logger.debug(
+                            f"*IDN? failed, using USB database info for {resource_name}"
+                        )
+                        # Keep USB database info (already set above)
+                    else:
+                        # No info available
+                        device.status = ConnectionStatus.OFFLINE
+                        device.confidence_score = 0.3  # Low confidence
             except Exception as e:
                 logger.debug(f"Failed to query device info for {resource_name}: {e}")
-                device.status = ConnectionStatus.OFFLINE
-                device.confidence_score = 0.3  # Low confidence
+                # If we have USB database info, keep it; otherwise mark as offline
+                if not usb_device_info:
+                    device.status = ConnectionStatus.OFFLINE
+                    device.confidence_score = 0.3  # Low confidence
+                else:
+                    logger.debug(
+                        f"*IDN? failed, but USB database provided identification"
+                    )
 
         return device
 
@@ -244,8 +371,8 @@ class VISAScanner:
         pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
         return bool(re.match(pattern, text))
 
-    def _query_device_info(self, resource_name: str) -> Optional[dict]:
-        """Query device identification.
+    async def _query_device_info(self, resource_name: str) -> Optional[dict]:
+        """Query device identification asynchronously.
 
         Args:
             resource_name: VISA resource name
@@ -253,31 +380,39 @@ class VISAScanner:
         Returns:
             Device info dictionary or None
         """
-        rm = self._get_resource_manager()
 
-        try:
-            # Open resource with timeout
-            instrument = rm.open_resource(
-                resource_name, timeout=self.config.connection_timeout_ms
-            )
-
+        def _blocking_query():
+            """Blocking query to run in executor."""
+            rm = self._get_resource_manager()
             try:
-                # Query *IDN?
-                idn_response = instrument.query("*IDN?").strip()
-                logger.debug(f"*IDN? response from {resource_name}: {idn_response}")
+                # Open resource with timeout
+                instrument = rm.open_resource(
+                    resource_name, timeout=self.config.connection_timeout_ms
+                )
 
-                # Parse *IDN? response
-                if self.config.parse_idn:
-                    return self._parse_idn_response(idn_response)
-                else:
-                    return {"raw_idn": idn_response}
+                try:
+                    # Query *IDN?
+                    idn_response = instrument.query("*IDN?").strip()
+                    logger.debug(
+                        f"*IDN? response from {resource_name}: {idn_response}"
+                    )
 
-            finally:
-                instrument.close()
+                    # Parse *IDN? response
+                    if self.config.parse_idn:
+                        return self._parse_idn_response(idn_response)
+                    else:
+                        return {"raw_idn": idn_response}
 
-        except Exception as e:
-            logger.debug(f"Failed to query *IDN? from {resource_name}: {e}")
-            return None
+                finally:
+                    instrument.close()
+
+            except Exception as e:
+                logger.debug(f"Failed to query *IDN? from {resource_name}: {e}")
+                return None
+
+        # Run blocking I/O in executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _blocking_query)
 
     def _parse_idn_response(self, idn_response: str) -> dict:
         """Parse *IDN? response.
@@ -382,8 +517,10 @@ class VISAScanner:
         # (In practice, we'd want to use serial number or MAC address)
         return device_id
 
-    def test_connection(self, resource_name: str) -> tuple[bool, Optional[str]]:
-        """Test connection to a resource.
+    async def test_connection(
+        self, resource_name: str
+    ) -> tuple[bool, Optional[str]]:
+        """Test connection to a resource asynchronously.
 
         Args:
             resource_name: VISA resource name
@@ -391,21 +528,26 @@ class VISAScanner:
         Returns:
             Tuple of (success, error_message)
         """
-        rm = self._get_resource_manager()
 
-        try:
-            instrument = rm.open_resource(
-                resource_name, timeout=self.config.connection_timeout_ms
-            )
+        def _blocking_test():
+            rm = self._get_resource_manager()
             try:
-                # Try to query *IDN?
-                instrument.query("*IDN?")
-                return True, None
-            finally:
-                instrument.close()
+                instrument = rm.open_resource(
+                    resource_name, timeout=self.config.connection_timeout_ms
+                )
+                try:
+                    # Try to query *IDN?
+                    instrument.query("*IDN?")
+                    return True, None
+                finally:
+                    instrument.close()
 
-        except Exception as e:
-            return False, str(e)
+            except Exception as e:
+                return False, str(e)
+
+        # Run blocking I/O in executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _blocking_test)
 
     def close(self):
         """Close VISA resource manager."""

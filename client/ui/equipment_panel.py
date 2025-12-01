@@ -5,12 +5,12 @@ import logging
 from typing import Dict, List, Optional, Set
 
 from models.equipment import ConnectionStatus, Equipment
-from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
                              QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QPushButton, QSplitter, QTextEdit,
-                             QVBoxLayout, QWidget)
+                             QMessageBox, QProgressDialog, QPushButton,
+                             QSplitter, QTextEdit, QVBoxLayout, QWidget)
 
 from client.api.client import LabLinkClient
 
@@ -100,6 +100,7 @@ class WebSocketSignals(QObject):
     stream_data_received = pyqtSignal(str, dict)  # equipment_id, data
     stream_started = pyqtSignal(str)  # equipment_id
     stream_stopped = pyqtSignal(str)  # equipment_id
+    discovery_progress = pyqtSignal(dict)  # progress data
 
 
 class EquipmentPanel(QWidget):
@@ -120,6 +121,9 @@ class EquipmentPanel(QWidget):
         self.streaming_equipment: Set[str] = (
             set()
         )  # Track equipment with active streams
+
+        # Discovery progress dialog
+        self.progress_dialog: Optional[QProgressDialog] = None
 
         self._setup_ui()
         self._connect_ws_signals()
@@ -286,6 +290,7 @@ class EquipmentPanel(QWidget):
         self.ws_signals.stream_data_received.connect(self._on_stream_data)
         self.ws_signals.stream_started.connect(self._on_stream_started)
         self.ws_signals.stream_stopped.connect(self._on_stream_stopped)
+        self.ws_signals.discovery_progress.connect(self._on_discovery_progress)
 
     def _register_ws_handlers(self):
         """Register WebSocket message handlers with the client."""
@@ -298,6 +303,15 @@ class EquipmentPanel(QWidget):
             logger.info("Registered WebSocket stream handlers for equipment panel")
         except Exception as e:
             logger.warning(f"Could not register WebSocket handlers: {e}")
+
+        # Register discovery progress handler
+        try:
+            self.client.ws_manager.register_handler(
+                "discovery_progress", self._ws_discovery_progress_callback
+            )
+            logger.info("Registered WebSocket discovery progress handler")
+        except Exception as e:
+            logger.warning(f"Could not register discovery progress handler: {e}")
 
     def _ws_stream_data_callback(self, message: Dict):
         """WebSocket callback for stream data (runs in WebSocket thread).
@@ -349,6 +363,66 @@ class EquipmentPanel(QWidget):
         """
         self.streaming_equipment.discard(equipment_id)
         logger.info(f"Stream stopped for equipment {equipment_id}")
+
+    def _ws_discovery_progress_callback(self, message: Dict):
+        """WebSocket callback for discovery progress (runs in WebSocket thread).
+
+        Args:
+            message: WebSocket message with discovery progress
+        """
+        # Emit signal to update GUI thread
+        self.ws_signals.discovery_progress.emit(message)
+
+    def _on_discovery_progress(self, message: Dict):
+        """Handle discovery progress in GUI thread (thread-safe).
+
+        Args:
+            message: Discovery progress message
+        """
+        if not self.progress_dialog:
+            return
+
+        event_type = message.get("event_type", "")
+        data = message.get("data", {})
+
+        # Update progress dialog based on event type
+        if event_type == "visa_progress":
+            stage = data.get("stage", "")
+            progress_message = data.get("message", "")
+
+            if stage == "enumeration":
+                self.progress_dialog.setLabelText("Enumerating VISA resources...")
+                self.progress_dialog.setValue(10)
+            elif stage == "found_resources":
+                count = data.get("count", 0)
+                self.progress_dialog.setLabelText(f"Found {count} VISA resources, querying devices...")
+                self.progress_dialog.setValue(30)
+            elif stage == "querying":
+                current = data.get("current", 0)
+                total = data.get("total", 1)
+                resource = data.get("resource", "")
+                progress_pct = 30 + int((current / total) * 60)  # 30-90% range
+                self.progress_dialog.setValue(progress_pct)
+                self.progress_dialog.setLabelText(f"Querying device {current}/{total}...")
+            elif stage == "identified":
+                manufacturer = data.get("manufacturer", "Unknown")
+                model = data.get("model", "Unknown")
+                self.progress_dialog.setLabelText(f"Identified: {manufacturer} {model}")
+            elif stage == "complete":
+                device_count = data.get("device_count", 0)
+                self.progress_dialog.setLabelText(f"Discovery complete: {device_count} devices identified")
+                self.progress_dialog.setValue(100)
+            elif stage == "error":
+                error = data.get("error", "Unknown error")
+                self.progress_dialog.setLabelText(f"Error: {error}")
+        elif event_type == "scan_started":
+            method = data.get("method", "")
+            self.progress_dialog.setLabelText(f"Starting {method} scan...")
+        elif event_type == "scan_complete":
+            method = data.get("method", "")
+            device_count = data.get("device_count", 0)
+            self.progress_dialog.setLabelText(f"{method} scan complete: {device_count} devices")
+            self.progress_dialog.setValue(100)
 
     def refresh(self):
         """Refresh equipment list."""
@@ -516,13 +590,31 @@ class EquipmentPanel(QWidget):
             settings: Discovery settings dictionary
         """
         try:
+            # Create and show progress dialog
+            self.progress_dialog = QProgressDialog(
+                "Initializing discovery...", "Cancel", 0, 100, self
+            )
+            self.progress_dialog.setWindowTitle("Discovering Equipment")
+            self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.progress_dialog.setMinimumDuration(0)  # Show immediately
+            self.progress_dialog.setValue(0)
+            self.progress_dialog.show()
+
             # Update settings on server (async)
             await self.client.update_discovery_settings_async(**settings)
+
+            self.progress_dialog.setLabelText("Starting equipment discovery...")
+            self.progress_dialog.setValue(5)
 
             # Call discover endpoint (async - this is the long-running operation)
             data = await self.client.discover_equipment_async()
             resources = data.get("resources", [])
             discovered_count = len(resources)
+
+            # Close progress dialog
+            if self.progress_dialog:
+                self.progress_dialog.close()
+                self.progress_dialog = None
 
             # Use QTimer to schedule UI updates on the main Qt thread
             # This prevents blocking the event loop from async context
@@ -532,18 +624,29 @@ class EquipmentPanel(QWidget):
                 # Schedule the dialog to show on the main thread
                 QTimer.singleShot(0, lambda: self._show_connect_dialog(resources))
             else:
-                QTimer.singleShot(0, lambda: QMessageBox.information(
-                    self, "Discovery Complete",
-                    "No devices found.\n\nTry enabling different scan types (Serial, GPIB) or check your connections."
-                ))
+                QTimer.singleShot(
+                    0,
+                    lambda: QMessageBox.information(
+                        self,
+                        "Discovery Complete",
+                        "No devices found.\n\nTry enabling different scan types (Serial, GPIB) or check your connections.",
+                    ),
+                )
                 QTimer.singleShot(100, self.refresh)
 
         except Exception as e:
             logger.error(f"Error discovering equipment: {e}")
+
+            # Close progress dialog on error
+            if self.progress_dialog:
+                self.progress_dialog.close()
+                self.progress_dialog = None
+
             from PyQt6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: QMessageBox.warning(
-                self, "Error", f"Discovery failed: {str(e)}"
-            ))
+
+            QTimer.singleShot(
+                0, lambda: QMessageBox.warning(self, "Error", f"Discovery failed: {str(e)}")
+            )
 
     def _show_connect_dialog(self, resources):
         """Show connect dialog on main thread after discovery completes.

@@ -298,6 +298,22 @@ async def lifespan(app: FastAPI):
         discovery_manager = initialize_discovery_manager(
             discovery_config, settings.visa_backend
         )
+
+        # Wire discovery manager to WebSocket for real-time progress updates
+        def discovery_progress_callback(event_type: str, data: dict):
+            """Forward discovery progress to WebSocket clients."""
+            message = {
+                "type": "discovery_progress",
+                "event_type": event_type,
+                "data": data,
+                "timestamp": datetime.now().isoformat(),
+            }
+            # Broadcast asynchronously (fire and forget)
+            asyncio.create_task(stream_manager.broadcast(message))
+
+        discovery_manager.set_progress_callback(discovery_progress_callback)
+        logger.info("Discovery manager connected to WebSocket for real-time progress updates")
+
         await discovery_manager.start_auto_discovery()
         logger.info(
             "Discovery system initialized - Auto-discovery, mDNS, VISA scanning, smart recommendations enabled"
