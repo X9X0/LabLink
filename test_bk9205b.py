@@ -41,19 +41,33 @@ def test_bk9205b():
         print("   - Check USB permissions in Docker (privileged: true)")
         return False
 
-    # Find BK 9205B (USB VID:PID = 2ec7:9200)
-    print("\n2. Looking for BK 9205B (USB VID:PID 2ec7:9200)...")
+    # Find BK 9205B (USB VID:PID = 2ec7:9200 = 11975:37376 in decimal)
+    print("\n2. Looking for BK 9205B (USB VID:PID 2ec7:9200 = 11975:37376 decimal)...")
     bk9205b_resource = None
+
     for resource in resources:
-        if '2ec7' in resource.lower() and '9200' in resource.lower():
-            bk9205b_resource = resource
-            print(f"   Found: {resource}")
-            break
-        elif 'USB' in resource.upper():
-            print(f"   Found USB device: {resource}")
-            # Try this one anyway if we don't find the specific VID:PID
-            if bk9205b_resource is None:
-                bk9205b_resource = resource
+        # Parse USB resource string: USB0::VID::PID::SERIAL::INSTR
+        if resource.startswith('USB'):
+            parts = resource.split('::')
+            if len(parts) >= 3:
+                try:
+                    vid_decimal = int(parts[1])
+                    pid_decimal = int(parts[2])
+                    vid_hex = f"{vid_decimal:04x}"
+                    pid_hex = f"{pid_decimal:04x}"
+
+                    print(f"   Found USB device: {resource}")
+                    print(f"      VID:PID = {vid_hex}:{pid_hex} (decimal {vid_decimal}:{pid_decimal})")
+
+                    # Check if this is the BK 9205B (VID=0x2ec7, PID=0x9200)
+                    if vid_decimal == 11975 and pid_decimal == 37376:
+                        bk9205b_resource = resource
+                        print(f"      ✓ This is the BK 9205B!")
+                        break
+                except (ValueError, IndexError):
+                    print(f"   Found USB device (couldn't parse IDs): {resource}")
+        elif 'ASRL' in resource:
+            print(f"   Found Serial device: {resource} (skipping)")
 
     if not bk9205b_resource:
         print("\n   BK 9205B not found automatically.")
