@@ -87,7 +87,7 @@ jobs:
           coverage report --fail-under=${{ env.MIN_COVERAGE_PERCENT }}
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
           flags: unit-tests,python-${{ matrix.python-version }}
@@ -154,7 +154,7 @@ jobs:
             || echo "Some API tests may fail if endpoints are not yet implemented"
 
       - name: Upload API coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
           flags: api-tests
