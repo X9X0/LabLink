@@ -1,5 +1,5 @@
 # GUI Framework
-PyQt6==6.6.1
+PyQt6==6.10.0
 PyQt6-Qt6==6.6.1
 PyQt6-Charts==6.6.0
 PyQt6-Charts-Qt6==6.6.0
