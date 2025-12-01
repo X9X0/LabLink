@@ -227,14 +227,14 @@ class VISAScanner:
             logger.debug(f"Skipping GPIB resource (disabled): {resource_name}")
             return None
         if interface_type == "ASRL" and not self.config.scan_serial:
-            logger.debug(f"Skipping ASRL resource (disabled): {resource_name}")
+            logger.info(f"⚠️ Skipping ASRL resource (DISABLED in config): {resource_name}, scan_serial={self.config.scan_serial}")
             return None
 
         logger.debug(f"Processing {interface_type} resource: {resource_name}")
 
         # Log ASRL resources at INFO level for visibility
         if interface_type == "ASRL":
-            logger.info(f"Processing serial device: {resource_name}")
+            logger.info(f"✓ Processing ASRL (serial) device: {resource_name}, scan_serial={self.config.scan_serial}")
 
         # Create base device
         device = DiscoveredDevice(
