@@ -237,25 +237,35 @@ class VISAScanner:
             device.port = port
 
         # Try USB hardware database first (faster, no device communication needed)
+        # Works for both USB and ASRL (serial) devices
         usb_device_info = None
-        if interface_type == "USB":
+        if interface_type in ["USB", "ASRL"]:
             usb_device_info = get_device_info_from_resource(resource_name)
             if usb_device_info:
                 logger.debug(
-                    f"Found USB device in hardware database: {usb_device_info}"
+                    f"Found device in hardware database: {usb_device_info} (interface: {interface_type})"
                 )
-                device.manufacturer = usb_device_info.manufacturer
-                device.model = usb_device_info.model
-                device.device_type = usb_device_info.device_type
-                device.confidence_score = 0.7  # Good confidence from USB ID
-                device.status = ConnectionStatus.AVAILABLE
-                # Store additional info in metadata
-                if usb_device_info.description:
-                    device.metadata["description"] = usb_device_info.description
-                if usb_device_info.max_voltage:
-                    device.metadata["max_voltage"] = usb_device_info.max_voltage
-                if usb_device_info.max_current:
-                    device.metadata["max_current"] = usb_device_info.max_current
+                # Don't use generic USB-to-Serial chip info, wait for *IDN? or better identification
+                if usb_device_info.device_type != DeviceType.UNKNOWN:
+                    device.manufacturer = usb_device_info.manufacturer
+                    device.model = usb_device_info.model
+                    device.device_type = usb_device_info.device_type
+                    device.confidence_score = 0.7  # Good confidence from USB ID
+                    device.status = ConnectionStatus.AVAILABLE
+                    # Store additional info in metadata
+                    if usb_device_info.description:
+                        device.metadata["description"] = usb_device_info.description
+                    if usb_device_info.max_voltage:
+                        device.metadata["max_voltage"] = usb_device_info.max_voltage
+                    if usb_device_info.max_current:
+                        device.metadata["max_current"] = usb_device_info.max_current
+                else:
+                    # Generic USB-to-Serial chip, don't use this info yet
+                    logger.debug(
+                        f"Found generic USB-to-Serial chip ({usb_device_info.manufacturer} "
+                        f"{usb_device_info.model}), will try *IDN? for better identification"
+                    )
+                    usb_device_info = None  # Clear it so we try *IDN?
 
         # Query device identification if enabled (will override USB database info if successful)
         if self.config.test_connections and self.config.query_idn:
@@ -282,15 +292,42 @@ class VISAScanner:
                         )
                         # Keep USB database info (already set above)
                     else:
-                        # No info available
-                        device.status = ConnectionStatus.OFFLINE
-                        device.confidence_score = 0.3  # Low confidence
+                        # No info available - for serial devices, still return them
+                        # as they might use proprietary protocols
+                        if interface_type == "ASRL":
+                            logger.info(
+                                f"Serial device at {resource_name} did not respond to *IDN?, "
+                                f"may use proprietary protocol (e.g., BK Precision legacy devices)"
+                            )
+                            device.status = ConnectionStatus.AVAILABLE
+                            device.confidence_score = 0.4  # Low-medium confidence
+                            device.device_type = DeviceType.UNKNOWN
+                            device.manufacturer = "Unknown"
+                            device.model = f"Serial Device ({interface_type})"
+                            device.metadata["note"] = "Does not respond to *IDN?, may use proprietary protocol"
+                        else:
+                            # TCP/IP or GPIB device that doesn't respond - mark as offline
+                            device.status = ConnectionStatus.OFFLINE
+                            device.confidence_score = 0.3  # Low confidence
             except Exception as e:
                 logger.debug(f"Failed to query device info for {resource_name}: {e}")
-                # If we have USB database info, keep it; otherwise mark as offline
+                # If we have USB database info, keep it; otherwise handle based on interface
                 if not usb_device_info:
-                    device.status = ConnectionStatus.OFFLINE
-                    device.confidence_score = 0.3  # Low confidence
+                    # For serial devices, still return them as they might use proprietary protocols
+                    if interface_type == "ASRL":
+                        logger.info(
+                            f"Serial device at {resource_name} query failed: {e}, "
+                            f"may use proprietary protocol"
+                        )
+                        device.status = ConnectionStatus.AVAILABLE
+                        device.confidence_score = 0.4  # Low-medium confidence
+                        device.device_type = DeviceType.UNKNOWN
+                        device.manufacturer = "Unknown"
+                        device.model = f"Serial Device ({interface_type})"
+                        device.metadata["note"] = "Failed to query, may use proprietary protocol"
+                    else:
+                        device.status = ConnectionStatus.OFFLINE
+                        device.confidence_score = 0.3  # Low confidence
                 else:
                     logger.debug(
                         f"*IDN? failed, but USB database provided identification"

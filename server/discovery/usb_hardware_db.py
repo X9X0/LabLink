@@ -166,13 +166,26 @@ USB_HARDWARE_DB = {
     ),
     # Silicon Labs CP210x UART Bridge (common USB-to-Serial chip)
     # These are harder to identify automatically as they're used in many devices
+    # Note: Some B&K Precision power supplies (like 1685B) may use this chip
     ("10c4", "ea60"): USBDeviceInfo(
         vid="10c4",
         pid="ea60",
         manufacturer="Silicon Labs",
         model="CP210x UART Bridge",
         device_type=DeviceType.UNKNOWN,
-        description="USB-to-Serial converter (used in various equipment)",
+        description="USB-to-Serial converter (used in various equipment, possibly B&K 1685B/1687B/1688B)",
+    ),
+    # B&K Precision 1685B through USB-to-Serial bridge (alternate VID:PID)
+    # Note: This may show as Silicon Labs 10c4:ea60 instead
+    ("2ec7", "168b"): USBDeviceInfo(
+        vid="2ec7",
+        pid="168b",
+        manufacturer="B&K Precision",
+        model="1685B",
+        device_type=DeviceType.POWER_SUPPLY,
+        description="DC power supply, 18V/5A (serial interface variant)",
+        max_voltage=18.0,
+        max_current=5.0,
     ),
     # FTDI USB-to-Serial (also very common)
     ("0403", "6001"): USBDeviceInfo(
@@ -227,6 +240,53 @@ def extract_usb_ids_from_resource(resource_name: str) -> Optional[tuple[str, str
     return None
 
 
+def extract_usb_ids_from_serial_port(port_path: str) -> Optional[tuple[str, str]]:
+    """Extract VID:PID from Linux serial port by reading sysfs.
+
+    Args:
+        port_path: Serial port path (e.g., "/dev/ttyUSB0")
+
+    Returns:
+        Tuple of (vid, pid) in hex without 0x prefix, or None if not found
+    """
+    import os
+    import re
+
+    # Extract port number from /dev/ttyUSBx or /dev/ttyACMx
+    match = re.search(r'tty(USB|ACM)(\d+)', port_path)
+    if not match:
+        return None
+
+    port_type = match.group(1)  # USB or ACM
+    port_num = match.group(2)   # Port number
+
+    # Try to find the USB device in sysfs
+    # Path is typically /sys/class/tty/ttyUSBx/device/../../idVendor
+    sysfs_paths = [
+        f"/sys/class/tty/tty{port_type}{port_num}/device/../../idVendor",
+        f"/sys/class/tty/tty{port_type}{port_num}/../../../idVendor",
+        f"/sys/bus/usb-serial/devices/tty{port_type}{port_num}/../idVendor",
+    ]
+
+    vid = None
+    pid = None
+
+    for vid_path in sysfs_paths:
+        if os.path.exists(vid_path):
+            pid_path = vid_path.replace("idVendor", "idProduct")
+            try:
+                with open(vid_path, 'r') as f:
+                    vid = f.read().strip()
+                with open(pid_path, 'r') as f:
+                    pid = f.read().strip()
+                if vid and pid:
+                    return (vid.lower(), pid.lower())
+            except Exception:
+                continue
+
+    return None
+
+
 def get_device_info_from_resource(resource_name: str) -> Optional[USBDeviceInfo]:
     """Get device info from VISA resource string.
 
@@ -238,7 +298,30 @@ def get_device_info_from_resource(resource_name: str) -> Optional[USBDeviceInfo]
     """
     usb_ids = extract_usb_ids_from_resource(resource_name)
     if not usb_ids:
-        return None
+        # Try serial port (ASRL) resources
+        if resource_name.startswith("ASRL"):
+            # Extract port path from ASRL resource
+            # Format: ASRL/dev/ttyUSB0::INSTR or ASRLx::INSTR (where x is port number)
+            import re
+
+            # Try to extract /dev/ttyUSBx path
+            dev_match = re.search(r'ASRL(/dev/tty[A-Z]+\d+)', resource_name)
+            if dev_match:
+                port_path = dev_match.group(1)
+                usb_ids = extract_usb_ids_from_serial_port(port_path)
+            else:
+                # Try ASRLx format (x is typically port number)
+                port_match = re.search(r'ASRL(\d+)', resource_name)
+                if port_match:
+                    port_num = port_match.group(1)
+                    # Try common Linux serial port names
+                    for port_name in [f"/dev/ttyUSB{port_num}", f"/dev/ttyACM{port_num}"]:
+                        usb_ids = extract_usb_ids_from_serial_port(port_name)
+                        if usb_ids:
+                            break
+
+        if not usb_ids:
+            return None
 
     vid, pid = usb_ids
     return lookup_usb_device(vid, pid)
