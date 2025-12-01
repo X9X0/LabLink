@@ -644,8 +644,10 @@ class EquipmentPanel(QWidget):
 
             from PyQt6.QtCore import QTimer
 
+            # Capture error message in closure
+            error_msg = str(e)
             QTimer.singleShot(
-                0, lambda: QMessageBox.warning(self, "Error", f"Discovery failed: {str(e)}")
+                0, lambda: QMessageBox.warning(self, "Error", f"Discovery failed: {error_msg}")
             )
 
     def _show_connect_dialog(self, devices):

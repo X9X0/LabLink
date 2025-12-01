@@ -79,7 +79,7 @@ class EquipmentManager:
                 return []
 
             try:
-                from discovery.models import DiscoveredDevice, DeviceType
+                from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
                 import uuid
 
                 resources = self.resource_manager.list_resources()
@@ -92,6 +92,7 @@ class EquipmentManager:
                         device_id=str(uuid.uuid4()),
                         resource_name=resource,
                         device_type=DeviceType.UNKNOWN,
+                        discovery_method=DiscoveryMethod.VISA,
                         confidence_score=0.5,
                     )
                     devices.append(device)
