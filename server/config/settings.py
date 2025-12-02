@@ -564,15 +564,15 @@ class Settings(BaseSettings):
         default=True, description="Enable USB device scanning"
     )
     enable_auto_discovery: bool = Field(
-        default=True, description="Enable automatic discovery on startup"
+        default=False, description="Enable automatic background discovery (disabled by default to avoid interference with measurements)"
     )
 
-    # Discovery intervals
+    # Discovery intervals (only used if enable_auto_discovery=True)
     mdns_scan_interval_sec: int = Field(
-        default=60, ge=10, description="mDNS scan interval (seconds)"
+        default=600, ge=10, description="mDNS scan interval in seconds (default 10 min)"
     )
     visa_scan_interval_sec: int = Field(
-        default=30, ge=10, description="VISA scan interval (seconds)"
+        default=300, ge=10, description="VISA scan interval in seconds (default 5 min)"
     )
 
     # Discovery scope
@@ -580,7 +580,7 @@ class Settings(BaseSettings):
     discovery_scan_usb: bool = Field(default=True, description="Scan USB resources")
     discovery_scan_gpib: bool = Field(default=False, description="Scan GPIB resources")
     discovery_scan_serial: bool = Field(
-        default=False, description="Scan serial resources"
+        default=True, description="Scan serial resources (enable for USB-to-serial devices like BK 1685B)"
     )
 
     # Connection testing

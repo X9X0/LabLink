@@ -53,8 +53,12 @@ class EquipmentManager:
             self.resource_manager.close()
             self.resource_manager = None
 
-    async def discover_devices(self) -> List[str]:
-        """Discover available VISA devices using discovery manager."""
+    async def discover_devices(self):
+        """Discover available VISA devices using discovery manager.
+
+        Returns:
+            List of DiscoveredDevice objects with full device information
+        """
         try:
             # Use discovery manager for comprehensive discovery with filtering
             from discovery import get_discovery_manager
@@ -62,10 +66,10 @@ class EquipmentManager:
             discovery_manager = get_discovery_manager()
             result = await discovery_manager.scan()
 
-            # Extract resource names from discovered devices
-            resources = [device.resource_name for device in result.devices]
-            logger.info(f"Discovered {len(resources)} VISA resources via discovery manager")
-            return resources
+            # Return full discovered device objects
+            devices = result.devices
+            logger.info(f"Discovered {len(devices)} VISA resources via discovery manager")
+            return devices
 
         except Exception as e:
             # Fallback to direct VISA scanning if discovery manager not available
@@ -75,9 +79,25 @@ class EquipmentManager:
                 return []
 
             try:
+                from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
+                import uuid
+
                 resources = self.resource_manager.list_resources()
                 logger.info(f"Discovered VISA resources (fallback): {resources}")
-                return list(resources)
+
+                # Convert resource strings to minimal DiscoveredDevice objects
+                devices = []
+                for resource in resources:
+                    device = DiscoveredDevice(
+                        device_id=str(uuid.uuid4()),
+                        resource_name=resource,
+                        device_type=DeviceType.UNKNOWN,
+                        discovery_method=DiscoveryMethod.VISA,
+                        confidence_score=0.5,
+                    )
+                    devices.append(device)
+
+                return devices
             except Exception as e2:
                 logger.error(f"Error discovering devices: {e2}")
                 return []

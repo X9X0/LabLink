@@ -1,7 +1,7 @@
 """Dialog for connecting to discovered equipment."""
 
 import logging
-from typing import List
+from typing import List, Dict, Any
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -9,11 +9,14 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QComboBox,
     QPushButton,
     QMessageBox,
     QDialogButtonBox,
 )
+from PyQt6.QtGui import QBrush, QColor
+from PyQt6.QtCore import Qt
 
 from client.api.client import LabLinkClient
 
@@ -23,22 +26,22 @@ logger = logging.getLogger(__name__)
 class ConnectDeviceDialog(QDialog):
     """Dialog for selecting and connecting to discovered devices."""
 
-    def __init__(self, resources: List[str], client: LabLinkClient, parent=None):
+    def __init__(self, devices: List[Dict[str, Any]], client: LabLinkClient, parent=None):
         """Initialize connect device dialog.
 
         Args:
-            resources: List of discovered VISA resource strings
+            devices: List of discovered device info dicts
             client: LabLink API client
             parent: Parent widget
         """
         super().__init__(parent)
-        self.resources = resources
+        self.devices = devices  # List of device dicts with full info
         self.client = client
         self.connected = False
 
         self.setWindowTitle("Connect to Equipment")
         self.setModal(True)
-        self.resize(600, 400)
+        self.resize(700, 450)
 
         self._setup_ui()
 
@@ -51,16 +54,45 @@ class ConnectDeviceDialog(QDialog):
         layout.addWidget(header)
 
         info = QLabel(
-            f"Found {len(self.resources)} device(s). Select one to connect:"
+            f"Found {len(self.devices)} device(s). Devices with confirmed identification are highlighted."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        # Resource list
+        # Resource list with device info
         self.resource_list = QListWidget()
-        self.resource_list.addItems(self.resources)
-        if self.resources:
+        for device in self.devices:
+            # Create display text with device info
+            resource_name = device.get("resource_name", "Unknown")
+            manufacturer = device.get("manufacturer", "")
+            model = device.get("model", "")
+            device_type = device.get("device_type", "unknown")
+            confidence = device.get("confidence_score", 0.0)
+
+            if manufacturer and model:
+                display_text = f"{resource_name}  —  {manufacturer} {model} ({device_type})"
+            else:
+                display_text = f"{resource_name}  —  {device_type}"
+
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, device)  # Store full device info
+
+            # Highlight devices with high confidence (proper identification)
+            if confidence >= 0.8 and manufacturer and model:
+                item.setBackground(QBrush(QColor(230, 255, 230)))  # Light green
+                item.setToolTip("Device properly identified via *IDN? query")
+            elif confidence >= 0.6:
+                item.setBackground(QBrush(QColor(255, 255, 230)))  # Light yellow
+                item.setToolTip("Device partially identified via USB hardware database")
+
+            self.resource_list.addItem(item)
+
+        if self.devices:
             self.resource_list.setCurrentRow(0)
+
+        # Connect selection change to auto-populate dropdowns
+        self.resource_list.currentItemChanged.connect(self._on_device_selected)
+
         layout.addWidget(self.resource_list)
 
         # Equipment type selection
@@ -76,8 +108,6 @@ class ConnectDeviceDialog(QDialog):
             "spectrum_analyzer",
             "unknown",
         ])
-        # Default to power_supply since we know it's a BK Precision PSU
-        self.type_combo.setCurrentText("power_supply")
         type_layout.addWidget(self.type_combo)
         layout.addLayout(type_layout)
 
@@ -98,9 +128,12 @@ class ConnectDeviceDialog(QDialog):
             "Rigol DL3021A",
             "Generic",
         ])
-        self.model_combo.setCurrentText("BK Precision 9206B")  # Default for BK PSU
         model_layout.addWidget(self.model_combo)
         layout.addLayout(model_layout)
+
+        # Auto-populate dropdowns with first device
+        if self.devices:
+            self._on_device_selected(self.resource_list.item(0), None)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -116,6 +149,39 @@ class ConnectDeviceDialog(QDialog):
 
         layout.addLayout(button_layout)
 
+    def _on_device_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
+        """Handle device selection - auto-populate equipment type and model."""
+        if not current:
+            return
+
+        # Get device info from item data
+        device = current.data(Qt.ItemDataRole.UserRole)
+        if not device:
+            return
+
+        # Auto-select equipment type
+        device_type = device.get("device_type", "unknown")
+        index = self.type_combo.findText(device_type)
+        if index >= 0:
+            self.type_combo.setCurrentIndex(index)
+
+        # Auto-select model
+        manufacturer = device.get("manufacturer", "")
+        model = device.get("model", "")
+
+        if manufacturer and model:
+            # Try to find exact match first
+            full_model = f"{manufacturer} {model}"
+            index = self.model_combo.findText(full_model)
+            if index >= 0:
+                self.model_combo.setCurrentIndex(index)
+            else:
+                # Set as custom text
+                self.model_combo.setCurrentText(full_model)
+        elif model:
+            # Just model name
+            self.model_combo.setCurrentText(model)
+
     def _connect_device(self):
         """Connect to the selected device."""
         # Get selected resource
@@ -124,7 +190,9 @@ class ConnectDeviceDialog(QDialog):
             QMessageBox.warning(self, "No Selection", "Please select a device to connect.")
             return
 
-        resource_string = current_item.text()
+        # Get device info
+        device = current_item.data(Qt.ItemDataRole.UserRole)
+        resource_string = device.get("resource_name", "")
         equipment_type = self.type_combo.currentText()
         model = self.model_combo.currentText()
 

@@ -30,8 +30,11 @@ class DiscoveryManager:
         self.config = config
         self.visa_backend = visa_backend
 
+        # Progress callback
+        self._progress_callback = None
+
         # Scanners
-        self.visa_scanner = VISAScanner(config, visa_backend)
+        self.visa_scanner = VISAScanner(config, visa_backend, self._on_visa_progress)
         self.mdns_scanner = MDNSScanner(config)
 
         # Connection history
@@ -49,6 +52,26 @@ class DiscoveryManager:
         # Statistics
         self.total_scans = 0
         self.scan_durations: List[float] = []
+
+    def set_progress_callback(self, callback):
+        """Set progress callback for discovery updates.
+
+        Args:
+            callback: Callable that receives (message: str, data: dict)
+        """
+        self._progress_callback = callback
+
+    def _on_visa_progress(self, message: str, data: dict):
+        """Handle VISA scanner progress updates.
+
+        Args:
+            message: Progress message
+            data: Progress data dictionary
+        """
+        logger.debug(f"VISA progress: {message}")
+        if self._progress_callback:
+            # Forward to registered callback (e.g., WebSocket broadcaster)
+            self._progress_callback("visa_progress", {"message": message, **data})
 
     async def start_auto_discovery(self):
         """Start automatic periodic discovery."""
@@ -161,13 +184,26 @@ class DiscoveryManager:
             if DiscoveryMethod.VISA in methods and self.config.enable_visa_scan:
                 try:
                     logger.debug("Running VISA scan...")
-                    visa_devices = self.visa_scanner.scan()
+                    if self._progress_callback:
+                        self._progress_callback(
+                            "scan_started", {"method": "VISA", "stage": "starting"}
+                        )
+                    visa_devices = await self.visa_scanner.scan()
                     discovered.extend(visa_devices)
                     result.visa_count = len(visa_devices)
                     logger.info(f"VISA scan found {len(visa_devices)} devices")
+                    if self._progress_callback:
+                        self._progress_callback(
+                            "scan_complete",
+                            {"method": "VISA", "device_count": len(visa_devices)},
+                        )
                 except Exception as e:
                     logger.error(f"VISA scan failed: {e}")
                     result.errors.append(f"VISA scan failed: {e}")
+                    if self._progress_callback:
+                        self._progress_callback(
+                            "scan_error", {"method": "VISA", "error": str(e)}
+                        )
 
             # mDNS scan
             if DiscoveryMethod.MDNS in methods and self.config.enable_mdns:
