@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
 ![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
-![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
+![Security](https://img.shields.io/badge/security-hardened-brightyellow.svg)
 
 A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol and BK Precision scopes, power supplies, and loads).
 
