@@ -22,6 +22,9 @@ services:
       # Configuration (optional - mount your own config)
       - ./config:/app/config:ro
 
+      # USB device identification via sysfs (needed for serial device VID:PID extraction)
+      - /sys:/sys:ro
+
       # Pi-specific mounts for diagnostics (comment out these two lines for non-Pi development)
       # These enable the Pi diagnostics feature to run scripts on the host system
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access
