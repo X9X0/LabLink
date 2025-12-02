@@ -200,15 +200,15 @@ class DiscoveryConfig(BaseModel):
     enable_visa_scan: bool = Field(True, description="Enable VISA resource scanning")
     enable_usb_scan: bool = Field(True, description="Enable USB device scanning")
     enable_auto_discovery: bool = Field(
-        True, description="Enable automatic discovery on startup"
+        False, description="Enable automatic background discovery (disabled by default to avoid interference with measurements)"
     )
 
-    # Discovery intervals
+    # Discovery intervals (only used if enable_auto_discovery=True)
     mdns_scan_interval_sec: int = Field(
-        60, ge=10, description="mDNS scan interval (seconds)"
+        600, ge=10, description="mDNS scan interval in seconds (default 10 min)"
     )
     visa_scan_interval_sec: int = Field(
-        30, ge=10, description="VISA scan interval (seconds)"
+        300, ge=10, description="VISA scan interval in seconds (default 5 min)"
     )
 
     # Discovery scope
