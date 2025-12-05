@@ -412,10 +412,10 @@ class SystemPanel(QWidget):
 
         remote_layout.addStretch()
 
-        # Add sections to side-by-side layout
-        side_by_side_layout.addWidget(local_section)
-        side_by_side_layout.addWidget(separator_frame)
-        side_by_side_layout.addWidget(remote_section)
+        # Add sections to side-by-side layout with equal stretch
+        side_by_side_layout.addWidget(local_section, 1)  # Equal stretch factor
+        side_by_side_layout.addWidget(separator_frame, 0)  # No stretch
+        side_by_side_layout.addWidget(remote_section, 1)  # Equal stretch factor
 
         # Add side-by-side layout to main layout
         docker_rebuild_layout.addLayout(side_by_side_layout)
@@ -423,74 +423,182 @@ class SystemPanel(QWidget):
         docker_rebuild_group.setLayout(docker_rebuild_layout)
         layout.addWidget(docker_rebuild_group)
 
-        # Client Self-Update Group
-        client_update_group = QGroupBox("Client Self-Update")
-        client_update_layout = QVBoxLayout()
+        # Configuration Group (Client, Auto-Rebuild, Scheduled Checks side-by-side)
+        config_group = QGroupBox("Additional Configuration")
+        config_group_layout = QVBoxLayout()
 
-        # Description
-        client_info = QLabel(
-            "Update the client itself. The client will restart after marking the update."
-        )
-        client_info.setWordWrap(True)
-        client_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
-        client_update_layout.addWidget(client_info)
+        # Side-by-side layout for three configuration sections
+        config_side_by_side_layout = QHBoxLayout()
+        config_side_by_side_layout.setSpacing(15)
 
-        # Client update button
-        client_button_layout = QHBoxLayout()
+        # ========== Client Self-Update Section ==========
+        client_section = QWidget()
+        client_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        client_layout = QVBoxLayout(client_section)
+        client_layout.setContentsMargins(10, 10, 10, 10)
+
+        client_label = QLabel("<b>📱 Client Self-Update</b>")
+        client_label.setStyleSheet("background: transparent; border: none;")
+        client_layout.addWidget(client_label)
+
+        client_info = QLabel("Update the client application")
+        client_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
+        client_layout.addWidget(client_info)
+
+        client_layout.addSpacing(8)
 
         self.update_client_btn = QPushButton("Update Client")
         self.update_client_btn.clicked.connect(self._update_client)
         self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
-        client_button_layout.addWidget(self.update_client_btn)
+        self.update_client_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        client_layout.addWidget(self.update_client_btn)
 
-        client_button_layout.addStretch()
+        client_layout.addStretch()
 
-        client_update_layout.addLayout(client_button_layout)
-        client_update_group.setLayout(client_update_layout)
-        layout.addWidget(client_update_group)
+        # ========== Vertical Separator 1 ==========
+        separator_frame1 = QFrame()
+        separator_frame1.setFrameShape(QFrame.Shape.VLine)
+        separator_frame1.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame1.setStyleSheet("color: #bdc3c7;")
 
-        # Auto-Rebuild Configuration Group
-        auto_rebuild_group = QGroupBox("Automatic Rebuild")
-        auto_rebuild_layout = QVBoxLayout()
+        # ========== Auto-Rebuild Section ==========
+        auto_rebuild_section = QWidget()
+        auto_rebuild_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        auto_rebuild_layout = QVBoxLayout(auto_rebuild_section)
+        auto_rebuild_layout.setContentsMargins(10, 10, 10, 10)
 
-        self.auto_rebuild_checkbox = QCheckBox("Enable automatic Docker rebuild after updates")
+        auto_rebuild_label = QLabel("<b>🔧 Automatic Rebuild</b>")
+        auto_rebuild_label.setStyleSheet("background: transparent; border: none;")
+        auto_rebuild_layout.addWidget(auto_rebuild_label)
+
+        auto_rebuild_info = QLabel("Configure auto-rebuild")
+        auto_rebuild_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
+        auto_rebuild_layout.addWidget(auto_rebuild_info)
+
+        auto_rebuild_layout.addSpacing(8)
+
+        self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
+        self.auto_rebuild_checkbox.setStyleSheet("background: transparent; border: none;")
+        self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
-        auto_rebuild_btn_layout = QHBoxLayout()
-        self.configure_rebuild_btn = QPushButton("Configure Auto-Rebuild")
+        self.configure_rebuild_btn = QPushButton("Configure")
         self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
-        auto_rebuild_btn_layout.addWidget(self.configure_rebuild_btn)
-        auto_rebuild_btn_layout.addStretch()
+        self.configure_rebuild_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #e67e22;
+            }
+        """)
+        auto_rebuild_layout.addWidget(self.configure_rebuild_btn)
 
-        auto_rebuild_layout.addLayout(auto_rebuild_btn_layout)
-        auto_rebuild_group.setLayout(auto_rebuild_layout)
-        layout.addWidget(auto_rebuild_group)
+        auto_rebuild_layout.addStretch()
 
-        # Scheduled Checks Configuration Group
-        scheduled_group = QGroupBox("Scheduled Update Checks")
-        scheduled_layout = QVBoxLayout()
+        # ========== Vertical Separator 2 ==========
+        separator_frame2 = QFrame()
+        separator_frame2.setFrameShape(QFrame.Shape.VLine)
+        separator_frame2.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame2.setStyleSheet("color: #bdc3c7;")
 
-        self.scheduled_checkbox = QCheckBox("Enable automatic update checking")
+        # ========== Scheduled Checks Section ==========
+        scheduled_section = QWidget()
+        scheduled_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        scheduled_layout = QVBoxLayout(scheduled_section)
+        scheduled_layout.setContentsMargins(10, 10, 10, 10)
+
+        scheduled_label = QLabel("<b>🕒 Scheduled Checks</b>")
+        scheduled_label.setStyleSheet("background: transparent; border: none;")
+        scheduled_layout.addWidget(scheduled_label)
+
+        scheduled_info = QLabel("Automatic update checking")
+        scheduled_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
+        scheduled_layout.addWidget(scheduled_info)
+
+        scheduled_layout.addSpacing(8)
+
+        self.scheduled_checkbox = QCheckBox("Enable auto-checking")
+        self.scheduled_checkbox.setStyleSheet("background: transparent; border: none;")
+        self.scheduled_checkbox.setToolTip("Enable automatic update checking")
         scheduled_layout.addWidget(self.scheduled_checkbox)
 
         interval_layout = QHBoxLayout()
-        interval_layout.addWidget(QLabel("Check interval (hours):"))
+        interval_label = QLabel("Interval (hours):")
+        interval_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
+        interval_layout.addWidget(interval_label)
         self.interval_spinbox = QSpinBox()
         self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
         self.interval_spinbox.setValue(24)
+        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px;")
         interval_layout.addWidget(self.interval_spinbox)
         interval_layout.addStretch()
         scheduled_layout.addLayout(interval_layout)
 
-        scheduled_btn_layout = QHBoxLayout()
-        self.configure_scheduled_btn = QPushButton("Configure Scheduled Checks")
+        self.configure_scheduled_btn = QPushButton("Configure")
         self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
-        scheduled_btn_layout.addWidget(self.configure_scheduled_btn)
-        scheduled_btn_layout.addStretch()
+        self.configure_scheduled_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        scheduled_layout.addWidget(self.configure_scheduled_btn)
 
-        scheduled_layout.addLayout(scheduled_btn_layout)
-        scheduled_group.setLayout(scheduled_layout)
-        layout.addWidget(scheduled_group)
+        scheduled_layout.addStretch()
+
+        # Add sections to side-by-side layout with equal stretch
+        config_side_by_side_layout.addWidget(client_section, 1)
+        config_side_by_side_layout.addWidget(separator_frame1, 0)
+        config_side_by_side_layout.addWidget(auto_rebuild_section, 1)
+        config_side_by_side_layout.addWidget(separator_frame2, 0)
+        config_side_by_side_layout.addWidget(scheduled_section, 1)
+
+        config_group_layout.addLayout(config_side_by_side_layout)
+        config_group.setLayout(config_group_layout)
+        layout.addWidget(config_group)
 
         # Update Logs Group
         logs_group = QGroupBox("Update Logs")
