@@ -471,55 +471,47 @@ class SystemPanel(QWidget):
             )
 
     def _refresh_branches(self):
-        """Refresh the list of available branches."""
-        if not self.client:
-            return
+        """Refresh the list of available branches (client-side)."""
+        from client.utils.git_operations import get_git_branches, get_current_git_branch
 
         try:
-            self.logs_text.append("\n🔍 Fetching available branches...")
+            self.logs_text.append("\n🌿 Fetching available branches...")
             self.refresh_branches_btn.setEnabled(False)
             self.refresh_branches_btn.setText("Loading...")
 
-            result = self.client.get_available_branches()
+            # Get branches from local git
+            branches = get_git_branches()
+            current_branch = get_current_git_branch()
 
-            if result.get("success"):
-                branches = result.get("branches", [])
-                current_branch = result.get("current_branch")
-                tracked_branch = result.get("tracked_branch")
-
+            if branches:
                 # Update combo box
                 self.branch_combo.blockSignals(True)
                 self.branch_combo.clear()
 
                 selected_index = 0
-                for i, branch in enumerate(branches):
-                    branch_name = branch.get("name")
-                    is_current = branch.get("is_current", False)
-
+                for i, branch_name in enumerate(branches):
                     # Add indicator for current branch
-                    display_name = f"{branch_name}"
+                    display_name = branch_name
+                    is_current = (branch_name == current_branch)
+
                     if is_current:
                         display_name += " (current)"
+                        selected_index = i
 
                     self.branch_combo.addItem(display_name, branch_name)
-
-                    # Select tracked branch or current branch
-                    if tracked_branch and branch_name == tracked_branch:
-                        selected_index = i
-                    elif not tracked_branch and is_current:
-                        selected_index = i
 
                 self.branch_combo.setCurrentIndex(selected_index)
                 self.branch_combo.blockSignals(False)
 
                 self.logs_text.append(f"✅ Found {len(branches)} branches")
-                if tracked_branch:
-                    self.logs_text.append(f"   Tracking: {tracked_branch}")
+                if current_branch:
+                    self.logs_text.append(f"   Current: {current_branch}")
             else:
-                error = result.get("error", "Unknown error")
-                self.logs_text.append(f"❌ Failed to get branches: {error}")
+                self.logs_text.append("⚠️  No branches found")
                 QMessageBox.warning(
-                    self, "Branch Fetch Failed", f"Failed to get branches:\n{error}"
+                    self,
+                    "No Branches Found",
+                    "No git branches found in the repository."
                 )
 
         except Exception as e:
@@ -535,36 +527,17 @@ class SystemPanel(QWidget):
 
     def _on_branch_changed(self, index: int):
         """Handle branch selection change."""
-        if not self.client or index < 0:
+        if index < 0:
             return
 
         branch_name = self.branch_combo.currentData()
         if not branch_name:
             return
 
-        try:
-            self.logs_text.append(f"\n📌 Setting tracked branch to: {branch_name}...")
-
-            result = self.client.set_tracked_branch(branch_name=branch_name)
-
-            if result.get("success"):
-                message = result.get("message", "")
-                self.logs_text.append(f"✅ {message}")
-            else:
-                error = result.get("error", "Unknown error")
-                self.logs_text.append(f"❌ Failed to set branch: {error}")
-                QMessageBox.critical(
-                    self, "Configuration Failed", f"Failed to set tracked branch:\n{error}"
-                )
-
-            self._update_status_display()
-
-        except Exception as e:
-            logger.error(f"Error setting tracked branch: {e}")
-            self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to set tracked branch:\n{str(e)}"
-            )
+        # In client-driven mode, just log the selection
+        # No need to notify server since client manages all updates
+        self.logs_text.append(f"📌 Selected branch: {branch_name}")
+        logger.info(f"Branch selected: {branch_name}")
 
     def _update_status_display(self):
         """Update the status display from server."""
