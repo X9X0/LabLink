@@ -95,6 +95,24 @@ def main():
     # Set application style (optional)
     app.setStyle("Fusion")
 
+    # Set global stylesheet for better dropdown visibility
+    app.setStyleSheet("""
+        QComboBox QAbstractItemView {
+            selection-background-color: #E3F2FD;  /* Light blue background on hover */
+            selection-color: #000000;  /* Black text on hover */
+            background-color: white;
+            color: black;
+        }
+        QComboBox QAbstractItemView::item:hover {
+            background-color: #BBDEFB;  /* Slightly darker blue on hover */
+            color: #000000;  /* Black text */
+        }
+        QComboBox QAbstractItemView::item:selected {
+            background-color: #90CAF9;  /* Even darker blue when selected */
+            color: #000000;  /* Black text */
+        }
+    """)
+
     # Create qasync event loop for asyncio integration
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
