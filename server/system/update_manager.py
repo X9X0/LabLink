@@ -51,7 +51,7 @@ class UpdateManager:
         self.update_error: Optional[str] = None
 
         # Get root directory
-        self.root_dir = Path(__file__).parent.parent.parent
+        self.root_dir = self._find_project_root()
         self.backup_dir = self.root_dir / "backups" / "system"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -65,6 +65,8 @@ class UpdateManager:
 
         # Check if git repository exists
         self.is_git_repo = (self.root_dir / ".git").exists()
+        logger.debug(f"Update manager root dir: {self.root_dir}")
+        logger.debug(f"Git repository detected: {self.is_git_repo}")
 
         # Update mode configuration
         self.update_mode = UpdateMode.STABLE  # Default to stable releases
@@ -86,6 +88,41 @@ class UpdateManager:
 
         # Load saved configuration
         self._load_config()
+
+    def _find_project_root(self) -> Path:
+        """Find the project root directory by searching for markers.
+
+        Searches up the directory tree from this file's location for common
+        project root markers like .git, setup.py, pyproject.toml, etc.
+
+        Returns:
+            Path to project root directory
+        """
+        # Start from this file's directory
+        current = Path(__file__).resolve().parent
+
+        # Project root markers
+        markers = [".git", "setup.py", "pyproject.toml", "VERSION", "README.md"]
+
+        # Search up the directory tree (max 10 levels to avoid infinite loop)
+        for _ in range(10):
+            # Check if any marker exists in current directory
+            for marker in markers:
+                if (current / marker).exists():
+                    logger.debug(f"Found project root at {current} (marker: {marker})")
+                    return current
+
+            # Move up one directory
+            parent = current.parent
+            if parent == current:
+                # Reached filesystem root
+                break
+            current = parent
+
+        # Fallback to the old method if no markers found
+        fallback = Path(__file__).parent.parent.parent
+        logger.warning(f"Could not find project root markers, using fallback: {fallback}")
+        return fallback
 
     def _load_config(self):
         """Load saved configuration from file."""
