@@ -181,6 +181,7 @@ class SystemPanel(QWidget):
 
         version_selector_layout.addWidget(QLabel("Select Version:"))
         self.version_selector = QComboBox()
+        self.version_selector.setMinimumWidth(400)  # Allow longer version names to be visible
         version_selector_layout.addWidget(self.version_selector)
 
         self.refresh_versions_btn = QPushButton("Refresh Versions")
@@ -199,6 +200,7 @@ class SystemPanel(QWidget):
 
         branch_selector_layout.addWidget(QLabel("Track Branch:"))
         self.branch_combo = QComboBox()
+        self.branch_combo.setMinimumWidth(400)  # Allow longer branch names to be visible
         self.branch_combo.currentIndexChanged.connect(self._on_branch_changed)
         branch_selector_layout.addWidget(self.branch_combo)
 
