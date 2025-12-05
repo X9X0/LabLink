@@ -112,17 +112,25 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
 
             # Filter for active branches if not showing all
             if not show_all and line != current_branch:
-                # Check if branch has commits in last 6 months (active)
+                # Skip dependabot branches
+                if 'dependabot/' in line:
+                    continue
+
+                # Skip claude/* automated branches
+                if line.startswith('claude/'):
+                    continue
+
+                # Check if branch has commits in last 3 months (active)
                 try:
                     # Use original_line for the check to handle remote branches
                     check_line = original_line if original_line.startswith('remotes/') else line
                     commit_check = subprocess.run(
-                        ["git", "log", "-1", "--since=6.months.ago", "--format=%ci", check_line],
+                        ["git", "log", "-1", "--since=3.months.ago", "--format=%ci", check_line],
                         capture_output=True,
                         text=True,
                         check=False
                     )
-                    # If no output, branch has no commits in last 6 months
+                    # If no output, branch has no commits in last 3 months
                     if not commit_check.stdout.strip():
                         continue
                 except:
