@@ -289,21 +289,17 @@ class SystemPanel(QWidget):
             }
         """)
         local_layout = QVBoxLayout(local_section)
-        local_layout.setContentsMargins(10, 10, 10, 10)
+        local_layout.setContentsMargins(8, 8, 8, 8)
 
         local_server_label = QLabel("<b>🖥️  Local Server</b>")
         local_server_label.setStyleSheet("background: transparent; border: none;")
         local_layout.addWidget(local_server_label)
 
-        local_server_info = QLabel("Docker on this machine")
-        local_server_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
-        local_layout.addWidget(local_server_info)
-
         # Spacing
-        local_layout.addSpacing(3)
+        local_layout.addSpacing(2)
 
         # Checkbox for automatic rebuild (local)
-        self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild Docker")
+        self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild")
         self.auto_docker_rebuild_local.setChecked(True)
         self.auto_docker_rebuild_local.setToolTip(
             "If enabled, will try to rebuild Docker containers automatically. "
@@ -372,23 +368,20 @@ class SystemPanel(QWidget):
             }
         """)
         remote_layout = QVBoxLayout(remote_section)
-        remote_layout.setContentsMargins(10, 10, 10, 10)
+        remote_layout.setContentsMargins(8, 8, 8, 8)
 
         remote_server_label = QLabel("<b>🌐  Remote Server</b>")
         remote_server_label.setStyleSheet("background: transparent; border: none;")
         remote_layout.addWidget(remote_server_label)
 
-        remote_server_info = QLabel("Docker via SSH")
-        remote_server_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
-        remote_layout.addWidget(remote_server_info)
-
         # Spacing
-        remote_layout.addSpacing(3)
+        remote_layout.addSpacing(2)
 
-        # SSH configuration
-        ssh_label = QLabel("SSH Host:")
-        ssh_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
-        remote_layout.addWidget(ssh_label)
+        # SSH configuration with label on same line
+        ssh_layout = QHBoxLayout()
+        ssh_label = QLabel("SSH:")
+        ssh_label.setStyleSheet("background: transparent; border: none; font-size: 9px; font-weight: bold;")
+        ssh_layout.addWidget(ssh_label)
 
         self.ssh_host_input = QLineEdit()
         self.ssh_host_input.setPlaceholderText("user@hostname")
@@ -397,11 +390,12 @@ class SystemPanel(QWidget):
             "Format: username@hostname or username@ip-address\n"
             "Example: pi@192.168.1.100"
         )
-        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 3px;")
-        remote_layout.addWidget(self.ssh_host_input)
+        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
+        ssh_layout.addWidget(self.ssh_host_input)
+        remote_layout.addLayout(ssh_layout)
 
         # Checkbox for automatic rebuild (remote)
-        self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild via SSH")
+        self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild")
         self.auto_docker_rebuild_remote.setChecked(True)
         self.auto_docker_rebuild_remote.setToolTip(
             "If enabled, will try to rebuild Docker containers on remote host via SSH. "
@@ -483,17 +477,13 @@ class SystemPanel(QWidget):
             }
         """)
         client_layout = QVBoxLayout(client_section)
-        client_layout.setContentsMargins(10, 10, 10, 10)
+        client_layout.setContentsMargins(8, 8, 8, 8)
 
         client_label = QLabel("<b>📱 Client Self-Update</b>")
         client_label.setStyleSheet("background: transparent; border: none;")
         client_layout.addWidget(client_label)
 
-        client_info = QLabel("Update the client application")
-        client_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
-        client_layout.addWidget(client_info)
-
-        client_layout.addSpacing(3)
+        client_layout.addSpacing(2)
 
         # Push button to bottom
         client_layout.addStretch()
@@ -532,17 +522,13 @@ class SystemPanel(QWidget):
             }
         """)
         auto_rebuild_layout = QVBoxLayout(auto_rebuild_section)
-        auto_rebuild_layout.setContentsMargins(10, 10, 10, 10)
+        auto_rebuild_layout.setContentsMargins(8, 8, 8, 8)
 
         auto_rebuild_label = QLabel("<b>🔧 Automatic Rebuild</b>")
         auto_rebuild_label.setStyleSheet("background: transparent; border: none;")
         auto_rebuild_layout.addWidget(auto_rebuild_label)
 
-        auto_rebuild_info = QLabel("Configure auto-rebuild")
-        auto_rebuild_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
-        auto_rebuild_layout.addWidget(auto_rebuild_info)
-
-        auto_rebuild_layout.addSpacing(3)
+        auto_rebuild_layout.addSpacing(2)
 
         self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
         self.auto_rebuild_checkbox.setStyleSheet("""
@@ -605,17 +591,13 @@ class SystemPanel(QWidget):
             }
         """)
         scheduled_layout = QVBoxLayout(scheduled_section)
-        scheduled_layout.setContentsMargins(10, 10, 10, 10)
+        scheduled_layout.setContentsMargins(8, 8, 8, 8)
 
         scheduled_label = QLabel("<b>🕒 Scheduled Checks</b>")
         scheduled_label.setStyleSheet("background: transparent; border: none;")
         scheduled_layout.addWidget(scheduled_label)
 
-        scheduled_info = QLabel("Automatic update checking")
-        scheduled_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
-        scheduled_layout.addWidget(scheduled_info)
-
-        scheduled_layout.addSpacing(3)
+        scheduled_layout.addSpacing(2)
 
         # Checkbox and interval on same line
         checkbox_interval_layout = QHBoxLayout()
