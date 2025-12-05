@@ -1741,6 +1741,57 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def configure_update_mode(self, mode: str) -> Dict[str, Any]:
+        """Configure update detection mode (stable vs development).
+
+        Args:
+            mode: Update mode - "stable" for VERSION tracking, "development" for commit tracking
+
+        Returns:
+            Configuration result
+        """
+        payload = {"mode": mode}
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/configure-mode", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_available_branches(self, git_remote: str = "origin") -> Dict[str, Any]:
+        """Get list of available branches from remote repository.
+
+        Args:
+            git_remote: Git remote name (default: origin)
+
+        Returns:
+            Dictionary with list of available branches
+        """
+        payload = {"git_remote": git_remote}
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/branches", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def set_tracked_branch(self, branch_name: str) -> Dict[str, Any]:
+        """Set the branch to track for updates in development mode.
+
+        Args:
+            branch_name: Name of branch to track
+
+        Returns:
+            Configuration result
+        """
+        payload = {"branch_name": branch_name}
+
+        response = self._session.post(
+            f"{self.api_base_url}/system/update/set-tracked-branch", json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
     def configure_scheduled_checks(
         self,
         enabled: bool,

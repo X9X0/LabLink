@@ -2001,10 +2001,11 @@ class LabLinkLauncher(QMainWindow):
         try:
             # Launch client using python -m to handle imports correctly
             # Change to LabLink root and run as module
-            # Add --debug flag if debug mode is enabled
+            # Add --debug and --easter-egg flags if debug mode is enabled
             args = [python_exe, '-m', 'client.main']
             if self.debug_mode:
                 args.append('--debug')
+                args.append('--easter-egg')  # Show branch selector in debug mode
 
             subprocess.Popen(
                 args,

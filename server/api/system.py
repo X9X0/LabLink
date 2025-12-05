@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from server.system import get_version, get_version_info, update_manager
+from server.system.update_manager import UpdateMode
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,24 @@ class UpdateStartRequest(BaseModel):
 
     git_remote: str = "origin"
     git_branch: Optional[str] = None
+
+
+class UpdateModeConfigRequest(BaseModel):
+    """Request model for configuring update mode."""
+
+    mode: UpdateMode
+
+
+class BranchRequest(BaseModel):
+    """Request model for branch operations."""
+
+    git_remote: str = "origin"
+
+
+class SetTrackedBranchRequest(BaseModel):
+    """Request model for setting tracked branch."""
+
+    branch_name: str
 
 
 # ==================== Version Endpoints ====================
@@ -136,6 +155,78 @@ async def rollback_system():
     except Exception as e:
         logger.error(f"Error rolling back: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to rollback: {str(e)}")
+
+
+# ==================== Update Mode Endpoints ====================
+
+
+@router.post("/system/update/configure-mode", summary="Configure update mode")
+async def configure_update_mode(request: UpdateModeConfigRequest):
+    """Configure update detection mode (stable vs development).
+
+    Args:
+        request: Update mode configuration
+
+    Returns:
+        Configuration result
+    """
+    try:
+        result = update_manager.configure_update_mode(mode=request.mode)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error configuring update mode: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to configure update mode: {str(e)}"
+        )
+
+
+# ==================== Branch Management Endpoints ====================
+
+
+@router.post("/system/update/branches", summary="Get available branches")
+async def get_available_branches(request: BranchRequest):
+    """Get list of available branches from remote repository.
+
+    Args:
+        request: Branch request with git remote
+
+    Returns:
+        List of available branches
+    """
+    try:
+        result = update_manager.get_available_branches(git_remote=request.git_remote)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error getting branches: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get branches: {str(e)}"
+        )
+
+
+@router.post("/system/update/set-tracked-branch", summary="Set tracked branch")
+async def set_tracked_branch(request: SetTrackedBranchRequest):
+    """Set the branch to track for updates in development mode.
+
+    Args:
+        request: Branch name to track
+
+    Returns:
+        Configuration result
+    """
+    try:
+        result = update_manager.set_tracked_branch(branch_name=request.branch_name)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error setting tracked branch: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set tracked branch: {str(e)}"
+        )
 
 
 # ==================== Auto-Rebuild Endpoints ====================

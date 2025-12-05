@@ -6,6 +6,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
@@ -157,6 +158,61 @@ class SystemPanel(QWidget):
         update_group = QGroupBox("Server Updates")
         update_layout = QVBoxLayout()
 
+        # Update mode selection
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Update Mode:"))
+        self.update_mode_combo = QComboBox()
+        self.update_mode_combo.addItem("Stable (VERSION releases)", "stable")
+        self.update_mode_combo.addItem("Development (all commits)", "development")
+        self.update_mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        mode_layout.addWidget(self.update_mode_combo)
+
+        mode_info = QLabel("ℹ️ Stable tracks version releases, Development tracks all commits")
+        mode_info.setWordWrap(True)
+        mode_info.setStyleSheet("color: gray; font-size: 10px;")
+
+        update_layout.addLayout(mode_layout)
+        update_layout.addWidget(mode_info)
+
+        # Version selector (for stable mode - git tags)
+        self.version_selector_widget = QWidget()
+        version_selector_layout = QHBoxLayout(self.version_selector_widget)
+        version_selector_layout.setContentsMargins(0, 0, 0, 0)
+
+        version_selector_layout.addWidget(QLabel("Select Version:"))
+        self.version_selector = QComboBox()
+        self.version_selector.setMinimumWidth(500)  # Allow longer version names to be visible
+        version_selector_layout.addWidget(self.version_selector)
+
+        self.refresh_versions_btn = QPushButton("Refresh Versions")
+        self.refresh_versions_btn.clicked.connect(self._populate_versions)
+        version_selector_layout.addWidget(self.refresh_versions_btn)
+
+        version_selector_layout.addStretch()
+
+        self.version_selector_widget.show()  # Shown by default (stable mode)
+        update_layout.addWidget(self.version_selector_widget)
+
+        # Branch selector (for development mode)
+        self.branch_selector_widget = QWidget()
+        branch_selector_layout = QHBoxLayout(self.branch_selector_widget)
+        branch_selector_layout.setContentsMargins(0, 0, 0, 0)
+
+        branch_selector_layout.addWidget(QLabel("Track Branch:"))
+        self.branch_combo = QComboBox()
+        self.branch_combo.setMinimumWidth(500)  # Allow longer branch names to be visible
+        self.branch_combo.currentIndexChanged.connect(self._on_branch_changed)
+        branch_selector_layout.addWidget(self.branch_combo)
+
+        self.refresh_branches_btn = QPushButton("Refresh Branches")
+        self.refresh_branches_btn.clicked.connect(self._refresh_branches)
+        branch_selector_layout.addWidget(self.refresh_branches_btn)
+
+        branch_selector_layout.addStretch()
+
+        self.branch_selector_widget.hide()  # Hidden by default (stable mode)
+        update_layout.addWidget(self.branch_selector_widget)
+
         # Update status
         self.update_status_label = QLabel("Update Status: Idle")
         update_layout.addWidget(self.update_status_label)
@@ -190,6 +246,85 @@ class SystemPanel(QWidget):
         update_layout.addLayout(button_layout)
         update_group.setLayout(update_layout)
         layout.addWidget(update_group)
+
+        # Docker Rebuild Group (Client-Driven)
+        docker_rebuild_group = QGroupBox("Client-Driven Server Update (Docker)")
+        docker_rebuild_layout = QVBoxLayout()
+
+        # Description
+        docker_info = QLabel(
+            "The client will checkout the selected version/branch locally, "
+            "then rebuild and restart the Docker containers."
+        )
+        docker_info.setWordWrap(True)
+        docker_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
+        docker_rebuild_layout.addWidget(docker_info)
+
+        # Checkbox for automatic rebuild
+        self.auto_docker_rebuild = QCheckBox("Attempt automatic Docker rebuild")
+        self.auto_docker_rebuild.setChecked(True)
+        self.auto_docker_rebuild.setToolTip(
+            "If enabled, will try to rebuild Docker containers automatically. "
+            "If disabled or if automatic fails, manual instructions will be shown."
+        )
+        docker_rebuild_layout.addWidget(self.auto_docker_rebuild)
+
+        # SSH configuration (if remote)
+        ssh_layout = QHBoxLayout()
+        ssh_layout.addWidget(QLabel("SSH Host (if remote):"))
+        self.ssh_host_input = QLineEdit()
+        self.ssh_host_input.setPlaceholderText("user@hostname (leave empty for local)")
+        self.ssh_host_input.setToolTip(
+            "If server is running on a remote machine, enter SSH host. "
+            "Leave empty if Docker is running locally."
+        )
+        ssh_layout.addWidget(self.ssh_host_input)
+        docker_rebuild_layout.addLayout(ssh_layout)
+
+        # Check Server Version and Update Server buttons
+        docker_button_layout = QHBoxLayout()
+
+        self.check_version_btn = QPushButton("Check Server Version")
+        self.check_version_btn.clicked.connect(self._check_and_display_version)
+        self.check_version_btn.setToolTip("Compare server version with local git")
+        docker_button_layout.addWidget(self.check_version_btn)
+
+        self.update_server_btn = QPushButton("Update Server")
+        self.update_server_btn.clicked.connect(self._update_server)
+        self.update_server_btn.setToolTip("Checkout selected version/branch and rebuild Docker")
+        docker_button_layout.addWidget(self.update_server_btn)
+
+        docker_button_layout.addStretch()
+
+        docker_rebuild_layout.addLayout(docker_button_layout)
+        docker_rebuild_group.setLayout(docker_rebuild_layout)
+        layout.addWidget(docker_rebuild_group)
+
+        # Client Self-Update Group
+        client_update_group = QGroupBox("Client Self-Update")
+        client_update_layout = QVBoxLayout()
+
+        # Description
+        client_info = QLabel(
+            "Update the client itself. The client will restart after marking the update."
+        )
+        client_info.setWordWrap(True)
+        client_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
+        client_update_layout.addWidget(client_info)
+
+        # Client update button
+        client_button_layout = QHBoxLayout()
+
+        self.update_client_btn = QPushButton("Update Client")
+        self.update_client_btn.clicked.connect(self._update_client)
+        self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
+        client_button_layout.addWidget(self.update_client_btn)
+
+        client_button_layout.addStretch()
+
+        client_update_layout.addLayout(client_button_layout)
+        client_update_group.setLayout(client_update_layout)
+        layout.addWidget(client_update_group)
 
         # Auto-Rebuild Configuration Group
         auto_rebuild_group = QGroupBox("Automatic Rebuild")
@@ -272,11 +407,139 @@ class SystemPanel(QWidget):
             # Get update status
             self._update_status_display()
 
+            # Populate versions/branches based on current mode
+            mode = self.update_mode_combo.currentData()
+            if mode == "stable":
+                self._populate_versions()
+            else:  # development
+                # Branches will be populated when switching to dev mode
+                pass
+
         except Exception as e:
             logger.error(f"Error refreshing system info: {e}")
             QMessageBox.critical(
                 self, "Error", f"Failed to refresh system info:\n{str(e)}"
             )
+
+    def _on_mode_changed(self, index: int):
+        """Handle update mode selection change."""
+        if not self.client:
+            return
+
+        mode = self.update_mode_combo.currentData()
+
+        try:
+            self.logs_text.append(f"\n🔧 Changing update mode to: {mode}...")
+
+            result = self.client.configure_update_mode(mode=mode)
+
+            if result.get("success"):
+                description = result.get("description", "")
+                self.logs_text.append(f"✅ Update mode changed: {description}")
+
+                # Show/hide selectors based on mode
+                if mode == "stable":
+                    # Show version selector, hide branch selector
+                    self.version_selector_widget.show()
+                    self.branch_selector_widget.hide()
+                    # Populate versions when switching to stable mode
+                    self._populate_versions()
+                else:  # development
+                    # Hide version selector, show branch selector
+                    self.version_selector_widget.hide()
+                    self.branch_selector_widget.show()
+                    # Load branches when switching to dev mode
+                    self._refresh_branches()
+
+                QMessageBox.information(
+                    self,
+                    "Update Mode Changed",
+                    f"Update mode set to: {mode}\n\n{description}",
+                )
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"❌ Failed to change mode: {error}")
+                QMessageBox.critical(
+                    self, "Configuration Failed", f"Failed to change update mode:\n{error}"
+                )
+
+            self._update_status_display()
+
+        except Exception as e:
+            logger.error(f"Error changing update mode: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to change update mode:\n{str(e)}"
+            )
+
+    def _refresh_branches(self):
+        """Refresh the list of available branches (client-side)."""
+        from client.utils.git_operations import get_git_branches, get_current_git_branch
+
+        try:
+            self.logs_text.append("\n🌿 Fetching available branches...")
+            self.refresh_branches_btn.setEnabled(False)
+            self.refresh_branches_btn.setText("Loading...")
+
+            # Get branches from local git
+            branches = get_git_branches()
+            current_branch = get_current_git_branch()
+
+            if branches:
+                # Update combo box
+                self.branch_combo.blockSignals(True)
+                self.branch_combo.clear()
+
+                selected_index = 0
+                for i, branch_name in enumerate(branches):
+                    # Add indicator for current branch
+                    display_name = branch_name
+                    is_current = (branch_name == current_branch)
+
+                    if is_current:
+                        display_name += " (current)"
+                        selected_index = i
+
+                    self.branch_combo.addItem(display_name, branch_name)
+
+                self.branch_combo.setCurrentIndex(selected_index)
+                self.branch_combo.blockSignals(False)
+
+                self.logs_text.append(f"✅ Found {len(branches)} branches")
+                if current_branch:
+                    self.logs_text.append(f"   Current: {current_branch}")
+            else:
+                self.logs_text.append("⚠️  No branches found")
+                QMessageBox.warning(
+                    self,
+                    "No Branches Found",
+                    "No git branches found in the repository."
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching branches: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to fetch branches:\n{str(e)}"
+            )
+
+        finally:
+            self.refresh_branches_btn.setEnabled(True)
+            self.refresh_branches_btn.setText("Refresh Branches")
+
+    def _on_branch_changed(self, index: int):
+        """Handle branch selection change."""
+        if index < 0:
+            return
+
+        branch_name = self.branch_combo.currentData()
+        if not branch_name:
+            return
+
+        # In client-driven mode, just log the selection
+        # No need to notify server since client manages all updates
+        self.logs_text.append(f"📌 Selected branch: {branch_name}")
+        logger.info(f"Branch selected: {branch_name}")
 
     def _update_status_display(self):
         """Update the status display from server."""
@@ -285,6 +548,24 @@ class SystemPanel(QWidget):
 
         try:
             status_data = self.client.get_update_status()
+
+            # Update mode combo box based on server setting
+            update_mode = status_data.get("update_mode", "stable")
+            for i in range(self.update_mode_combo.count()):
+                if self.update_mode_combo.itemData(i) == update_mode:
+                    # Block signals to avoid triggering _on_mode_changed
+                    self.update_mode_combo.blockSignals(True)
+                    self.update_mode_combo.setCurrentIndex(i)
+                    self.update_mode_combo.blockSignals(False)
+                    break
+
+            # Show/hide selectors based on mode
+            if update_mode == "stable":
+                self.version_selector_widget.show()
+                self.branch_selector_widget.hide()
+            else:  # development
+                self.version_selector_widget.hide()
+                self.branch_selector_widget.show()
 
             # Update status label
             status = status_data.get("status", "unknown")
@@ -664,6 +945,370 @@ class SystemPanel(QWidget):
             self.logs_text.append(f"\n❌ Error: {str(e)}")
             QMessageBox.critical(
                 self, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
+            )
+
+    def _populate_versions(self):
+        """Populate version selector with git tags (client-side)."""
+        from client.utils.git_operations import get_git_tags
+
+        try:
+            self.logs_text.append("\n🏷️  Fetching git tags...")
+            self.refresh_versions_btn.setEnabled(False)
+            self.refresh_versions_btn.setText("Loading...")
+
+            tags = get_git_tags()
+
+            if tags:
+                # Update combo box
+                self.version_selector.blockSignals(True)
+                self.version_selector.clear()
+
+                for tag in tags:
+                    self.version_selector.addItem(tag, tag)
+
+                self.version_selector.blockSignals(False)
+
+                self.logs_text.append(f"✅ Found {len(tags)} versions")
+            else:
+                self.logs_text.append("⚠️  No git tags found")
+                QMessageBox.warning(
+                    self,
+                    "No Versions Found",
+                    "No git tags found in the repository.\n\n"
+                    "Create version tags to use stable mode."
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching git tags: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to fetch git tags:\n{str(e)}"
+            )
+
+        finally:
+            self.refresh_versions_btn.setEnabled(True)
+            self.refresh_versions_btn.setText("Refresh Versions")
+
+    def _check_server_vs_local(self):
+        """Compare server version with local git.
+
+        Returns:
+            Dict with server_version, local_ref, and update_available
+        """
+        from client.utils.git_operations import get_git_version_from_tag
+
+        try:
+            # Get server version via API
+            version_data = self.client.get_server_version()
+            server_version = version_data.get("version", "Unknown")
+
+            # Get local version based on mode
+            mode = self.update_mode_combo.currentData()
+
+            if mode == "stable":
+                # Get selected tag
+                local_ref = self.version_selector.currentData()
+                if local_ref:
+                    local_version = get_git_version_from_tag(local_ref) or local_ref
+                else:
+                    local_version = "None selected"
+            else:  # development
+                # Get selected branch
+                local_ref = self.branch_combo.currentData()
+                local_version = local_ref if local_ref else "None selected"
+
+            # Compare versions
+            update_available = (local_ref and local_version != server_version)
+
+            return {
+                "server_version": server_version,
+                "local_ref": local_ref or "None",
+                "local_version": local_version,
+                "update_available": update_available
+            }
+
+        except Exception as e:
+            logger.error(f"Error comparing versions: {e}")
+            return {
+                "server_version": "Error",
+                "local_ref": "Error",
+                "local_version": "Error",
+                "update_available": False,
+                "error": str(e)
+            }
+
+    def _check_and_display_version(self):
+        """Check server version and compare with local git."""
+        if not self.client:
+            return
+
+        try:
+            self.check_version_btn.setEnabled(False)
+            self.check_version_btn.setText("Checking...")
+
+            comparison = self._check_server_vs_local()
+
+            if comparison.get("error"):
+                self.logs_text.append(f"\n❌ Error: {comparison['error']}")
+                QMessageBox.critical(
+                    self, "Error", f"Failed to check version:\n{comparison['error']}"
+                )
+                return
+
+            server_ver = comparison["server_version"]
+            local_ref = comparison["local_ref"]
+            local_ver = comparison["local_version"]
+            update_available = comparison["update_available"]
+
+            if update_available:
+                self.logs_text.append(
+                    f"\n⚠️  Server version mismatch:\n"
+                    f"   Server: {server_ver}\n"
+                    f"   Local: {local_ver} ({local_ref})\n"
+                    f"   Update available!"
+                )
+
+                self.notification_banner.setText(
+                    f"🔔 Server Update Available: {local_ver} (Server: {server_ver})"
+                )
+                self.notification_banner.show()
+
+                QMessageBox.information(
+                    self,
+                    "Update Available",
+                    f"Server version differs from local:\n\n"
+                    f"Server: {server_ver}\n"
+                    f"Local: {local_ver} ({local_ref})\n\n"
+                    f"Click 'Update Server' to deploy the changes."
+                )
+            else:
+                self.logs_text.append(
+                    f"\n✅ Version check:\n"
+                    f"   Server: {server_ver}\n"
+                    f"   Local: {local_ver} ({local_ref})"
+                )
+
+                if server_ver == local_ver:
+                    self.notification_banner.hide()
+                    QMessageBox.information(
+                        self,
+                        "No Update Needed",
+                        f"Server and local are in sync:\n\nVersion: {server_ver}"
+                    )
+                else:
+                    QMessageBox.information(
+                        self,
+                        "Version Info",
+                        f"Server: {server_ver}\nLocal: {local_ver} ({local_ref})"
+                    )
+
+        except Exception as e:
+            logger.error(f"Error checking version: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to check version:\n{str(e)}"
+            )
+
+        finally:
+            self.check_version_btn.setEnabled(True)
+            self.check_version_btn.setText("Check Server Version")
+
+    def _update_server(self):
+        """Update server by checking out git ref and rebuilding Docker."""
+        from client.utils.git_operations import checkout_git_ref, get_git_root
+        from client.utils.docker_operations import (
+            is_docker_available_locally,
+            rebuild_docker_local,
+            rebuild_docker_ssh,
+            generate_rebuild_instructions
+        )
+
+        if not self.client:
+            return
+
+        try:
+            # Get selected ref (tag or branch)
+            mode = self.update_mode_combo.currentData()
+            if mode == "stable":
+                ref = self.version_selector.currentData()
+            else:  # development
+                ref = self.branch_combo.currentData()
+
+            if not ref:
+                QMessageBox.warning(
+                    self,
+                    "No Version Selected",
+                    "Please select a version or branch first."
+                )
+                return
+
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Confirm Server Update",
+                f"Update server to {ref}?\n\n"
+                f"This will:\n"
+                f"1. Checkout {ref} in local git\n"
+                f"2. Rebuild Docker containers\n"
+                f"3. Restart server\n\n"
+                f"This may take several minutes.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Disable button during update
+            self.update_server_btn.setEnabled(False)
+            self.update_server_btn.setText("Updating...")
+
+            # Step 1: Checkout git ref
+            self.logs_text.append(f"\n🔄 Checking out {ref}...")
+
+            if not checkout_git_ref(ref):
+                raise Exception(f"Failed to checkout {ref}")
+
+            self.logs_text.append(f"✅ Checked out {ref}")
+
+            # Get project directory
+            project_dir = get_git_root()
+            if not project_dir:
+                raise Exception("Could not determine project root directory")
+
+            # Step 2: Docker rebuild (if auto-enabled)
+            if self.auto_docker_rebuild.isChecked():
+                ssh_host = self.ssh_host_input.text().strip()
+
+                if ssh_host:
+                    # Remote rebuild via SSH
+                    self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host}...")
+                    result = rebuild_docker_ssh(ssh_host, project_dir)
+                else:
+                    # Local rebuild
+                    if not is_docker_available_locally():
+                        raise Exception("Docker not available locally")
+
+                    self.logs_text.append(f"\n🐳 Rebuilding Docker locally...")
+                    result = rebuild_docker_local(project_dir)
+
+                if result.success:
+                    self.logs_text.append(f"✅ Docker rebuild successful!")
+                    self.logs_text.append(f"\nOutput:\n{result.output}")
+
+                    QMessageBox.information(
+                        self,
+                        "Server Updated",
+                        f"Server successfully updated to {ref} and rebuilt!\n\n"
+                        f"The server should now be running the new version."
+                    )
+
+                    # Refresh server version display
+                    self.refresh()
+                else:
+                    # Rebuild failed - show manual instructions
+                    self.logs_text.append(f"❌ Docker rebuild failed: {result.error}")
+
+                    instructions = generate_rebuild_instructions(project_dir, ref)
+                    self.logs_text.append(f"\n📋 Manual Instructions:\n{instructions}")
+
+                    QMessageBox.warning(
+                        self,
+                        "Rebuild Failed",
+                        f"Git checkout succeeded but Docker rebuild failed.\n\n"
+                        f"{result.error}\n\n"
+                        f"Manual steps required:\n\n{instructions}"
+                    )
+            else:
+                # Manual rebuild - show instructions
+                instructions = generate_rebuild_instructions(project_dir, ref)
+
+                self.logs_text.append(f"\n📋 Manual rebuild required:\n{instructions}")
+
+                QMessageBox.information(
+                    self,
+                    "Manual Rebuild Required",
+                    f"Git checkout complete. Follow these steps to rebuild:\n\n{instructions}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error updating server: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Update Failed", f"Failed to update server:\n{str(e)}"
+            )
+
+        finally:
+            self.update_server_btn.setEnabled(True)
+            self.update_server_btn.setText("Update Server")
+
+    def _update_client(self):
+        """Update client by marking for update on next restart."""
+        from client.utils.self_update import mark_for_update
+        import sys
+
+        try:
+            # Get selected ref (tag or branch)
+            mode = self.update_mode_combo.currentData()
+            if mode == "stable":
+                ref = self.version_selector.currentData()
+            else:  # development
+                ref = self.branch_combo.currentData()
+
+            if not ref:
+                QMessageBox.warning(
+                    self,
+                    "No Version Selected",
+                    "Please select a version or branch first."
+                )
+                return
+
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Confirm Client Update",
+                f"Update client to {ref}?\n\n"
+                f"This will:\n"
+                f"1. Mark the client for update to {ref}\n"
+                f"2. Restart the client application\n"
+                f"3. On restart, checkout {ref} and launch\n\n"
+                f"Do you want to proceed?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Mark for update
+            self.logs_text.append(f"\n🔄 Marking client for update to {ref}...")
+
+            if mark_for_update(ref, mode):
+                self.logs_text.append(f"✅ Client marked for update")
+
+                QMessageBox.information(
+                    self,
+                    "Client Update Scheduled",
+                    f"Client has been marked for update to {ref}.\n\n"
+                    f"The application will now restart and apply the update."
+                )
+
+                # Exit application to trigger restart
+                # The launcher should detect the flag and perform the update
+                self.logs_text.append(f"🔄 Restarting application...")
+                sys.exit(0)
+
+            else:
+                self.logs_text.append(f"❌ Failed to mark client for update")
+                QMessageBox.critical(
+                    self,
+                    "Update Failed",
+                    "Failed to mark client for update.\n\nCheck logs for details."
+                )
+
+        except Exception as e:
+            logger.error(f"Error updating client: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Update Failed", f"Failed to update client:\n{str(e)}"
             )
 
     def closeEvent(self, event):
