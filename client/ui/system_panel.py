@@ -300,7 +300,7 @@ class SystemPanel(QWidget):
         local_layout.addWidget(local_server_info)
 
         # Spacing
-        local_layout.addSpacing(5)
+        local_layout.addSpacing(3)
 
         # Checkbox for automatic rebuild (local)
         self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild Docker")
@@ -309,7 +309,27 @@ class SystemPanel(QWidget):
             "If enabled, will try to rebuild Docker containers automatically. "
             "If disabled or if automatic fails, manual instructions will be shown."
         )
-        self.auto_docker_rebuild_local.setStyleSheet("background: transparent; border: none;")
+        self.auto_docker_rebuild_local.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
         local_layout.addWidget(self.auto_docker_rebuild_local)
 
         # Push button to bottom
@@ -363,7 +383,7 @@ class SystemPanel(QWidget):
         remote_layout.addWidget(remote_server_info)
 
         # Spacing
-        remote_layout.addSpacing(5)
+        remote_layout.addSpacing(3)
 
         # SSH configuration
         ssh_label = QLabel("SSH Host:")
@@ -387,7 +407,27 @@ class SystemPanel(QWidget):
             "If enabled, will try to rebuild Docker containers on remote host via SSH. "
             "If disabled or if automatic fails, manual instructions will be shown."
         )
-        self.auto_docker_rebuild_remote.setStyleSheet("background: transparent; border: none;")
+        self.auto_docker_rebuild_remote.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
         remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
         # Push button to bottom
@@ -453,7 +493,7 @@ class SystemPanel(QWidget):
         client_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         client_layout.addWidget(client_info)
 
-        client_layout.addSpacing(5)
+        client_layout.addSpacing(3)
 
         # Push button to bottom
         client_layout.addStretch()
@@ -502,10 +542,30 @@ class SystemPanel(QWidget):
         auto_rebuild_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         auto_rebuild_layout.addWidget(auto_rebuild_info)
 
-        auto_rebuild_layout.addSpacing(5)
+        auto_rebuild_layout.addSpacing(3)
 
         self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
-        self.auto_rebuild_checkbox.setStyleSheet("background: transparent; border: none;")
+        self.auto_rebuild_checkbox.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
         self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
@@ -555,24 +615,52 @@ class SystemPanel(QWidget):
         scheduled_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         scheduled_layout.addWidget(scheduled_info)
 
-        scheduled_layout.addSpacing(5)
+        scheduled_layout.addSpacing(3)
 
-        self.scheduled_checkbox = QCheckBox("Enable auto-checking")
-        self.scheduled_checkbox.setStyleSheet("background: transparent; border: none;")
+        # Checkbox and interval on same line
+        checkbox_interval_layout = QHBoxLayout()
+        self.scheduled_checkbox = QCheckBox("Enable")
+        self.scheduled_checkbox.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
         self.scheduled_checkbox.setToolTip("Enable automatic update checking")
-        scheduled_layout.addWidget(self.scheduled_checkbox)
+        checkbox_interval_layout.addWidget(self.scheduled_checkbox)
 
-        interval_layout = QHBoxLayout()
-        interval_label = QLabel("Interval (hours):")
-        interval_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
-        interval_layout.addWidget(interval_label)
+        interval_label = QLabel("Every:")
+        interval_label.setStyleSheet("background: transparent; border: none; font-size: 9px; margin-left: 5px;")
+        checkbox_interval_layout.addWidget(interval_label)
+
         self.interval_spinbox = QSpinBox()
         self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
         self.interval_spinbox.setValue(24)
-        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px;")
-        interval_layout.addWidget(self.interval_spinbox)
-        interval_layout.addStretch()
-        scheduled_layout.addLayout(interval_layout)
+        self.interval_spinbox.setFixedWidth(50)
+        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
+        checkbox_interval_layout.addWidget(self.interval_spinbox)
+
+        hours_label = QLabel("hrs")
+        hours_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
+        checkbox_interval_layout.addWidget(hours_label)
+
+        checkbox_interval_layout.addStretch()
+        scheduled_layout.addLayout(checkbox_interval_layout)
 
         # Push button to bottom
         scheduled_layout.addStretch()
