@@ -54,22 +54,40 @@ def get_git_tags() -> List[str]:
         return []
 
 
-def get_git_branches() -> List[str]:
+def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[str]:
     """Get list of git branches (local and remote).
+
+    Args:
+        show_all: If True, show all branches. If False, only show current and active branches (default: False)
+        sort_by_date: If True, sort by most recent commit date (default: True)
 
     Returns:
         List of branch names, e.g., ["main", "feature/new-feature", ...]
     """
     try:
-        # Get all branches (local and remote)
-        result = subprocess.run(
-            ["git", "branch", "-a"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        # Get current branch first
+        current_branch = get_current_git_branch()
+
+        # Get all branches with commit date if sorting by date
+        if sort_by_date:
+            # Use --sort=-committerdate to sort by most recent first
+            result = subprocess.run(
+                ["git", "branch", "-a", "--sort=-committerdate"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+        else:
+            result = subprocess.run(
+                ["git", "branch", "-a"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
 
         branches = []
+        seen_branches = set()
+
         for line in result.stdout.split('\n'):
             line = line.strip()
             if not line:
@@ -84,14 +102,39 @@ def get_git_branches() -> List[str]:
                 continue
 
             # Clean up remote branch names (remotes/origin/branch -> branch)
+            original_line = line
             if line.startswith('remotes/origin/'):
                 line = line.replace('remotes/origin/', '')
 
-            if line and line not in branches:
-                branches.append(line)
+            # Skip if already seen (avoid duplicates)
+            if line in seen_branches:
+                continue
 
-        logger.info(f"Found {len(branches)} git branches")
-        return sorted(branches)
+            # Filter for active branches if not showing all
+            if not show_all and line != current_branch:
+                # Check if branch has commits in last 6 months (active)
+                try:
+                    # Use original_line for the check to handle remote branches
+                    check_line = original_line if original_line.startswith('remotes/') else line
+                    commit_check = subprocess.run(
+                        ["git", "log", "-1", "--since=6.months.ago", "--format=%ci", check_line],
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                    # If no output, branch has no commits in last 6 months
+                    if not commit_check.stdout.strip():
+                        continue
+                except:
+                    # If check fails, include the branch anyway
+                    pass
+
+            if line:
+                branches.append(line)
+                seen_branches.add(line)
+
+        logger.info(f"Found {len(branches)} git branches (show_all={show_all})")
+        return branches
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to get git branches: {e.stderr}")
         return []

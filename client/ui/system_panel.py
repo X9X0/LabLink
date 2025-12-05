@@ -196,84 +196,99 @@ class SystemPanel(QWidget):
 
         # Branch selector (for development mode)
         self.branch_selector_widget = QWidget()
-        branch_selector_layout = QHBoxLayout(self.branch_selector_widget)
+        branch_selector_layout = QVBoxLayout(self.branch_selector_widget)
         branch_selector_layout.setContentsMargins(0, 0, 0, 0)
+        branch_selector_layout.setSpacing(3)
 
-        branch_selector_layout.addWidget(QLabel("Track Branch:"))
+        # First row: Branch dropdown and refresh button
+        branch_row1 = QHBoxLayout()
+        branch_row1.addWidget(QLabel("Track Branch:"))
         self.branch_combo = QComboBox()
         self.branch_combo.setMinimumWidth(500)  # Allow longer branch names to be visible
         self.branch_combo.currentIndexChanged.connect(self._on_branch_changed)
-        branch_selector_layout.addWidget(self.branch_combo)
+        branch_row1.addWidget(self.branch_combo)
 
         self.refresh_branches_btn = QPushButton("Refresh Branches")
         self.refresh_branches_btn.clicked.connect(self._refresh_branches)
-        branch_selector_layout.addWidget(self.refresh_branches_btn)
+        branch_row1.addWidget(self.refresh_branches_btn)
 
-        branch_selector_layout.addStretch()
+        branch_row1.addStretch()
+        branch_selector_layout.addLayout(branch_row1)
+
+        # Second row: Show all branches checkbox
+        branch_row2 = QHBoxLayout()
+        self.show_all_branches_checkbox = QCheckBox("Show all branches (including inactive)")
+        self.show_all_branches_checkbox.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-size: 9px;
+                color: gray;
+            }
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+        """)
+        self.show_all_branches_checkbox.setToolTip(
+            "When unchecked, only shows current and active branches (with commits in last 6 months).\n"
+            "When checked, shows all branches sorted by most recent."
+        )
+        self.show_all_branches_checkbox.stateChanged.connect(self._refresh_branches)
+        branch_row2.addWidget(self.show_all_branches_checkbox)
+        branch_row2.addStretch()
+        branch_selector_layout.addLayout(branch_row2)
 
         self.branch_selector_widget.hide()  # Hidden by default (stable mode)
         update_layout.addWidget(self.branch_selector_widget)
 
-        # Update status
-        self.update_status_label = QLabel("Update Status: Idle")
-        update_layout.addWidget(self.update_status_label)
-
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        update_layout.addWidget(self.progress_bar)
-
-        # Update buttons
-        button_layout = QHBoxLayout()
-
-        self.check_updates_btn = QPushButton("Check for Updates")
-        self.check_updates_btn.clicked.connect(self.check_for_updates)
-        button_layout.addWidget(self.check_updates_btn)
-
-        self.start_update_btn = QPushButton("Update Server")
-        self.start_update_btn.clicked.connect(self.start_update)
-        self.start_update_btn.setEnabled(False)
-        button_layout.addWidget(self.start_update_btn)
-
-        self.rollback_btn = QPushButton("Rollback")
-        self.rollback_btn.clicked.connect(self.rollback)
-        button_layout.addWidget(self.rollback_btn)
-
-        self.rebuild_btn = QPushButton("Rebuild Now")
-        self.rebuild_btn.clicked.connect(self.execute_rebuild)
-        button_layout.addWidget(self.rebuild_btn)
-
-        update_layout.addLayout(button_layout)
-        update_group.setLayout(update_layout)
-        layout.addWidget(update_group)
-
-        # Server Update Group (Docker)
-        docker_rebuild_group = QGroupBox("Server Updates (Docker)")
-        docker_rebuild_layout = QVBoxLayout()
-
-        # Description
-        docker_info = QLabel(
-            "Update Docker-based servers by checking out code locally and triggering rebuilds.\n"
-            "Choose between local (this machine) or remote (via SSH) server."
-        )
-        docker_info.setWordWrap(True)
-        docker_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
-        docker_rebuild_layout.addWidget(docker_info)
-
-        # Check server version button (applies to currently connected server)
+        # Check server version button
         check_version_layout = QHBoxLayout()
         self.check_version_btn = QPushButton("Check Connected Server Version")
         self.check_version_btn.clicked.connect(self._check_and_display_version)
         self.check_version_btn.setToolTip("Compare currently connected server version with local git")
         check_version_layout.addWidget(self.check_version_btn)
+
+        # Keep old buttons but hide them (for backward compatibility with existing methods)
+        self.check_updates_btn = QPushButton("Check for Updates")
+        self.check_updates_btn.clicked.connect(self.check_for_updates)
+        self.check_updates_btn.hide()
+
+        self.start_update_btn = QPushButton("Update Server")
+        self.start_update_btn.clicked.connect(self.start_update)
+        self.start_update_btn.hide()
+
+        self.rollback_btn = QPushButton("Rollback")
+        self.rollback_btn.clicked.connect(self.rollback)
+        check_version_layout.addWidget(self.rollback_btn)
+
+        self.rebuild_btn = QPushButton("Rebuild Now")
+        self.rebuild_btn.clicked.connect(self.execute_rebuild)
+        check_version_layout.addWidget(self.rebuild_btn)
+
         check_version_layout.addStretch()
-        docker_rebuild_layout.addLayout(check_version_layout)
+        update_layout.addLayout(check_version_layout)
+
+        # Update status and progress bar
+        self.update_status_label = QLabel("Update Status: Idle")
+        update_layout.addWidget(self.update_status_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        update_layout.addWidget(self.progress_bar)
 
         # Separator
         separator1 = QLabel("─" * 120)
         separator1.setStyleSheet("color: #bdc3c7;")
-        docker_rebuild_layout.addWidget(separator1)
+        update_layout.addWidget(separator1)
 
         # Side-by-side layout for Local and Remote sections
         side_by_side_layout = QHBoxLayout()
@@ -453,11 +468,12 @@ class SystemPanel(QWidget):
         side_by_side_layout.addWidget(separator_frame, 0)  # No stretch
         side_by_side_layout.addWidget(remote_section, 1)  # Equal stretch factor
 
-        # Add side-by-side layout to main layout
-        docker_rebuild_layout.addLayout(side_by_side_layout)
+        # Add side-by-side layout to update layout
+        update_layout.addLayout(side_by_side_layout)
 
-        docker_rebuild_group.setLayout(docker_rebuild_layout)
-        layout.addWidget(docker_rebuild_group)
+        # Close the Server Updates group
+        update_group.setLayout(update_layout)
+        layout.addWidget(update_group)
 
         # Configuration Group (Client, Auto-Rebuild, Scheduled Checks side-by-side)
         config_group = QGroupBox("Additional Configuration")
@@ -729,10 +745,25 @@ class SystemPanel(QWidget):
 
     def _on_mode_changed(self, index: int):
         """Handle update mode selection change."""
+        mode = self.update_mode_combo.currentData()
+
+        # Show/hide selectors based on mode (client-side operation, works without API client)
+        if mode == "stable":
+            # Show version selector, hide branch selector
+            self.version_selector_widget.show()
+            self.branch_selector_widget.hide()
+            # Populate versions when switching to stable mode
+            self._populate_versions()
+        else:  # development
+            # Hide version selector, show branch selector
+            self.version_selector_widget.hide()
+            self.branch_selector_widget.show()
+            # Load branches when switching to dev mode
+            self._refresh_branches()
+
+        # Only configure server if client is connected
         if not self.client:
             return
-
-        mode = self.update_mode_combo.currentData()
 
         try:
             self.logs_text.append(f"\n🔧 Changing update mode to: {mode}...")
@@ -742,20 +773,6 @@ class SystemPanel(QWidget):
             if result.get("success"):
                 description = result.get("description", "")
                 self.logs_text.append(f"✅ Update mode changed: {description}")
-
-                # Show/hide selectors based on mode
-                if mode == "stable":
-                    # Show version selector, hide branch selector
-                    self.version_selector_widget.show()
-                    self.branch_selector_widget.hide()
-                    # Populate versions when switching to stable mode
-                    self._populate_versions()
-                else:  # development
-                    # Hide version selector, show branch selector
-                    self.version_selector_widget.hide()
-                    self.branch_selector_widget.show()
-                    # Load branches when switching to dev mode
-                    self._refresh_branches()
 
                 QMessageBox.information(
                     self,
@@ -783,12 +800,14 @@ class SystemPanel(QWidget):
         from client.utils.git_operations import get_git_branches, get_current_git_branch
 
         try:
-            self.logs_text.append("\n🌿 Fetching available branches...")
+            show_all = self.show_all_branches_checkbox.isChecked()
+            filter_text = "all" if show_all else "active"
+            self.logs_text.append(f"\n🌿 Fetching {filter_text} branches...")
             self.refresh_branches_btn.setEnabled(False)
             self.refresh_branches_btn.setText("Loading...")
 
-            # Get branches from local git
-            branches = get_git_branches()
+            # Get branches from local git with filtering
+            branches = get_git_branches(show_all=show_all, sort_by_date=True)
             current_branch = get_current_git_branch()
 
             if branches:
@@ -811,7 +830,7 @@ class SystemPanel(QWidget):
                 self.branch_combo.setCurrentIndex(selected_index)
                 self.branch_combo.blockSignals(False)
 
-                self.logs_text.append(f"✅ Found {len(branches)} branches")
+                self.logs_text.append(f"✅ Found {len(branches)} {filter_text} branches (sorted by most recent)")
                 if current_branch:
                     self.logs_text.append(f"   Current: {current_branch}")
             else:
@@ -1464,13 +1483,23 @@ class SystemPanel(QWidget):
             self.update_local_server_btn.setEnabled(False)
             self.update_local_server_btn.setText("Updating...")
 
+            # Progress: 0% - Starting
+            self.update_status_label.setText(f"Update Status: Starting local server update to {ref}")
+            self.progress_bar.setValue(0)
+
             # Step 1: Checkout git ref
             self.logs_text.append(f"\n🔄 Checking out {ref}...")
+            self.update_status_label.setText(f"Update Status: Checking out {ref}...")
+            self.progress_bar.setValue(10)
 
             if not checkout_git_ref(ref):
                 raise Exception(f"Failed to checkout {ref}")
 
             self.logs_text.append(f"✅ Checked out {ref}")
+
+            # Progress: 25% - Git checkout complete
+            self.update_status_label.setText(f"Update Status: Git checkout complete")
+            self.progress_bar.setValue(25)
 
             # Get project directory
             project_dir = get_git_root()
@@ -1483,10 +1512,18 @@ class SystemPanel(QWidget):
                 if not is_docker_available_locally():
                     raise Exception("Docker not available locally")
 
+                # Progress: 50% - Docker rebuild started
                 self.logs_text.append(f"\n🐳 Rebuilding Docker locally...")
+                self.update_status_label.setText(f"Update Status: Rebuilding Docker containers...")
+                self.progress_bar.setValue(50)
+
                 result = rebuild_docker_local(project_dir)
 
                 if result.success:
+                    # Progress: 100% - Complete
+                    self.progress_bar.setValue(100)
+                    self.update_status_label.setText(f"Update Status: Local server updated successfully!")
+
                     self.logs_text.append(f"✅ Docker rebuild successful!")
                     self.logs_text.append(f"\nOutput:\n{result.output}")
 
@@ -1501,6 +1538,9 @@ class SystemPanel(QWidget):
                     self.refresh()
                 else:
                     # Rebuild failed - show manual instructions
+                    self.progress_bar.setValue(0)
+                    self.update_status_label.setText(f"Update Status: Docker rebuild failed")
+
                     self.logs_text.append(f"❌ Docker rebuild failed: {result.error}")
 
                     instructions = generate_rebuild_instructions(project_dir, ref)
@@ -1515,6 +1555,9 @@ class SystemPanel(QWidget):
                     )
             else:
                 # Manual rebuild - show instructions
+                self.progress_bar.setValue(25)
+                self.update_status_label.setText(f"Update Status: Git checkout complete - manual rebuild required")
+
                 instructions = generate_rebuild_instructions(project_dir, ref)
 
                 self.logs_text.append(f"\n📋 Manual rebuild required:\n{instructions}")
@@ -1528,13 +1571,15 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error updating local server: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
+            self.progress_bar.setValue(0)
+            self.update_status_label.setText(f"Update Status: Update failed")
             QMessageBox.critical(
                 self, "Update Failed", f"Failed to update local server:\n{str(e)}"
             )
 
         finally:
             self.update_local_server_btn.setEnabled(True)
-            self.update_local_server_btn.setText("🖥️  Update Local Server")
+            self.update_local_server_btn.setText("Update Local Server")
 
     def _update_remote_server(self):
         """Update remote server by checking out git ref and rebuilding Docker via SSH."""
@@ -1592,13 +1637,23 @@ class SystemPanel(QWidget):
             self.update_remote_server_btn.setEnabled(False)
             self.update_remote_server_btn.setText("Updating...")
 
+            # Progress: 0% - Starting
+            self.update_status_label.setText(f"Update Status: Starting remote server update to {ref}")
+            self.progress_bar.setValue(0)
+
             # Step 1: Checkout git ref
             self.logs_text.append(f"\n🔄 Checking out {ref}...")
+            self.update_status_label.setText(f"Update Status: Checking out {ref}...")
+            self.progress_bar.setValue(10)
 
             if not checkout_git_ref(ref):
                 raise Exception(f"Failed to checkout {ref}")
 
             self.logs_text.append(f"✅ Checked out {ref}")
+
+            # Progress: 25% - Git checkout complete
+            self.update_status_label.setText(f"Update Status: Git checkout complete")
+            self.progress_bar.setValue(25)
 
             # Get project directory
             project_dir = get_git_root()
@@ -1607,11 +1662,18 @@ class SystemPanel(QWidget):
 
             # Step 2: Docker rebuild via SSH (if auto-enabled)
             if self.auto_docker_rebuild_remote.isChecked():
-                # Remote rebuild via SSH
+                # Progress: 50% - Docker rebuild started
                 self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host} via SSH...")
+                self.update_status_label.setText(f"Update Status: Rebuilding Docker on {ssh_host} via SSH...")
+                self.progress_bar.setValue(50)
+
                 result = rebuild_docker_ssh(ssh_host, project_dir)
 
                 if result.success:
+                    # Progress: 100% - Complete
+                    self.progress_bar.setValue(100)
+                    self.update_status_label.setText(f"Update Status: Remote server updated successfully!")
+
                     self.logs_text.append(f"✅ Docker rebuild successful on {ssh_host}!")
                     self.logs_text.append(f"\nOutput:\n{result.output}")
 
@@ -1630,6 +1692,9 @@ class SystemPanel(QWidget):
                         pass  # May not be connected to the updated server
                 else:
                     # Rebuild failed - show manual instructions
+                    self.progress_bar.setValue(0)
+                    self.update_status_label.setText(f"Update Status: Docker rebuild failed on {ssh_host}")
+
                     self.logs_text.append(f"❌ Docker rebuild failed on {ssh_host}: {result.error}")
 
                     instructions = generate_rebuild_instructions(project_dir, ref)
@@ -1644,6 +1709,9 @@ class SystemPanel(QWidget):
                     )
             else:
                 # Manual rebuild - show instructions
+                self.progress_bar.setValue(25)
+                self.update_status_label.setText(f"Update Status: Git checkout complete - manual rebuild required on {ssh_host}")
+
                 instructions = generate_rebuild_instructions(project_dir, ref)
 
                 self.logs_text.append(f"\n📋 Manual rebuild required on {ssh_host}:\n{instructions}")
@@ -1657,13 +1725,15 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error updating remote server: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
+            self.progress_bar.setValue(0)
+            self.update_status_label.setText(f"Update Status: Update failed")
             QMessageBox.critical(
                 self, "Update Failed", f"Failed to update remote server:\n{str(e)}"
             )
 
         finally:
             self.update_remote_server_btn.setEnabled(True)
-            self.update_remote_server_btn.setText("🌐  Update Remote Server")
+            self.update_remote_server_btn.setText("Update Remote Server")
 
     def _update_client(self):
         """Update client by marking for update on next restart."""

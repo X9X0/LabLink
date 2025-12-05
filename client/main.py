@@ -112,7 +112,7 @@ def main():
             def __init__(self):
                 super().__init__()
                 self.setWindowTitle("🥚 Secret Developer Mode")
-                self.resize(500, 300)
+                self.resize(500, 350)
 
                 layout = QVBoxLayout(self)
 
@@ -140,6 +140,16 @@ def main():
                 mode_layout.addWidget(self.mode_combo)
 
                 layout.addLayout(mode_layout)
+
+                # Show all branches checkbox (only for branches mode)
+                from PyQt6.QtWidgets import QCheckBox
+                self.show_all_checkbox = QCheckBox("Show all branches (including inactive)")
+                self.show_all_checkbox.setToolTip(
+                    "When unchecked, only shows current and active branches (with commits in last 6 months).\n"
+                    "When checked, shows all branches."
+                )
+                self.show_all_checkbox.stateChanged.connect(self._populate_refs)
+                layout.addWidget(self.show_all_checkbox)
 
                 # Ref selector
                 ref_layout = QVBoxLayout()
@@ -175,6 +185,9 @@ def main():
 
             def _on_mode_changed(self):
                 """Handle mode change."""
+                # Show/hide checkbox based on mode
+                mode = self.mode_combo.currentData()
+                self.show_all_checkbox.setVisible(mode == "branches")
                 self._populate_refs()
 
             def _populate_refs(self):
@@ -184,7 +197,8 @@ def main():
                 self.ref_combo.clear()
 
                 if mode == "branches":
-                    refs = get_git_branches()
+                    show_all = self.show_all_checkbox.isChecked()
+                    refs = get_git_branches(show_all=show_all, sort_by_date=True)
                 else:  # tags
                     refs = get_git_tags()
 
