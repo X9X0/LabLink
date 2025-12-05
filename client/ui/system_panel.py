@@ -300,7 +300,7 @@ class SystemPanel(QWidget):
         local_layout.addWidget(local_server_info)
 
         # Spacing
-        local_layout.addSpacing(8)
+        local_layout.addSpacing(5)
 
         # Checkbox for automatic rebuild (local)
         self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild Docker")
@@ -312,6 +312,9 @@ class SystemPanel(QWidget):
         self.auto_docker_rebuild_local.setStyleSheet("background: transparent; border: none;")
         local_layout.addWidget(self.auto_docker_rebuild_local)
 
+        # Push button to bottom
+        local_layout.addStretch()
+
         # Update button
         self.update_local_server_btn = QPushButton("Update Local Server")
         self.update_local_server_btn.clicked.connect(self._update_local_server)
@@ -322,7 +325,7 @@ class SystemPanel(QWidget):
             QPushButton {
                 background-color: #3498db;
                 color: white;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
@@ -332,8 +335,6 @@ class SystemPanel(QWidget):
             }
         """)
         local_layout.addWidget(self.update_local_server_btn)
-
-        local_layout.addStretch()
 
         # ========== Vertical Separator ==========
         separator_frame = QFrame()
@@ -362,7 +363,7 @@ class SystemPanel(QWidget):
         remote_layout.addWidget(remote_server_info)
 
         # Spacing
-        remote_layout.addSpacing(8)
+        remote_layout.addSpacing(5)
 
         # SSH configuration
         ssh_label = QLabel("SSH Host:")
@@ -376,7 +377,7 @@ class SystemPanel(QWidget):
             "Format: username@hostname or username@ip-address\n"
             "Example: pi@192.168.1.100"
         )
-        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 4px;")
+        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 3px;")
         remote_layout.addWidget(self.ssh_host_input)
 
         # Checkbox for automatic rebuild (remote)
@@ -389,6 +390,9 @@ class SystemPanel(QWidget):
         self.auto_docker_rebuild_remote.setStyleSheet("background: transparent; border: none;")
         remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
+        # Push button to bottom
+        remote_layout.addStretch()
+
         # Update button
         self.update_remote_server_btn = QPushButton("Update Remote Server")
         self.update_remote_server_btn.clicked.connect(self._update_remote_server)
@@ -397,20 +401,18 @@ class SystemPanel(QWidget):
         )
         self.update_remote_server_btn.setStyleSheet("""
             QPushButton {
-                background-color: #9b59b6;
+                background-color: #3498db;
                 color: white;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #8e44ad;
+                background-color: #2e86c1;
             }
         """)
         remote_layout.addWidget(self.update_remote_server_btn)
-
-        remote_layout.addStretch()
 
         # Add sections to side-by-side layout with equal stretch
         side_by_side_layout.addWidget(local_section, 1)  # Equal stretch factor
@@ -451,27 +453,28 @@ class SystemPanel(QWidget):
         client_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         client_layout.addWidget(client_info)
 
-        client_layout.addSpacing(8)
+        client_layout.addSpacing(5)
+
+        # Push button to bottom
+        client_layout.addStretch()
 
         self.update_client_btn = QPushButton("Update Client")
         self.update_client_btn.clicked.connect(self._update_client)
         self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
         self.update_client_btn.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
+                background-color: #3498db;
                 color: white;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #229954;
+                background-color: #2e86c1;
             }
         """)
         client_layout.addWidget(self.update_client_btn)
-
-        client_layout.addStretch()
 
         # ========== Vertical Separator 1 ==========
         separator_frame1 = QFrame()
@@ -499,31 +502,32 @@ class SystemPanel(QWidget):
         auto_rebuild_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         auto_rebuild_layout.addWidget(auto_rebuild_info)
 
-        auto_rebuild_layout.addSpacing(8)
+        auto_rebuild_layout.addSpacing(5)
 
         self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
         self.auto_rebuild_checkbox.setStyleSheet("background: transparent; border: none;")
         self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
+        # Push button to bottom
+        auto_rebuild_layout.addStretch()
+
         self.configure_rebuild_btn = QPushButton("Configure")
         self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
         self.configure_rebuild_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f39c12;
+                background-color: #3498db;
                 color: white;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #e67e22;
+                background-color: #2e86c1;
             }
         """)
         auto_rebuild_layout.addWidget(self.configure_rebuild_btn)
-
-        auto_rebuild_layout.addStretch()
 
         # ========== Vertical Separator 2 ==========
         separator_frame2 = QFrame()
@@ -551,7 +555,7 @@ class SystemPanel(QWidget):
         scheduled_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
         scheduled_layout.addWidget(scheduled_info)
 
-        scheduled_layout.addSpacing(8)
+        scheduled_layout.addSpacing(5)
 
         self.scheduled_checkbox = QCheckBox("Enable auto-checking")
         self.scheduled_checkbox.setStyleSheet("background: transparent; border: none;")
@@ -570,24 +574,25 @@ class SystemPanel(QWidget):
         interval_layout.addStretch()
         scheduled_layout.addLayout(interval_layout)
 
+        # Push button to bottom
+        scheduled_layout.addStretch()
+
         self.configure_scheduled_btn = QPushButton("Configure")
         self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
         self.configure_scheduled_btn.setStyleSheet("""
             QPushButton {
-                background-color: #e74c3c;
+                background-color: #3498db;
                 color: white;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #c0392b;
+                background-color: #2e86c1;
             }
         """)
         scheduled_layout.addWidget(self.configure_scheduled_btn)
-
-        scheduled_layout.addStretch()
 
         # Add sections to side-by-side layout with equal stretch
         config_side_by_side_layout.addWidget(client_section, 1)
