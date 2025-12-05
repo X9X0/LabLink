@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
