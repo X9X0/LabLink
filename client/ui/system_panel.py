@@ -6,6 +6,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
@@ -157,6 +158,41 @@ class SystemPanel(QWidget):
         update_group = QGroupBox("Server Updates")
         update_layout = QVBoxLayout()
 
+        # Update mode selection
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Update Mode:"))
+        self.update_mode_combo = QComboBox()
+        self.update_mode_combo.addItem("Stable (VERSION releases)", "stable")
+        self.update_mode_combo.addItem("Development (all commits)", "development")
+        self.update_mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        mode_layout.addWidget(self.update_mode_combo)
+
+        mode_info = QLabel("ℹ️ Stable tracks version releases, Development tracks all commits")
+        mode_info.setWordWrap(True)
+        mode_info.setStyleSheet("color: gray; font-size: 10px;")
+
+        update_layout.addLayout(mode_layout)
+        update_layout.addWidget(mode_info)
+
+        # Branch selector (for development mode)
+        self.branch_selector_widget = QWidget()
+        branch_selector_layout = QHBoxLayout(self.branch_selector_widget)
+        branch_selector_layout.setContentsMargins(0, 0, 0, 0)
+
+        branch_selector_layout.addWidget(QLabel("Track Branch:"))
+        self.branch_combo = QComboBox()
+        self.branch_combo.currentIndexChanged.connect(self._on_branch_changed)
+        branch_selector_layout.addWidget(self.branch_combo)
+
+        self.refresh_branches_btn = QPushButton("Refresh Branches")
+        self.refresh_branches_btn.clicked.connect(self._refresh_branches)
+        branch_selector_layout.addWidget(self.refresh_branches_btn)
+
+        branch_selector_layout.addStretch()
+
+        self.branch_selector_widget.hide()  # Hidden by default (stable mode)
+        update_layout.addWidget(self.branch_selector_widget)
+
         # Update status
         self.update_status_label = QLabel("Update Status: Idle")
         update_layout.addWidget(self.update_status_label)
@@ -278,6 +314,146 @@ class SystemPanel(QWidget):
                 self, "Error", f"Failed to refresh system info:\n{str(e)}"
             )
 
+    def _on_mode_changed(self, index: int):
+        """Handle update mode selection change."""
+        if not self.client:
+            return
+
+        mode = self.update_mode_combo.currentData()
+
+        try:
+            self.logs_text.append(f"\n🔧 Changing update mode to: {mode}...")
+
+            result = self.client.configure_update_mode(mode=mode)
+
+            if result.get("success"):
+                description = result.get("description", "")
+                self.logs_text.append(f"✅ Update mode changed: {description}")
+
+                # Show/hide branch selector based on mode
+                if mode == "development":
+                    self.branch_selector_widget.show()
+                    self._refresh_branches()  # Load branches when switching to dev mode
+                else:
+                    self.branch_selector_widget.hide()
+
+                QMessageBox.information(
+                    self,
+                    "Update Mode Changed",
+                    f"Update mode set to: {mode}\n\n{description}",
+                )
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"❌ Failed to change mode: {error}")
+                QMessageBox.critical(
+                    self, "Configuration Failed", f"Failed to change update mode:\n{error}"
+                )
+
+            self._update_status_display()
+
+        except Exception as e:
+            logger.error(f"Error changing update mode: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to change update mode:\n{str(e)}"
+            )
+
+    def _refresh_branches(self):
+        """Refresh the list of available branches."""
+        if not self.client:
+            return
+
+        try:
+            self.logs_text.append("\n🔍 Fetching available branches...")
+            self.refresh_branches_btn.setEnabled(False)
+            self.refresh_branches_btn.setText("Loading...")
+
+            result = self.client.get_available_branches()
+
+            if result.get("success"):
+                branches = result.get("branches", [])
+                current_branch = result.get("current_branch")
+                tracked_branch = result.get("tracked_branch")
+
+                # Update combo box
+                self.branch_combo.blockSignals(True)
+                self.branch_combo.clear()
+
+                selected_index = 0
+                for i, branch in enumerate(branches):
+                    branch_name = branch.get("name")
+                    is_current = branch.get("is_current", False)
+
+                    # Add indicator for current branch
+                    display_name = f"{branch_name}"
+                    if is_current:
+                        display_name += " (current)"
+
+                    self.branch_combo.addItem(display_name, branch_name)
+
+                    # Select tracked branch or current branch
+                    if tracked_branch and branch_name == tracked_branch:
+                        selected_index = i
+                    elif not tracked_branch and is_current:
+                        selected_index = i
+
+                self.branch_combo.setCurrentIndex(selected_index)
+                self.branch_combo.blockSignals(False)
+
+                self.logs_text.append(f"✅ Found {len(branches)} branches")
+                if tracked_branch:
+                    self.logs_text.append(f"   Tracking: {tracked_branch}")
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"❌ Failed to get branches: {error}")
+                QMessageBox.warning(
+                    self, "Branch Fetch Failed", f"Failed to get branches:\n{error}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching branches: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to fetch branches:\n{str(e)}"
+            )
+
+        finally:
+            self.refresh_branches_btn.setEnabled(True)
+            self.refresh_branches_btn.setText("Refresh Branches")
+
+    def _on_branch_changed(self, index: int):
+        """Handle branch selection change."""
+        if not self.client or index < 0:
+            return
+
+        branch_name = self.branch_combo.currentData()
+        if not branch_name:
+            return
+
+        try:
+            self.logs_text.append(f"\n📌 Setting tracked branch to: {branch_name}...")
+
+            result = self.client.set_tracked_branch(branch_name=branch_name)
+
+            if result.get("success"):
+                message = result.get("message", "")
+                self.logs_text.append(f"✅ {message}")
+            else:
+                error = result.get("error", "Unknown error")
+                self.logs_text.append(f"❌ Failed to set branch: {error}")
+                QMessageBox.critical(
+                    self, "Configuration Failed", f"Failed to set tracked branch:\n{error}"
+                )
+
+            self._update_status_display()
+
+        except Exception as e:
+            logger.error(f"Error setting tracked branch: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to set tracked branch:\n{str(e)}"
+            )
+
     def _update_status_display(self):
         """Update the status display from server."""
         if not self.client:
@@ -285,6 +461,22 @@ class SystemPanel(QWidget):
 
         try:
             status_data = self.client.get_update_status()
+
+            # Update mode combo box based on server setting
+            update_mode = status_data.get("update_mode", "stable")
+            for i in range(self.update_mode_combo.count()):
+                if self.update_mode_combo.itemData(i) == update_mode:
+                    # Block signals to avoid triggering _on_mode_changed
+                    self.update_mode_combo.blockSignals(True)
+                    self.update_mode_combo.setCurrentIndex(i)
+                    self.update_mode_combo.blockSignals(False)
+                    break
+
+            # Show/hide branch selector based on mode
+            if update_mode == "development":
+                self.branch_selector_widget.show()
+            else:
+                self.branch_selector_widget.hide()
 
             # Update status label
             status = status_data.get("status", "unknown")
