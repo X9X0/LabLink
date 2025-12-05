@@ -270,31 +270,49 @@ class SystemPanel(QWidget):
         docker_rebuild_layout.addLayout(check_version_layout)
 
         # Separator
-        separator1 = QLabel("─" * 80)
+        separator1 = QLabel("─" * 120)
         separator1.setStyleSheet("color: #bdc3c7;")
         docker_rebuild_layout.addWidget(separator1)
 
-        # Local Server Update Section
-        local_server_label = QLabel("<b>Local Server (Docker on this machine)</b>")
-        docker_rebuild_layout.addWidget(local_server_label)
+        # Side-by-side layout for Local and Remote sections
+        side_by_side_layout = QHBoxLayout()
+        side_by_side_layout.setSpacing(15)
 
-        local_server_info = QLabel("Updates Docker containers running on this machine")
-        local_server_info.setStyleSheet("color: gray; font-size: 9px; padding-left: 10px;")
-        docker_rebuild_layout.addWidget(local_server_info)
+        # ========== Local Server Section ==========
+        local_section = QWidget()
+        local_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        local_layout = QVBoxLayout(local_section)
+        local_layout.setContentsMargins(10, 10, 10, 10)
+
+        local_server_label = QLabel("<b>🖥️  Local Server</b>")
+        local_server_label.setStyleSheet("background: transparent; border: none;")
+        local_layout.addWidget(local_server_label)
+
+        local_server_info = QLabel("Docker on this machine")
+        local_server_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
+        local_layout.addWidget(local_server_info)
+
+        # Spacing
+        local_layout.addSpacing(8)
 
         # Checkbox for automatic rebuild (local)
-        self.auto_docker_rebuild_local = QCheckBox("Attempt automatic Docker rebuild")
+        self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild Docker")
         self.auto_docker_rebuild_local.setChecked(True)
         self.auto_docker_rebuild_local.setToolTip(
             "If enabled, will try to rebuild Docker containers automatically. "
             "If disabled or if automatic fails, manual instructions will be shown."
         )
-        self.auto_docker_rebuild_local.setStyleSheet("padding-left: 10px;")
-        docker_rebuild_layout.addWidget(self.auto_docker_rebuild_local)
+        self.auto_docker_rebuild_local.setStyleSheet("background: transparent; border: none;")
+        local_layout.addWidget(self.auto_docker_rebuild_local)
 
-        local_button_layout = QHBoxLayout()
-        local_button_layout.addSpacing(10)
-        self.update_local_server_btn = QPushButton("🖥️  Update Local Server")
+        # Update button
+        self.update_local_server_btn = QPushButton("Update Local Server")
         self.update_local_server_btn.clicked.connect(self._update_local_server)
         self.update_local_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on this machine"
@@ -305,55 +323,73 @@ class SystemPanel(QWidget):
                 color: white;
                 padding: 8px;
                 font-weight: bold;
+                border: none;
+                border-radius: 4px;
             }
             QPushButton:hover {
                 background-color: #2e86c1;
             }
         """)
-        local_button_layout.addWidget(self.update_local_server_btn)
-        local_button_layout.addStretch()
-        docker_rebuild_layout.addLayout(local_button_layout)
+        local_layout.addWidget(self.update_local_server_btn)
 
-        # Separator
-        separator2 = QLabel("─" * 80)
-        separator2.setStyleSheet("color: #bdc3c7; padding-top: 10px;")
-        docker_rebuild_layout.addWidget(separator2)
+        local_layout.addStretch()
 
-        # Remote Server Update Section
-        remote_server_label = QLabel("<b>Remote Server (Docker via SSH)</b>")
-        docker_rebuild_layout.addWidget(remote_server_label)
+        # ========== Vertical Separator ==========
+        separator_frame = QFrame()
+        separator_frame.setFrameShape(QFrame.Shape.VLine)
+        separator_frame.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame.setStyleSheet("color: #bdc3c7;")
 
-        remote_server_info = QLabel("Updates Docker containers on a remote machine via SSH")
-        remote_server_info.setStyleSheet("color: gray; font-size: 9px; padding-left: 10px;")
-        docker_rebuild_layout.addWidget(remote_server_info)
+        # ========== Remote Server Section ==========
+        remote_section = QWidget()
+        remote_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        remote_layout = QVBoxLayout(remote_section)
+        remote_layout.setContentsMargins(10, 10, 10, 10)
+
+        remote_server_label = QLabel("<b>🌐  Remote Server</b>")
+        remote_server_label.setStyleSheet("background: transparent; border: none;")
+        remote_layout.addWidget(remote_server_label)
+
+        remote_server_info = QLabel("Docker via SSH")
+        remote_server_info.setStyleSheet("color: gray; font-size: 9px; background: transparent; border: none;")
+        remote_layout.addWidget(remote_server_info)
+
+        # Spacing
+        remote_layout.addSpacing(8)
 
         # SSH configuration
-        ssh_layout = QHBoxLayout()
-        ssh_layout.addSpacing(10)
-        ssh_layout.addWidget(QLabel("SSH Host:"))
+        ssh_label = QLabel("SSH Host:")
+        ssh_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
+        remote_layout.addWidget(ssh_label)
+
         self.ssh_host_input = QLineEdit()
-        self.ssh_host_input.setPlaceholderText("user@hostname (e.g., pi@192.168.1.100)")
+        self.ssh_host_input.setPlaceholderText("user@hostname")
         self.ssh_host_input.setToolTip(
             "SSH connection string for remote server.\n"
             "Format: username@hostname or username@ip-address\n"
             "Example: pi@192.168.1.100"
         )
-        ssh_layout.addWidget(self.ssh_host_input)
-        docker_rebuild_layout.addLayout(ssh_layout)
+        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 4px;")
+        remote_layout.addWidget(self.ssh_host_input)
 
         # Checkbox for automatic rebuild (remote)
-        self.auto_docker_rebuild_remote = QCheckBox("Attempt automatic Docker rebuild via SSH")
+        self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild via SSH")
         self.auto_docker_rebuild_remote.setChecked(True)
         self.auto_docker_rebuild_remote.setToolTip(
             "If enabled, will try to rebuild Docker containers on remote host via SSH. "
             "If disabled or if automatic fails, manual instructions will be shown."
         )
-        self.auto_docker_rebuild_remote.setStyleSheet("padding-left: 10px;")
-        docker_rebuild_layout.addWidget(self.auto_docker_rebuild_remote)
+        self.auto_docker_rebuild_remote.setStyleSheet("background: transparent; border: none;")
+        remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
-        remote_button_layout = QHBoxLayout()
-        remote_button_layout.addSpacing(10)
-        self.update_remote_server_btn = QPushButton("🌐  Update Remote Server")
+        # Update button
+        self.update_remote_server_btn = QPushButton("Update Remote Server")
         self.update_remote_server_btn.clicked.connect(self._update_remote_server)
         self.update_remote_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on remote host via SSH"
@@ -364,14 +400,24 @@ class SystemPanel(QWidget):
                 color: white;
                 padding: 8px;
                 font-weight: bold;
+                border: none;
+                border-radius: 4px;
             }
             QPushButton:hover {
                 background-color: #8e44ad;
             }
         """)
-        remote_button_layout.addWidget(self.update_remote_server_btn)
-        remote_button_layout.addStretch()
-        docker_rebuild_layout.addLayout(remote_button_layout)
+        remote_layout.addWidget(self.update_remote_server_btn)
+
+        remote_layout.addStretch()
+
+        # Add sections to side-by-side layout
+        side_by_side_layout.addWidget(local_section)
+        side_by_side_layout.addWidget(separator_frame)
+        side_by_side_layout.addWidget(remote_section)
+
+        # Add side-by-side layout to main layout
+        docker_rebuild_layout.addLayout(side_by_side_layout)
 
         docker_rebuild_group.setLayout(docker_rebuild_layout)
         layout.addWidget(docker_rebuild_group)
