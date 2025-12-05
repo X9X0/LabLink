@@ -55,6 +55,11 @@ class UpdateManager:
         self.backup_dir = self.root_dir / "backups" / "system"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
+        # Configuration directory
+        self.config_dir = self.root_dir / "config"
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_file = self.config_dir / "update_config.json"
+
         # Check if running in Docker
         self.is_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER")
 
@@ -78,6 +83,62 @@ class UpdateManager:
 
         # Development mode - selected branch tracking
         self.tracked_branch: Optional[str] = None  # Branch to track in development mode
+
+        # Load saved configuration
+        self._load_config()
+
+    def _load_config(self):
+        """Load saved configuration from file."""
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, "r") as f:
+                    config = json.load(f)
+
+                # Load update mode
+                mode_str = config.get("update_mode", "stable")
+                self.update_mode = UpdateMode(mode_str)
+
+                # Load tracked branch
+                self.tracked_branch = config.get("tracked_branch")
+
+                # Load auto-rebuild settings
+                self.auto_rebuild_enabled = config.get("auto_rebuild_enabled", False)
+                self.rebuild_command = config.get("rebuild_command")
+
+                # Load scheduled check settings
+                self.scheduled_check_enabled = config.get("scheduled_check_enabled", False)
+                self.check_interval_hours = config.get("check_interval_hours", 24)
+                self.git_remote = config.get("git_remote", "origin")
+                self.git_branch = config.get("git_branch")
+
+                logger.info(f"Loaded update configuration from {self.config_file}")
+                logger.info(f"Update mode: {self.update_mode}, Scheduled checks: {self.scheduled_check_enabled}")
+
+        except Exception as e:
+            logger.warning(f"Failed to load update configuration: {e}")
+            # Continue with defaults
+
+    def _save_config(self):
+        """Save current configuration to file."""
+        try:
+            config = {
+                "update_mode": self.update_mode.value,
+                "tracked_branch": self.tracked_branch,
+                "auto_rebuild_enabled": self.auto_rebuild_enabled,
+                "rebuild_command": self.rebuild_command,
+                "scheduled_check_enabled": self.scheduled_check_enabled,
+                "check_interval_hours": self.check_interval_hours,
+                "git_remote": self.git_remote,
+                "git_branch": self.git_branch,
+            }
+
+            with open(self.config_file, "w") as f:
+                json.dump(config, f, indent=2)
+
+            logger.debug(f"Saved update configuration to {self.config_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to save update configuration: {e}")
 
     def _add_log(self, message: str, level: str = "info"):
         """Add a log entry.
@@ -138,6 +199,9 @@ class UpdateManager:
             else "Tracking all commits (development/branch)"
         )
         self._add_log(mode_description)
+
+        # Save configuration
+        self._save_config()
 
         return {
             "success": True,
@@ -242,6 +306,9 @@ class UpdateManager:
         self.tracked_branch = branch_name
         self._add_log(f"Tracking branch set to: {branch_name}")
 
+        # Save configuration
+        self._save_config()
+
         return {
             "success": True,
             "tracked_branch": self.tracked_branch,
@@ -271,6 +338,9 @@ class UpdateManager:
         self._add_log(f"Auto-rebuild {'enabled' if enabled else 'disabled'}")
         if self.rebuild_command:
             self._add_log(f"Rebuild command: {self.rebuild_command}")
+
+        # Save configuration
+        self._save_config()
 
         return {
             "success": True,
@@ -817,6 +887,9 @@ class UpdateManager:
             self._add_log(f"Check interval: {interval_hours} hours")
             self._add_log(f"Monitoring: {git_remote}/{git_branch or 'current branch'}")
 
+        # Save configuration
+        self._save_config()
+
         return {
             "success": True,
             "scheduled_check_enabled": self.scheduled_check_enabled,
@@ -880,6 +953,25 @@ class UpdateManager:
             "success": True,
             "message": "Scheduled update checks stopped",
         }
+
+    async def initialize(self):
+        """Initialize update manager after server startup.
+
+        This method should be called once when the server starts.
+        It will auto-start scheduled checks if they were previously enabled.
+        """
+        logger.info("Initializing update manager...")
+
+        # Auto-start scheduled checks if they were previously enabled
+        if self.scheduled_check_enabled:
+            logger.info("Auto-starting scheduled update checks from saved configuration")
+            result = await self.start_scheduled_checks()
+            if result.get("success"):
+                logger.info(f"Scheduled checks started: {self.check_interval_hours}h interval")
+            else:
+                logger.warning(f"Failed to auto-start scheduled checks: {result.get('error')}")
+
+        logger.info("Update manager initialized successfully")
 
 
 # Global update manager instance

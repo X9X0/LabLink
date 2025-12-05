@@ -480,6 +480,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Advanced security disabled")
 
+    # Initialize update manager (v0.28.0)
+    from system import update_manager
+
+    logger.info("Initializing update manager...")
+    await update_manager.initialize()
+    logger.info("Update manager initialized")
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -501,6 +508,13 @@ async def lifespan(app: FastAPI):
     from scheduler import scheduler_manager
 
     await scheduler_manager.shutdown()
+
+    # Stop update manager scheduled checks
+    from system import update_manager
+
+    if update_manager.scheduled_check_task and not update_manager.scheduled_check_task.done():
+        await update_manager.stop_scheduled_checks()
+        logger.info("Update manager scheduled checks stopped")
 
     # Stop backup auto-backup task
     from backup import get_backup_manager
