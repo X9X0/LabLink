@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -247,127 +248,432 @@ class SystemPanel(QWidget):
         update_group.setLayout(update_layout)
         layout.addWidget(update_group)
 
-        # Docker Rebuild Group (Client-Driven)
-        docker_rebuild_group = QGroupBox("Client-Driven Server Update (Docker)")
+        # Server Update Group (Docker)
+        docker_rebuild_group = QGroupBox("Server Updates (Docker)")
         docker_rebuild_layout = QVBoxLayout()
 
         # Description
         docker_info = QLabel(
-            "The client will checkout the selected version/branch locally, "
-            "then rebuild and restart the Docker containers."
+            "Update Docker-based servers by checking out code locally and triggering rebuilds.\n"
+            "Choose between local (this machine) or remote (via SSH) server."
         )
         docker_info.setWordWrap(True)
         docker_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
         docker_rebuild_layout.addWidget(docker_info)
 
-        # Checkbox for automatic rebuild
-        self.auto_docker_rebuild = QCheckBox("Attempt automatic Docker rebuild")
-        self.auto_docker_rebuild.setChecked(True)
-        self.auto_docker_rebuild.setToolTip(
+        # Check server version button (applies to currently connected server)
+        check_version_layout = QHBoxLayout()
+        self.check_version_btn = QPushButton("Check Connected Server Version")
+        self.check_version_btn.clicked.connect(self._check_and_display_version)
+        self.check_version_btn.setToolTip("Compare currently connected server version with local git")
+        check_version_layout.addWidget(self.check_version_btn)
+        check_version_layout.addStretch()
+        docker_rebuild_layout.addLayout(check_version_layout)
+
+        # Separator
+        separator1 = QLabel("─" * 120)
+        separator1.setStyleSheet("color: #bdc3c7;")
+        docker_rebuild_layout.addWidget(separator1)
+
+        # Side-by-side layout for Local and Remote sections
+        side_by_side_layout = QHBoxLayout()
+        side_by_side_layout.setSpacing(15)
+
+        # ========== Local Server Section ==========
+        local_section = QWidget()
+        local_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        local_layout = QVBoxLayout(local_section)
+        local_layout.setContentsMargins(8, 8, 8, 8)
+
+        local_server_label = QLabel("<b>🖥️  Local Server</b>")
+        local_server_label.setStyleSheet("background: transparent; border: none;")
+        local_layout.addWidget(local_server_label)
+
+        # Spacing
+        local_layout.addSpacing(2)
+
+        # Checkbox for automatic rebuild (local)
+        self.auto_docker_rebuild_local = QCheckBox("Auto-rebuild")
+        self.auto_docker_rebuild_local.setChecked(True)
+        self.auto_docker_rebuild_local.setToolTip(
             "If enabled, will try to rebuild Docker containers automatically. "
             "If disabled or if automatic fails, manual instructions will be shown."
         )
-        docker_rebuild_layout.addWidget(self.auto_docker_rebuild)
+        self.auto_docker_rebuild_local.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
+        local_layout.addWidget(self.auto_docker_rebuild_local)
 
-        # SSH configuration (if remote)
-        ssh_layout = QHBoxLayout()
-        ssh_layout.addWidget(QLabel("SSH Host (if remote):"))
-        self.ssh_host_input = QLineEdit()
-        self.ssh_host_input.setPlaceholderText("user@hostname (leave empty for local)")
-        self.ssh_host_input.setToolTip(
-            "If server is running on a remote machine, enter SSH host. "
-            "Leave empty if Docker is running locally."
+        # Push button to bottom
+        local_layout.addStretch()
+
+        # Update button
+        self.update_local_server_btn = QPushButton("Update Local Server")
+        self.update_local_server_btn.clicked.connect(self._update_local_server)
+        self.update_local_server_btn.setToolTip(
+            "Checkout selected version/branch locally and rebuild Docker containers on this machine"
         )
+        self.update_local_server_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+            }
+        """)
+        local_layout.addWidget(self.update_local_server_btn)
+
+        # ========== Vertical Separator ==========
+        separator_frame = QFrame()
+        separator_frame.setFrameShape(QFrame.Shape.VLine)
+        separator_frame.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame.setStyleSheet("color: #bdc3c7;")
+
+        # ========== Remote Server Section ==========
+        remote_section = QWidget()
+        remote_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        remote_layout = QVBoxLayout(remote_section)
+        remote_layout.setContentsMargins(8, 8, 8, 8)
+
+        remote_server_label = QLabel("<b>🌐  Remote Server</b>")
+        remote_server_label.setStyleSheet("background: transparent; border: none;")
+        remote_layout.addWidget(remote_server_label)
+
+        # Spacing
+        remote_layout.addSpacing(2)
+
+        # SSH configuration with label on same line
+        ssh_layout = QHBoxLayout()
+        ssh_label = QLabel("SSH:")
+        ssh_label.setStyleSheet("background: transparent; border: none; font-size: 9px; font-weight: bold;")
+        ssh_layout.addWidget(ssh_label)
+
+        self.ssh_host_input = QLineEdit()
+        self.ssh_host_input.setPlaceholderText("user@hostname")
+        self.ssh_host_input.setToolTip(
+            "SSH connection string for remote server.\n"
+            "Format: username@hostname or username@ip-address\n"
+            "Example: pi@192.168.1.100"
+        )
+        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
         ssh_layout.addWidget(self.ssh_host_input)
-        docker_rebuild_layout.addLayout(ssh_layout)
+        remote_layout.addLayout(ssh_layout)
 
-        # Check Server Version and Update Server buttons
-        docker_button_layout = QHBoxLayout()
+        # Checkbox for automatic rebuild (remote)
+        self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild")
+        self.auto_docker_rebuild_remote.setChecked(True)
+        self.auto_docker_rebuild_remote.setToolTip(
+            "If enabled, will try to rebuild Docker containers on remote host via SSH. "
+            "If disabled or if automatic fails, manual instructions will be shown."
+        )
+        self.auto_docker_rebuild_remote.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
+        remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
-        self.check_version_btn = QPushButton("Check Server Version")
-        self.check_version_btn.clicked.connect(self._check_and_display_version)
-        self.check_version_btn.setToolTip("Compare server version with local git")
-        docker_button_layout.addWidget(self.check_version_btn)
+        # Push button to bottom
+        remote_layout.addStretch()
 
-        self.update_server_btn = QPushButton("Update Server")
-        self.update_server_btn.clicked.connect(self._update_server)
-        self.update_server_btn.setToolTip("Checkout selected version/branch and rebuild Docker")
-        docker_button_layout.addWidget(self.update_server_btn)
+        # Update button
+        self.update_remote_server_btn = QPushButton("Update Remote Server")
+        self.update_remote_server_btn.clicked.connect(self._update_remote_server)
+        self.update_remote_server_btn.setToolTip(
+            "Checkout selected version/branch locally and rebuild Docker containers on remote host via SSH"
+        )
+        self.update_remote_server_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+            }
+        """)
+        remote_layout.addWidget(self.update_remote_server_btn)
 
-        docker_button_layout.addStretch()
+        # Add sections to side-by-side layout with equal stretch
+        side_by_side_layout.addWidget(local_section, 1)  # Equal stretch factor
+        side_by_side_layout.addWidget(separator_frame, 0)  # No stretch
+        side_by_side_layout.addWidget(remote_section, 1)  # Equal stretch factor
 
-        docker_rebuild_layout.addLayout(docker_button_layout)
+        # Add side-by-side layout to main layout
+        docker_rebuild_layout.addLayout(side_by_side_layout)
+
         docker_rebuild_group.setLayout(docker_rebuild_layout)
         layout.addWidget(docker_rebuild_group)
 
-        # Client Self-Update Group
-        client_update_group = QGroupBox("Client Self-Update")
-        client_update_layout = QVBoxLayout()
+        # Configuration Group (Client, Auto-Rebuild, Scheduled Checks side-by-side)
+        config_group = QGroupBox("Additional Configuration")
+        config_group_layout = QVBoxLayout()
 
-        # Description
-        client_info = QLabel(
-            "Update the client itself. The client will restart after marking the update."
-        )
-        client_info.setWordWrap(True)
-        client_info.setStyleSheet("color: gray; font-size: 10px; padding: 5px;")
-        client_update_layout.addWidget(client_info)
+        # Side-by-side layout for three configuration sections
+        config_side_by_side_layout = QHBoxLayout()
+        config_side_by_side_layout.setSpacing(15)
 
-        # Client update button
-        client_button_layout = QHBoxLayout()
+        # ========== Client Self-Update Section ==========
+        client_section = QWidget()
+        client_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        client_layout = QVBoxLayout(client_section)
+        client_layout.setContentsMargins(8, 8, 8, 8)
+
+        client_label = QLabel("<b>📱 Client Self-Update</b>")
+        client_label.setStyleSheet("background: transparent; border: none;")
+        client_layout.addWidget(client_label)
+
+        client_layout.addSpacing(2)
+
+        # Push button to bottom
+        client_layout.addStretch()
 
         self.update_client_btn = QPushButton("Update Client")
         self.update_client_btn.clicked.connect(self._update_client)
         self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
-        client_button_layout.addWidget(self.update_client_btn)
+        self.update_client_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+            }
+        """)
+        client_layout.addWidget(self.update_client_btn)
 
-        client_button_layout.addStretch()
+        # ========== Vertical Separator 1 ==========
+        separator_frame1 = QFrame()
+        separator_frame1.setFrameShape(QFrame.Shape.VLine)
+        separator_frame1.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame1.setStyleSheet("color: #bdc3c7;")
 
-        client_update_layout.addLayout(client_button_layout)
-        client_update_group.setLayout(client_update_layout)
-        layout.addWidget(client_update_group)
+        # ========== Auto-Rebuild Section ==========
+        auto_rebuild_section = QWidget()
+        auto_rebuild_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        auto_rebuild_layout = QVBoxLayout(auto_rebuild_section)
+        auto_rebuild_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Auto-Rebuild Configuration Group
-        auto_rebuild_group = QGroupBox("Automatic Rebuild")
-        auto_rebuild_layout = QVBoxLayout()
+        auto_rebuild_label = QLabel("<b>🔧 Automatic Rebuild</b>")
+        auto_rebuild_label.setStyleSheet("background: transparent; border: none;")
+        auto_rebuild_layout.addWidget(auto_rebuild_label)
 
-        self.auto_rebuild_checkbox = QCheckBox("Enable automatic Docker rebuild after updates")
+        auto_rebuild_layout.addSpacing(2)
+
+        self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
+        self.auto_rebuild_checkbox.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
+        self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
-        auto_rebuild_btn_layout = QHBoxLayout()
-        self.configure_rebuild_btn = QPushButton("Configure Auto-Rebuild")
+        # Push button to bottom
+        auto_rebuild_layout.addStretch()
+
+        self.configure_rebuild_btn = QPushButton("Configure")
         self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
-        auto_rebuild_btn_layout.addWidget(self.configure_rebuild_btn)
-        auto_rebuild_btn_layout.addStretch()
+        self.configure_rebuild_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+            }
+        """)
+        auto_rebuild_layout.addWidget(self.configure_rebuild_btn)
 
-        auto_rebuild_layout.addLayout(auto_rebuild_btn_layout)
-        auto_rebuild_group.setLayout(auto_rebuild_layout)
-        layout.addWidget(auto_rebuild_group)
+        # ========== Vertical Separator 2 ==========
+        separator_frame2 = QFrame()
+        separator_frame2.setFrameShape(QFrame.Shape.VLine)
+        separator_frame2.setFrameShadow(QFrame.Shadow.Sunken)
+        separator_frame2.setStyleSheet("color: #bdc3c7;")
 
-        # Scheduled Checks Configuration Group
-        scheduled_group = QGroupBox("Scheduled Update Checks")
-        scheduled_layout = QVBoxLayout()
+        # ========== Scheduled Checks Section ==========
+        scheduled_section = QWidget()
+        scheduled_section.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        scheduled_layout = QVBoxLayout(scheduled_section)
+        scheduled_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.scheduled_checkbox = QCheckBox("Enable automatic update checking")
-        scheduled_layout.addWidget(self.scheduled_checkbox)
+        scheduled_label = QLabel("<b>🕒 Scheduled Checks</b>")
+        scheduled_label.setStyleSheet("background: transparent; border: none;")
+        scheduled_layout.addWidget(scheduled_label)
 
-        interval_layout = QHBoxLayout()
-        interval_layout.addWidget(QLabel("Check interval (hours):"))
+        scheduled_layout.addSpacing(2)
+
+        # Checkbox and interval on same line
+        checkbox_interval_layout = QHBoxLayout()
+        self.scheduled_checkbox = QCheckBox("Enable")
+        self.scheduled_checkbox.setStyleSheet("""
+            QCheckBox {
+                background: transparent;
+                border: none;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #3498db;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                background: #3498db;
+                border: 2px solid #3498db;
+            }
+            QCheckBox::indicator:checked:hover {
+                background: #2e86c1;
+            }
+        """)
+        self.scheduled_checkbox.setToolTip("Enable automatic update checking")
+        checkbox_interval_layout.addWidget(self.scheduled_checkbox)
+
+        interval_label = QLabel("Every:")
+        interval_label.setStyleSheet("background: transparent; border: none; font-size: 9px; margin-left: 5px;")
+        checkbox_interval_layout.addWidget(interval_label)
+
         self.interval_spinbox = QSpinBox()
         self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
         self.interval_spinbox.setValue(24)
-        interval_layout.addWidget(self.interval_spinbox)
-        interval_layout.addStretch()
-        scheduled_layout.addLayout(interval_layout)
+        self.interval_spinbox.setFixedWidth(50)
+        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
+        checkbox_interval_layout.addWidget(self.interval_spinbox)
 
-        scheduled_btn_layout = QHBoxLayout()
-        self.configure_scheduled_btn = QPushButton("Configure Scheduled Checks")
+        hours_label = QLabel("hrs")
+        hours_label.setStyleSheet("background: transparent; border: none; font-size: 9px;")
+        checkbox_interval_layout.addWidget(hours_label)
+
+        checkbox_interval_layout.addStretch()
+        scheduled_layout.addLayout(checkbox_interval_layout)
+
+        # Push button to bottom
+        scheduled_layout.addStretch()
+
+        self.configure_scheduled_btn = QPushButton("Configure")
         self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
-        scheduled_btn_layout.addWidget(self.configure_scheduled_btn)
-        scheduled_btn_layout.addStretch()
+        self.configure_scheduled_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 6px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #2e86c1;
+            }
+        """)
+        scheduled_layout.addWidget(self.configure_scheduled_btn)
 
-        scheduled_layout.addLayout(scheduled_btn_layout)
-        scheduled_group.setLayout(scheduled_layout)
-        layout.addWidget(scheduled_group)
+        # Add sections to side-by-side layout with equal stretch
+        config_side_by_side_layout.addWidget(client_section, 1)
+        config_side_by_side_layout.addWidget(separator_frame1, 0)
+        config_side_by_side_layout.addWidget(auto_rebuild_section, 1)
+        config_side_by_side_layout.addWidget(separator_frame2, 0)
+        config_side_by_side_layout.addWidget(scheduled_section, 1)
+
+        config_group_layout.addLayout(config_side_by_side_layout)
+        config_group.setLayout(config_group_layout)
+        layout.addWidget(config_group)
 
         # Update Logs Group
         logs_group = QGroupBox("Update Logs")
@@ -1111,20 +1417,16 @@ class SystemPanel(QWidget):
 
         finally:
             self.check_version_btn.setEnabled(True)
-            self.check_version_btn.setText("Check Server Version")
+            self.check_version_btn.setText("Check Connected Server Version")
 
-    def _update_server(self):
-        """Update server by checking out git ref and rebuilding Docker."""
+    def _update_local_server(self):
+        """Update local server by checking out git ref and rebuilding Docker locally."""
         from client.utils.git_operations import checkout_git_ref, get_git_root
         from client.utils.docker_operations import (
             is_docker_available_locally,
             rebuild_docker_local,
-            rebuild_docker_ssh,
             generate_rebuild_instructions
         )
-
-        if not self.client:
-            return
 
         try:
             # Get selected ref (tag or branch)
@@ -1145,12 +1447,12 @@ class SystemPanel(QWidget):
             # Confirm with user
             reply = QMessageBox.question(
                 self,
-                "Confirm Server Update",
-                f"Update server to {ref}?\n\n"
+                "Confirm Local Server Update",
+                f"Update LOCAL server to {ref}?\n\n"
                 f"This will:\n"
                 f"1. Checkout {ref} in local git\n"
-                f"2. Rebuild Docker containers\n"
-                f"3. Restart server\n\n"
+                f"2. Rebuild Docker containers on THIS MACHINE\n"
+                f"3. Restart local server\n\n"
                 f"This may take several minutes.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -1159,8 +1461,8 @@ class SystemPanel(QWidget):
                 return
 
             # Disable button during update
-            self.update_server_btn.setEnabled(False)
-            self.update_server_btn.setText("Updating...")
+            self.update_local_server_btn.setEnabled(False)
+            self.update_local_server_btn.setText("Updating...")
 
             # Step 1: Checkout git ref
             self.logs_text.append(f"\n🔄 Checking out {ref}...")
@@ -1176,20 +1478,13 @@ class SystemPanel(QWidget):
                 raise Exception("Could not determine project root directory")
 
             # Step 2: Docker rebuild (if auto-enabled)
-            if self.auto_docker_rebuild.isChecked():
-                ssh_host = self.ssh_host_input.text().strip()
+            if self.auto_docker_rebuild_local.isChecked():
+                # Local rebuild
+                if not is_docker_available_locally():
+                    raise Exception("Docker not available locally")
 
-                if ssh_host:
-                    # Remote rebuild via SSH
-                    self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host}...")
-                    result = rebuild_docker_ssh(ssh_host, project_dir)
-                else:
-                    # Local rebuild
-                    if not is_docker_available_locally():
-                        raise Exception("Docker not available locally")
-
-                    self.logs_text.append(f"\n🐳 Rebuilding Docker locally...")
-                    result = rebuild_docker_local(project_dir)
+                self.logs_text.append(f"\n🐳 Rebuilding Docker locally...")
+                result = rebuild_docker_local(project_dir)
 
                 if result.success:
                     self.logs_text.append(f"✅ Docker rebuild successful!")
@@ -1197,8 +1492,8 @@ class SystemPanel(QWidget):
 
                     QMessageBox.information(
                         self,
-                        "Server Updated",
-                        f"Server successfully updated to {ref} and rebuilt!\n\n"
+                        "Local Server Updated",
+                        f"Local server successfully updated to {ref} and rebuilt!\n\n"
                         f"The server should now be running the new version."
                     )
 
@@ -1231,15 +1526,144 @@ class SystemPanel(QWidget):
                 )
 
         except Exception as e:
-            logger.error(f"Error updating server: {e}")
+            logger.error(f"Error updating local server: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
             QMessageBox.critical(
-                self, "Update Failed", f"Failed to update server:\n{str(e)}"
+                self, "Update Failed", f"Failed to update local server:\n{str(e)}"
             )
 
         finally:
-            self.update_server_btn.setEnabled(True)
-            self.update_server_btn.setText("Update Server")
+            self.update_local_server_btn.setEnabled(True)
+            self.update_local_server_btn.setText("🖥️  Update Local Server")
+
+    def _update_remote_server(self):
+        """Update remote server by checking out git ref and rebuilding Docker via SSH."""
+        from client.utils.git_operations import checkout_git_ref, get_git_root
+        from client.utils.docker_operations import (
+            rebuild_docker_ssh,
+            generate_rebuild_instructions
+        )
+
+        try:
+            # Get SSH host
+            ssh_host = self.ssh_host_input.text().strip()
+            if not ssh_host:
+                QMessageBox.warning(
+                    self,
+                    "SSH Host Required",
+                    "Please enter an SSH host (e.g., user@hostname or user@ip-address)\n\n"
+                    "Example: pi@192.168.1.100"
+                )
+                return
+
+            # Get selected ref (tag or branch)
+            mode = self.update_mode_combo.currentData()
+            if mode == "stable":
+                ref = self.version_selector.currentData()
+            else:  # development
+                ref = self.branch_combo.currentData()
+
+            if not ref:
+                QMessageBox.warning(
+                    self,
+                    "No Version Selected",
+                    "Please select a version or branch first."
+                )
+                return
+
+            # Confirm with user
+            reply = QMessageBox.question(
+                self,
+                "Confirm Remote Server Update",
+                f"Update REMOTE server ({ssh_host}) to {ref}?\n\n"
+                f"This will:\n"
+                f"1. Checkout {ref} in local git\n"
+                f"2. Rebuild Docker containers on {ssh_host} via SSH\n"
+                f"3. Restart remote server\n\n"
+                f"This may take several minutes.\n"
+                f"You may be prompted for SSH password/key.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Disable button during update
+            self.update_remote_server_btn.setEnabled(False)
+            self.update_remote_server_btn.setText("Updating...")
+
+            # Step 1: Checkout git ref
+            self.logs_text.append(f"\n🔄 Checking out {ref}...")
+
+            if not checkout_git_ref(ref):
+                raise Exception(f"Failed to checkout {ref}")
+
+            self.logs_text.append(f"✅ Checked out {ref}")
+
+            # Get project directory
+            project_dir = get_git_root()
+            if not project_dir:
+                raise Exception("Could not determine project root directory")
+
+            # Step 2: Docker rebuild via SSH (if auto-enabled)
+            if self.auto_docker_rebuild_remote.isChecked():
+                # Remote rebuild via SSH
+                self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host} via SSH...")
+                result = rebuild_docker_ssh(ssh_host, project_dir)
+
+                if result.success:
+                    self.logs_text.append(f"✅ Docker rebuild successful on {ssh_host}!")
+                    self.logs_text.append(f"\nOutput:\n{result.output}")
+
+                    QMessageBox.information(
+                        self,
+                        "Remote Server Updated",
+                        f"Remote server ({ssh_host}) successfully updated to {ref} and rebuilt!\n\n"
+                        f"The remote server should now be running the new version."
+                    )
+
+                    # Optionally refresh if connected to this server
+                    # (Note: This only refreshes if currently connected to this remote server)
+                    try:
+                        self.refresh()
+                    except:
+                        pass  # May not be connected to the updated server
+                else:
+                    # Rebuild failed - show manual instructions
+                    self.logs_text.append(f"❌ Docker rebuild failed on {ssh_host}: {result.error}")
+
+                    instructions = generate_rebuild_instructions(project_dir, ref)
+                    self.logs_text.append(f"\n📋 Manual Instructions for {ssh_host}:\n{instructions}")
+
+                    QMessageBox.warning(
+                        self,
+                        "Rebuild Failed",
+                        f"Git checkout succeeded but Docker rebuild failed on {ssh_host}.\n\n"
+                        f"{result.error}\n\n"
+                        f"SSH to {ssh_host} and run these commands:\n\n{instructions}"
+                    )
+            else:
+                # Manual rebuild - show instructions
+                instructions = generate_rebuild_instructions(project_dir, ref)
+
+                self.logs_text.append(f"\n📋 Manual rebuild required on {ssh_host}:\n{instructions}")
+
+                QMessageBox.information(
+                    self,
+                    "Manual Rebuild Required",
+                    f"Git checkout complete. SSH to {ssh_host} and run:\n\n{instructions}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error updating remote server: {e}")
+            self.logs_text.append(f"\n❌ Error: {str(e)}")
+            QMessageBox.critical(
+                self, "Update Failed", f"Failed to update remote server:\n{str(e)}"
+            )
+
+        finally:
+            self.update_remote_server_btn.setEnabled(True)
+            self.update_remote_server_btn.setText("🌐  Update Remote Server")
 
     def _update_client(self):
         """Update client by marking for update on next restart."""
