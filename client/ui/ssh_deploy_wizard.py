@@ -544,24 +544,24 @@ class DeploymentProgressPage(QWizardPage):
         wizard = self.wizard()
 
         config = {
-            "host": wizard.field("host"),
+            "host": str(wizard.field("host")),
             "port": wizard.field("port"),
-            "username": wizard.field("username"),
+            "username": str(wizard.field("username")),
             "auth_method": (
                 "password" if wizard.page(0).password_radio.isChecked() else "key"
             ),
             "password": (
-                wizard.field("password")
+                str(wizard.field("password"))
                 if wizard.page(0).password_radio.isChecked()
                 else None
             ),
             "key_file": (
-                wizard.field("key_file")
+                str(wizard.field("key_file"))
                 if wizard.page(0).key_radio.isChecked()
                 else None
             ),
-            "source_path": wizard.field("source_path"),
-            "server_path": wizard.field("server_path"),
+            "source_path": str(wizard.field("source_path")),
+            "server_path": str(wizard.field("server_path")),
             "install_deps": wizard.field("install_deps"),
             "setup_service": wizard.field("setup_service"),
         }
