@@ -335,12 +335,32 @@ class ConnectionPage(QWizardPage):
 
         layout.addRow("", test_layout)
 
+        # Connect signals to notify wizard of field changes
+        self.host_edit.textChanged.connect(self.completeChanged)
+        self.username_edit.textChanged.connect(self.completeChanged)
+        self.password_edit.textChanged.connect(self.completeChanged)
+        self.key_edit.textChanged.connect(self.completeChanged)
+
+    def isComplete(self):
+        """Check if page has all required fields filled."""
+        has_host = bool(self.host_edit.text().strip())
+        has_username = bool(self.username_edit.text().strip())
+
+        # Check authentication fields based on selected method
+        if self.password_radio.isChecked():
+            has_auth = bool(self.password_edit.text())
+        else:
+            has_auth = bool(self.key_edit.text().strip())
+
+        return has_host and has_username and has_auth
+
     def _on_auth_method_changed(self):
         """Handle authentication method change."""
         use_key = self.key_radio.isChecked()
         self.password_edit.setEnabled(not use_key)
         self.key_edit.setEnabled(use_key)
         self.browse_btn.setEnabled(use_key)
+        self.completeChanged.emit()
 
     def _browse_key_file(self):
         """Browse for SSH key file."""
@@ -349,6 +369,7 @@ class ConnectionPage(QWizardPage):
         )
         if filename:
             self.key_edit.setText(filename)
+            self.completeChanged.emit()
 
     def _test_connection(self):
         """Test SSH connection."""
@@ -453,6 +474,16 @@ class DeploymentOptionsPage(QWizardPage):
         options_group.setLayout(options_layout)
         layout.addRow(options_group)
 
+        # Connect signals to notify wizard of field changes
+        self.source_edit.textChanged.connect(self.completeChanged)
+        self.server_path_edit.textChanged.connect(self.completeChanged)
+
+    def isComplete(self):
+        """Check if page has all required fields filled."""
+        has_source = bool(self.source_edit.text().strip())
+        has_server_path = bool(self.server_path_edit.text().strip())
+        return has_source and has_server_path
+
     def _browse_source(self):
         """Browse for source directory."""
         dirname = QFileDialog.getExistingDirectory(
@@ -460,6 +491,7 @@ class DeploymentOptionsPage(QWizardPage):
         )
         if dirname:
             self.source_edit.setText(dirname)
+            self.completeChanged.emit()
 
 
 class DeploymentProgressPage(QWizardPage):
