@@ -449,7 +449,7 @@ class DeploymentOptionsPage(QWizardPage):
 
         # Remote server path
         self.server_path_edit = QLineEdit()
-        self.server_path_edit.setText("/home/pi/lablink")
+        self.server_path_edit.setPlaceholderText("/home/<username>/lablink")
         self.registerField("server_path*", self.server_path_edit)
         layout.addRow("Remote Server Path:", self.server_path_edit)
 
@@ -483,6 +483,15 @@ class DeploymentOptionsPage(QWizardPage):
         has_source = bool(self.source_edit.text().strip())
         has_server_path = bool(self.server_path_edit.text().strip())
         return has_source and has_server_path
+
+    def initializePage(self):
+        """Initialize page when shown - set default remote path based on username."""
+        wizard = self.wizard()
+        username = wizard.field("username")
+
+        # Set default remote path based on username if field is empty
+        if not self.server_path_edit.text():
+            self.server_path_edit.setText(f"/home/{username}/lablink")
 
     def _browse_source(self):
         """Browse for source directory."""
