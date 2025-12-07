@@ -22,6 +22,89 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class LogMonitorThread(QThread):
+    """Thread for monitoring first-boot log file in real-time."""
+
+    log_line = pyqtSignal(str)  # New log line
+    finished = pyqtSignal()  # Log monitoring finished
+
+    def __init__(self, ssh_config: Dict, log_path: str = "/var/log/lablink-first-boot.log"):
+        """Initialize log monitor thread.
+
+        Args:
+            ssh_config: SSH connection configuration
+            log_path: Path to log file on remote host
+        """
+        super().__init__()
+        self.config = ssh_config
+        self.log_path = log_path
+        self._stop_requested = False
+
+    def run(self):
+        """Monitor log file and emit new lines."""
+        try:
+            import paramiko
+
+            # Extract configuration
+            host = self.config["host"]
+            port = self.config["port"]
+            username = self.config["username"]
+            auth_method = self.config["auth_method"]
+            password = self.config.get("password")
+            key_file = self.config.get("key_file")
+
+            # Create SSH client
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # Connect
+            try:
+                if auth_method == "password":
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        password=password,
+                        timeout=15,
+                    )
+                elif auth_method == "key":
+                    key_path = Path(key_file).expanduser()
+                    ssh.connect(
+                        host,
+                        port=port,
+                        username=username,
+                        key_filename=str(key_path),
+                        timeout=15,
+                    )
+            except Exception as e:
+                self.log_line.emit(f"❌ Failed to connect: {e}")
+                self.finished.emit()
+                return
+
+            # Tail the log file (follow mode)
+            # Use sudo to access log file, suppress stderr for file-not-found
+            tail_cmd = f"sudo tail -f -n 50 {self.log_path} 2>/dev/null || echo 'Log file not found yet...'"
+            stdin, stdout, stderr = ssh.exec_command(tail_cmd, get_pty=True)
+
+            # Read lines as they come in
+            while not self._stop_requested:
+                line = stdout.readline()
+                if not line:
+                    break
+                self.log_line.emit(line.rstrip())
+
+            ssh.close()
+            self.finished.emit()
+
+        except Exception as e:
+            self.log_line.emit(f"❌ Log monitoring error: {e}")
+            self.finished.emit()
+
+    def request_stop(self):
+        """Request thread to stop."""
+        self._stop_requested = True
+
+
 class DeploymentThread(QThread):
     """Thread for handling SSH deployment operations."""
 
@@ -278,6 +361,10 @@ class DeploymentThread(QThread):
     def _deploy_docker(self, ssh, server_path, username):
         """Deploy using Docker Compose."""
 
+        # OPTION A: Clean up old Python-mode systemd service if it exists
+        self.progress.emit(79, "Cleaning up old services...")
+        self._cleanup_old_python_service(ssh)
+
         # Check if previous deployment exists
         self.progress.emit(80, "Checking for existing deployment...")
         check_cmd = f"cd {server_path} && docker compose ps -q 2>/dev/null"
@@ -370,8 +457,117 @@ class DeploymentThread(QThread):
 
         self.progress.emit(99, "Docker containers started successfully!")
 
+        # OPTION B: Create docker-compose systemd service for auto-start
+        self._create_docker_compose_service(ssh, server_path, username)
+
         # Install convenience commands
         self._install_convenience_commands(ssh, server_path, username)
+
+    def _cleanup_old_python_service(self, ssh):
+        """Clean up old Python-mode systemd service if it exists.
+
+        Args:
+            ssh: Active SSH connection
+        """
+        try:
+            logger.info("Checking for old Python-mode lablink.service...")
+
+            # Check if service exists
+            check_cmd = "systemctl list-unit-files lablink.service 2>/dev/null | grep -q lablink.service"
+            stdin, stdout, stderr = ssh.exec_command(check_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code == 0:
+                logger.info("Found old Python-mode service, cleaning up...")
+
+                # Stop and disable the service
+                cleanup_cmds = [
+                    "sudo systemctl stop lablink.service",
+                    "sudo systemctl disable lablink.service",
+                    "sudo rm -f /etc/systemd/system/lablink.service",
+                    "sudo systemctl daemon-reload"
+                ]
+
+                for cmd in cleanup_cmds:
+                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+                    stdout.channel.recv_exit_status()  # Wait for completion
+
+                logger.info("Old Python-mode service removed successfully")
+            else:
+                logger.info("No old Python-mode service found")
+
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old service (non-fatal): {e}")
+            # Don't fail deployment if cleanup fails
+
+    def _create_docker_compose_service(self, ssh, server_path, username):
+        """Create systemd service for Docker Compose auto-start.
+
+        Args:
+            ssh: Active SSH connection
+            server_path: Path to server deployment
+            username: User to run service as
+        """
+        try:
+            logger.info("Creating docker-compose systemd service...")
+
+            service_content = f"""[Unit]
+Description=LabLink Docker Compose
+Documentation=https://github.com/X9X0/LabLink
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={server_path}
+User={username}
+
+# Start containers
+ExecStart=/usr/bin/docker compose up -d
+
+# Stop containers
+ExecStop=/usr/bin/docker compose down
+
+# Restart = restart containers
+ExecReload=/usr/bin/docker compose restart
+
+# Don't restart on failure (Docker Compose handles container restarts)
+Restart=no
+
+# Set environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+            # Write service file to temp location
+            service_path = "/tmp/lablink-docker.service"
+            service_content_escaped = service_content.replace("'", "'\\''")
+            write_cmd = f"cat > {service_path} << 'EOF'\n{service_content}\nEOF"
+            stdin, stdout, stderr = ssh.exec_command(write_cmd, get_pty=True)
+            stdout.channel.recv_exit_status()
+
+            # Install service
+            install_cmds = [
+                f"sudo mv {service_path} /etc/systemd/system/lablink-docker.service",
+                "sudo systemctl daemon-reload",
+                "sudo systemctl enable lablink-docker.service"
+            ]
+
+            for cmd in install_cmds:
+                stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+                exit_code = stdout.channel.recv_exit_status()
+                if exit_code != 0:
+                    error = stderr.read().decode().strip()
+                    logger.warning(f"Service install warning: {error}")
+
+            logger.info("Docker Compose systemd service created and enabled")
+
+        except Exception as e:
+            logger.warning(f"Failed to create docker-compose service (non-fatal): {e}")
+            # Don't fail deployment if service creation fails
 
     def _install_diagnostic_script(self, ssh, server_path):
         """Install Pi diagnostic script to /opt/lablink/.
@@ -1008,7 +1204,9 @@ class DeploymentProgressPage(QWizardPage):
         self.setSubTitle("Please wait while the server is deployed...")
 
         self.deployment_thread: Optional[DeploymentThread] = None
+        self.log_monitor_thread: Optional[LogMonitorThread] = None
         self.deployment_successful = False
+        self.ssh_config = None
 
         layout = QVBoxLayout(self)
 
@@ -1061,6 +1259,38 @@ class DeploymentProgressPage(QWizardPage):
         self.log_output.setFont(QFont("Monospace", 9))
         layout.addWidget(self.log_output)
 
+        # First-boot log viewer (initially hidden)
+        self.firstboot_group = QGroupBox("First-Boot Log (Real-time)")
+        self.firstboot_group.setVisible(False)
+        firstboot_layout = QVBoxLayout()
+
+        # Info label
+        info_label = QLabel(
+            "📋 Monitoring first-boot initialization... You can close this wizard now or "
+            "leave it open to observe the startup process in real-time."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #0066cc; padding: 5px; background-color: #e6f2ff; border-radius: 3px;")
+        firstboot_layout.addWidget(info_label)
+
+        # First-boot log output
+        self.firstboot_log = QTextEdit()
+        self.firstboot_log.setReadOnly(True)
+        self.firstboot_log.setFont(QFont("Monospace", 9))
+        self.firstboot_log.setMinimumHeight(200)
+        firstboot_layout.addWidget(self.firstboot_log)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+        self.stop_monitoring_btn = QPushButton("Stop Monitoring")
+        self.stop_monitoring_btn.clicked.connect(self._stop_log_monitoring)
+        button_layout.addWidget(self.stop_monitoring_btn)
+        button_layout.addStretch()
+        firstboot_layout.addLayout(button_layout)
+
+        self.firstboot_group.setLayout(firstboot_layout)
+        layout.addWidget(self.firstboot_group)
+
         layout.addStretch()
 
     def initializePage(self):
@@ -1102,6 +1332,16 @@ class DeploymentProgressPage(QWizardPage):
         Args:
             config: Deployment configuration
         """
+        # Store SSH config for later use (log monitoring)
+        self.ssh_config = {
+            "host": config["host"],
+            "port": config["port"],
+            "username": config["username"],
+            "auth_method": config["auth_method"],
+            "password": config.get("password"),
+            "key_file": config.get("key_file"),
+        }
+
         self.deployment_thread = DeploymentThread(config)
         self.deployment_thread.progress.connect(self._on_progress)
         self.deployment_thread.stats.connect(self._on_stats_update)
@@ -1149,6 +1389,9 @@ class DeploymentProgressPage(QWizardPage):
             self.status_label.setText("✅ " + message)
             self.log_output.append("")
             self.log_output.append("=== Deployment Completed Successfully ===")
+
+            # Start first-boot log monitoring
+            self._start_log_monitoring()
         else:
             self.status_label.setText("❌ " + message)
             self.log_output.append("")
@@ -1157,6 +1400,49 @@ class DeploymentProgressPage(QWizardPage):
         # Enable the Finish button
         self.wizard().button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.completeChanged.emit()
+
+    def _start_log_monitoring(self):
+        """Start monitoring first-boot log in real-time."""
+        if not self.ssh_config:
+            return
+
+        # Show the first-boot log viewer
+        self.firstboot_group.setVisible(True)
+        self.firstboot_log.append("=== Starting First-Boot Log Monitor ===")
+        self.firstboot_log.append("Connecting to remote host...")
+        self.firstboot_log.append("")
+
+        # Start log monitoring thread
+        self.log_monitor_thread = LogMonitorThread(self.ssh_config)
+        self.log_monitor_thread.log_line.connect(self._on_log_line)
+        self.log_monitor_thread.finished.connect(self._on_log_monitoring_finished)
+        self.log_monitor_thread.start()
+
+    def _on_log_line(self, line: str):
+        """Handle new log line from first-boot log.
+
+        Args:
+            line: Log line text
+        """
+        self.firstboot_log.append(line)
+        # Auto-scroll to bottom
+        scrollbar = self.firstboot_log.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def _on_log_monitoring_finished(self):
+        """Handle log monitoring completion."""
+        self.firstboot_log.append("")
+        self.firstboot_log.append("=== Log Monitoring Stopped ===")
+        self.stop_monitoring_btn.setEnabled(False)
+
+    def _stop_log_monitoring(self):
+        """Stop log monitoring."""
+        if self.log_monitor_thread and self.log_monitor_thread.isRunning():
+            self.firstboot_log.append("")
+            self.firstboot_log.append("Stopping log monitoring...")
+            self.log_monitor_thread.request_stop()
+            self.log_monitor_thread.wait(2000)
+            self.stop_monitoring_btn.setEnabled(False)
 
     def isComplete(self):
         """Check if page is complete."""
@@ -1170,6 +1456,10 @@ class DeploymentProgressPage(QWizardPage):
         if self.deployment_thread and self.deployment_thread.isRunning():
             self.deployment_thread.request_stop()
             self.deployment_thread.wait(5000)
+
+        if self.log_monitor_thread and self.log_monitor_thread.isRunning():
+            self.log_monitor_thread.request_stop()
+            self.log_monitor_thread.wait(2000)
 
 
 class SSHDeployWizard(QWizard):
