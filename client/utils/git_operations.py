@@ -202,8 +202,16 @@ def checkout_git_ref(ref: str) -> bool:
             check=True
         )
 
-        # If it's a branch, pull latest changes
-        if ref in get_git_branches():
+        # Check if it's a branch (not a tag) by checking if we're on a branch after checkout
+        branch_check = subprocess.run(
+            ["git", "symbolic-ref", "-q", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        # If it's a branch (exit code 0), pull latest changes
+        if branch_check.returncode == 0:
             logger.info(f"Pulling latest changes for branch {ref}...")
             subprocess.run(
                 ["git", "pull", "origin", ref],

@@ -51,10 +51,9 @@ class MainWindow(QMainWindow):
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
 
-        # Apply visual styling - window border and background
+        # Apply visual styling - background only
         self.setStyleSheet("""
             QMainWindow {
-                border: 6px solid #0d1419;
                 background-color: #ecf0f1;
             }
         """)
