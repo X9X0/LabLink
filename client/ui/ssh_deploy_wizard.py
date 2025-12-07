@@ -121,13 +121,15 @@ class DeploymentThread(QThread):
                                     continue
 
                                 relative = file.relative_to(source)
-                                remote_file = f"{server_path}/{relative}"
+                                # Convert Path to POSIX-style string for remote path
+                                relative_str = relative.as_posix()
+                                remote_file = f"{server_path}/{relative_str}"
 
                                 # Create remote directory structure
                                 remote_dir = "/".join(remote_file.split("/")[:-1])
                                 ssh.exec_command(f"mkdir -p {remote_dir}")
 
-                                # Copy file
+                                # Copy file - ensure both paths are strings
                                 scp.put(str(file), remote_file)
             except Exception as e:
                 self.finished.emit(False, f"Failed to copy files: {e}")
