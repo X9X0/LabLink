@@ -110,50 +110,30 @@ class DeploymentThread(QThread):
             # Copy server files
             self.progress.emit(20, "Copying server files...")
 
-            # Debug: Check source_path type
-            print(f"DEBUG source_path type: {type(source_path)}, value: {repr(source_path)}")
-
             try:
                 with SCPClient(ssh.get_transport(), progress=self._scp_progress) as scp:
-                    # Copy entire server directory - ensure source_path is string
-                    source = Path(str(source_path))
-                    print(f"DEBUG: source type: {type(source)}, exists: {source.exists()}, is_dir: {source.is_dir()}")
-
+                    # Copy entire server directory
+                    source = Path(source_path)
                     if source.is_dir():
                         # Copy all Python files and requirements
                         for pattern in ["*.py", "requirements.txt", "*.md"]:
-                            print(f"DEBUG: Searching for pattern: {pattern}")
                             for file in source.rglob(pattern):
-                                print(f"DEBUG: Found file: {file}, type: {type(file)}")
                                 if "__pycache__" in str(file) or ".git" in str(file):
                                     continue
 
-                                try:
-                                    relative = file.relative_to(source)
-                                    print(f"DEBUG: relative type: {type(relative)}, value: {relative}")
+                                relative = file.relative_to(source)
+                                # Convert Path to POSIX-style string for remote path
+                                relative_str = relative.as_posix()
+                                remote_file = f"{server_path}/{relative_str}"
 
-                                    # Convert Path to POSIX-style string for remote path
-                                    relative_str = relative.as_posix()
-                                    print(f"DEBUG: relative_str type: {type(relative_str)}, value: {relative_str}")
+                                # Create remote directory structure
+                                remote_dir = "/".join(remote_file.split("/")[:-1])
+                                ssh.exec_command(f"mkdir -p {remote_dir}")
 
-                                    remote_file = f"{server_path}/{relative_str}"
-                                    print(f"DEBUG: remote_file type: {type(remote_file)}, value: {remote_file}")
-
-                                    # Create remote directory structure
-                                    remote_dir = "/".join(remote_file.split("/")[:-1])
-                                    ssh.exec_command(f"mkdir -p {remote_dir}")
-
-                                    # Copy file - convert Path to absolute string path
-                                    local_file = str(file.absolute())
-                                    print(f"DEBUG: About to call scp.put({repr(local_file)}, {repr(remote_file)})")
-                                    scp.put(local_file, remote_file)
-                                    print(f"DEBUG: Successfully copied {file.name}")
-                                except Exception as file_error:
-                                    print(f"DEBUG: Error copying {file}: {file_error}")
-                                    raise
+                                # Copy file
+                                local_file = str(file.absolute())
+                                scp.put(local_file, remote_file)
             except Exception as e:
-                import traceback
-                print(f"DEBUG: Full traceback:\n{traceback.format_exc()}")
                 self.finished.emit(False, f"Failed to copy files: {e}")
                 ssh.close()
                 return
@@ -241,7 +221,9 @@ class DeploymentThread(QThread):
             percent = int((sent / size) * 100)
             # Map to 20-60% of overall progress
             overall_percent = 20 + int(percent * 0.4)
-            self.progress.emit(overall_percent, f"Copying: {Path(filename).name}")
+            # Convert filename from bytes to string if needed
+            filename_str = filename.decode('utf-8') if isinstance(filename, bytes) else filename
+            self.progress.emit(overall_percent, f"Copying: {Path(filename_str).name}")
 
     def _generate_service_file(self, username: str, server_path: str) -> str:
         """Generate systemd service file content.
