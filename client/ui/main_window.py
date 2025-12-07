@@ -51,10 +51,9 @@ class MainWindow(QMainWindow):
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
 
-        # Apply visual styling - window border and background
+        # Apply visual styling - background only
         self.setStyleSheet("""
             QMainWindow {
-                border: 6px solid #0d1419;
                 background-color: #ecf0f1;
             }
         """)
@@ -212,6 +211,13 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
+        # Git branch indicator (debug mode only)
+        branch_info = self._get_git_branch()
+        if branch_info and not branch_info.startswith("main"):
+            self.branch_label = QLabel(f"📍 {branch_info}")
+            self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self.status_bar.addWidget(self.branch_label)
+
         # Connection status label
         self.connection_label = QLabel("Not Connected")
         self.status_bar.addPermanentWidget(self.connection_label)
@@ -226,6 +232,50 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.periodic_refresh)
         self.refresh_timer.setInterval(5000)  # 5 seconds
+
+    def _get_git_branch(self) -> Optional[str]:
+        """Get current git branch name and commit hash for debug indicator.
+
+        Returns:
+            Branch name with commit hash or None if not in a git repo
+        """
+        try:
+            import subprocess
+            from pathlib import Path
+
+            # Get the client directory (where this file is)
+            client_dir = Path(__file__).parent.parent.parent
+
+            # Get branch name
+            branch_result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=client_dir,
+                capture_output=True,
+                text=True,
+                timeout=1
+            )
+
+            if branch_result.returncode == 0:
+                branch_name = branch_result.stdout.strip()
+
+                # Get short commit hash
+                hash_result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=client_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+
+                if hash_result.returncode == 0:
+                    commit_hash = hash_result.stdout.strip()
+                    return f"{branch_name} ({commit_hash})"
+
+                return branch_name
+        except Exception:
+            pass
+
+        return None
 
     # ==================== Connection Management ====================
 

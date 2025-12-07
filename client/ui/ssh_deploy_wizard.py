@@ -9,7 +9,7 @@ try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox,
-                                 QFileDialog, QFormLayout, QGroupBox,
+                                 QFileDialog, QFormLayout, QGridLayout, QGroupBox,
                                  QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                  QProgressBar, QPushButton, QRadioButton,
                                  QSpinBox, QTextEdit, QVBoxLayout, QWizard,
@@ -27,6 +27,7 @@ class DeploymentThread(QThread):
 
     progress = pyqtSignal(int, str)  # progress percentage, message
     finished = pyqtSignal(bool, str)  # success, message
+    stats = pyqtSignal(dict)  # system stats (cpu, memory, disk, network)
 
     def __init__(self, deployment_config: Dict):
         """Initialize deployment thread.
@@ -53,6 +54,8 @@ class DeploymentThread(QThread):
             key_file = self.config.get("key_file")
             server_path = self.config["server_path"]
             source_path = self.config["source_path"]
+            deployment_mode = self.config.get("deployment_mode", "python")
+            install_docker = self.config.get("install_docker", False)
             install_deps = self.config["install_deps"]
             setup_service = self.config["setup_service"]
 
@@ -93,6 +96,15 @@ class DeploymentThread(QThread):
 
             self.progress.emit(10, "Connected successfully")
 
+            # Fetch initial system stats
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.error(f"Failed to fetch initial stats: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+
             # Create remote directory
             self.progress.emit(15, f"Creating remote directory: {server_path}")
             stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {server_path}")
@@ -107,28 +119,14 @@ class DeploymentThread(QThread):
                 ssh.close()
                 return
 
-            # Copy server files
+            # Copy server files using tar+ssh (much faster than SCP)
             self.progress.emit(20, "Copying server files...")
+
             try:
-                with SCPClient(ssh.get_transport(), progress=self._scp_progress) as scp:
-                    # Copy entire server directory
-                    source = Path(source_path)
-                    if source.is_dir():
-                        # Copy all Python files and requirements
-                        for pattern in ["*.py", "requirements.txt", "*.md"]:
-                            for file in source.rglob(pattern):
-                                if "__pycache__" in str(file) or ".git" in str(file):
-                                    continue
-
-                                relative = file.relative_to(source)
-                                remote_file = f"{server_path}/{relative}"
-
-                                # Create remote directory structure
-                                remote_dir = "/".join(remote_file.split("/")[:-1])
-                                ssh.exec_command(f"mkdir -p {remote_dir}")
-
-                                # Copy file
-                                scp.put(str(file), remote_file)
+                source = Path(source_path)
+                if source.is_dir():
+                    # Use tar+ssh for fast transfer (10-20x faster than SCP)
+                    self._copy_files_tar(ssh, source, server_path, deployment_mode)
             except Exception as e:
                 self.finished.emit(False, f"Failed to copy files: {e}")
                 ssh.close()
@@ -140,65 +138,37 @@ class DeploymentThread(QThread):
 
             self.progress.emit(60, "Files copied successfully")
 
-            # Install dependencies
-            if install_deps:
-                self.progress.emit(65, "Installing Python dependencies...")
-                commands = [
-                    f"cd {server_path}",
-                    "python3 -m venv venv",
-                    "source venv/bin/activate && pip install --upgrade pip",
-                    f"source venv/bin/activate && pip install -r requirements.txt",
-                ]
+            # Fetch stats after file copy
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.debug(f"Failed to fetch stats after copy: {e}")
 
-                for i, cmd in enumerate(commands):
-                    if self._stop_requested:
-                        ssh.close()
-                        return
+            # Deploy based on mode
+            if deployment_mode == "docker":
+                # Docker deployment
+                if install_docker and self._check_docker_needed(ssh):
+                    self._install_docker(ssh)
 
-                    self.progress.emit(65 + i * 5, f"Running: {cmd[:50]}...")
-                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
-                    exit_code = stdout.channel.recv_exit_status()
+                self._deploy_docker(ssh, server_path, username)
+            else:
+                # Python deployment (legacy)
+                if install_deps:
+                    self._install_python_deps(ssh, server_path)
 
-                    if exit_code != 0:
-                        error = stderr.read().decode()
-                        logger.warning(f"Command warning: {error}")
-
-            if self._stop_requested:
-                ssh.close()
-                return
-
-            self.progress.emit(85, "Dependencies installed")
-
-            # Set up systemd service
-            if setup_service:
-                self.progress.emit(90, "Setting up systemd service...")
-                service_content = self._generate_service_file(username, server_path)
-
-                # Write service file
-                service_path = "/tmp/lablink.service"
-                ssh.exec_command(f"echo '{service_content}' > {service_path}")
-
-                # Install service
-                commands = [
-                    f"sudo mv {service_path} /etc/systemd/system/lablink.service",
-                    "sudo systemctl daemon-reload",
-                    "sudo systemctl enable lablink.service",
-                    "sudo systemctl start lablink.service",
-                ]
-
-                for cmd in commands:
-                    if self._stop_requested:
-                        ssh.close()
-                        return
-
-                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
-                    exit_code = stdout.channel.recv_exit_status()
-
-                    if exit_code != 0:
-                        error = stderr.read().decode()
-                        logger.warning(f"Service setup warning: {error}")
+                if setup_service:
+                    self._setup_systemd_service(ssh, username, server_path)
 
             self.progress.emit(100, "Deployment completed successfully!")
+
+            # Fetch final system stats
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.debug(f"Failed to fetch final stats: {e}")
+
             ssh.close()
 
             self.finished.emit(True, "LabLink server deployed successfully!")
@@ -211,13 +181,419 @@ class DeploymentThread(QThread):
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
 
+    def _copy_files_tar(self, ssh, source, server_path, deployment_mode):
+        """Copy files using tar+ssh for fast transfer.
+
+        This is 10-20x faster than SCP for multiple files.
+        """
+        import subprocess
+        import tempfile
+
+        self.progress.emit(25, "Preparing files for transfer...")
+
+        # Create exclusion patterns
+        exclude_patterns = [
+            "--exclude=__pycache__",
+            "--exclude=*.pyc",
+            "--exclude=.git",
+            "--exclude=venv",
+            "--exclude=.env",
+            "--exclude=*.log",
+        ]
+
+        # Create tar archive locally
+        with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp_file:
+            tar_path = tmp_file.name
+
+        try:
+            # Create compressed tar archive
+            tar_cmd = ["tar", "czf", tar_path, "-C", str(source)] + exclude_patterns + ["."]
+            subprocess.run(tar_cmd, check=True, capture_output=True)
+
+            # Get file size for progress
+            import os
+            file_size = os.path.getsize(tar_path)
+            file_size_mb = file_size / (1024 * 1024)
+
+            self.progress.emit(35, f"Transferring {file_size_mb:.1f} MB...")
+
+            # Transfer via SCP (single file is much faster)
+            from scp import SCPClient
+            with SCPClient(ssh.get_transport()) as scp:
+                remote_tar = f"{server_path}.tar.gz"
+                scp.put(tar_path, remote_tar)
+
+            self.progress.emit(50, "Extracting files on remote...")
+
+            # Extract on remote (extract TO server_path)
+            extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+            stdin, stdout, stderr = ssh.exec_command(extract_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                raise Exception(f"Failed to extract files: {error}")
+
+            self.progress.emit(60, "Files transferred successfully")
+
+        finally:
+            # Clean up local tar file
+            import os
+            if os.path.exists(tar_path):
+                os.remove(tar_path)
+
+    def _check_docker_needed(self, ssh):
+        """Check if Docker needs to be installed."""
+        stdin, stdout, stderr = ssh.exec_command("which docker && which docker-compose")
+        exit_code = stdout.channel.recv_exit_status()
+        return exit_code != 0  # True if Docker not found
+
+    def _install_docker(self, ssh):
+        """Install Docker and Docker Compose."""
+        self.progress.emit(65, "Installing Docker...")
+        commands = [
+            # Install Docker
+            "curl -fsSL https://get.docker.com -o get-docker.sh",
+            "sudo sh get-docker.sh",
+            "sudo usermod -aG docker $USER",
+            # Install Docker Compose
+            "sudo apt-get update",
+            "sudo apt-get install -y docker-compose-plugin",
+        ]
+
+        for i, cmd in enumerate(commands):
+            if self._stop_requested:
+                return
+
+            self.progress.emit(65 + i * 3, f"Running: {cmd[:40]}...")
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Docker install warning: {error}")
+
+        self.progress.emit(80, "Docker installed")
+
+    def _deploy_docker(self, ssh, server_path, username):
+        """Deploy using Docker Compose."""
+
+        # Check if previous deployment exists
+        self.progress.emit(80, "Checking for existing deployment...")
+        check_cmd = f"cd {server_path} && docker compose ps -q 2>/dev/null"
+        stdin, stdout, stderr = ssh.exec_command(check_cmd, get_pty=True)
+        existing_containers = stdout.read().decode().strip()
+
+        if existing_containers:
+            logger.info("Previous deployment detected, stopping containers...")
+            self.progress.emit(81, "Stopping existing containers...")
+
+            # Stop and remove existing containers
+            stop_cmd = f"cd {server_path} && docker compose down"
+            stdin, stdout, stderr = ssh.exec_command(stop_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                logger.warning(f"Failed to stop existing containers: {stderr.read().decode()}")
+                # Continue anyway - we'll force recreate
+
+        self.progress.emit(82, "Generating .env file...")
+
+        # Generate JWT secret
+        import secrets
+        jwt_secret = secrets.token_urlsafe(32)
+
+        env_content = self._generate_env_file(jwt_secret)
+
+        # Write .env file
+        env_path = f"{server_path}/.env"
+        # Escape single quotes in env content
+        env_content_escaped = env_content.replace("'", "'\\''")
+        ssh.exec_command(f"cat > {env_path} << 'EOF'\n{env_content}\nEOF", get_pty=True)
+
+        # Ensure Pi diagnostics mounts are enabled in docker-compose.yml
+        # These lines are needed for the /api/diagnostics/pi-diagnostics endpoint
+        logger.info("Ensuring Pi diagnostics mounts are enabled in docker-compose.yml...")
+        uncomment_cmd = f"""cd {server_path} && sed -i 's|^      # - /var/run/docker.sock:|      - /var/run/docker.sock:|' docker-compose.yml && sed -i 's|^      # - /opt/lablink:|      - /opt/lablink:|' docker-compose.yml"""
+        ssh.exec_command(uncomment_cmd, get_pty=True)
+
+        # Install diagnostic script BEFORE starting Docker (so it can be mounted)
+        self.progress.emit(84, "Installing diagnostic script...")
+        self._install_diagnostic_script(ssh, server_path)
+
+        self.progress.emit(85, "Building and starting Docker containers...")
+
+        # Fetch stats before Docker build
+        try:
+            stats = self._fetch_system_stats(ssh)
+            self.stats.emit(stats)
+        except Exception as e:
+            logger.error(f"Failed to fetch stats before Docker build: {e}")
+
+        # Run docker compose with progress monitoring
+        # --build: Build images before starting containers
+        # --force-recreate: Recreate containers even if config/image hasn't changed
+        # --pull always: Always pull latest base images
+        docker_cmd = f"cd {server_path} && docker compose up -d --build --force-recreate --pull always"
+        stdin, stdout, stderr = ssh.exec_command(docker_cmd, get_pty=True)
+
+        # Stream and monitor Docker build output
+        progress_value = 85
+        last_message = ""
+        for line in stdout:
+            line_str = line.strip()
+            if line_str:
+                logger.info(f"Docker: {line_str}")
+
+                # Update progress based on Docker output
+                if "Pulling" in line_str or "Downloading" in line_str:
+                    progress_value = min(90, progress_value + 0.5)
+                    self.progress.emit(int(progress_value), "Pulling Docker images...")
+                elif "Building" in line_str or "Step" in line_str:
+                    progress_value = min(95, progress_value + 0.3)
+                    self.progress.emit(int(progress_value), "Building containers...")
+                elif "Creating" in line_str or "Starting" in line_str:
+                    progress_value = min(98, progress_value + 1)
+                    self.progress.emit(int(progress_value), "Starting containers...")
+
+                last_message = line_str[:60]  # Keep last message for error reporting
+
+        exit_code = stdout.channel.recv_exit_status()
+
+        if exit_code != 0:
+            # Read any error output
+            error_lines = []
+            for line in stderr:
+                error_lines.append(line.strip())
+            error = "\n".join(error_lines) if error_lines else last_message
+            raise Exception(f"Docker deployment failed: {error}")
+
+        self.progress.emit(99, "Docker containers started successfully!")
+
+        # Install convenience commands
+        self._install_convenience_commands(ssh, server_path, username)
+
+    def _install_diagnostic_script(self, ssh, server_path):
+        """Install Pi diagnostic script to /opt/lablink/.
+
+        Args:
+            ssh: Active SSH connection
+            server_path: Path to server deployment on Pi
+        """
+        try:
+            # Create /opt/lablink directory with sudo
+            logger.info("Creating /opt/lablink directory...")
+            ssh.exec_command("sudo mkdir -p /opt/lablink", get_pty=True)
+
+            # Copy diagnose-pi.sh from server deployment to /opt/lablink
+            script_source = f"{server_path}/diagnose-pi.sh"
+            script_dest = "/opt/lablink/diagnose-pi.sh"
+
+            logger.info(f"Copying diagnostic script from {script_source} to {script_dest}...")
+            copy_cmd = f"sudo cp {script_source} {script_dest}"
+            stdin, stdout, stderr = ssh.exec_command(copy_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode().strip()
+                logger.warning(f"Failed to copy diagnostic script: {error}")
+                return
+
+            # Make script executable
+            chmod_cmd = f"sudo chmod +x {script_dest}"
+            ssh.exec_command(chmod_cmd, get_pty=True)
+
+            logger.info("Pi diagnostic script installed successfully")
+
+        except Exception as e:
+            logger.warning(f"Failed to install diagnostic script: {e}")
+            # Don't fail deployment if diagnostic script installation fails
+
+    def _install_convenience_commands(self, ssh, server_path, username):
+        """Install convenience shell commands for LabLink management."""
+        commands_script = f"""#!/bin/bash
+# LabLink convenience commands
+# Source this file in .bashrc: source ~/.lablink_commands
+
+alias lablink-status='cd {server_path} && docker compose ps'
+alias lablink-logs='cd {server_path} && docker compose logs -f'
+alias lablink-logs-server='cd {server_path} && docker compose logs -f lablink-server'
+alias lablink-logs-web='cd {server_path} && docker compose logs -f lablink-web'
+alias lablink-restart='cd {server_path} && docker compose restart'
+alias lablink-stop='cd {server_path} && docker compose stop'
+alias lablink-start='cd {server_path} && docker compose start'
+alias lablink-update='cd {server_path} && git pull && docker compose up -d --build'
+alias lablink-shell='cd {server_path} && docker compose exec lablink-server /bin/bash'
+alias lablink-stats='docker stats --no-stream lablink-server lablink-web'
+alias lablink-ip='hostname -I | awk "{{print \\$1}}"'
+
+# Functions
+lablink-url() {{
+    echo "LabLink Server running at:"
+    echo "  Web Dashboard: http://$(hostname -I | awk '{{print $1}}'):80"
+    echo "  API: http://$(hostname -I | awk '{{print $1}}'):8000"
+    echo "  WebSocket: ws://$(hostname -I | awk '{{print $1}}'):8001"
+}}
+
+lablink-help() {{
+    echo "LabLink Docker Management Commands:"
+    echo ""
+    echo "Status & Monitoring:"
+    echo "  lablink-status      - Show container status"
+    echo "  lablink-logs        - View all logs (follow mode)"
+    echo "  lablink-logs-server - View server logs only"
+    echo "  lablink-logs-web    - View web dashboard logs only"
+    echo "  lablink-stats       - Show container resource usage"
+    echo "  lablink-url         - Show access URLs"
+    echo "  lablink-ip          - Show Pi IP address"
+    echo ""
+    echo "Control:"
+    echo "  lablink-restart     - Restart all containers"
+    echo "  lablink-stop        - Stop all containers"
+    echo "  lablink-start       - Start all containers"
+    echo "  lablink-update      - Pull latest code and rebuild"
+    echo "  lablink-shell       - Open shell in server container"
+    echo ""
+}}
+"""
+
+        # Write commands script
+        ssh.exec_command(f"cat > ~/.lablink_commands << 'EOF'\n{commands_script}\nEOF")
+
+        # Add to .bashrc if not already there
+        bashrc_line = "\\n# LabLink commands\\n[ -f ~/.lablink_commands ] && source ~/.lablink_commands"
+        check_cmd = "grep -q 'lablink_commands' ~/.bashrc"
+        stdin, stdout, stderr = ssh.exec_command(check_cmd)
+        exit_code = stdout.channel.recv_exit_status()
+
+        if exit_code != 0:  # Not found, add it
+            ssh.exec_command(f"echo -e '{bashrc_line}' >> ~/.bashrc")
+
+        # Add login message to show lablink-status on interactive login
+        login_message = f"""\\n# LabLink status at login (interactive shells only)
+if [ -n "$PS1" ]; then
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║                    LabLink Server Status                     ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+    cd {server_path} && docker compose ps
+    echo ""
+    echo "Type 'lablink-help' for available commands"
+    echo ""
+fi"""
+        check_login_cmd = "grep -q 'LabLink Server Status' ~/.bashrc"
+        stdin, stdout, stderr = ssh.exec_command(check_login_cmd)
+        exit_code = stdout.channel.recv_exit_status()
+
+        if exit_code != 0:  # Not found, add it
+            ssh.exec_command(f"echo -e '{login_message}' >> ~/.bashrc")
+
+        logger.info("Installed LabLink convenience commands and login status display")
+
+    def _install_python_deps(self, ssh, server_path):
+        """Install Python dependencies (Direct Python mode)."""
+        self.progress.emit(65, "Installing Python dependencies...")
+        commands = [
+            f"cd {server_path}",
+            "python3 -m venv venv",
+            "source venv/bin/activate && pip install --upgrade pip",
+            f"source venv/bin/activate && pip install -r requirements.txt",
+        ]
+
+        for i, cmd in enumerate(commands):
+            if self._stop_requested:
+                return
+
+            self.progress.emit(65 + i * 5, f"Running: {cmd[:50]}...")
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Command warning: {error}")
+
+        self.progress.emit(85, "Dependencies installed")
+
+    def _setup_systemd_service(self, ssh, username, server_path):
+        """Set up systemd service (Direct Python mode)."""
+        self.progress.emit(90, "Setting up systemd service...")
+        service_content = self._generate_service_file(username, server_path)
+
+        # Write service file
+        service_path = "/tmp/lablink.service"
+        ssh.exec_command(f"echo '{service_content}' > {service_path}")
+
+        # Install service
+        commands = [
+            f"sudo mv {service_path} /etc/systemd/system/lablink.service",
+            "sudo systemctl daemon-reload",
+            "sudo systemctl enable lablink.service",
+            "sudo systemctl start lablink.service",
+        ]
+
+        for cmd in commands:
+            if self._stop_requested:
+                return
+
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Service setup warning: {error}")
+
+        self.progress.emit(95, "Systemd service configured")
+
     def _scp_progress(self, filename, size, sent):
         """Track SCP progress."""
         if size > 0:
             percent = int((sent / size) * 100)
             # Map to 20-60% of overall progress
             overall_percent = 20 + int(percent * 0.4)
-            self.progress.emit(overall_percent, f"Copying: {Path(filename).name}")
+            # Convert filename from bytes to string if needed
+            filename_str = filename.decode('utf-8') if isinstance(filename, bytes) else filename
+            self.progress.emit(overall_percent, f"Copying: {Path(filename_str).name}")
+
+    def _generate_env_file(self, jwt_secret: str) -> str:
+        """Generate .env file content for Docker deployment.
+
+        Args:
+            jwt_secret: Generated JWT secret key
+
+        Returns:
+            .env file content
+        """
+        return f"""# LabLink Server Configuration
+# Generated by SSH Deployment Wizard
+
+# Server
+LABLINK_VERSION=latest
+LABLINK_API_PORT=8000
+LABLINK_WS_PORT=8001
+LABLINK_WEB_PORT=80
+LABLINK_DEBUG=false
+LABLINK_LOG_LEVEL=INFO
+
+# Security
+LABLINK_JWT_SECRET_KEY={jwt_secret}
+LABLINK_JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+LABLINK_ENABLE_CORS=true
+
+# Advanced Security
+LABLINK_ENABLE_ADVANCED_SECURITY=true
+LABLINK_CREATE_DEFAULT_ADMIN=true
+LABLINK_DEFAULT_ADMIN_USERNAME=admin
+LABLINK_DEFAULT_ADMIN_PASSWORD=LabLink@2025
+LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com
+
+# Equipment
+LABLINK_VISA_BACKEND=@py
+LABLINK_PRIVILEGED=true
+
+# Resource Limits
+LABLINK_CPU_LIMIT=2
+LABLINK_MEM_LIMIT=1G
+"""
 
     def _generate_service_file(self, username: str, server_path: str) -> str:
         """Generate systemd service file content.
@@ -245,6 +621,77 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 """
+
+    def _fetch_system_stats(self, ssh):
+        """Fetch system stats from remote host.
+
+        Args:
+            ssh: Active SSH connection
+
+        Returns:
+            Dictionary with cpu, memory, disk, network stats
+        """
+        stats = {
+            "cpu": "--",
+            "memory": "--",
+            "disk": "--",
+            "network": "--"
+        }
+
+        try:
+            # CPU usage - get percentage from top
+            cpu_cmd = "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1"
+            stdin, stdout, stderr = ssh.exec_command(cpu_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
+            cpu_usage = stdout.read().decode().strip()
+            logger.info(f"CPU raw output: '{cpu_usage}'")
+            if cpu_usage:
+                try:
+                    stats["cpu"] = f"{float(cpu_usage):.1f}%"
+                except ValueError:
+                    logger.warning(f"Could not parse CPU value: {cpu_usage}")
+        except Exception as e:
+            logger.error(f"Failed to fetch CPU stats: {e}")
+
+        try:
+            # Memory usage - percentage
+            mem_cmd = "free | awk 'NR==2{printf \"%.1f\", $3*100/$2}'"
+            stdin, stdout, stderr = ssh.exec_command(mem_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
+            mem_usage = stdout.read().decode().strip()
+            logger.info(f"Memory raw output: '{mem_usage}'")
+            if mem_usage:
+                stats["memory"] = f"{mem_usage}%"
+        except Exception as e:
+            logger.error(f"Failed to fetch memory stats: {e}")
+
+        try:
+            # Disk usage - root partition
+            disk_cmd = "df -h / | awk 'NR==2{print $5}'"
+            stdin, stdout, stderr = ssh.exec_command(disk_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
+            disk_usage = stdout.read().decode().strip()
+            logger.info(f"Disk raw output: '{disk_usage}'")
+            if disk_usage:
+                stats["disk"] = disk_usage
+        except Exception as e:
+            logger.error(f"Failed to fetch disk stats: {e}")
+
+        try:
+            # Network - get interface with most traffic (non-loopback)
+            # Shows received/transmitted in human-readable format
+            net_cmd = "cat /proc/net/dev | awk 'NR>2 && $1 !~ /lo:/ {rx+=$2; tx+=$10} END {printf \"↓%.1f MB ↑%.1f MB\", rx/1024/1024, tx/1024/1024}'"
+            stdin, stdout, stderr = ssh.exec_command(net_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
+            net_usage = stdout.read().decode().strip()
+            logger.info(f"Network raw output: '{net_usage}'")
+            if net_usage and "MB" in net_usage:
+                stats["network"] = net_usage
+        except Exception as e:
+            logger.error(f"Failed to fetch network stats: {e}")
+
+        logger.info(f"Fetched stats: {stats}")
+        return stats
 
     def request_stop(self):
         """Request thread to stop."""
@@ -434,8 +881,9 @@ class DeploymentOptionsPage(QWizardPage):
         # Source path (local server directory)
         source_layout = QHBoxLayout()
         self.source_edit = QLineEdit()
-        # Try to find server directory
-        default_source = Path(__file__).parent.parent.parent / "server"
+        # Try to find project root (for Docker) or server directory (for Python mode)
+        # Default to project root since Docker mode is recommended
+        default_source = Path(__file__).parent.parent.parent
         if default_source.exists():
             self.source_edit.setText(str(default_source))
         self.registerField("source_path*", self.source_edit)
@@ -449,25 +897,62 @@ class DeploymentOptionsPage(QWizardPage):
 
         # Remote server path
         self.server_path_edit = QLineEdit()
-        self.server_path_edit.setText("/home/pi/lablink")
+        self.server_path_edit.setPlaceholderText("/home/<username>/lablink")
         self.registerField("server_path*", self.server_path_edit)
         layout.addRow("Remote Server Path:", self.server_path_edit)
+
+        # Deployment Mode
+        mode_group = QGroupBox("Deployment Mode")
+        mode_layout = QVBoxLayout()
+
+        self.mode_button_group = QButtonGroup()
+
+        self.docker_radio = QRadioButton("Docker Compose (Recommended)")
+        self.docker_radio.setChecked(True)
+        self.docker_radio.toggled.connect(self._on_mode_changed)
+        self.mode_button_group.addButton(self.docker_radio, 0)
+        mode_layout.addWidget(self.docker_radio)
+
+        docker_desc = QLabel("  • Containerized deployment with Docker\n  • Automatic service management\n  • Includes web dashboard and optional monitoring")
+        docker_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        mode_layout.addWidget(docker_desc)
+
+        self.python_radio = QRadioButton("Direct Python (Legacy)")
+        self.python_radio.toggled.connect(self._on_mode_changed)
+        self.mode_button_group.addButton(self.python_radio, 1)
+        mode_layout.addWidget(self.python_radio)
+
+        python_desc = QLabel("  • Run server directly with Python\n  • Manual systemd service setup\n  • Server only (no web dashboard)")
+        python_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        mode_layout.addWidget(python_desc)
+
+        mode_group.setLayout(mode_layout)
+        layout.addRow(mode_group)
 
         # Options
         options_group = QGroupBox("Installation Options")
         options_layout = QVBoxLayout()
 
+        self.install_docker_check = QCheckBox(
+            "Install Docker and Docker Compose (if not present)"
+        )
+        self.install_docker_check.setChecked(True)
+        self.registerField("install_docker", self.install_docker_check)
+        options_layout.addWidget(self.install_docker_check)
+
         self.install_deps_check = QCheckBox(
-            "Install Python dependencies (pip install -r requirements.txt)"
+            "Install Python dependencies (Direct Python mode only)"
         )
         self.install_deps_check.setChecked(True)
+        self.install_deps_check.setEnabled(False)  # Disabled by default (Docker mode)
         self.registerField("install_deps", self.install_deps_check)
         options_layout.addWidget(self.install_deps_check)
 
         self.setup_service_check = QCheckBox(
-            "Set up as systemd service (auto-start on boot)"
+            "Set up as systemd service (Direct Python mode only)"
         )
         self.setup_service_check.setChecked(True)
+        self.setup_service_check.setEnabled(False)  # Disabled by default (Docker mode)
         self.registerField("setup_service", self.setup_service_check)
         options_layout.addWidget(self.setup_service_check)
 
@@ -483,6 +968,24 @@ class DeploymentOptionsPage(QWizardPage):
         has_source = bool(self.source_edit.text().strip())
         has_server_path = bool(self.server_path_edit.text().strip())
         return has_source and has_server_path
+
+    def initializePage(self):
+        """Initialize page when shown - set default remote path based on username."""
+        wizard = self.wizard()
+        username = wizard.field("username")
+
+        # Set default remote path based on username if field is empty
+        if not self.server_path_edit.text():
+            self.server_path_edit.setText(f"/home/{username}/lablink")
+
+    def _on_mode_changed(self):
+        """Handle deployment mode change."""
+        use_docker = self.docker_radio.isChecked()
+
+        # Enable/disable options based on mode
+        self.install_docker_check.setEnabled(use_docker)
+        self.install_deps_check.setEnabled(not use_docker)
+        self.setup_service_check.setEnabled(not use_docker)
 
     def _browse_source(self):
         """Browse for source directory."""
@@ -518,6 +1021,37 @@ class DeploymentProgressPage(QWizardPage):
         self.status_label = QLabel("Preparing deployment...")
         layout.addWidget(self.status_label)
 
+        # System stats display
+        stats_group = QGroupBox("Remote System Resources")
+        stats_layout = QGridLayout()
+
+        # CPU
+        stats_layout.addWidget(QLabel("CPU:"), 0, 0)
+        self.cpu_label = QLabel("--")
+        self.cpu_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.cpu_label, 0, 1)
+
+        # Memory
+        stats_layout.addWidget(QLabel("Memory:"), 0, 2)
+        self.memory_label = QLabel("--")
+        self.memory_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.memory_label, 0, 3)
+
+        # Disk
+        stats_layout.addWidget(QLabel("Disk:"), 1, 0)
+        self.disk_label = QLabel("--")
+        self.disk_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.disk_label, 1, 1)
+
+        # Network
+        stats_layout.addWidget(QLabel("Network:"), 1, 2)
+        self.network_label = QLabel("--")
+        self.network_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.network_label, 1, 3)
+
+        stats_group.setLayout(stats_layout)
+        layout.addWidget(stats_group)
+
         # Log output
         log_label = QLabel("Deployment Log:")
         layout.addWidget(log_label)
@@ -535,24 +1069,26 @@ class DeploymentProgressPage(QWizardPage):
         wizard = self.wizard()
 
         config = {
-            "host": wizard.field("host"),
+            "host": str(wizard.field("host")),
             "port": wizard.field("port"),
-            "username": wizard.field("username"),
+            "username": str(wizard.field("username")),
             "auth_method": (
                 "password" if wizard.page(0).password_radio.isChecked() else "key"
             ),
             "password": (
-                wizard.field("password")
+                str(wizard.field("password"))
                 if wizard.page(0).password_radio.isChecked()
                 else None
             ),
             "key_file": (
-                wizard.field("key_file")
+                str(wizard.field("key_file"))
                 if wizard.page(0).key_radio.isChecked()
                 else None
             ),
-            "source_path": wizard.field("source_path"),
-            "server_path": wizard.field("server_path"),
+            "source_path": str(wizard.field("source_path")),
+            "server_path": str(wizard.field("server_path")),
+            "deployment_mode": "docker" if wizard.page(1).docker_radio.isChecked() else "python",
+            "install_docker": wizard.field("install_docker"),
             "install_deps": wizard.field("install_deps"),
             "setup_service": wizard.field("setup_service"),
         }
@@ -568,6 +1104,7 @@ class DeploymentProgressPage(QWizardPage):
         """
         self.deployment_thread = DeploymentThread(config)
         self.deployment_thread.progress.connect(self._on_progress)
+        self.deployment_thread.stats.connect(self._on_stats_update)
         self.deployment_thread.finished.connect(self._on_finished)
         self.deployment_thread.start()
 
@@ -587,6 +1124,17 @@ class DeploymentProgressPage(QWizardPage):
         self.progress_bar.setValue(percent)
         self.status_label.setText(message)
         self.log_output.append(f"[{percent}%] {message}")
+
+    def _on_stats_update(self, stats: dict):
+        """Handle system stats update.
+
+        Args:
+            stats: Dictionary with cpu, memory, disk, network stats
+        """
+        self.cpu_label.setText(stats.get("cpu", "--"))
+        self.memory_label.setText(stats.get("memory", "--"))
+        self.disk_label.setText(stats.get("disk", "--"))
+        self.network_label.setText(stats.get("network", "--"))
 
     def _on_finished(self, success: bool, message: str):
         """Handle deployment completion.
