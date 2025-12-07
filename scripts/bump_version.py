@@ -72,6 +72,44 @@ def update_version_file(version_file: Path, new_version: str, dry_run: bool = Fa
     print(f"✓ Updated {version_file} → {new_version}")
 
 
+def update_readme(readme_file: Path, new_version: str, dry_run: bool = False) -> None:
+    """Update version badge and current version in README.md."""
+    if not readme_file.exists():
+        print(f"⚠️  README.md not found, skipping")
+        return
+
+    content = readme_file.read_text()
+    today = date.today().strftime("%B %d, %Y")
+
+    # Update version badge
+    content = re.sub(
+        r'!\[Version\]\(https://img\.shields\.io/badge/version-[^-]+-blue\.svg\)',
+        f'![Version](https://img.shields.io/badge/version-{new_version}-blue.svg)',
+        content
+    )
+
+    # Update "Current Version" section
+    content = re.sub(
+        r'\*\*Current Version\*\*: v[0-9.]+',
+        f'**Current Version**: v{new_version}',
+        content
+    )
+
+    # Update release date
+    content = re.sub(
+        r'\*\*Release Date\*\*: [^\n]+',
+        f'**Release Date**: {today}',
+        content
+    )
+
+    if dry_run:
+        print(f"  [DRY-RUN] Would update README.md to version {new_version}")
+        return
+
+    readme_file.write_text(content)
+    print(f"✓ Updated README.md → {new_version}")
+
+
 def update_changelog(changelog_file: Path, new_version: str, dry_run: bool = False) -> None:
     """Add new version section to CHANGELOG.md."""
     if not changelog_file.exists():
@@ -131,9 +169,9 @@ def git_commit_and_tag(new_version: str, no_commit: bool = False, no_tag: bool =
     # Check for uncommitted changes
     result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
     if result.stdout.strip() and not dry_run:
-        # Stage VERSION and CHANGELOG
-        print("📝 Staging VERSION and CHANGELOG.md...")
-        subprocess.run(["git", "add", "VERSION", "CHANGELOG.md"], check=False)
+        # Stage VERSION, README, and CHANGELOG
+        print("📝 Staging VERSION, README.md, and CHANGELOG.md...")
+        subprocess.run(["git", "add", "VERSION", "README.md", "CHANGELOG.md"], check=False)
 
     if not no_commit:
         commit_msg = f"chore: Bump version to {new_version}"
@@ -195,6 +233,7 @@ def main():
     # Get repository root
     repo_root = Path(__file__).parent.parent
     version_file = repo_root / "VERSION"
+    readme_file = repo_root / "README.md"
     changelog_file = repo_root / "CHANGELOG.md"
 
     print("=" * 70)
@@ -224,6 +263,9 @@ def main():
 
     # Update VERSION file
     update_version_file(version_file, new_version, args.dry_run)
+
+    # Update README
+    update_readme(readme_file, new_version, args.dry_run)
 
     # Update CHANGELOG
     update_changelog(changelog_file, new_version, args.dry_run)
