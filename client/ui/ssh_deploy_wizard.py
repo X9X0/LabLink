@@ -277,6 +277,26 @@ class DeploymentThread(QThread):
 
     def _deploy_docker(self, ssh, server_path, username):
         """Deploy using Docker Compose."""
+
+        # Check if previous deployment exists
+        self.progress.emit(80, "Checking for existing deployment...")
+        check_cmd = f"cd {server_path} && docker compose ps -q 2>/dev/null"
+        stdin, stdout, stderr = ssh.exec_command(check_cmd, get_pty=True)
+        existing_containers = stdout.read().decode().strip()
+
+        if existing_containers:
+            logger.info("Previous deployment detected, stopping containers...")
+            self.progress.emit(81, "Stopping existing containers...")
+
+            # Stop and remove existing containers
+            stop_cmd = f"cd {server_path} && docker compose down"
+            stdin, stdout, stderr = ssh.exec_command(stop_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                logger.warning(f"Failed to stop existing containers: {stderr.read().decode()}")
+                # Continue anyway - we'll force recreate
+
         self.progress.emit(82, "Generating .env file...")
 
         # Generate JWT secret
@@ -297,6 +317,10 @@ class DeploymentThread(QThread):
         uncomment_cmd = f"""cd {server_path} && sed -i 's|^      # - /var/run/docker.sock:|      - /var/run/docker.sock:|' docker-compose.yml && sed -i 's|^      # - /opt/lablink:|      - /opt/lablink:|' docker-compose.yml"""
         ssh.exec_command(uncomment_cmd, get_pty=True)
 
+        # Install diagnostic script BEFORE starting Docker (so it can be mounted)
+        self.progress.emit(84, "Installing diagnostic script...")
+        self._install_diagnostic_script(ssh, server_path)
+
         self.progress.emit(85, "Building and starting Docker containers...")
 
         # Fetch stats before Docker build
@@ -307,7 +331,10 @@ class DeploymentThread(QThread):
             logger.error(f"Failed to fetch stats before Docker build: {e}")
 
         # Run docker compose with progress monitoring
-        docker_cmd = f"cd {server_path} && docker compose up -d --build"
+        # --build: Build images before starting containers
+        # --force-recreate: Recreate containers even if config/image hasn't changed
+        # --pull always: Always pull latest base images
+        docker_cmd = f"cd {server_path} && docker compose up -d --build --force-recreate --pull always"
         stdin, stdout, stderr = ssh.exec_command(docker_cmd, get_pty=True)
 
         # Stream and monitor Docker build output
@@ -343,8 +370,7 @@ class DeploymentThread(QThread):
 
         self.progress.emit(99, "Docker containers started successfully!")
 
-        # Install diagnostic script and convenience commands
-        self._install_diagnostic_script(ssh, server_path)
+        # Install convenience commands
         self._install_convenience_commands(ssh, server_path, username)
 
     def _install_diagnostic_script(self, ssh, server_path):
