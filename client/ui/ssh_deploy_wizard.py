@@ -109,10 +109,14 @@ class DeploymentThread(QThread):
 
             # Copy server files
             self.progress.emit(20, "Copying server files...")
+
+            # Debug: Check source_path type
+            print(f"DEBUG source_path type: {type(source_path)}, value: {repr(source_path)}")
+
             try:
                 with SCPClient(ssh.get_transport(), progress=self._scp_progress) as scp:
-                    # Copy entire server directory
-                    source = Path(source_path)
+                    # Copy entire server directory - ensure source_path is string
+                    source = Path(str(source_path))
                     if source.is_dir():
                         # Copy all Python files and requirements
                         for pattern in ["*.py", "requirements.txt", "*.md"]:
