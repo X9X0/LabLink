@@ -129,6 +129,11 @@ class DeploymentThread(QThread):
                                 remote_dir = "/".join(remote_file.split("/")[:-1])
                                 ssh.exec_command(f"mkdir -p {remote_dir}")
 
+                                # Debug logging
+                                print(f"DEBUG: file type: {type(file)}, value: {file}")
+                                print(f"DEBUG: remote_file type: {type(remote_file)}, value: {remote_file}")
+                                print(f"DEBUG: str(file) type: {type(str(file))}, value: {str(file)}")
+
                                 # Copy file - ensure both paths are strings
                                 scp.put(str(file), remote_file)
             except Exception as e:
