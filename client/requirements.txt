@@ -6,16 +6,17 @@ PyQt6-Charts-Qt6==6.6.0
 pyqtgraph==0.13.3
 
 # Networking
-requests==2.31.0
+requests==2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
 websockets==12.0
-aiohttp==3.9.1
+aiohttp==3.12.14  # Security: Fixes CVE-2024-23334 (directory traversal), CVE-2024-30251 (DoS), CVE-2024-52304 (request smuggling), CVE-2024-27306 (XSS), CVE-2024-23829 (HTTP parser), CVE-2025-53643 (smuggling)
 
 # SSH and Deployment
 paramiko==3.4.0
 scp==0.14.5
 
 # Network Discovery
-scapy==2.5.0
+# scapy removed due to security vulnerability with no patch (pickle deserialization RCE, <=2.6.1)
+# Not used in codebase - was planned for network scanning but never implemented
 zeroconf==0.132.2
 
 # Data Handling
