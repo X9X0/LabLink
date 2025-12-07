@@ -305,6 +305,71 @@ class DeploymentThread(QThread):
 
         self.progress.emit(99, "Docker containers started successfully!")
 
+        # Install convenience commands
+        self._install_convenience_commands(ssh, server_path, username)
+
+    def _install_convenience_commands(self, ssh, server_path, username):
+        """Install convenience shell commands for LabLink management."""
+        commands_script = f"""#!/bin/bash
+# LabLink convenience commands
+# Source this file in .bashrc: source ~/.lablink_commands
+
+alias lablink-status='cd {server_path} && docker compose ps'
+alias lablink-logs='cd {server_path} && docker compose logs -f'
+alias lablink-logs-server='cd {server_path} && docker compose logs -f lablink-server'
+alias lablink-logs-web='cd {server_path} && docker compose logs -f lablink-web'
+alias lablink-restart='cd {server_path} && docker compose restart'
+alias lablink-stop='cd {server_path} && docker compose stop'
+alias lablink-start='cd {server_path} && docker compose start'
+alias lablink-update='cd {server_path} && git pull && docker compose up -d --build'
+alias lablink-shell='cd {server_path} && docker compose exec lablink-server /bin/bash'
+alias lablink-stats='docker stats --no-stream lablink-server lablink-web'
+alias lablink-ip='hostname -I | awk "{{print \\$1}}"'
+
+# Functions
+lablink-url() {{
+    echo "LabLink Server running at:"
+    echo "  Web Dashboard: http://$(hostname -I | awk '{{print $1}}'):80"
+    echo "  API: http://$(hostname -I | awk '{{print $1}}'):8000"
+    echo "  WebSocket: ws://$(hostname -I | awk '{{print $1}}'):8001"
+}}
+
+lablink-help() {{
+    echo "LabLink Docker Management Commands:"
+    echo ""
+    echo "Status & Monitoring:"
+    echo "  lablink-status      - Show container status"
+    echo "  lablink-logs        - View all logs (follow mode)"
+    echo "  lablink-logs-server - View server logs only"
+    echo "  lablink-logs-web    - View web dashboard logs only"
+    echo "  lablink-stats       - Show container resource usage"
+    echo "  lablink-url         - Show access URLs"
+    echo "  lablink-ip          - Show Pi IP address"
+    echo ""
+    echo "Control:"
+    echo "  lablink-restart     - Restart all containers"
+    echo "  lablink-stop        - Stop all containers"
+    echo "  lablink-start       - Start all containers"
+    echo "  lablink-update      - Pull latest code and rebuild"
+    echo "  lablink-shell       - Open shell in server container"
+    echo ""
+}}
+"""
+
+        # Write commands script
+        ssh.exec_command(f"cat > ~/.lablink_commands << 'EOF'\n{commands_script}\nEOF")
+
+        # Add to .bashrc if not already there
+        bashrc_line = "\\n# LabLink commands\\n[ -f ~/.lablink_commands ] && source ~/.lablink_commands"
+        check_cmd = "grep -q 'lablink_commands' ~/.bashrc"
+        stdin, stdout, stderr = ssh.exec_command(check_cmd)
+        exit_code = stdout.channel.recv_exit_status()
+
+        if exit_code != 0:  # Not found, add it
+            ssh.exec_command(f"echo -e '{bashrc_line}' >> ~/.bashrc")
+
+        logger.info("Installed LabLink convenience commands")
+
     def _install_python_deps(self, ssh, server_path):
         """Install Python dependencies (Direct Python mode)."""
         self.progress.emit(65, "Installing Python dependencies...")
