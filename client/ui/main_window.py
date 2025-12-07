@@ -212,6 +212,13 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
+        # Git branch indicator (debug mode only)
+        branch_name = self._get_git_branch()
+        if branch_name and branch_name != "main":
+            self.branch_label = QLabel(f"📍 Branch: {branch_name}")
+            self.branch_label.setStyleSheet("color: #e67e22; font-weight: bold;")
+            self.status_bar.addWidget(self.branch_label)
+
         # Connection status label
         self.connection_label = QLabel("Not Connected")
         self.status_bar.addPermanentWidget(self.connection_label)
@@ -226,6 +233,34 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.periodic_refresh)
         self.refresh_timer.setInterval(5000)  # 5 seconds
+
+    def _get_git_branch(self) -> Optional[str]:
+        """Get current git branch name for debug indicator.
+
+        Returns:
+            Current branch name or None if not in a git repo
+        """
+        try:
+            import subprocess
+            from pathlib import Path
+
+            # Get the client directory (where this file is)
+            client_dir = Path(__file__).parent.parent.parent
+
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=client_dir,
+                capture_output=True,
+                text=True,
+                timeout=1
+            )
+
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+
+        return None
 
     # ==================== Connection Management ====================
 
