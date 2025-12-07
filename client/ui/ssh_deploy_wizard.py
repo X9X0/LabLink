@@ -53,6 +53,8 @@ class DeploymentThread(QThread):
             key_file = self.config.get("key_file")
             server_path = self.config["server_path"]
             source_path = self.config["source_path"]
+            deployment_mode = self.config.get("deployment_mode", "python")
+            install_docker = self.config.get("install_docker", False)
             install_deps = self.config["install_deps"]
             setup_service = self.config["setup_service"]
 
@@ -115,8 +117,15 @@ class DeploymentThread(QThread):
                     # Copy entire server directory
                     source = Path(source_path)
                     if source.is_dir():
-                        # Copy all Python files and requirements
-                        for pattern in ["*.py", "requirements.txt", "*.md"]:
+                        # Determine what to copy based on deployment mode
+                        if deployment_mode == "docker":
+                            # Docker mode: copy all necessary files including docker-compose.yml, Dockerfile, etc.
+                            patterns = ["*.py", "*.yml", "*.yaml", "Dockerfile*", "requirements.txt", "*.md", "*.sh", "*.conf", "*.json"]
+                        else:
+                            # Python mode: copy only Python files and requirements
+                            patterns = ["*.py", "requirements.txt", "*.md"]
+
+                        for pattern in patterns:
                             for file in source.rglob(pattern):
                                 if "__pycache__" in str(file) or ".git" in str(file):
                                     continue
@@ -144,63 +153,20 @@ class DeploymentThread(QThread):
 
             self.progress.emit(60, "Files copied successfully")
 
-            # Install dependencies
-            if install_deps:
-                self.progress.emit(65, "Installing Python dependencies...")
-                commands = [
-                    f"cd {server_path}",
-                    "python3 -m venv venv",
-                    "source venv/bin/activate && pip install --upgrade pip",
-                    f"source venv/bin/activate && pip install -r requirements.txt",
-                ]
+            # Deploy based on mode
+            if deployment_mode == "docker":
+                # Docker deployment
+                if install_docker and self._check_docker_needed(ssh):
+                    self._install_docker(ssh)
 
-                for i, cmd in enumerate(commands):
-                    if self._stop_requested:
-                        ssh.close()
-                        return
+                self._deploy_docker(ssh, server_path, username)
+            else:
+                # Python deployment (legacy)
+                if install_deps:
+                    self._install_python_deps(ssh, server_path)
 
-                    self.progress.emit(65 + i * 5, f"Running: {cmd[:50]}...")
-                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
-                    exit_code = stdout.channel.recv_exit_status()
-
-                    if exit_code != 0:
-                        error = stderr.read().decode()
-                        logger.warning(f"Command warning: {error}")
-
-            if self._stop_requested:
-                ssh.close()
-                return
-
-            self.progress.emit(85, "Dependencies installed")
-
-            # Set up systemd service
-            if setup_service:
-                self.progress.emit(90, "Setting up systemd service...")
-                service_content = self._generate_service_file(username, server_path)
-
-                # Write service file
-                service_path = "/tmp/lablink.service"
-                ssh.exec_command(f"echo '{service_content}' > {service_path}")
-
-                # Install service
-                commands = [
-                    f"sudo mv {service_path} /etc/systemd/system/lablink.service",
-                    "sudo systemctl daemon-reload",
-                    "sudo systemctl enable lablink.service",
-                    "sudo systemctl start lablink.service",
-                ]
-
-                for cmd in commands:
-                    if self._stop_requested:
-                        ssh.close()
-                        return
-
-                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
-                    exit_code = stdout.channel.recv_exit_status()
-
-                    if exit_code != 0:
-                        error = stderr.read().decode()
-                        logger.warning(f"Service setup warning: {error}")
+                if setup_service:
+                    self._setup_systemd_service(ssh, username, server_path)
 
             self.progress.emit(100, "Deployment completed successfully!")
             ssh.close()
@@ -215,6 +181,136 @@ class DeploymentThread(QThread):
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
 
+    def _check_docker_needed(self, ssh):
+        """Check if Docker needs to be installed."""
+        stdin, stdout, stderr = ssh.exec_command("which docker && which docker-compose")
+        exit_code = stdout.channel.recv_exit_status()
+        return exit_code != 0  # True if Docker not found
+
+    def _install_docker(self, ssh):
+        """Install Docker and Docker Compose."""
+        self.progress.emit(65, "Installing Docker...")
+        commands = [
+            # Install Docker
+            "curl -fsSL https://get.docker.com -o get-docker.sh",
+            "sudo sh get-docker.sh",
+            "sudo usermod -aG docker $USER",
+            # Install Docker Compose
+            "sudo apt-get update",
+            "sudo apt-get install -y docker-compose-plugin",
+        ]
+
+        for i, cmd in enumerate(commands):
+            if self._stop_requested:
+                return
+
+            self.progress.emit(65 + i * 3, f"Running: {cmd[:40]}...")
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Docker install warning: {error}")
+
+        self.progress.emit(80, "Docker installed")
+
+    def _deploy_docker(self, ssh, server_path, username):
+        """Deploy using Docker Compose."""
+        self.progress.emit(82, "Generating .env file...")
+
+        # Generate JWT secret
+        import secrets
+        jwt_secret = secrets.token_urlsafe(32)
+
+        env_content = self._generate_env_file(jwt_secret)
+
+        # Write .env file
+        env_path = f"{server_path}/.env"
+        # Escape single quotes in env content
+        env_content_escaped = env_content.replace("'", "'\\''")
+        ssh.exec_command(f"cat > {env_path} << 'EOF'\n{env_content}\nEOF", get_pty=True)
+
+        self.progress.emit(85, "Starting Docker containers...")
+
+        commands = [
+            f"cd {server_path}",
+            # Build and start containers
+            "docker compose up -d --build",
+        ]
+
+        for i, cmd in enumerate(commands):
+            if self._stop_requested:
+                return
+
+            self.progress.emit(85 + i * 7, f"Running: {cmd}...")
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+
+            # Read output in real-time
+            for line in stdout:
+                logger.info(f"Docker: {line.strip()}")
+
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                raise Exception(f"Docker deployment failed: {error}")
+
+        self.progress.emit(99, "Docker containers started")
+
+    def _install_python_deps(self, ssh, server_path):
+        """Install Python dependencies (Direct Python mode)."""
+        self.progress.emit(65, "Installing Python dependencies...")
+        commands = [
+            f"cd {server_path}",
+            "python3 -m venv venv",
+            "source venv/bin/activate && pip install --upgrade pip",
+            f"source venv/bin/activate && pip install -r requirements.txt",
+        ]
+
+        for i, cmd in enumerate(commands):
+            if self._stop_requested:
+                return
+
+            self.progress.emit(65 + i * 5, f"Running: {cmd[:50]}...")
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Command warning: {error}")
+
+        self.progress.emit(85, "Dependencies installed")
+
+    def _setup_systemd_service(self, ssh, username, server_path):
+        """Set up systemd service (Direct Python mode)."""
+        self.progress.emit(90, "Setting up systemd service...")
+        service_content = self._generate_service_file(username, server_path)
+
+        # Write service file
+        service_path = "/tmp/lablink.service"
+        ssh.exec_command(f"echo '{service_content}' > {service_path}")
+
+        # Install service
+        commands = [
+            f"sudo mv {service_path} /etc/systemd/system/lablink.service",
+            "sudo systemctl daemon-reload",
+            "sudo systemctl enable lablink.service",
+            "sudo systemctl start lablink.service",
+        ]
+
+        for cmd in commands:
+            if self._stop_requested:
+                return
+
+            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                logger.warning(f"Service setup warning: {error}")
+
+        self.progress.emit(95, "Systemd service configured")
+
     def _scp_progress(self, filename, size, sent):
         """Track SCP progress."""
         if size > 0:
@@ -224,6 +320,47 @@ class DeploymentThread(QThread):
             # Convert filename from bytes to string if needed
             filename_str = filename.decode('utf-8') if isinstance(filename, bytes) else filename
             self.progress.emit(overall_percent, f"Copying: {Path(filename_str).name}")
+
+    def _generate_env_file(self, jwt_secret: str) -> str:
+        """Generate .env file content for Docker deployment.
+
+        Args:
+            jwt_secret: Generated JWT secret key
+
+        Returns:
+            .env file content
+        """
+        return f"""# LabLink Server Configuration
+# Generated by SSH Deployment Wizard
+
+# Server
+LABLINK_VERSION=latest
+LABLINK_API_PORT=8000
+LABLINK_WS_PORT=8001
+LABLINK_WEB_PORT=80
+LABLINK_DEBUG=false
+LABLINK_LOG_LEVEL=INFO
+
+# Security
+LABLINK_JWT_SECRET_KEY={jwt_secret}
+LABLINK_JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+LABLINK_ENABLE_CORS=true
+
+# Advanced Security
+LABLINK_ENABLE_ADVANCED_SECURITY=true
+LABLINK_CREATE_DEFAULT_ADMIN=true
+LABLINK_DEFAULT_ADMIN_USERNAME=admin
+LABLINK_DEFAULT_ADMIN_PASSWORD=LabLink@2025
+LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com
+
+# Equipment
+LABLINK_VISA_BACKEND=@py
+LABLINK_PRIVILEGED=true
+
+# Resource Limits
+LABLINK_CPU_LIMIT=2
+LABLINK_MEM_LIMIT=1G
+"""
 
     def _generate_service_file(self, username: str, server_path: str) -> str:
         """Generate systemd service file content.
@@ -440,8 +577,9 @@ class DeploymentOptionsPage(QWizardPage):
         # Source path (local server directory)
         source_layout = QHBoxLayout()
         self.source_edit = QLineEdit()
-        # Try to find server directory
-        default_source = Path(__file__).parent.parent.parent / "server"
+        # Try to find project root (for Docker) or server directory (for Python mode)
+        # Default to project root since Docker mode is recommended
+        default_source = Path(__file__).parent.parent.parent
         if default_source.exists():
             self.source_edit.setText(str(default_source))
         self.registerField("source_path*", self.source_edit)
@@ -459,21 +597,58 @@ class DeploymentOptionsPage(QWizardPage):
         self.registerField("server_path*", self.server_path_edit)
         layout.addRow("Remote Server Path:", self.server_path_edit)
 
+        # Deployment Mode
+        mode_group = QGroupBox("Deployment Mode")
+        mode_layout = QVBoxLayout()
+
+        self.mode_button_group = QButtonGroup()
+
+        self.docker_radio = QRadioButton("Docker Compose (Recommended)")
+        self.docker_radio.setChecked(True)
+        self.docker_radio.toggled.connect(self._on_mode_changed)
+        self.mode_button_group.addButton(self.docker_radio, 0)
+        mode_layout.addWidget(self.docker_radio)
+
+        docker_desc = QLabel("  • Containerized deployment with Docker\n  • Automatic service management\n  • Includes web dashboard and optional monitoring")
+        docker_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        mode_layout.addWidget(docker_desc)
+
+        self.python_radio = QRadioButton("Direct Python (Legacy)")
+        self.python_radio.toggled.connect(self._on_mode_changed)
+        self.mode_button_group.addButton(self.python_radio, 1)
+        mode_layout.addWidget(self.python_radio)
+
+        python_desc = QLabel("  • Run server directly with Python\n  • Manual systemd service setup\n  • Server only (no web dashboard)")
+        python_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        mode_layout.addWidget(python_desc)
+
+        mode_group.setLayout(mode_layout)
+        layout.addRow(mode_group)
+
         # Options
         options_group = QGroupBox("Installation Options")
         options_layout = QVBoxLayout()
 
+        self.install_docker_check = QCheckBox(
+            "Install Docker and Docker Compose (if not present)"
+        )
+        self.install_docker_check.setChecked(True)
+        self.registerField("install_docker", self.install_docker_check)
+        options_layout.addWidget(self.install_docker_check)
+
         self.install_deps_check = QCheckBox(
-            "Install Python dependencies (pip install -r requirements.txt)"
+            "Install Python dependencies (Direct Python mode only)"
         )
         self.install_deps_check.setChecked(True)
+        self.install_deps_check.setEnabled(False)  # Disabled by default (Docker mode)
         self.registerField("install_deps", self.install_deps_check)
         options_layout.addWidget(self.install_deps_check)
 
         self.setup_service_check = QCheckBox(
-            "Set up as systemd service (auto-start on boot)"
+            "Set up as systemd service (Direct Python mode only)"
         )
         self.setup_service_check.setChecked(True)
+        self.setup_service_check.setEnabled(False)  # Disabled by default (Docker mode)
         self.registerField("setup_service", self.setup_service_check)
         options_layout.addWidget(self.setup_service_check)
 
@@ -498,6 +673,15 @@ class DeploymentOptionsPage(QWizardPage):
         # Set default remote path based on username if field is empty
         if not self.server_path_edit.text():
             self.server_path_edit.setText(f"/home/{username}/lablink")
+
+    def _on_mode_changed(self):
+        """Handle deployment mode change."""
+        use_docker = self.docker_radio.isChecked()
+
+        # Enable/disable options based on mode
+        self.install_docker_check.setEnabled(use_docker)
+        self.install_deps_check.setEnabled(not use_docker)
+        self.setup_service_check.setEnabled(not use_docker)
 
     def _browse_source(self):
         """Browse for source directory."""
@@ -568,6 +752,8 @@ class DeploymentProgressPage(QWizardPage):
             ),
             "source_path": str(wizard.field("source_path")),
             "server_path": str(wizard.field("server_path")),
+            "deployment_mode": "docker" if wizard.page(1).docker_radio.isChecked() else "python",
+            "install_docker": wizard.field("install_docker"),
             "install_deps": wizard.field("install_deps"),
             "setup_service": wizard.field("setup_service"),
         }
