@@ -431,7 +431,7 @@ jobs:
           path: test-artifacts
 
       - name: Publish test report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v2
         if: always()
         with:
           name: Test Results
