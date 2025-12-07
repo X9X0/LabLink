@@ -20,7 +20,7 @@ scp==0.14.5
 zeroconf==0.132.2
 
 # Data Handling
-numpy==1.26.3
+numpy==2.3.5
 pandas==2.2.0
 h5py==3.10.0
 
