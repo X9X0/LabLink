@@ -190,7 +190,14 @@ class DeploymentThread(QThread):
 
             # Create remote directory
             self.progress.emit(15, f"Creating remote directory: {server_path}")
-            stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {server_path}")
+
+            # Use sudo for /opt paths (requires elevated permissions)
+            if server_path.startswith("/opt"):
+                mkdir_cmd = f"sudo mkdir -p {server_path} && sudo chown {username}:{username} {server_path}"
+            else:
+                mkdir_cmd = f"mkdir -p {server_path}"
+
+            stdin, stdout, stderr = ssh.exec_command(mkdir_cmd, get_pty=True)
             exit_code = stdout.channel.recv_exit_status()
             if exit_code != 0:
                 error = stderr.read().decode()
@@ -309,7 +316,13 @@ class DeploymentThread(QThread):
             self.progress.emit(50, "Extracting files on remote...")
 
             # Extract on remote (extract TO server_path)
-            extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+            # Note: server_path should already exist from earlier mkdir, but add mkdir -p for safety
+            # Use sudo for /opt paths
+            if server_path.startswith("/opt"):
+                extract_cmd = f"sudo mkdir -p {server_path} && sudo tar xzf {remote_tar} -C {server_path} && sudo chown -R $USER:$USER {server_path} && rm {remote_tar}"
+            else:
+                extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+
             stdin, stdout, stderr = ssh.exec_command(extract_cmd, get_pty=True)
             exit_code = stdout.channel.recv_exit_status()
 
@@ -577,6 +590,14 @@ WantedBy=multi-user.target
             server_path: Path to server deployment on Pi
         """
         try:
+            # If deploying directly to /opt/lablink, script is already there
+            if server_path == "/opt/lablink":
+                logger.info("Deployment to /opt/lablink - diagnostic script already in place")
+                # Just ensure it's executable
+                chmod_cmd = f"sudo chmod +x {server_path}/diagnose-pi.sh"
+                ssh.exec_command(chmod_cmd, get_pty=True)
+                return
+
             # Create /opt/lablink directory with sudo
             logger.info("Creating /opt/lablink directory...")
             ssh.exec_command("sudo mkdir -p /opt/lablink", get_pty=True)
@@ -1093,7 +1114,7 @@ class DeploymentOptionsPage(QWizardPage):
 
         # Remote server path
         self.server_path_edit = QLineEdit()
-        self.server_path_edit.setPlaceholderText("/home/<username>/lablink")
+        self.server_path_edit.setPlaceholderText("/opt/lablink (Docker) or /home/<username>/lablink (Python)")
         self.registerField("server_path*", self.server_path_edit)
         layout.addRow("Remote Server Path:", self.server_path_edit)
 
@@ -1166,13 +1187,18 @@ class DeploymentOptionsPage(QWizardPage):
         return has_source and has_server_path
 
     def initializePage(self):
-        """Initialize page when shown - set default remote path based on username."""
+        """Initialize page when shown - set default remote path based on deployment mode."""
         wizard = self.wizard()
         username = wizard.field("username")
 
-        # Set default remote path based on username if field is empty
+        # Set default remote path based on deployment mode if field is empty
         if not self.server_path_edit.text():
-            self.server_path_edit.setText(f"/home/{username}/lablink")
+            if self.docker_radio.isChecked():
+                # Docker mode: use /opt/lablink (production-style path)
+                self.server_path_edit.setText("/opt/lablink")
+            else:
+                # Python mode: use home directory (no sudo required)
+                self.server_path_edit.setText(f"/home/{username}/lablink")
 
     def _on_mode_changed(self):
         """Handle deployment mode change."""
@@ -1182,6 +1208,19 @@ class DeploymentOptionsPage(QWizardPage):
         self.install_docker_check.setEnabled(use_docker)
         self.install_deps_check.setEnabled(not use_docker)
         self.setup_service_check.setEnabled(not use_docker)
+
+        # Update default path based on mode (only if user hasn't customized it)
+        current_path = self.server_path_edit.text()
+        wizard = self.wizard()
+        username = wizard.field("username") if wizard else "admin"
+
+        # Check if path matches the default for the OTHER mode
+        if use_docker and current_path == f"/home/{username}/lablink":
+            # Switching to Docker from Python - change to /opt/lablink
+            self.server_path_edit.setText("/opt/lablink")
+        elif not use_docker and current_path == "/opt/lablink":
+            # Switching to Python from Docker - change to home directory
+            self.server_path_edit.setText(f"/home/{username}/lablink")
 
     def _browse_source(self):
         """Browse for source directory."""
