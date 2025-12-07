@@ -9,7 +9,7 @@ try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox,
-                                 QFileDialog, QFormLayout, QGroupBox,
+                                 QFileDialog, QFormLayout, QGridLayout, QGroupBox,
                                  QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                  QProgressBar, QPushButton, QRadioButton,
                                  QSpinBox, QTextEdit, QVBoxLayout, QWizard,
@@ -27,6 +27,7 @@ class DeploymentThread(QThread):
 
     progress = pyqtSignal(int, str)  # progress percentage, message
     finished = pyqtSignal(bool, str)  # success, message
+    stats = pyqtSignal(dict)  # system stats (cpu, memory, disk, network)
 
     def __init__(self, deployment_config: Dict):
         """Initialize deployment thread.
@@ -95,6 +96,13 @@ class DeploymentThread(QThread):
 
             self.progress.emit(10, "Connected successfully")
 
+            # Fetch initial system stats
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.debug(f"Failed to fetch initial stats: {e}")
+
             # Create remote directory
             self.progress.emit(15, f"Creating remote directory: {server_path}")
             stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {server_path}")
@@ -128,6 +136,13 @@ class DeploymentThread(QThread):
 
             self.progress.emit(60, "Files copied successfully")
 
+            # Fetch stats after file copy
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.debug(f"Failed to fetch stats after copy: {e}")
+
             # Deploy based on mode
             if deployment_mode == "docker":
                 # Docker deployment
@@ -144,6 +159,14 @@ class DeploymentThread(QThread):
                     self._setup_systemd_service(ssh, username, server_path)
 
             self.progress.emit(100, "Deployment completed successfully!")
+
+            # Fetch final system stats
+            try:
+                stats = self._fetch_system_stats(ssh)
+                self.stats.emit(stats)
+            except Exception as e:
+                logger.debug(f"Failed to fetch final stats: {e}")
+
             ssh.close()
 
             self.finished.emit(True, "LabLink server deployed successfully!")
@@ -368,7 +391,26 @@ lablink-help() {{
         if exit_code != 0:  # Not found, add it
             ssh.exec_command(f"echo -e '{bashrc_line}' >> ~/.bashrc")
 
-        logger.info("Installed LabLink convenience commands")
+        # Add login message to show lablink-status on interactive login
+        login_message = f"""\\n# LabLink status at login (interactive shells only)
+if [ -n "$PS1" ]; then
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║                    LabLink Server Status                     ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+    cd {server_path} && docker compose ps
+    echo ""
+    echo "Type 'lablink-help' for available commands"
+    echo ""
+fi"""
+        check_login_cmd = "grep -q 'LabLink Server Status' ~/.bashrc"
+        stdin, stdout, stderr = ssh.exec_command(check_login_cmd)
+        exit_code = stdout.channel.recv_exit_status()
+
+        if exit_code != 0:  # Not found, add it
+            ssh.exec_command(f"echo -e '{login_message}' >> ~/.bashrc")
+
+        logger.info("Installed LabLink convenience commands and login status display")
 
     def _install_python_deps(self, ssh, server_path):
         """Install Python dependencies (Direct Python mode)."""
@@ -501,6 +543,65 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 """
+
+    def _fetch_system_stats(self, ssh):
+        """Fetch system stats from remote host.
+
+        Args:
+            ssh: Active SSH connection
+
+        Returns:
+            Dictionary with cpu, memory, disk, network stats
+        """
+        stats = {
+            "cpu": "--",
+            "memory": "--",
+            "disk": "--",
+            "network": "--"
+        }
+
+        try:
+            # CPU usage - get percentage from top
+            cpu_cmd = "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1"
+            stdin, stdout, stderr = ssh.exec_command(cpu_cmd, timeout=2)
+            cpu_usage = stdout.read().decode().strip()
+            if cpu_usage:
+                stats["cpu"] = f"{float(cpu_usage):.1f}%"
+        except Exception as e:
+            logger.debug(f"Failed to fetch CPU stats: {e}")
+
+        try:
+            # Memory usage - percentage
+            mem_cmd = "free | awk 'NR==2{printf \"%.1f\", $3*100/$2}'"
+            stdin, stdout, stderr = ssh.exec_command(mem_cmd, timeout=2)
+            mem_usage = stdout.read().decode().strip()
+            if mem_usage:
+                stats["memory"] = f"{mem_usage}%"
+        except Exception as e:
+            logger.debug(f"Failed to fetch memory stats: {e}")
+
+        try:
+            # Disk usage - root partition
+            disk_cmd = "df -h / | awk 'NR==2{print $5}'"
+            stdin, stdout, stderr = ssh.exec_command(disk_cmd, timeout=2)
+            disk_usage = stdout.read().decode().strip()
+            if disk_usage:
+                stats["disk"] = disk_usage
+        except Exception as e:
+            logger.debug(f"Failed to fetch disk stats: {e}")
+
+        try:
+            # Network - get interface with most traffic (non-loopback)
+            # Shows received/transmitted in human-readable format
+            net_cmd = "cat /proc/net/dev | awk 'NR>2 && $1 !~ /lo:/ {rx+=$2; tx+=$10} END {printf \"↓%.1f MB ↑%.1f MB\", rx/1024/1024, tx/1024/1024}'"
+            stdin, stdout, stderr = ssh.exec_command(net_cmd, timeout=2)
+            net_usage = stdout.read().decode().strip()
+            if net_usage and "MB" in net_usage:
+                stats["network"] = net_usage
+        except Exception as e:
+            logger.debug(f"Failed to fetch network stats: {e}")
+
+        return stats
 
     def request_stop(self):
         """Request thread to stop."""
@@ -830,6 +931,37 @@ class DeploymentProgressPage(QWizardPage):
         self.status_label = QLabel("Preparing deployment...")
         layout.addWidget(self.status_label)
 
+        # System stats display
+        stats_group = QGroupBox("Remote System Resources")
+        stats_layout = QGridLayout()
+
+        # CPU
+        stats_layout.addWidget(QLabel("CPU:"), 0, 0)
+        self.cpu_label = QLabel("--")
+        self.cpu_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.cpu_label, 0, 1)
+
+        # Memory
+        stats_layout.addWidget(QLabel("Memory:"), 0, 2)
+        self.memory_label = QLabel("--")
+        self.memory_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.memory_label, 0, 3)
+
+        # Disk
+        stats_layout.addWidget(QLabel("Disk:"), 1, 0)
+        self.disk_label = QLabel("--")
+        self.disk_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.disk_label, 1, 1)
+
+        # Network
+        stats_layout.addWidget(QLabel("Network:"), 1, 2)
+        self.network_label = QLabel("--")
+        self.network_label.setStyleSheet("font-weight: bold;")
+        stats_layout.addWidget(self.network_label, 1, 3)
+
+        stats_group.setLayout(stats_layout)
+        layout.addWidget(stats_group)
+
         # Log output
         log_label = QLabel("Deployment Log:")
         layout.addWidget(log_label)
@@ -882,6 +1014,7 @@ class DeploymentProgressPage(QWizardPage):
         """
         self.deployment_thread = DeploymentThread(config)
         self.deployment_thread.progress.connect(self._on_progress)
+        self.deployment_thread.stats.connect(self._on_stats_update)
         self.deployment_thread.finished.connect(self._on_finished)
         self.deployment_thread.start()
 
@@ -901,6 +1034,17 @@ class DeploymentProgressPage(QWizardPage):
         self.progress_bar.setValue(percent)
         self.status_label.setText(message)
         self.log_output.append(f"[{percent}%] {message}")
+
+    def _on_stats_update(self, stats: dict):
+        """Handle system stats update.
+
+        Args:
+            stats: Dictionary with cpu, memory, disk, network stats
+        """
+        self.cpu_label.setText(stats.get("cpu", "--"))
+        self.memory_label.setText(stats.get("memory", "--"))
+        self.disk_label.setText(stats.get("disk", "--"))
+        self.network_label.setText(stats.get("network", "--"))
 
     def _on_finished(self, success: bool, message: str):
         """Handle deployment completion.
