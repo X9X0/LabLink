@@ -11,7 +11,7 @@ pytest-xdist>=3.3.0  # For parallel test execution
 pytest-mock>=3.11.0
 
 # HTTP testing
-requests>=2.31.0
+requests>=2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
 httpx>=0.24.0  # For async HTTP testing
 
 # Coverage reporting
