@@ -117,26 +117,43 @@ class DeploymentThread(QThread):
                 with SCPClient(ssh.get_transport(), progress=self._scp_progress) as scp:
                     # Copy entire server directory - ensure source_path is string
                     source = Path(str(source_path))
+                    print(f"DEBUG: source type: {type(source)}, exists: {source.exists()}, is_dir: {source.is_dir()}")
+
                     if source.is_dir():
                         # Copy all Python files and requirements
                         for pattern in ["*.py", "requirements.txt", "*.md"]:
+                            print(f"DEBUG: Searching for pattern: {pattern}")
                             for file in source.rglob(pattern):
+                                print(f"DEBUG: Found file: {file}, type: {type(file)}")
                                 if "__pycache__" in str(file) or ".git" in str(file):
                                     continue
 
-                                relative = file.relative_to(source)
-                                # Convert Path to POSIX-style string for remote path
-                                relative_str = relative.as_posix()
-                                remote_file = f"{server_path}/{relative_str}"
+                                try:
+                                    relative = file.relative_to(source)
+                                    print(f"DEBUG: relative type: {type(relative)}, value: {relative}")
 
-                                # Create remote directory structure
-                                remote_dir = "/".join(remote_file.split("/")[:-1])
-                                ssh.exec_command(f"mkdir -p {remote_dir}")
+                                    # Convert Path to POSIX-style string for remote path
+                                    relative_str = relative.as_posix()
+                                    print(f"DEBUG: relative_str type: {type(relative_str)}, value: {relative_str}")
 
-                                # Copy file - convert Path to absolute string path
-                                local_file = str(file.absolute())
-                                scp.put(local_file, remote_file)
+                                    remote_file = f"{server_path}/{relative_str}"
+                                    print(f"DEBUG: remote_file type: {type(remote_file)}, value: {remote_file}")
+
+                                    # Create remote directory structure
+                                    remote_dir = "/".join(remote_file.split("/")[:-1])
+                                    ssh.exec_command(f"mkdir -p {remote_dir}")
+
+                                    # Copy file - convert Path to absolute string path
+                                    local_file = str(file.absolute())
+                                    print(f"DEBUG: About to call scp.put({repr(local_file)}, {repr(remote_file)})")
+                                    scp.put(local_file, remote_file)
+                                    print(f"DEBUG: Successfully copied {file.name}")
+                                except Exception as file_error:
+                                    print(f"DEBUG: Error copying {file}: {file_error}")
+                                    raise
             except Exception as e:
+                import traceback
+                print(f"DEBUG: Full traceback:\n{traceback.format_exc()}")
                 self.finished.emit(False, f"Failed to copy files: {e}")
                 ssh.close()
                 return
