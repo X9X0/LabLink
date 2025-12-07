@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2025-12-07
+
+### 🔒 Security
+- **Fixed 13 Dependabot security vulnerabilities** (5 high, 7 medium, 1 low)
+- **requests** 2.31.0 → 2.32.4: Fixed CVE-2024-47081 (.netrc credentials leak), CVE-2024-35195 (Session verify=False persistence)
+- **aiohttp** 3.9.1 → 3.12.14: Fixed 6 CVEs including:
+  - CVE-2024-23334 (High): Directory traversal vulnerability
+  - CVE-2024-30251 (High): DoS on malformed POST requests
+  - CVE-2024-52304 (Medium): Request smuggling via chunk extensions
+  - CVE-2024-27306 (Medium): XSS on static file index pages
+  - CVE-2024-23829 (Medium): HTTP parser lenient separators
+  - CVE-2025-53643 (Low): Request/Response smuggling via chunked trailers
+- **node-forge** 1.2.1 → 1.3.3: Fixed 3 CVEs:
+  - CVE-2025-12816 (High): ASN.1 Validator Desynchronization
+  - CVE-2025-66031 (High): ASN.1 Unbounded Recursion
+  - CVE-2025-66030 (Medium): ASN.1 OID Integer Truncation
+- **glob** 10.4.2 → 10.5.0: Fixed CVE-2025-64756 (High): Command injection via -c/--cmd
+- **Removed scapy** 2.5.0: Pickle deserialization RCE vulnerability with no patch available (package unused in codebase)
+
+### 📝 Changed
+- **Dependabot Configuration**: Implemented dependency grouping to reduce PR spam
+  - Groups minor/patch updates into single PRs per ecosystem
+  - Security updates remain separate for visibility
+  - Major version updates isolated for careful review
+  - Reduced PR limits: Python (10→5), Docker (5→3), GitHub Actions (5→3)
+- **Repository Cleanup**: Closed 29 legacy Dependabot PRs and deleted 36 obsolete branches
+- **NPM Security**: npm audit shows 0 vulnerabilities after updates
+
+### 📚 Documentation
+- Added comprehensive security update documentation (`docs/security/SECURITY_UPDATE_2025-12-06.md`)
+- Documented all CVE fixes with references and impact assessment
+- Updated Dependabot configuration with detailed grouping strategy
+
+---
+
+
 ## [1.2.0] - 2025-12-06
 
 ### ✨ Added
