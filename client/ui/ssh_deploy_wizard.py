@@ -576,7 +576,8 @@ WantedBy=multi-user.target
             install_cmds = [
                 f"sudo mv {service_path} /etc/systemd/system/lablink-docker.service",
                 "sudo systemctl daemon-reload",
-                "sudo systemctl enable lablink-docker.service"
+                "sudo systemctl enable lablink-docker.service",
+                "sudo systemctl start lablink-docker.service"  # Start the service immediately
             ]
 
             for cmd in install_cmds:
