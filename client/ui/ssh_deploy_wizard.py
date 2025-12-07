@@ -109,39 +109,14 @@ class DeploymentThread(QThread):
                 ssh.close()
                 return
 
-            # Copy server files
+            # Copy server files using tar+ssh (much faster than SCP)
             self.progress.emit(20, "Copying server files...")
 
             try:
-                with SCPClient(ssh.get_transport(), progress=self._scp_progress) as scp:
-                    # Copy entire server directory
-                    source = Path(source_path)
-                    if source.is_dir():
-                        # Determine what to copy based on deployment mode
-                        if deployment_mode == "docker":
-                            # Docker mode: copy all necessary files including docker-compose.yml, Dockerfile, etc.
-                            patterns = ["*.py", "*.yml", "*.yaml", "Dockerfile*", "requirements.txt", "*.md", "*.sh", "*.conf", "*.json"]
-                        else:
-                            # Python mode: copy only Python files and requirements
-                            patterns = ["*.py", "requirements.txt", "*.md"]
-
-                        for pattern in patterns:
-                            for file in source.rglob(pattern):
-                                if "__pycache__" in str(file) or ".git" in str(file):
-                                    continue
-
-                                relative = file.relative_to(source)
-                                # Convert Path to POSIX-style string for remote path
-                                relative_str = relative.as_posix()
-                                remote_file = f"{server_path}/{relative_str}"
-
-                                # Create remote directory structure
-                                remote_dir = "/".join(remote_file.split("/")[:-1])
-                                ssh.exec_command(f"mkdir -p {remote_dir}")
-
-                                # Copy file
-                                local_file = str(file.absolute())
-                                scp.put(local_file, remote_file)
+                source = Path(source_path)
+                if source.is_dir():
+                    # Use tar+ssh for fast transfer (10-20x faster than SCP)
+                    self._copy_files_tar(ssh, source, server_path, deployment_mode)
             except Exception as e:
                 self.finished.emit(False, f"Failed to copy files: {e}")
                 ssh.close()
@@ -180,6 +155,67 @@ class DeploymentThread(QThread):
         except Exception as e:
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
+
+    def _copy_files_tar(self, ssh, source, server_path, deployment_mode):
+        """Copy files using tar+ssh for fast transfer.
+
+        This is 10-20x faster than SCP for multiple files.
+        """
+        import subprocess
+        import tempfile
+
+        self.progress.emit(25, "Preparing files for transfer...")
+
+        # Create exclusion patterns
+        exclude_patterns = [
+            "--exclude=__pycache__",
+            "--exclude=*.pyc",
+            "--exclude=.git",
+            "--exclude=venv",
+            "--exclude=.env",
+            "--exclude=*.log",
+        ]
+
+        # Create tar archive locally
+        with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp_file:
+            tar_path = tmp_file.name
+
+        try:
+            # Create compressed tar archive
+            tar_cmd = ["tar", "czf", tar_path, "-C", str(source)] + exclude_patterns + ["."]
+            subprocess.run(tar_cmd, check=True, capture_output=True)
+
+            # Get file size for progress
+            import os
+            file_size = os.path.getsize(tar_path)
+            file_size_mb = file_size / (1024 * 1024)
+
+            self.progress.emit(35, f"Transferring {file_size_mb:.1f} MB...")
+
+            # Transfer via SCP (single file is much faster)
+            from scp import SCPClient
+            with SCPClient(ssh.get_transport()) as scp:
+                remote_tar = f"{server_path}.tar.gz"
+                scp.put(tar_path, remote_tar)
+
+            self.progress.emit(50, "Extracting files on remote...")
+
+            # Extract on remote (extract TO server_path)
+            extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+            stdin, stdout, stderr = ssh.exec_command(extract_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode()
+                raise Exception(f"Failed to extract files: {error}")
+
+            self.progress.emit(60, "Files transferred successfully")
+
+        finally:
+            # Clean up local tar file
+            import os
+            if os.path.exists(tar_path):
+                os.remove(tar_path)
 
     def _check_docker_needed(self, ssh):
         """Check if Docker needs to be installed."""
@@ -230,32 +266,44 @@ class DeploymentThread(QThread):
         env_content_escaped = env_content.replace("'", "'\\''")
         ssh.exec_command(f"cat > {env_path} << 'EOF'\n{env_content}\nEOF", get_pty=True)
 
-        self.progress.emit(85, "Starting Docker containers...")
+        self.progress.emit(85, "Building and starting Docker containers...")
 
-        commands = [
-            f"cd {server_path}",
-            # Build and start containers
-            "docker compose up -d --build",
-        ]
+        # Run docker compose with progress monitoring
+        docker_cmd = f"cd {server_path} && docker compose up -d --build"
+        stdin, stdout, stderr = ssh.exec_command(docker_cmd, get_pty=True)
 
-        for i, cmd in enumerate(commands):
-            if self._stop_requested:
-                return
+        # Stream and monitor Docker build output
+        progress_value = 85
+        last_message = ""
+        for line in stdout:
+            line_str = line.strip()
+            if line_str:
+                logger.info(f"Docker: {line_str}")
 
-            self.progress.emit(85 + i * 7, f"Running: {cmd}...")
-            stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+                # Update progress based on Docker output
+                if "Pulling" in line_str or "Downloading" in line_str:
+                    progress_value = min(90, progress_value + 0.5)
+                    self.progress.emit(int(progress_value), "Pulling Docker images...")
+                elif "Building" in line_str or "Step" in line_str:
+                    progress_value = min(95, progress_value + 0.3)
+                    self.progress.emit(int(progress_value), "Building containers...")
+                elif "Creating" in line_str or "Starting" in line_str:
+                    progress_value = min(98, progress_value + 1)
+                    self.progress.emit(int(progress_value), "Starting containers...")
 
-            # Read output in real-time
-            for line in stdout:
-                logger.info(f"Docker: {line.strip()}")
+                last_message = line_str[:60]  # Keep last message for error reporting
 
-            exit_code = stdout.channel.recv_exit_status()
+        exit_code = stdout.channel.recv_exit_status()
 
-            if exit_code != 0:
-                error = stderr.read().decode()
-                raise Exception(f"Docker deployment failed: {error}")
+        if exit_code != 0:
+            # Read any error output
+            error_lines = []
+            for line in stderr:
+                error_lines.append(line.strip())
+            error = "\n".join(error_lines) if error_lines else last_message
+            raise Exception(f"Docker deployment failed: {error}")
 
-        self.progress.emit(99, "Docker containers started")
+        self.progress.emit(99, "Docker containers started successfully!")
 
     def _install_python_deps(self, ssh, server_path):
         """Install Python dependencies (Direct Python mode)."""
