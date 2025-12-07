@@ -308,9 +308,19 @@ class DeploymentThread(QThread):
             self.progress.emit(35, f"Transferring {file_size_mb:.1f} MB...")
 
             # Transfer via SCP (single file is much faster)
+            # For /opt paths, upload to /tmp first (no sudo required), then move with sudo
             from scp import SCPClient
-            with SCPClient(ssh.get_transport()) as scp:
+            import time
+            timestamp = int(time.time())
+
+            if server_path.startswith("/opt"):
+                # Upload to /tmp first (user-writable)
+                remote_tar = f"/tmp/lablink-deploy-{timestamp}.tar.gz"
+            else:
+                # Upload directly to destination
                 remote_tar = f"{server_path}.tar.gz"
+
+            with SCPClient(ssh.get_transport()) as scp:
                 scp.put(tar_path, remote_tar)
 
             self.progress.emit(50, "Extracting files on remote...")
