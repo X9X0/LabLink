@@ -203,7 +203,7 @@ if [ -f /var/log/lablink-first-boot.log ]; then
     tail -30 /var/log/lablink-first-boot.log | sed 's/^/  /'
     echo ""
 else
-    echo "No first boot log found at /var/log/lablink-first-boot.log"
+    echo "No first boot log found at /var/log/lablink-first-boot.log (Expected if this is an SSH Docker deployment)"
 fi
 
 # Systemd journal for lablink service
@@ -235,7 +235,7 @@ if [ -f /var/lib/lablink-setup-complete ]; then
     echo "  Completed: $(stat -c %y /var/lib/lablink-setup-complete)"
 else
     echo -e "${YELLOW}⚠${NC} First boot setup not marked as complete"
-    echo "  This suggests the first-boot script may still be running or failed"
+    echo "  This suggests the first-boot script may still be running or failed (Expected if this is an SSH deployment)"
 fi
 echo ""
 

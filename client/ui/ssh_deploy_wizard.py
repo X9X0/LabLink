@@ -22,28 +22,29 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class LogMonitorThread(QThread):
-    """Thread for monitoring first-boot log file in real-time."""
+class ServiceStatusMonitorThread(QThread):
+    """Thread for monitoring systemd service status after deployment."""
 
-    log_line = pyqtSignal(str)  # New log line
-    finished = pyqtSignal()  # Log monitoring finished
+    status_update = pyqtSignal(str)  # Service status output
+    finished = pyqtSignal()  # Monitoring finished
 
-    def __init__(self, ssh_config: Dict, log_path: str = "/var/log/lablink-first-boot.log"):
-        """Initialize log monitor thread.
+    def __init__(self, ssh_config: Dict, service_name: str = "lablink-docker.service"):
+        """Initialize service status monitor thread.
 
         Args:
             ssh_config: SSH connection configuration
-            log_path: Path to log file on remote host
+            service_name: Name of systemd service to monitor
         """
         super().__init__()
         self.config = ssh_config
-        self.log_path = log_path
+        self.service_name = service_name
         self._stop_requested = False
 
     def run(self):
-        """Monitor log file and emit new lines."""
+        """Monitor service status and emit updates."""
         try:
             import paramiko
+            import time
 
             # Extract configuration
             host = self.config["host"]
@@ -77,27 +78,32 @@ class LogMonitorThread(QThread):
                         timeout=15,
                     )
             except Exception as e:
-                self.log_line.emit(f"❌ Failed to connect: {e}")
+                self.status_update.emit(f"❌ Failed to connect: {e}")
                 self.finished.emit()
                 return
 
-            # Tail the log file (follow mode)
-            # Use sudo to access log file, suppress stderr for file-not-found
-            tail_cmd = f"sudo tail -f -n 50 {self.log_path} 2>/dev/null || echo 'Log file not found yet...'"
-            stdin, stdout, stderr = ssh.exec_command(tail_cmd, get_pty=True)
+            # Show initial status
+            status_cmd = f"sudo systemctl status {self.service_name} --no-pager -l"
+            stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+            output = stdout.read().decode()
+            self.status_update.emit(output)
 
-            # Read lines as they come in
-            while not self._stop_requested:
-                line = stdout.readline()
-                if not line:
+            # Monitor for a few seconds to catch any changes
+            for i in range(3):
+                if self._stop_requested:
                     break
-                self.log_line.emit(line.rstrip())
+                time.sleep(2)
+
+                # Get updated status
+                stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+                output = stdout.read().decode()
+                self.status_update.emit("\n--- Updated status ---\n" + output)
 
             ssh.close()
             self.finished.emit()
 
         except Exception as e:
-            self.log_line.emit(f"❌ Log monitoring error: {e}")
+            self.status_update.emit(f"❌ Status monitoring error: {e}")
             self.finished.emit()
 
     def request_stop(self):
@@ -1254,7 +1260,7 @@ class DeploymentProgressPage(QWizardPage):
         self.setSubTitle("Please wait while the server is deployed...")
 
         self.deployment_thread: Optional[DeploymentThread] = None
-        self.log_monitor_thread: Optional[LogMonitorThread] = None
+        self.service_monitor_thread: Optional[ServiceStatusMonitorThread] = None
         self.deployment_successful = False
         self.ssh_config = None
 
@@ -1309,37 +1315,16 @@ class DeploymentProgressPage(QWizardPage):
         self.log_output.setFont(QFont("Monospace", 9))
         layout.addWidget(self.log_output)
 
-        # First-boot log viewer (initially hidden)
-        self.firstboot_group = QGroupBox("First-Boot Log (Real-time)")
-        self.firstboot_group.setVisible(False)
-        firstboot_layout = QVBoxLayout()
+        # Service status indicator (visible from start)
+        status_indicator_layout = QHBoxLayout()
+        status_indicator_layout.addWidget(QLabel("Service Status:"))
 
-        # Info label
-        info_label = QLabel(
-            "📋 Monitoring first-boot initialization... You can close this wizard now or "
-            "leave it open to observe the startup process in real-time."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #0066cc; padding: 5px; background-color: #e6f2ff; border-radius: 3px;")
-        firstboot_layout.addWidget(info_label)
+        self.service_status_indicator = QLabel("● Unknown")
+        self.service_status_indicator.setStyleSheet("color: gray; font-weight: bold;")
+        status_indicator_layout.addWidget(self.service_status_indicator)
+        status_indicator_layout.addStretch()
 
-        # First-boot log output
-        self.firstboot_log = QTextEdit()
-        self.firstboot_log.setReadOnly(True)
-        self.firstboot_log.setFont(QFont("Monospace", 9))
-        self.firstboot_log.setMinimumHeight(200)
-        firstboot_layout.addWidget(self.firstboot_log)
-
-        # Control buttons
-        button_layout = QHBoxLayout()
-        self.stop_monitoring_btn = QPushButton("Stop Monitoring")
-        self.stop_monitoring_btn.clicked.connect(self._stop_log_monitoring)
-        button_layout.addWidget(self.stop_monitoring_btn)
-        button_layout.addStretch()
-        firstboot_layout.addLayout(button_layout)
-
-        self.firstboot_group.setLayout(firstboot_layout)
-        layout.addWidget(self.firstboot_group)
+        layout.addLayout(status_indicator_layout)
 
         layout.addStretch()
 
@@ -1437,62 +1422,55 @@ class DeploymentProgressPage(QWizardPage):
 
         if success:
             self.status_label.setText("✅ " + message)
-            self.log_output.append("")
-            self.log_output.append("=== Deployment Completed Successfully ===")
 
-            # Start first-boot log monitoring
-            self._start_log_monitoring()
+            # Start service status monitoring
+            self._start_status_monitoring()
         else:
             self.status_label.setText("❌ " + message)
             self.log_output.append("")
             self.log_output.append(f"=== Deployment Failed: {message} ===")
+            self.service_status_indicator.setText("● Failed")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
 
         # Enable the Finish button
         self.wizard().button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.completeChanged.emit()
 
-    def _start_log_monitoring(self):
-        """Start monitoring first-boot log in real-time."""
+    def _start_status_monitoring(self):
+        """Start monitoring service status."""
         if not self.ssh_config:
             return
 
-        # Show the first-boot log viewer
-        self.firstboot_group.setVisible(True)
-        self.firstboot_log.append("=== Starting First-Boot Log Monitor ===")
-        self.firstboot_log.append("Connecting to remote host...")
-        self.firstboot_log.append("")
+        # Update indicator to checking state
+        self.service_status_indicator.setText("● Checking...")
+        self.service_status_indicator.setStyleSheet("color: orange; font-weight: bold;")
 
-        # Start log monitoring thread
-        self.log_monitor_thread = LogMonitorThread(self.ssh_config)
-        self.log_monitor_thread.log_line.connect(self._on_log_line)
-        self.log_monitor_thread.finished.connect(self._on_log_monitoring_finished)
-        self.log_monitor_thread.start()
+        # Start service status monitoring thread
+        self.service_monitor_thread = ServiceStatusMonitorThread(self.ssh_config)
+        self.service_monitor_thread.status_update.connect(self._on_status_update)
+        self.service_monitor_thread.finished.connect(self._on_status_monitoring_finished)
+        self.service_monitor_thread.start()
 
-    def _on_log_line(self, line: str):
-        """Handle new log line from first-boot log.
+    def _on_status_update(self, status: str):
+        """Handle service status update.
 
         Args:
-            line: Log line text
+            status: Service status text
         """
-        self.firstboot_log.append(line)
-        # Auto-scroll to bottom
-        scrollbar = self.firstboot_log.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        # Check if service is active
+        if "Active: active" in status or "Active: \x1b[0;1;32mactive" in status:
+            self.service_status_indicator.setText("● Operational")
+            self.service_status_indicator.setStyleSheet("color: green; font-weight: bold;")
+        elif "Active: inactive" in status or "Active: failed" in status:
+            self.service_status_indicator.setText("● Not Running")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
 
-    def _on_log_monitoring_finished(self):
-        """Handle log monitoring completion."""
-        self.firstboot_log.append("")
-        self.firstboot_log.append("=== Log Monitoring Stopped ===")
-        self.stop_monitoring_btn.setEnabled(False)
-
-    def _stop_log_monitoring(self):
-        """Stop log monitoring."""
-        if self.log_monitor_thread and self.log_monitor_thread.isRunning():
-            self.firstboot_log.append("")
-            self.firstboot_log.append("Stopping log monitoring...")
-            self.log_monitor_thread.request_stop()
-            self.log_monitor_thread.wait(2000)
-            self.stop_monitoring_btn.setEnabled(False)
+    def _on_status_monitoring_finished(self):
+        """Handle status monitoring completion."""
+        # If still checking, update to unknown
+        if "Checking" in self.service_status_indicator.text():
+            self.service_status_indicator.setText("● Unknown")
+            self.service_status_indicator.setStyleSheet("color: gray; font-weight: bold;")
 
     def isComplete(self):
         """Check if page is complete."""
@@ -1507,9 +1485,9 @@ class DeploymentProgressPage(QWizardPage):
             self.deployment_thread.request_stop()
             self.deployment_thread.wait(5000)
 
-        if self.log_monitor_thread and self.log_monitor_thread.isRunning():
-            self.log_monitor_thread.request_stop()
-            self.log_monitor_thread.wait(2000)
+        if self.service_monitor_thread and self.service_monitor_thread.isRunning():
+            self.service_monitor_thread.request_stop()
+            self.service_monitor_thread.wait(2000)
 
 
 class SSHDeployWizard(QWizard):
@@ -1521,7 +1499,7 @@ class SSHDeployWizard(QWizard):
 
         self.setWindowTitle("Deploy Server via SSH")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(700, 600)
 
         # Add pages
         self.connection_page = ConnectionPage()
