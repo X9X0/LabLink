@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2025-12-07
+
+### 🐛 Fixed
+- **Issue #126**: Fixed Pi deployment systemd service conflicts after SSH Docker deployment
+  - Automatically cleans up old Python-mode `lablink.service` that conflicts with Docker deployment
+  - Creates and activates `lablink-docker.service` for proper container auto-start on boot
+  - Service now properly shows "active (exited)" state after deployment
+  - Containers auto-start on reboot via systemd service
+
+### ✨ Added
+- **Production-Standard Deployment Path**: Docker deployments now default to `/opt/lablink` (follows Linux FHS)
+  - Automatic sudo support for `/opt` paths (creates directory, sets ownership)
+  - Smart path switching when toggling between Docker/Python deployment modes
+  - Tar upload to `/tmp` for `/opt` paths to avoid permission issues
+- **Service Status Indicator**: Clean status display in deployment wizard
+  - Real-time service health monitoring (Unknown → Checking → Operational/Not Running)
+  - Color-coded status: green (operational), red (not running), orange (checking), gray (unknown)
+  - Automatic verification after deployment completes
+- **Improved Diagnostic Script**: Added clarifications for SSH deployments
+  - "Expected if this is an SSH Docker deployment" for missing first-boot log
+  - "Expected if this is an SSH deployment" for first-boot setup not complete
+  - Reduces confusion about expected missing components in SSH deployments
+
+### 📝 Changed
+- **Deployment Wizard UX**: Simplified and streamlined deployment interface
+  - Removed verbose systemctl output window
+  - Added compact service status indicator below deployment log
+  - Reduced wizard height (880px → 600px) for cleaner interface
+  - Deployment logs remain scrollable for full history
+- **Default Paths by Mode**:
+  - Docker mode: `/opt/lablink` (production)
+  - Python mode: `/home/<username>/lablink` (development)
+  - Automatic path updates when switching deployment modes
+
+### 🔧 Technical Details
+- Service type: oneshot with RemainAfterExit=yes
+- Service dependencies: docker.service, network-online.target
+- Diagnostic script handles both Pi image and SSH deployment methods
+- Parses systemctl output including ANSI color codes
+
+---
+
 ## [1.2.1] - 2025-12-07
 
 ### 🔒 Security
