@@ -89,7 +89,11 @@ def main():
     # Create application
     app = QApplication(sys.argv)
     app.setApplicationName("LabLink")
-    app.setApplicationVersion("0.10.0")
+
+    # Read version from VERSION file (single source of truth)
+    version_file = Path(__file__).parent.parent / "VERSION"
+    version = version_file.read_text().strip() if version_file.exists() else "1.2.0"
+    app.setApplicationVersion(version)
     app.setOrganizationName("LabLink Project")
 
     # Set application style (optional)

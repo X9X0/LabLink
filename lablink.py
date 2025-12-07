@@ -27,6 +27,10 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
+# Read version from VERSION file (single source of truth)
+_version_file = Path(__file__).parent / "VERSION"
+__version__ = _version_file.read_text().strip() if _version_file.exists() else "1.2.0"
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
