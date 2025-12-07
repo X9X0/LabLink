@@ -291,6 +291,12 @@ class DeploymentThread(QThread):
         env_content_escaped = env_content.replace("'", "'\\''")
         ssh.exec_command(f"cat > {env_path} << 'EOF'\n{env_content}\nEOF", get_pty=True)
 
+        # Ensure Pi diagnostics mounts are enabled in docker-compose.yml
+        # These lines are needed for the /api/diagnostics/pi-diagnostics endpoint
+        logger.info("Ensuring Pi diagnostics mounts are enabled in docker-compose.yml...")
+        uncomment_cmd = f"""cd {server_path} && sed -i 's|^      # - /var/run/docker.sock:|      - /var/run/docker.sock:|' docker-compose.yml && sed -i 's|^      # - /opt/lablink:|      - /opt/lablink:|' docker-compose.yml"""
+        ssh.exec_command(uncomment_cmd, get_pty=True)
+
         self.progress.emit(85, "Building and starting Docker containers...")
 
         # Fetch stats before Docker build
@@ -337,8 +343,45 @@ class DeploymentThread(QThread):
 
         self.progress.emit(99, "Docker containers started successfully!")
 
-        # Install convenience commands
+        # Install diagnostic script and convenience commands
+        self._install_diagnostic_script(ssh, server_path)
         self._install_convenience_commands(ssh, server_path, username)
+
+    def _install_diagnostic_script(self, ssh, server_path):
+        """Install Pi diagnostic script to /opt/lablink/.
+
+        Args:
+            ssh: Active SSH connection
+            server_path: Path to server deployment on Pi
+        """
+        try:
+            # Create /opt/lablink directory with sudo
+            logger.info("Creating /opt/lablink directory...")
+            ssh.exec_command("sudo mkdir -p /opt/lablink", get_pty=True)
+
+            # Copy diagnose-pi.sh from server deployment to /opt/lablink
+            script_source = f"{server_path}/diagnose-pi.sh"
+            script_dest = "/opt/lablink/diagnose-pi.sh"
+
+            logger.info(f"Copying diagnostic script from {script_source} to {script_dest}...")
+            copy_cmd = f"sudo cp {script_source} {script_dest}"
+            stdin, stdout, stderr = ssh.exec_command(copy_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode().strip()
+                logger.warning(f"Failed to copy diagnostic script: {error}")
+                return
+
+            # Make script executable
+            chmod_cmd = f"sudo chmod +x {script_dest}"
+            ssh.exec_command(chmod_cmd, get_pty=True)
+
+            logger.info("Pi diagnostic script installed successfully")
+
+        except Exception as e:
+            logger.warning(f"Failed to install diagnostic script: {e}")
+            # Don't fail deployment if diagnostic script installation fails
 
     def _install_convenience_commands(self, ssh, server_path, username):
         """Install convenience shell commands for LabLink management."""
