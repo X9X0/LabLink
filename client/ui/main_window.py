@@ -614,7 +614,7 @@ class MainWindow(QMainWindow):
             "<li>Job scheduling and automation</li>"
             "<li>Equipment diagnostics and health monitoring</li>"
             "</ul>"
-            "<p>© 2024 LabLink Project</p>",
+            "<p>© 2025 LabLink Project</p>",
         )
 
     def closeEvent(self, event):

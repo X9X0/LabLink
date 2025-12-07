@@ -26,7 +26,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Server - Laboratory Equipment Control"
-LABEL version="0.27.0"
+LABEL version="1.2.0"
 
 WORKDIR /app
 

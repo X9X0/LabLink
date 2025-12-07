@@ -5,7 +5,7 @@ FROM nginx:alpine
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Web Dashboard"
-LABEL version="0.27.0"
+LABEL version="1.2.0"
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl

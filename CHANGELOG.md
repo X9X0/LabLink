@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2025-12-06
+
+### ✨ Added
+- **Server Update System**: Complete update management with stable/development modes (#114, #118, #119)
+  - Git-based version tracking and branch management
+  - Client-driven update workflow (client manages server updates)
+  - Automatic and manual Docker rebuild options
+  - Local and remote (SSH) server update support
+  - Progress tracking with visual feedback
+- **Smart Branch Filtering**: Intelligent branch display system (#120)
+  - Filters out dependabot and automated branches by default
+  - Shows only active branches (commits in last 3 months)
+  - Sorts branches by most recent commit
+  - "Show all branches" toggle for complete view
+- **UI Consolidation**: Merged duplicate server update sections (#120)
+  - Single unified "Server Updates" interface
+  - Reduced window height by 30-40%
+  - Progress bar for local and remote update operations
+- **Enhanced Dropdown Visibility**: System-wide dropdown menu styling improvements (#120)
+  - Light blue hover states for better readability
+  - Consistent black text for maximum contrast
+
+### 🐛 Fixed
+- SSH deployment wizard Next button not working (#121)
+- Multiple device discovery issues (#108)
+- Client login crash on connection (#106)
+- Ubuntu deployment configuration issues (#105)
+
+### 📝 Changed
+- Version system unified across all components (server, client, launcher)
+- Copyright updated to © 2025
+- All components now read from single VERSION file
+
+---
+
+## [1.0.1] - 2025-11-28
+
+### ✨ Added
+- **Equipment Control Panel**: Interactive control interface for equipment (#104)
+- **GUI System Launcher**: Comprehensive launcher with health checks and diagnostics (#70-74)
+  - Environment compatibility checking
+  - Dependency verification and installation
+  - LED status indicators
+  - One-click server/client launching
+  - Easter egg debug mode with branch selector
+- **Raspberry Pi Image Builder**: Automated Pi system image creation (#75-76)
+- **Waveform Analysis Tools**: Advanced signal processing and analysis (#79)
+- **Automated Test Sequence Builder**: Visual test automation system (#80)
+- **Remote Firmware Update**: Over-the-air firmware update capability (#81)
+- **Equipment Diagnostics System**: Comprehensive equipment health monitoring (#84-87)
+- **WebSocket Integration Completion**: Real-time event streaming across all panels (#77)
+
+### 🐛 Fixed
+- Equipment readings 404 errors (#99, #100)
+- BK Precision equipment reading issues (#101)
+- Disconnect UI improvements (#102)
+- Client-server communication on Raspberry Pi (#88-91)
+- Pi discovery service improvements (#92)
+
+### 📝 Changed
+- Updated Ubuntu setup and deployment guides (#68-69)
+- Enhanced launcher title bar and UI polish (#74)
+- Improved testing infrastructure and GUI launcher reliability (#70-73)
+
+---
+
 ## [1.0.0] - 2025-11-14
 
 ### 🎉 **First Production Release!**

@@ -726,6 +726,6 @@ Ensure these ports are open in firewall for proper operation.
 
 ---
 
-**Version:** 1.0.0
-**Last Updated:** 2024-11-08
-**Copyright:** © 2024 LabLink Project
+**Version:** 1.2.0
+**Last Updated:** 2025-12-06
+**Copyright:** © 2025 LabLink Project

@@ -1,6 +1,6 @@
 # LabLink
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
