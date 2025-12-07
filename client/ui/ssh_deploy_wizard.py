@@ -101,7 +101,9 @@ class DeploymentThread(QThread):
                 stats = self._fetch_system_stats(ssh)
                 self.stats.emit(stats)
             except Exception as e:
-                logger.debug(f"Failed to fetch initial stats: {e}")
+                logger.error(f"Failed to fetch initial stats: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
             # Create remote directory
             self.progress.emit(15, f"Creating remote directory: {server_path}")
@@ -290,6 +292,13 @@ class DeploymentThread(QThread):
         ssh.exec_command(f"cat > {env_path} << 'EOF'\n{env_content}\nEOF", get_pty=True)
 
         self.progress.emit(85, "Building and starting Docker containers...")
+
+        # Fetch stats before Docker build
+        try:
+            stats = self._fetch_system_stats(ssh)
+            self.stats.emit(stats)
+        except Exception as e:
+            logger.error(f"Failed to fetch stats before Docker build: {e}")
 
         # Run docker compose with progress monitoring
         docker_cmd = f"cd {server_path} && docker compose up -d --build"
@@ -563,44 +572,56 @@ WantedBy=multi-user.target
         try:
             # CPU usage - get percentage from top
             cpu_cmd = "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1"
-            stdin, stdout, stderr = ssh.exec_command(cpu_cmd, timeout=2)
+            stdin, stdout, stderr = ssh.exec_command(cpu_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
             cpu_usage = stdout.read().decode().strip()
+            logger.info(f"CPU raw output: '{cpu_usage}'")
             if cpu_usage:
-                stats["cpu"] = f"{float(cpu_usage):.1f}%"
+                try:
+                    stats["cpu"] = f"{float(cpu_usage):.1f}%"
+                except ValueError:
+                    logger.warning(f"Could not parse CPU value: {cpu_usage}")
         except Exception as e:
-            logger.debug(f"Failed to fetch CPU stats: {e}")
+            logger.error(f"Failed to fetch CPU stats: {e}")
 
         try:
             # Memory usage - percentage
             mem_cmd = "free | awk 'NR==2{printf \"%.1f\", $3*100/$2}'"
-            stdin, stdout, stderr = ssh.exec_command(mem_cmd, timeout=2)
+            stdin, stdout, stderr = ssh.exec_command(mem_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
             mem_usage = stdout.read().decode().strip()
+            logger.info(f"Memory raw output: '{mem_usage}'")
             if mem_usage:
                 stats["memory"] = f"{mem_usage}%"
         except Exception as e:
-            logger.debug(f"Failed to fetch memory stats: {e}")
+            logger.error(f"Failed to fetch memory stats: {e}")
 
         try:
             # Disk usage - root partition
             disk_cmd = "df -h / | awk 'NR==2{print $5}'"
-            stdin, stdout, stderr = ssh.exec_command(disk_cmd, timeout=2)
+            stdin, stdout, stderr = ssh.exec_command(disk_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
             disk_usage = stdout.read().decode().strip()
+            logger.info(f"Disk raw output: '{disk_usage}'")
             if disk_usage:
                 stats["disk"] = disk_usage
         except Exception as e:
-            logger.debug(f"Failed to fetch disk stats: {e}")
+            logger.error(f"Failed to fetch disk stats: {e}")
 
         try:
             # Network - get interface with most traffic (non-loopback)
             # Shows received/transmitted in human-readable format
             net_cmd = "cat /proc/net/dev | awk 'NR>2 && $1 !~ /lo:/ {rx+=$2; tx+=$10} END {printf \"↓%.1f MB ↑%.1f MB\", rx/1024/1024, tx/1024/1024}'"
-            stdin, stdout, stderr = ssh.exec_command(net_cmd, timeout=2)
+            stdin, stdout, stderr = ssh.exec_command(net_cmd)
+            stdout.channel.recv_exit_status()  # Wait for command to complete
             net_usage = stdout.read().decode().strip()
+            logger.info(f"Network raw output: '{net_usage}'")
             if net_usage and "MB" in net_usage:
                 stats["network"] = net_usage
         except Exception as e:
-            logger.debug(f"Failed to fetch network stats: {e}")
+            logger.error(f"Failed to fetch network stats: {e}")
 
+        logger.info(f"Fetched stats: {stats}")
         return stats
 
     def request_stop(self):
