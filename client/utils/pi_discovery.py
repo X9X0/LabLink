@@ -195,9 +195,15 @@ class PiDiscovery:
             if not is_pi and is_lablink:
                 logger.info(f"[{ip}] Pi discovered via LabLink probe (MAC masquerading detected: {mac_address})")
 
+            # Prefer hostname from LabLink server if available (most reliable)
+            final_hostname = hostname
+            if is_lablink and lablink_info and lablink_info.get("hostname"):
+                final_hostname = lablink_info.get("hostname")
+                logger.debug(f"[{ip}] Using hostname from LabLink: {final_hostname}")
+
             pi = DiscoveredPi(
                 ip_address=ip,
-                hostname=hostname,
+                hostname=final_hostname,
                 mac_address=mac_address,
                 is_lablink=is_lablink,
                 lablink_version=lablink_info.get("version") if lablink_info else None,
@@ -207,7 +213,7 @@ class PiDiscovery:
             )
 
             logger.info(
-                f"Found Raspberry Pi: {ip} ({hostname})"
+                f"Found Raspberry Pi: {ip} ({final_hostname})"
                 + (f" - LabLink v{pi.lablink_version}" if is_lablink else " - Regular Pi OS")
             )
 
@@ -359,7 +365,7 @@ class PiDiscovery:
             return None
 
     async def _get_hostname(self, ip: str) -> Optional[str]:
-        """Get hostname for an IP.
+        """Get hostname for an IP using multiple fast methods.
 
         Args:
             ip: IP address
@@ -367,17 +373,73 @@ class PiDiscovery:
         Returns:
             Hostname or None
         """
-        try:
-            # Reverse DNS lookup
-            loop = asyncio.get_event_loop()
-            hostname, _, _ = await asyncio.wait_for(
-                loop.run_in_executor(None, socket.gethostbyaddr, ip),
-                timeout=2.0
-            )
-            return hostname
+        # Try multiple methods in parallel for speed + reliability
+        # Method 1: mDNS .local resolution (fast, common on Raspberry Pis with Avahi)
+        # Method 2: Reverse DNS lookup (slower, depends on DNS config)
 
-        except (socket.herror, socket.gaierror, asyncio.TimeoutError):
+        async def try_mdns_local():
+            """Try mDNS .local hostname resolution."""
+            try:
+                # Common patterns for Raspberry Pi hostnames
+                # Try to resolve via .local (Avahi/mDNS)
+                loop = asyncio.get_event_loop()
+
+                # Try to get hostname via reverse lookup first to get the name,
+                # then verify it resolves back
+                try:
+                    hostname, _, _ = await asyncio.wait_for(
+                        loop.run_in_executor(None, socket.gethostbyaddr, ip),
+                        timeout=0.5  # Very short timeout for quick check
+                    )
+                    # Got a hostname, return it (strip domain if FQDN)
+                    return hostname.split('.')[0] if hostname else None
+                except:
+                    pass
+
+                # If reverse lookup failed, try common .local patterns
+                for pattern in [f"{ip.replace('.', '-')}.local", "raspberrypi.local"]:
+                    try:
+                        resolved_ip = await asyncio.wait_for(
+                            loop.run_in_executor(None, socket.gethostbyname, pattern),
+                            timeout=0.3
+                        )
+                        if resolved_ip == ip:
+                            return pattern.replace('.local', '')
+                    except:
+                        continue
+
+                return None
+            except Exception as e:
+                logger.debug(f"mDNS .local lookup error for {ip}: {e}")
+                return None
+
+        async def try_reverse_dns():
+            """Try standard reverse DNS lookup."""
+            try:
+                loop = asyncio.get_event_loop()
+                hostname, _, _ = await asyncio.wait_for(
+                    loop.run_in_executor(None, socket.gethostbyaddr, ip),
+                    timeout=1.0  # Reduced from 2.0 for faster detection
+                )
+                return hostname
+            except (socket.herror, socket.gaierror, asyncio.TimeoutError):
+                return None
+            except Exception as e:
+                logger.debug(f"Reverse DNS lookup error for {ip}: {e}")
+                return None
+
+        try:
+            # Run both methods concurrently, return first successful result
+            tasks = [try_mdns_local(), try_reverse_dns()]
+
+            # Wait for first successful result or all to complete
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                if result:
+                    return result
+
             return None
+
         except Exception as e:
             logger.debug(f"Hostname lookup error for {ip}: {e}")
             return None
@@ -406,10 +468,11 @@ class PiDiscovery:
                 data = response.json()
 
                 # Check if response looks like LabLink
-                if "server" in data or "version" in data:
+                if "version" in data or "name" in data:
                     return True, {
                         "version": data.get("version", "unknown"),
-                        "name": data.get("server", {}).get("name", "LabLink"),
+                        "name": data.get("name", "LabLink Server"),
+                        "hostname": data.get("hostname"),  # Get actual server hostname
                     }
 
             # Also try health endpoint

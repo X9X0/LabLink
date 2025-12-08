@@ -26,6 +26,7 @@ from api import (acquisition_router, alarms_router, analysis_router,
 from config.settings import settings
 from config.validator import validate_config
 from logging_config import LoggingMiddleware, get_logger, setup_logging
+from system import get_version
 from web.routes import register_web_routes
 from websocket_server import handle_websocket
 
@@ -587,7 +588,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LabLink Server",
     description="Remote control and data acquisition for lab equipment",
-    version="0.27.0",
+    version=get_version(),
     lifespan=lifespan,
 )
 
@@ -636,7 +637,8 @@ async def api_root():
     """API root endpoint."""
     return {
         "name": "LabLink Server",
-        "version": "0.27.0",
+        "version": get_version(),
+        "hostname": settings.server_name,
         "status": "running",
         "security_enabled": settings.enable_advanced_security,
     }

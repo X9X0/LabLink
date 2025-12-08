@@ -151,10 +151,12 @@ expand_image() {
     print_step "Image file verified: $(ls -lh "$img_file")"
 
     # Add extra space for LabLink installation
-    dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file" 2>&1 || {
+    if ! dd if=/dev/zero bs=1M count=$extra_space_mb >> "$img_file" 2>/dev/null; then
         print_error "Failed to expand image with dd"
+        # Show disk space for debugging
+        df -h /tmp >&2
         exit 1
-    }
+    fi
 
     # Resize partition
     parted "$img_file" resizepart 2 100% || true
