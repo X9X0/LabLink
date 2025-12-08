@@ -26,7 +26,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Server - Laboratory Equipment Control"
-LABEL version="1.2.0"
+LABEL version="1.2.3"
 
 WORKDIR /app
 
@@ -47,6 +47,9 @@ COPY --from=builder /root/.local /root/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
+
+# Copy VERSION file (needed by server/system/version.py)
+COPY VERSION /app/VERSION
 
 # Copy server code
 COPY server/ /app/server/

@@ -154,6 +154,29 @@ def update_changelog(changelog_file: Path, new_version: str, dry_run: bool = Fal
     print(f"  ⚠️  Please edit CHANGELOG.md to add release notes!")
 
 
+def update_dockerfile(dockerfile: Path, new_version: str, dry_run: bool = False) -> None:
+    """Update LABEL version in Dockerfile."""
+    if not dockerfile.exists():
+        print(f"⚠️  {dockerfile.name} not found, skipping")
+        return
+
+    content = dockerfile.read_text()
+
+    # Update LABEL version line
+    updated_content = re.sub(
+        r'LABEL version="[^"]+"',
+        f'LABEL version="{new_version}"',
+        content
+    )
+
+    if dry_run:
+        print(f"  [DRY-RUN] Would update {dockerfile.name} to version {new_version}")
+        return
+
+    dockerfile.write_text(updated_content)
+    print(f"✓ Updated {dockerfile.name} → {new_version}")
+
+
 def git_commit_and_tag(new_version: str, no_commit: bool = False, no_tag: bool = False, dry_run: bool = False) -> None:
     """Create git commit and tag for version bump."""
     if no_commit and no_tag:
@@ -169,9 +192,9 @@ def git_commit_and_tag(new_version: str, no_commit: bool = False, no_tag: bool =
     # Check for uncommitted changes
     result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
     if result.stdout.strip() and not dry_run:
-        # Stage VERSION, README, and CHANGELOG
-        print("📝 Staging VERSION, README.md, and CHANGELOG.md...")
-        subprocess.run(["git", "add", "VERSION", "README.md", "CHANGELOG.md"], check=False)
+        # Stage VERSION, README, CHANGELOG, and Dockerfile
+        print("📝 Staging VERSION, README.md, CHANGELOG.md, and Dockerfile.server...")
+        subprocess.run(["git", "add", "VERSION", "README.md", "CHANGELOG.md", "docker/Dockerfile.server"], check=False)
 
     if not no_commit:
         commit_msg = f"chore: Bump version to {new_version}"
@@ -235,6 +258,7 @@ def main():
     version_file = repo_root / "VERSION"
     readme_file = repo_root / "README.md"
     changelog_file = repo_root / "CHANGELOG.md"
+    dockerfile_server = repo_root / "docker" / "Dockerfile.server"
 
     print("=" * 70)
     print("LabLink Version Bump Tool")
@@ -269,6 +293,9 @@ def main():
 
     # Update CHANGELOG
     update_changelog(changelog_file, new_version, args.dry_run)
+
+    # Update Dockerfile
+    update_dockerfile(dockerfile_server, new_version, args.dry_run)
 
     # Git operations
     if not args.dry_run:
