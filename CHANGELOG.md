@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2025-12-08
+
+### 🐛 Fixed
+- **Issue #155**: Fixed server discovery performance issues (~50% discovery rate)
+  - Servers now properly broadcast themselves via mDNS/Zeroconf on startup
+  - Added mDNS server broadcasting to main.py startup lifecycle
+  - Improved hostname detection to use FQDN when available
+  - Discovery should now find ~100% of LabLink servers on local network
+  - Properly stops mDNS service during shutdown to prevent resource leaks
+
+---
+
+
 ## [1.2.2] - 2025-12-07
 
 ### 🐛 Fixed
