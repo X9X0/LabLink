@@ -1,34 +1,34 @@
 # GUI Framework
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
-PyQt6-Charts==6.6.0
-PyQt6-Charts-Qt6==6.6.0
-pyqtgraph==0.13.3
+PyQt6==6.10.1
+PyQt6-Qt6==6.10.1
+PyQt6-Charts==6.10.0
+PyQt6-Charts-Qt6==6.10.1
+pyqtgraph==0.14.0
 
 # Networking
-requests==2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
+requests==2.32.5  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
 websockets==12.0
-aiohttp==3.12.14  # Security: Fixes CVE-2024-23334 (directory traversal), CVE-2024-30251 (DoS), CVE-2024-52304 (request smuggling), CVE-2024-27306 (XSS), CVE-2024-23829 (HTTP parser), CVE-2025-53643 (smuggling)
+aiohttp==3.13.2  # Security: Fixes CVE-2024-23334 (directory traversal), CVE-2024-30251 (DoS), CVE-2024-52304 (request smuggling), CVE-2024-27306 (XSS), CVE-2024-23829 (HTTP parser), CVE-2025-53643 (smuggling)
 
 # SSH and Deployment
 paramiko==3.4.0
-scp==0.14.5
+scp==0.15.0
 
 # Network Discovery
 # scapy removed due to security vulnerability with no patch (pickle deserialization RCE, <=2.6.1)
 # Not used in codebase - was planned for network scanning but never implemented
-zeroconf==0.132.2
+zeroconf==0.148.0
 
 # Data Handling
 numpy==1.26.3
-pandas==2.2.0
-h5py==3.10.0
+pandas==2.3.3
+h5py==3.15.1
 
 # Configuration
-pydantic==2.5.3
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+python-dotenv==1.2.1
 
 # Utilities
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
 qasync
