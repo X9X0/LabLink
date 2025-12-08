@@ -487,6 +487,37 @@ async def lifespan(app: FastAPI):
     await update_manager.initialize()
     logger.info("Update manager initialized")
 
+    # Start mDNS server broadcasting for discovery
+    mdns_service = None
+    if settings.enable_mdns_discovery:
+        from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
+        from system import get_version
+
+        if ZEROCONF_AVAILABLE:
+            try:
+                logger.info("Starting mDNS server broadcasting...")
+                mdns_service = LabLinkMDNSService(
+                    port=settings.api_port,
+                    ws_port=settings.ws_port,
+                    server_name=settings.server_name,
+                    server_version=get_version(),
+                )
+                if mdns_service.start():
+                    logger.info(
+                        f"mDNS broadcasting enabled - Server discoverable as '{settings.server_name}'"
+                    )
+                else:
+                    logger.warning("Failed to start mDNS broadcasting")
+                    mdns_service = None
+            except Exception as e:
+                logger.error(f"Error starting mDNS service: {e}")
+                mdns_service = None
+        else:
+            logger.warning(
+                "mDNS discovery enabled but zeroconf package not installed. "
+                "Install with: pip install zeroconf"
+            )
+
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
     logger.info("=" * 70)
@@ -495,6 +526,11 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("LabLink Server shutting down...")
+
+    # Stop mDNS server broadcasting
+    if mdns_service:
+        logger.info("Stopping mDNS broadcasting...")
+        mdns_service.stop()
 
     # Stop equipment-alarm integrator
     from alarm import get_integrator

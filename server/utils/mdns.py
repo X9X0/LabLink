@@ -52,7 +52,15 @@ class LabLinkMDNSService:
         if server_name:
             self.server_name = server_name
         else:
-            self.server_name = socket.gethostname()
+            # Try to get FQDN first, fallback to hostname
+            fqdn = socket.getfqdn()
+            # Only use FQDN if it's actually different from the short hostname
+            # and doesn't resolve to localhost
+            hostname = socket.gethostname()
+            if fqdn != hostname and not fqdn.startswith("localhost"):
+                self.server_name = fqdn
+            else:
+                self.server_name = hostname
 
         self.zeroconf: Optional[Zeroconf] = None
         self.service_info: Optional[ServiceInfo] = None
