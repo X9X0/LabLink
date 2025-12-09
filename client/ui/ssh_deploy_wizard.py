@@ -85,8 +85,20 @@ class ServiceStatusMonitorThread(QThread):
             # Show initial status
             status_cmd = f"sudo systemctl status {self.service_name} --no-pager -l"
             stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
             output = stdout.read().decode()
-            self.status_update.emit(output)
+            error_output = stderr.read().decode()
+
+            if exit_code != 0 and not output:
+                # systemctl status returns non-zero for inactive services, but still provides output
+                # If there's no output at all, something is wrong
+                if error_output:
+                    self.status_update.emit(f"❌ Error getting service status: {error_output}")
+                else:
+                    self.status_update.emit(f"⚠️ Service status command returned exit code {exit_code}")
+
+            if output:
+                self.status_update.emit(output)
 
             # Monitor for a few seconds to catch any changes
             for i in range(3):
@@ -96,8 +108,11 @@ class ServiceStatusMonitorThread(QThread):
 
                 # Get updated status
                 stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+                exit_code = stdout.channel.recv_exit_status()
                 output = stdout.read().decode()
-                self.status_update.emit("\n--- Updated status ---\n" + output)
+
+                if output:
+                    self.status_update.emit("\n--- Updated status ---\n" + output)
 
             ssh.close()
             self.finished.emit()
@@ -1467,13 +1482,26 @@ class DeploymentProgressPage(QWizardPage):
         Args:
             status: Service status text
         """
+        # Log the status for debugging
+        logger.debug(f"Service status update received: {status[:200]}...")
+
         # Check if service is active
+        # For oneshot services with RemainAfterExit=yes, status shows "active (exited)"
+        # This is the correct/expected state for docker-compose services
         if "Active: active" in status or "Active: \x1b[0;1;32mactive" in status:
             self.service_status_indicator.setText("● Operational")
             self.service_status_indicator.setStyleSheet("color: green; font-weight: bold;")
-        elif "Active: inactive" in status or "Active: failed" in status:
+            logger.info("Service detected as operational")
+        elif "Active: inactive" in status or "Active: failed" in status or "Active: \x1b[0;1;31mfailed" in status:
             self.service_status_indicator.setText("● Not Running")
             self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
+            logger.warning("Service detected as not running or failed")
+        elif "could not be found" in status or "could not find" in status:
+            self.service_status_indicator.setText("● Service Not Found")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
+            logger.error("Service not found on system")
+        else:
+            logger.debug(f"Service status not recognized, keeping current state")
 
     def _on_status_monitoring_finished(self):
         """Handle status monitoring completion."""
