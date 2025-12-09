@@ -489,8 +489,14 @@ async def lifespan(app: FastAPI):
     logger.info("Update manager initialized")
 
     # Start mDNS server broadcasting for discovery
+    # NOTE: Disable inside Docker containers to avoid conflicts with host Avahi
     mdns_service = None
-    if settings.enable_mdns_discovery:
+
+    # Detect if running inside Docker
+    import os
+    running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False)
+
+    if settings.enable_mdns_discovery and not running_in_docker:
         from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
         from system import get_version
 
@@ -518,6 +524,8 @@ async def lifespan(app: FastAPI):
                 "mDNS discovery enabled but zeroconf package not installed. "
                 "Install with: pip install zeroconf"
             )
+    elif running_in_docker:
+        logger.info("Running in Docker - skipping mDNS broadcasting (host Avahi handles this)")
 
     logger.info("=" * 70)
     logger.info("LabLink Server ready!")
