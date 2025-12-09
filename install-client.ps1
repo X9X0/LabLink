@@ -168,12 +168,12 @@ function Create-LauncherScript {
 
     $launcherPath = "$LablinkDir\lablink-client.bat"
 
-    $batchContent = @"
+    $batchContent = @'
 @echo off
 cd /d "%~dp0client"
 call venv\Scripts\activate.bat
 python main.py %*
-"@
+'@
 
     Set-Content -Path $launcherPath -Value $batchContent
 
