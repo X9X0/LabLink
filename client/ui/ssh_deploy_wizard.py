@@ -54,6 +54,18 @@ class ServiceStatusMonitorThread(QThread):
             password = self.config.get("password")
             key_file = self.config.get("key_file")
 
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            import socket as sock
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    resolved_host = sock.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host} for status monitoring")
+                except sock.gaierror as e:
+                    self.status_update.emit(f"❌ Cannot resolve hostname {host}: {e}")
+                    self.finished.emit()
+                    return
+
             # Create SSH client
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -62,7 +74,7 @@ class ServiceStatusMonitorThread(QThread):
             try:
                 if auth_method == "password":
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         password=password,
@@ -71,7 +83,7 @@ class ServiceStatusMonitorThread(QThread):
                 elif auth_method == "key":
                     key_path = Path(key_file).expanduser()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         key_filename=str(key_path),
@@ -165,6 +177,18 @@ class DeploymentThread(QThread):
 
             self.progress.emit(5, "Connecting to remote host...")
 
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            import socket as sock
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    self.progress.emit(6, f"Resolving {host}...")
+                    resolved_host = sock.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host}")
+                except sock.gaierror as e:
+                    self.finished.emit(False, f"Cannot resolve hostname {host}: {e}")
+                    return
+
             # Create SSH client
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -173,7 +197,7 @@ class DeploymentThread(QThread):
             try:
                 if auth_method == "password":
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         password=password,
@@ -182,7 +206,7 @@ class DeploymentThread(QThread):
                 elif auth_method == "key":
                     key_path = Path(key_file).expanduser()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         key_filename=str(key_path),
@@ -1081,6 +1105,7 @@ class ConnectionPage(QWizardPage):
         """Test SSH connection."""
         try:
             import paramiko
+            import socket
 
             host = self.host_edit.text()
             port = self.port_spin.value()
@@ -1092,6 +1117,17 @@ class ConnectionPage(QWizardPage):
 
             self.test_result_label.setText("Testing...")
 
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    self.test_result_label.setText("Resolving .local hostname...")
+                    resolved_host = socket.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host}")
+                except socket.gaierror as e:
+                    self.test_result_label.setText(f"❌ Cannot resolve {host}: {e}")
+                    return
+
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -1099,7 +1135,7 @@ class ConnectionPage(QWizardPage):
                 if self.password_radio.isChecked():
                     password = self.password_edit.text()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         password=password,
@@ -1109,7 +1145,7 @@ class ConnectionPage(QWizardPage):
                     key_file = self.key_edit.text()
                     key_path = Path(key_file).expanduser()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         key_filename=str(key_path),
@@ -1117,7 +1153,10 @@ class ConnectionPage(QWizardPage):
                     )
 
                 ssh.close()
-                self.test_result_label.setText("✅ Connection successful!")
+                if host != resolved_host:
+                    self.test_result_label.setText(f"✅ Connection successful! ({host} → {resolved_host})")
+                else:
+                    self.test_result_label.setText("✅ Connection successful!")
             except Exception as e:
                 self.test_result_label.setText(f"❌ Connection failed: {e}")
 
