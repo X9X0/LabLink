@@ -16,6 +16,7 @@ try:
         QLabel,
         QLineEdit,
         QMessageBox,
+        QProgressBar,
         QPushButton,
         QTableWidget,
         QTableWidgetItem,
@@ -36,6 +37,7 @@ class ScanWorker(QThread):
 
     finished = pyqtSignal(list, float)  # Emits (discovered_pis, scan_time)
     error = pyqtSignal(str)  # Emits error message
+    progress = pyqtSignal(int, int)  # Emits (current, total)
 
     def __init__(self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20):
         super().__init__()
@@ -43,6 +45,10 @@ class ScanWorker(QThread):
         self.timeout = timeout
         self.batch_size = batch_size
         self.discovery = PiDiscovery()
+
+    def _on_progress(self, current: int, total: int):
+        """Progress callback from discovery."""
+        self.progress.emit(current, total)
 
     def run(self):
         """Execute the network scan in background thread."""
@@ -55,7 +61,8 @@ class ScanWorker(QThread):
                 self.discovery.discover_network(
                     network=self.network,
                     timeout=self.timeout,
-                    batch_size=self.batch_size
+                    batch_size=self.batch_size,
+                    progress_callback=self._on_progress
                 )
             )
             loop.close()
@@ -150,6 +157,16 @@ class PiDiscoveryDialog(QDialog):
         scan_layout.addLayout(scan_btn_layout)
         scan_group.setLayout(scan_layout)
         layout.addWidget(scan_group)
+
+        # Progress bar (hidden by default)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("Scanning: %v / %m hosts (%p%)")
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
 
         # Results table
         results_group = QGroupBox("Discovered Raspberry Pis")
@@ -263,11 +280,27 @@ class PiDiscoveryDialog(QDialog):
         self.scan_status.setStyleSheet("color: #2196F3;")
         self.results_table.setRowCount(0)
 
+        # Show and reset progress bar
+        self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.show()
+
         # Start scan in background
         self.scan_worker = ScanWorker(network=network, timeout=timeout, batch_size=batch_size)
         self.scan_worker.finished.connect(self._on_scan_complete)
         self.scan_worker.error.connect(self._on_scan_error)
+        self.scan_worker.progress.connect(self._on_scan_progress)
         self.scan_worker.start()
+
+    def _on_scan_progress(self, current: int, total: int):
+        """Handle scan progress update.
+
+        Args:
+            current: Current number of hosts scanned
+            total: Total number of hosts to scan
+        """
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(current)
 
     def _on_scan_complete(self, discovered_pis: list, scan_time: float):
         """Handle scan completion.
@@ -278,6 +311,7 @@ class PiDiscoveryDialog(QDialog):
         """
         self.scan_btn.setEnabled(True)
         self.scan_btn.setText("Scan Network")
+        self.progress_bar.hide()
 
         # Update status
         pis_found = len(discovered_pis)
@@ -308,6 +342,7 @@ class PiDiscoveryDialog(QDialog):
         """
         self.scan_btn.setEnabled(True)
         self.scan_btn.setText("Scan Network")
+        self.progress_bar.hide()
         self.scan_status.setText(f"Scan failed: {error_msg}")
         self.scan_status.setStyleSheet("color: #f44336;")
 

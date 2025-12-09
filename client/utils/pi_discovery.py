@@ -46,7 +46,8 @@ class PiDiscovery:
         self.scan_in_progress = False
 
     async def discover_network(
-        self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20
+        self, network: Optional[str] = None, timeout: float = 2.0, batch_size: int = 20,
+        progress_callback: Optional[callable] = None
     ) -> List[DiscoveredPi]:
         """Discover Raspberry Pis on the network.
 
@@ -55,6 +56,7 @@ class PiDiscovery:
                     If None, auto-detect local network
             timeout: Timeout for each host check in seconds
             batch_size: Number of hosts to scan concurrently
+            progress_callback: Optional callback(current, total) for progress updates
 
         Returns:
             List of discovered Raspberry Pis
@@ -100,6 +102,11 @@ class PiDiscovery:
                 for result in results:
                     if isinstance(result, DiscoveredPi):
                         self.discovered_pis.append(result)
+
+                # Report progress
+                if progress_callback:
+                    scanned = min(i + batch_size, len(hosts))
+                    progress_callback(scanned, len(hosts))
 
             logger.info(f"Discovery complete: found {len(self.discovered_pis)} Raspberry Pi(s)")
 
