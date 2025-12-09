@@ -635,12 +635,10 @@ app.include_router(system_router, prefix="/api", tags=["system"])
 @app.get("/api")
 async def api_root():
     """API root endpoint."""
-    import socket
     return {
         "name": "LabLink Server",
         "version": get_version(),
-        "hostname": socket.gethostname(),  # Actual system hostname
-        "server_name": settings.server_name,  # Configured friendly name
+        "hostname": settings.server_name,  # Host system hostname (set via env var)
         "status": "running",
         "security_enabled": settings.enable_advanced_security,
     }
