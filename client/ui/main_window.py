@@ -649,10 +649,13 @@ class MainWindow(QMainWindow):
 
     def show_about(self):
         """Show about dialog."""
+        from PyQt6.QtWidgets import QApplication
+        version = QApplication.applicationVersion()
+
         QMessageBox.about(
             self,
             "About LabLink",
-            "<h2>LabLink v0.10.0</h2>"
+            f"<h2>LabLink v{version}</h2>"
             "<p>Laboratory Equipment Control and Data Acquisition System</p>"
             "<p>A modular client-server application for remote control and data "
             "acquisition from laboratory equipment.</p>"
