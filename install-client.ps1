@@ -170,9 +170,30 @@ function Create-LauncherScript {
 
     $batchContent = @'
 @echo off
-cd /d "%~dp0client"
-call venv\Scripts\activate.bat
-python main.py %*
+REM LabLink Client Launcher
+REM This batch file activates the virtual environment and runs the client
+
+REM Change to LabLink root directory (handles spaces in path)
+cd /d "%~dp0"
+
+REM Check if virtual environment exists
+if not exist "client\venv\Scripts\activate.bat" (
+    echo ERROR: Virtual environment not found!
+    echo Please run install-client.bat again.
+    pause
+    exit /b 1
+)
+
+REM Activate virtual environment (path is relative, no quotes needed)
+call "client\venv\Scripts\activate.bat"
+if errorlevel 1 (
+    echo ERROR: Failed to activate virtual environment!
+    pause
+    exit /b 1
+)
+
+REM Run LabLink client from root directory
+python "client\main.py" %*
 '@
 
     Set-Content -Path $launcherPath -Value $batchContent

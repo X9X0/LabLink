@@ -202,6 +202,39 @@ If the desktop shortcut doesn't launch LabLink:
 2. Check that "Target" points to `lablink-client.bat`
 3. Check that "Start in" points to your LabLink folder
 
+### ModuleNotFoundError: No module named 'client'
+
+If you see this error when trying to run the client:
+
+```
+ModuleNotFoundError: No module named 'client'
+```
+
+**Cause:** The working directory is incorrect. The client must be run from the LabLink root directory, not from inside the `client` folder.
+
+**Solution:**
+1. Make sure you're in the LabLink root directory (e.g., `C:\Users\YourName\LabLink`)
+2. Run the launcher: `.\lablink-client.bat`
+3. Or run directly: `python client\main.py` (after activating venv)
+
+**If you installed before this fix:**
+1. Navigate to your LabLink folder in PowerShell
+2. Run the installer again: `powershell -ExecutionPolicy Bypass -File .\install-client.ps1`
+3. This will recreate the `lablink-client.bat` with the correct paths
+4. The installer will detect the existing installation and update files
+
+**Quick Fix Without Reinstalling:**
+You can manually fix the `lablink-client.bat` file:
+1. Open `lablink-client.bat` in Notepad
+2. Replace the contents with:
+```batch
+@echo off
+cd /d "%~dp0"
+call "client\venv\Scripts\activate.bat"
+python "client\main.py" %*
+```
+3. Save and try running it again
+
 ### SD Card Writer Shows "Not Supported on Windows"
 
 The SD card image writer is not implemented for Windows in the GUI. Use one of these alternatives:
