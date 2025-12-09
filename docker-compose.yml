@@ -33,6 +33,7 @@ services:
     environment:
       # Server configuration
       - LABLINK_HOST=0.0.0.0
+      - LABLINK_SERVER_NAME=${LABLINK_SERVER_NAME:-LabLink Server}
       - LABLINK_API_PORT=8000
       - LABLINK_WS_PORT=8001
       - LABLINK_DEBUG=${LABLINK_DEBUG:-false}
