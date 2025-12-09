@@ -1,4 +1,4 @@
-# LabLink GUI Client - Windows Installation Script
+﻿# LabLink GUI Client - Windows Installation Script
 # PowerShell Script for Windows 10/11
 #
 # Usage:
