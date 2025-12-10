@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.4] - 2025-12-09
+
+### ✨ Added
+- **Issue #157**: Windows installation improvements
+  - Added `install-client.bat` wrapper for one-click installation (handles PowerShell execution policy)
+  - Comprehensive Windows installation guide (WINDOWS_INSTALL.md) with troubleshooting
+  - Added `lablink-client.bat` launcher script for easy client execution
+  - All three installation methods documented (batch wrapper, PowerShell direct, remote install)
+
+### 🐛 Fixed
+- **Issue #157**: Fixed PowerShell execution policy blocking Windows installation
+  - Windows users no longer see "scripts is disabled on this system" error
+  - Batch wrapper automatically bypasses execution policy for installation
+  - Updated documentation to explain Windows security features and solutions
+
+### 📝 Changed
+- Updated `.gitignore` to exclude `.claude/` and `*.log` files
+- Updated README.md with prominent Windows installation section
+- Fixed documentation to show correct launcher script paths
+
+---
+
+
 ## [1.2.3] - 2025-12-08
 
 ### 🐛 Fixed
