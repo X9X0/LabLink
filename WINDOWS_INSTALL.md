@@ -143,9 +143,10 @@ If you prefer to install manually or the script doesn't work for some reason:
    - Create a batch file `lablink-client.bat` in the LabLink folder:
    ```batch
    @echo off
-   cd /d "%~dp0client"
-   call venv\Scripts\activate.bat
-   python main.py %*
+   cd /d "%~dp0"
+   set PYTHONPATH=%~dp0
+   call "client\venv\Scripts\activate.bat"
+   python "client\main.py" %*
    ```
    - Right-click the batch file and create a shortcut to your desktop
 
