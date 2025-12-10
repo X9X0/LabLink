@@ -51,13 +51,6 @@ class MainWindow(QMainWindow):
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
 
-        # Apply visual styling - background only
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #ecf0f1;
-            }
-        """)
-
         self._setup_ui()
         self._setup_menus()
         self._setup_status_bar()
@@ -71,9 +64,6 @@ class MainWindow(QMainWindow):
         # Central widget with tab layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
-        # Set central widget background
-        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
 
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(15, 15, 15, 15)
