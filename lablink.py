@@ -70,6 +70,38 @@ def check_and_install_pip():
         print("="*70 + "\n")
         sys.exit(1)
 
+def get_venv_paths(venv_name: str = "venv") -> Dict[str, Path]:
+    """Get platform-appropriate virtual environment paths.
+
+    On Windows, venv uses 'Scripts' directory with .exe extensions.
+    On Linux/macOS, venv uses 'bin' directory without extensions.
+
+    Args:
+        venv_name: Name of the virtual environment directory
+
+    Returns:
+        Dictionary with 'base', 'bin', 'python', and 'pip' paths
+    """
+    venv_base = Path(venv_name)
+
+    if sys.platform == "win32":
+        # Windows uses Scripts directory
+        venv_bin = venv_base / "Scripts"
+        venv_python = venv_bin / "python.exe"
+        venv_pip = venv_bin / "pip.exe"
+    else:
+        # Unix-like systems (Linux, macOS) use bin directory
+        venv_bin = venv_base / "bin"
+        venv_python = venv_bin / "python"
+        venv_pip = venv_bin / "pip"
+
+    return {
+        'base': venv_base,
+        'bin': venv_bin,
+        'python': venv_python,
+        'pip': venv_pip
+    }
+
 # Qt imports with bootstrap handling
 try:
     from PyQt6.QtWidgets import (
@@ -88,7 +120,8 @@ except ImportError:
     check_and_install_pip()
 
     # Check if Python is externally managed (PEP 668)
-    venv_path = Path("venv")
+    venv_paths = get_venv_paths()
+    venv_path = venv_paths['base']
     needs_venv = False
 
     # Check for EXTERNALLY-MANAGED marker
@@ -120,8 +153,8 @@ except ImportError:
                 sys.exit(1)
 
         # Install PyQt6 in venv
-        venv_python = venv_path / "bin" / "python"
-        venv_pip = venv_path / "bin" / "pip"
+        venv_python = venv_paths['python']
+        venv_pip = venv_paths['pip']
 
         try:
             print("\nInstalling PyQt6 in virtual environment...")
@@ -143,7 +176,10 @@ except ImportError:
             print(f"\nError: {e}")
             print("\nPlease try manually:")
             print("  python3 -m venv venv")
-            print("  source venv/bin/activate")
+            if sys.platform == "win32":
+                print("  venv\\Scripts\\activate")
+            else:
+                print("  source venv/bin/activate")
             print("  pip install PyQt6")
             print(f"  python3 {sys.argv[0]}")
             print("="*70 + "\n")
@@ -169,7 +205,10 @@ except ImportError:
             print("  python3 -m pip install PyQt6")
             print("\nOr use a virtual environment:")
             print("  python3 -m venv venv")
-            print("  source venv/bin/activate")
+            if sys.platform == "win32":
+                print("  venv\\Scripts\\activate")
+            else:
+                print("  source venv/bin/activate")
             print("  pip install PyQt6")
             print(f"  python3 {sys.argv[0]}")
             print("="*70 + "\n")
@@ -369,7 +408,8 @@ class CheckWorker(QThread):
         # Virtual environment check
         self.progress.emit("Checking virtual environment...")
         in_venv = sys.prefix != sys.base_prefix
-        venv_path = Path("venv")
+        venv_paths = get_venv_paths()
+        venv_path = venv_paths['base']
 
         if in_venv:
             results['venv'] = CheckResult(
@@ -710,7 +750,8 @@ class CheckWorker(QThread):
         }
 
         # Determine which Python to use for checking
-        venv_python = Path("venv/bin/python")
+        venv_paths = get_venv_paths()
+        venv_python = venv_paths['python']
         use_venv = venv_python.exists()
 
         for pkg, description in all_utils.items():
@@ -866,7 +907,8 @@ class CheckWorker(QThread):
         }
 
         # Determine which Python to use for checking
-        venv_python = Path("venv/bin/python")
+        venv_paths = get_venv_paths()
+        venv_python = venv_paths['python']
         use_venv = venv_python.exists()
 
         logger.debug(f"Checking {len(packages)} packages, use_venv={use_venv}, venv_python={venv_python}")
@@ -965,7 +1007,8 @@ class FixWorker(QThread):
         sorted_issues = sorted(self.issues, key=fix_priority)
 
         # Check environment status
-        venv_exists = Path("venv/bin/pip").exists()
+        venv_paths = get_venv_paths()
+        venv_exists = venv_paths['pip'].exists()
         externally_managed = self.launcher._check_externally_managed()
         logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
 
@@ -979,8 +1022,9 @@ class FixWorker(QThread):
                     subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
 
                 elif issue.fix_command == "create_venv":
-                    venv_path = Path("venv")
-                    venv_pip = venv_path / "bin" / "pip"
+                    venv_paths = get_venv_paths()
+                    venv_path = venv_paths['base']
+                    venv_pip = venv_paths['pip']
 
                     if venv_path.exists() and not venv_pip.exists():
                         logger.warning(f"Venv exists but is broken, recreating...")
@@ -1004,7 +1048,8 @@ class FixWorker(QThread):
                         logger.info("Installing client utilities packages")
                         packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
 
-                        venv_pip = Path("venv/bin/pip")
+                        venv_paths = get_venv_paths()
+                        venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
                             subprocess.check_call([str(venv_pip), 'install'] + packages)
@@ -1018,7 +1063,8 @@ class FixWorker(QThread):
                         req_file = f"{target}/requirements.txt"
                         logger.info(f"Installing pip packages from {req_file}")
 
-                        venv_pip = Path("venv/bin/pip")
+                        venv_paths = get_venv_paths()
+                        venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
                             subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
@@ -1953,7 +1999,8 @@ class LabLinkLauncher(QMainWindow):
         server_dir = lablink_root / "server"
 
         # Use venv python if available, otherwise system python (use absolute path)
-        venv_python = lablink_root / "venv" / "bin" / "python"
+        venv_paths = get_venv_paths()
+        venv_python = lablink_root / venv_paths['python']
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
@@ -1999,7 +2046,8 @@ class LabLinkLauncher(QMainWindow):
         lablink_root = Path.cwd().absolute()
 
         # Use venv python if available, otherwise system python (use absolute path)
-        venv_python = lablink_root / "venv" / "bin" / "python"
+        venv_paths = get_venv_paths()
+        venv_python = lablink_root / venv_paths['python']
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
