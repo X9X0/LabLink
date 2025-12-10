@@ -1,6 +1,6 @@
 # LabLink
 
-![Version](https://img.shields.io/badge/version-1.2.3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
@@ -382,9 +382,30 @@ The **LabLink Launcher** will:
 
 #### GUI Client Setup
 
+**Windows Users** - Automated Installation:
+
+1. Download or clone the repository
+2. Double-click `install-client.bat` (or run in PowerShell):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+   ```
+
+**Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](WINDOWS_INSTALL.md) for detailed instructions.
+
+**Linux/macOS Users:**
+
+1. Run the installation script:
+   ```bash
+   ./install-client.sh
+   ```
+
+**Manual Installation (All Platforms):**
+
 1. Install dependencies:
    ```bash
    cd client
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
@@ -398,11 +419,15 @@ The **LabLink Launcher** will:
    - Use "Localhost" quick connect for local server
    - Or enter custom hostname/IP and ports
 
-For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTED.md) and [Client README](client/README.md).
+For detailed setup instructions:
+- **Windows:** See [Windows Installation Guide](WINDOWS_INSTALL.md)
+- **Linux/macOS:** See [Getting Started Guide](docs/GETTING_STARTED.md)
+- **General:** See [Client README](client/README.md)
 
 ## Documentation
 
-- **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - NEW! Step-by-step guide for Ubuntu 24.04 users
+- **[Windows Installation Guide](WINDOWS_INSTALL.md)** - Complete Windows installation guide (fixes execution policy errors)
+- **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - Step-by-step guide for Ubuntu 24.04 users
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
 - [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
@@ -419,9 +444,9 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v1.2.3 (Production Ready) 🎉
+**Current Version**: v1.2.4 (Production Ready) 🎉
 
-**Release Date**: December 08, 2025
+**Release Date**: December 09, 2025
 
 **Development Phases Complete**:
 - ✅ REST API operational (90+ endpoints)

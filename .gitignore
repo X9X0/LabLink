@@ -28,6 +28,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -43,6 +44,7 @@ Thumbs.db
 data/
 logs/
 *_debug.log
+*.log
 
 # Configuration
 .env
