@@ -184,13 +184,16 @@ if not exist "client\venv\Scripts\activate.bat" (
     exit /b 1
 )
 
-REM Activate virtual environment (path is relative, no quotes needed)
+REM Activate virtual environment
 call "client\venv\Scripts\activate.bat"
 if errorlevel 1 (
     echo ERROR: Failed to activate virtual environment!
     pause
     exit /b 1
 )
+
+REM Set PYTHONPATH to LabLink root so Python can find the client module
+set PYTHONPATH=%~dp0
 
 REM Run LabLink client from root directory
 python "client\main.py" %*
