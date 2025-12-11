@@ -107,7 +107,7 @@ try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QPushButton, QGroupBox, QTextEdit, QDialog, QMessageBox,
-        QProgressBar, QScrollArea, QFrame
+        QProgressBar, QScrollArea, QFrame, QComboBox
     )
     from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize
     from PyQt6.QtGui import QPainter, QColor, QFont, QPalette, QIcon
@@ -1261,6 +1261,23 @@ class LabLinkLauncher(QMainWindow):
         self.header.mousePressEvent = self._header_clicked
         main_layout.addWidget(self.header)
 
+        # Theme selector
+        theme_layout = QHBoxLayout()
+        theme_layout.addStretch()
+        theme_label = QLabel("Theme:")
+        theme_label.setFont(QFont("Arial", 10))
+        theme_layout.addWidget(theme_label)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Light", "Dark", "Auto"])
+        self.theme_combo.setCurrentText(get_theme_setting().capitalize())
+        self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
+        self.theme_combo.setFont(QFont("Arial", 10))
+        self.theme_combo.setMinimumWidth(120)
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        main_layout.addLayout(theme_layout)
+
         # Status indicators section
         status_group = QGroupBox("System Status")
         status_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
@@ -1592,6 +1609,23 @@ class LabLinkLauncher(QMainWindow):
                 msg.setInformativeText("Server and client will now launch normally.")
                 msg.exec()
                 logger.info("Debug mode disabled")
+
+    def _on_theme_changed(self, theme_text):
+        """Handle theme change from combo box."""
+        theme = theme_text.lower()
+        save_theme_setting(theme)
+
+        # Apply new theme
+        app = QApplication.instance()
+        app.setStyleSheet(get_app_stylesheet(theme))
+        app.setProperty("theme", theme)
+
+        # Show restart hint
+        QMessageBox.information(
+            self,
+            "Theme Changed",
+            f"Theme changed to {theme_text}.\\n\\nSome elements may require a restart to fully update."
+        )
 
     def check_all(self):
         """Check all system components."""
