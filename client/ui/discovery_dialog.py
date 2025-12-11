@@ -97,9 +97,7 @@ class DiscoveryDialog(QDialog):
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(self._on_connect)
         self.connect_btn.setEnabled(False)
-        self.connect_btn.setStyleSheet(
-            "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;"
-        )
+        self.connect_btn.setProperty("buttonStyle", "success")  # Green button from theme
         button_layout.addWidget(self.connect_btn)
 
         cancel_btn = QPushButton("Cancel")

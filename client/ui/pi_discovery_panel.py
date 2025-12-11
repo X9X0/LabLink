@@ -144,9 +144,7 @@ class PiDiscoveryDialog(QDialog):
         scan_btn_layout = QHBoxLayout()
         self.scan_btn = QPushButton("Scan Network")
         self.scan_btn.clicked.connect(self._on_scan)
-        self.scan_btn.setStyleSheet(
-            "background-color: #2196F3; color: white; font-weight: bold; padding: 8px;"
-        )
+        # Default button style from theme (blue)
         scan_btn_layout.addWidget(self.scan_btn)
 
         self.scan_status = QLabel("Ready to scan")

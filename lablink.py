@@ -107,7 +107,7 @@ try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QPushButton, QGroupBox, QTextEdit, QDialog, QMessageBox,
-        QProgressBar, QScrollArea, QFrame
+        QProgressBar, QScrollArea, QFrame, QComboBox
     )
     from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize
     from PyQt6.QtGui import QPainter, QColor, QFont, QPalette, QIcon
@@ -214,6 +214,17 @@ except ImportError:
             print("="*70 + "\n")
             sys.exit(1)
 
+# Import theme system (after PyQt6 is confirmed to be available)
+try:
+    from client.ui.theme import get_app_stylesheet, get_theme_setting, save_theme_setting
+except ImportError:
+    # Fallback if theme module not available
+    def get_app_stylesheet(theme="light"):
+        return ""
+    def get_theme_setting():
+        return "light"
+    def save_theme_setting(theme):
+        pass
 
 # Status levels
 class StatusLevel(Enum):
@@ -246,14 +257,6 @@ class LEDIndicator(QWidget):
         self.status = StatusLevel.UNKNOWN
         self.setMinimumSize(200, 60)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("""
-            LEDIndicator {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                margin: 2px;
-            }
-        """)
 
     def set_status(self, status: StatusLevel):
         """Update the LED status and repaint."""
@@ -265,9 +268,15 @@ class LEDIndicator(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # Get theme-aware colors from palette
+        palette = self.palette()
+        bg_color = palette.color(palette.ColorRole.Base)
+        border_color = palette.color(palette.ColorRole.Mid)
+        text_color = palette.color(palette.ColorRole.Text)
+
         # Draw widget background with border
-        painter.setPen(QColor("#dee2e6"))
-        painter.setBrush(QColor("#f8f9fa"))
+        painter.setPen(border_color)
+        painter.setBrush(bg_color)
         painter.drawRoundedRect(0, 0, self.width()-1, self.height()-1, 6, 6)
 
         # Draw LED circle
@@ -283,12 +292,12 @@ class LEDIndicator(QWidget):
         painter.drawEllipse(12, 15, 30, 30)
 
         # Draw LED border for definition
-        painter.setPen(QColor("#2c3e50"))
+        painter.setPen(text_color)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(15, 18, 24, 24)
 
         # Draw label
-        painter.setPen(QColor("#2c3e50"))
+        painter.setPen(text_color)
         font = QFont()
         font.setPointSize(10)
         font.setBold(True)
@@ -1193,14 +1202,6 @@ class LabLinkLauncher(QMainWindow):
         self.setWindowTitle("LabLink Launcher")
         self.setMinimumSize(800, 700)
 
-        # Add defined border to main window
-        self.setStyleSheet("""
-            QMainWindow {
-                border: 6px solid #0d1419;
-                background-color: #ecf0f1;
-            }
-        """)
-
         # Store check results
         self.env_results = {}
         self.sys_results = {}
@@ -1228,9 +1229,6 @@ class LabLinkLauncher(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Set main window background
-        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
-
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(15)
@@ -1240,34 +1238,29 @@ class LabLinkLauncher(QMainWindow):
         self.header = QLabel("LabLink System Launcher")
         self.header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         self.header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.header.setStyleSheet("""
-            padding: 20px;
-            background-color: #1a252f;
-            color: white;
-            border-radius: 8px;
-            border: 2px solid #0d1419;
-        """)
+        self.header.setProperty("headerLabel", True)
         self.header.mousePressEvent = self._header_clicked
         main_layout.addWidget(self.header)
+
+        # Theme selector
+        theme_layout = QHBoxLayout()
+        theme_layout.addStretch()
+        theme_label = QLabel("Theme:")
+        theme_label.setFont(QFont("Arial", 10))
+        theme_layout.addWidget(theme_label)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Light", "Dark", "Auto"])
+        self.theme_combo.setCurrentText(get_theme_setting().capitalize())
+        self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
+        self.theme_combo.setFont(QFont("Arial", 10))
+        self.theme_combo.setMinimumWidth(120)
+        theme_layout.addWidget(self.theme_combo)
+        main_layout.addLayout(theme_layout)
 
         # Status indicators section
         status_group = QGroupBox("System Status")
         status_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        status_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-        """)
         status_layout = QVBoxLayout()
         status_layout.setSpacing(8)
 
@@ -1303,52 +1296,16 @@ class LabLinkLauncher(QMainWindow):
         self.progress_label = QLabel("Ready")
         self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.progress_label.setFont(QFont("Arial", 10))
-        self.progress_label.setStyleSheet("""
-            QLabel {
-                padding: 8px;
-                background-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                color: #2c3e50;
-            }
-        """)
+        self.progress_label.setProperty("statusLabel", True)
         main_layout.addWidget(self.progress_label)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #bdc3c7;
-                border-radius: 6px;
-                background-color: white;
-                text-align: center;
-                height: 25px;
-            }
-            QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 4px;
-            }
-        """)
         main_layout.addWidget(self.progress_bar)
 
         # Control buttons
         control_group = QGroupBox("Actions")
         control_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        control_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-        """)
         control_layout = QVBoxLayout()
         control_layout.setSpacing(10)
 
@@ -1356,21 +1313,6 @@ class LabLinkLauncher(QMainWindow):
         check_btn = QPushButton("🔄 Refresh Status")
         check_btn.setFont(QFont("Arial", 11))
         check_btn.setMinimumHeight(40)
-        check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ecf0f1;
-                border: 2px solid #bdc3c7;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #d5dbdb;
-                border: 2px solid #95a5a6;
-            }
-            QPushButton:pressed {
-                background-color: #bdc3c7;
-            }
-        """)
         check_btn.clicked.connect(self.check_all)
         control_layout.addWidget(check_btn)
 
@@ -1378,22 +1320,7 @@ class LabLinkLauncher(QMainWindow):
         self.fix_btn = QPushButton("🔧 Fix Issues Automatically")
         self.fix_btn.setFont(QFont("Arial", 11))
         self.fix_btn.setMinimumHeight(40)
-        self.fix_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border: 2px solid #d68910;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #e67e22;
-                border: 2px solid #ca6f1e;
-            }
-            QPushButton:pressed {
-                background-color: #d68910;
-            }
-        """)
+        self.fix_btn.setProperty("buttonStyle", "warning")
         self.fix_btn.clicked.connect(self.fix_issues)
         control_layout.addWidget(self.fix_btn)
 
@@ -1401,7 +1328,6 @@ class LabLinkLauncher(QMainWindow):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("background-color: #bdc3c7; margin: 10px 0px;")
         control_layout.addWidget(line)
 
         # Launch buttons
@@ -1411,52 +1337,13 @@ class LabLinkLauncher(QMainWindow):
         self.server_btn = QPushButton("▶️  Start Server")
         self.server_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.server_btn.setMinimumHeight(50)
-        self.server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: 2px solid #1e8449;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-                border: 2px solid #186a3b;
-            }
-            QPushButton:pressed {
-                background-color: #1e8449;
-            }
-            QPushButton:disabled {
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }
-        """)
+        self.server_btn.setProperty("buttonStyle", "success")
         self.server_btn.clicked.connect(self.launch_server)
         launch_layout.addWidget(self.server_btn)
 
         self.client_btn = QPushButton("▶️  Start Client")
         self.client_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.client_btn.setMinimumHeight(50)
-        self.client_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: 2px solid #2471a3;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-                border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
-                background-color: #2471a3;
-            }
-            QPushButton:disabled {
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }
-        """)
         self.client_btn.clicked.connect(self.launch_client)
         launch_layout.addWidget(self.client_btn)
 
@@ -1469,7 +1356,7 @@ class LabLinkLauncher(QMainWindow):
         info_label = QLabel("💡 Click on any LED indicator to see detailed information")
         info_label.setFont(QFont("Arial", 9))
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
+        info_label.setProperty("infoLabel", True)
         main_layout.addWidget(info_label)
 
     def _check_externally_managed(self) -> bool:
@@ -1515,13 +1402,8 @@ class LabLinkLauncher(QMainWindow):
                 self._click_count = 0  # Reset
 
                 # Change header to indicate debug mode
-                self.header.setStyleSheet("""
-                    padding: 20px;
-                    background-color: #c0392b;
-                    color: white;
-                    border-radius: 8px;
-                    border: 2px solid #e74c3c;
-                """)
+                self.header.setProperty("debugMode", True)
+                self.header.setStyle(self.header.style())  # Force style refresh
                 self.header.setText("LabLink System Launcher [DEBUG MODE]")
 
                 # Show funny Easter egg message
@@ -1536,27 +1418,6 @@ class LabLinkLauncher(QMainWindow):
                     "Click the header 7 more times to disable debug mode."
                 )
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-                msg.setStyleSheet("""
-                    QMessageBox {
-                        background-color: #2c3e50;
-                    }
-                    QLabel {
-                        color: #ecf0f1;
-                        font-size: 11pt;
-                    }
-                    QPushButton {
-                        background-color: #27ae60;
-                        color: white;
-                        border: none;
-                        padding: 8px 16px;
-                        border-radius: 4px;
-                        font-weight: bold;
-                        min-width: 80px;
-                    }
-                    QPushButton:hover {
-                        background-color: #2ecc71;
-                    }
-                """)
                 msg.exec()
                 logger.info("🐛 DEBUG MODE ENABLED via Easter egg!")
             else:
@@ -1565,13 +1426,8 @@ class LabLinkLauncher(QMainWindow):
                 self._click_count = 0
 
                 # Restore normal header
-                self.header.setStyleSheet("""
-                    padding: 20px;
-                    background-color: #1a252f;
-                    color: white;
-                    border-radius: 8px;
-                    border: 2px solid #0d1419;
-                """)
+                self.header.setProperty("debugMode", False)
+                self.header.setStyle(self.header.style())  # Force style refresh
                 self.header.setText("LabLink System Launcher")
 
                 msg = QMessageBox(self)
@@ -1581,6 +1437,23 @@ class LabLinkLauncher(QMainWindow):
                 msg.setInformativeText("Server and client will now launch normally.")
                 msg.exec()
                 logger.info("Debug mode disabled")
+
+    def _on_theme_changed(self, theme_text):
+        """Handle theme change from combo box."""
+        theme = theme_text.lower()
+        save_theme_setting(theme)
+
+        # Apply new theme
+        app = QApplication.instance()
+        app.setStyleSheet(get_app_stylesheet(theme))
+        app.setProperty("theme", theme)
+
+        # Show restart hint
+        QMessageBox.information(
+            self,
+            "Theme Changed",
+            f"Theme changed to {theme_text}.\\n\\nSome elements may require a restart to fully update."
+        )
 
     def check_all(self):
         """Check all system components."""
@@ -2081,93 +1954,20 @@ def main():
     """Main entry point."""
     app = QApplication(sys.argv)
 
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     # Set application style
     app.setStyle("Fusion")
 
-    # Dark theme with high contrast
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(30, 30, 32))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(53, 53, 57))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(60, 60, 64))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 255, 255))
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(100, 149, 237))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 122, 204))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    app.setPalette(dark_palette)
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
 
-    # Global stylesheet for borders and enhanced visuals
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #2d2d30;
-        }
-        QGroupBox {
-            border: 2px solid #3c3c3f;
-            border-radius: 6px;
-            margin-top: 12px;
-            padding-top: 18px;
-            background-color: #252526;
-            font-weight: bold;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 12px;
-            padding: 0 8px;
-            color: #dcdcdc;
-        }
-        QPushButton {
-            background-color: #3c3c3f;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 8px 16px;
-            color: #dcdcdc;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-            border: 1px solid #007acc;
-        }
-        QPushButton:pressed {
-            background-color: #007acc;
-        }
-        QPushButton:disabled {
-            background-color: #3c3c3f;
-            color: #6d6d6d;
-            border: 1px solid #444444;
-        }
-        QProgressBar {
-            border: 1px solid #555555;
-            border-radius: 4px;
-            background-color: #1e1e1e;
-            text-align: center;
-            color: #dcdcdc;
-        }
-        QProgressBar::chunk {
-            background-color: #007acc;
-            border-radius: 3px;
-        }
-        QTextEdit, QPlainTextEdit {
-            background-color: #1e1e1e;
-            border: 1px solid #3c3c3f;
-            border-radius: 4px;
-            color: #dcdcdc;
-            selection-background-color: #264f78;
-        }
-        QLabel {
-            color: #dcdcdc;
-        }
-        QMessageBox {
-            background-color: #2d2d30;
-        }
-        QDialog {
-            background-color: #2d2d30;
-            border: 2px solid #555555;
-        }
-    """)
+    # Store theme setting on app for access by dialogs
+    app.setProperty("theme", current_theme)
 
     # Create and show launcher
     launcher = LabLinkLauncher()

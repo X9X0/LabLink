@@ -30,6 +30,7 @@ from client.ui.sync_panel import SyncPanel
 from client.ui.test_sequence_panel import TestSequencePanel
 from client.utils.server_manager import get_server_manager
 from client.utils.token_storage import get_token_storage
+from client.ui.theme import save_theme_setting, get_app_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,6 @@ class MainWindow(QMainWindow):
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
 
-        # Apply visual styling - background only
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #ecf0f1;
-            }
-        """)
-
         self._setup_ui()
         self._setup_menus()
         self._setup_status_bar()
@@ -71,9 +65,6 @@ class MainWindow(QMainWindow):
         # Central widget with tab layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
-        # Set central widget background
-        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
 
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -171,6 +162,23 @@ class MainWindow(QMainWindow):
         refresh_action.setShortcut("F5")
         refresh_action.triggered.connect(self.refresh_all)
         view_menu.addAction(refresh_action)
+
+        view_menu.addSeparator()
+
+        # Theme submenu
+        theme_menu = view_menu.addMenu("&Theme")
+
+        light_theme_action = QAction("&Light", self)
+        light_theme_action.triggered.connect(lambda: self.change_theme("light"))
+        theme_menu.addAction(light_theme_action)
+
+        dark_theme_action = QAction("&Dark", self)
+        dark_theme_action.triggered.connect(lambda: self.change_theme("dark"))
+        theme_menu.addAction(dark_theme_action)
+
+        auto_theme_action = QAction("&Auto", self)
+        auto_theme_action.triggered.connect(lambda: self.change_theme("auto"))
+        theme_menu.addAction(auto_theme_action)
 
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
@@ -646,6 +654,23 @@ class MainWindow(QMainWindow):
 
         # Trigger diagnostics
         self.diagnostics_panel.run_full_diagnostics()
+
+    def change_theme(self, theme: str):
+        """Change application theme."""
+        save_theme_setting(theme)
+
+        # Apply new theme
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        app.setStyleSheet(get_app_stylesheet(theme))
+        app.setProperty("theme", theme)
+
+        # Show confirmation
+        QMessageBox.information(
+            self,
+            "Theme Changed",
+            f"Theme changed to {theme.capitalize()}.\\n\\nThe new theme has been applied."
+        )
 
     def show_about(self):
         """Show about dialog."""

@@ -17,6 +17,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from client.ui.main_window import MainWindow
+from client.ui.theme import get_app_stylesheet, get_theme_setting
 
 
 def setup_logging(debug=False):
@@ -90,32 +91,26 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("LabLink")
 
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent.parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     # Read version from VERSION file (single source of truth)
     version_file = Path(__file__).parent.parent / "VERSION"
     version = version_file.read_text().strip() if version_file.exists() else "1.2.0"
     app.setApplicationVersion(version)
     app.setOrganizationName("LabLink Project")
 
-    # Set application style (optional)
+    # Set application style
     app.setStyle("Fusion")
 
-    # Set global stylesheet for better dropdown visibility
-    app.setStyleSheet("""
-        QComboBox QAbstractItemView {
-            selection-background-color: #E3F2FD;  /* Light blue background on hover */
-            selection-color: #000000;  /* Black text on hover */
-            background-color: white;
-            color: black;
-        }
-        QComboBox QAbstractItemView::item:hover {
-            background-color: #BBDEFB;  /* Slightly darker blue on hover */
-            color: #000000;  /* Black text */
-        }
-        QComboBox QAbstractItemView::item:selected {
-            background-color: #90CAF9;  /* Even darker blue when selected */
-            color: #000000;  /* Black text */
-        }
-    """)
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
+
+    # Store theme setting on app for access by windows
+    app.setProperty("theme", current_theme)
 
     # Create qasync event loop for asyncio integration
     loop = qasync.QEventLoop(app)
