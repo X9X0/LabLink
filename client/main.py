@@ -91,6 +91,11 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("LabLink")
 
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent.parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     # Read version from VERSION file (single source of truth)
     version_file = Path(__file__).parent.parent / "VERSION"
     version = version_file.read_text().strip() if version_file.exists() else "1.2.0"

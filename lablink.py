@@ -2126,6 +2126,11 @@ def main():
     """Main entry point."""
     app = QApplication(sys.argv)
 
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     # Set application style
     app.setStyle("Fusion")
 
