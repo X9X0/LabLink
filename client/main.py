@@ -17,7 +17,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from client.ui.main_window import MainWindow
-from client.ui.theme import get_app_stylesheet
+from client.ui.theme import get_app_stylesheet, get_theme_setting
 
 
 def setup_logging(debug=False):
@@ -100,8 +100,12 @@ def main():
     # Set application style
     app.setStyle("Fusion")
 
-    # Apply comprehensive theme
-    app.setStyleSheet(get_app_stylesheet())
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
+
+    # Store theme setting on app for access by windows
+    app.setProperty("theme", current_theme)
 
     # Create qasync event loop for asyncio integration
     loop = qasync.QEventLoop(app)
