@@ -170,8 +170,8 @@ function Create-LauncherScript {
 
     $batchContent = @'
 @echo off
-REM LabLink Client Launcher
-REM This batch file activates the virtual environment and runs the client
+REM LabLink Launcher
+REM This batch file activates the virtual environment and runs the LabLink launcher
 
 REM Change to LabLink root directory (handles spaces in path)
 cd /d "%~dp0"
@@ -195,8 +195,8 @@ if errorlevel 1 (
 REM Set PYTHONPATH to LabLink root so Python can find the client module
 set PYTHONPATH=%~dp0
 
-REM Run LabLink client from root directory
-python "client\main.py" %*
+REM Run LabLink launcher from root directory
+python lablink.py %*
 '@
 
     Set-Content -Path $launcherPath -Value $batchContent
@@ -219,7 +219,7 @@ function Create-DesktopShortcut {
     $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
     $shortcut.WorkingDirectory = $LablinkDir
     $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    #$shortcut.IconLocation = "$LablinkDir\client\resources\icon.ico"
+    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
     $shortcut.Save()
 
     Write-Step "Desktop shortcut created"
@@ -240,7 +240,7 @@ function Create-StartMenuShortcut {
     $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
     $shortcut.WorkingDirectory = $LablinkDir
     $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    #$shortcut.IconLocation = "$LablinkDir\client\resources\icon.ico"
+    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
     $shortcut.Save()
 
     Write-Step "Start Menu shortcut created"
