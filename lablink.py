@@ -214,6 +214,17 @@ except ImportError:
             print("="*70 + "\n")
             sys.exit(1)
 
+# Import theme system (after PyQt6 is confirmed to be available)
+try:
+    from client.ui.theme import get_app_stylesheet, get_theme_setting, save_theme_setting
+except ImportError:
+    # Fallback if theme module not available
+    def get_app_stylesheet(theme="light"):
+        return ""
+    def get_theme_setting():
+        return "light"
+    def save_theme_setting(theme):
+        pass
 
 # Status levels
 class StatusLevel(Enum):
@@ -2084,90 +2095,12 @@ def main():
     # Set application style
     app.setStyle("Fusion")
 
-    # Dark theme with high contrast
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(30, 30, 32))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(53, 53, 57))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(60, 60, 64))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 255, 255))
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(100, 149, 237))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 122, 204))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    app.setPalette(dark_palette)
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
 
-    # Global stylesheet for borders and enhanced visuals
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #2d2d30;
-        }
-        QGroupBox {
-            border: 2px solid #3c3c3f;
-            border-radius: 6px;
-            margin-top: 12px;
-            padding-top: 18px;
-            background-color: #252526;
-            font-weight: bold;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 12px;
-            padding: 0 8px;
-            color: #dcdcdc;
-        }
-        QPushButton {
-            background-color: #3c3c3f;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 8px 16px;
-            color: #dcdcdc;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-            border: 1px solid #007acc;
-        }
-        QPushButton:pressed {
-            background-color: #007acc;
-        }
-        QPushButton:disabled {
-            background-color: #3c3c3f;
-            color: #6d6d6d;
-            border: 1px solid #444444;
-        }
-        QProgressBar {
-            border: 1px solid #555555;
-            border-radius: 4px;
-            background-color: #1e1e1e;
-            text-align: center;
-            color: #dcdcdc;
-        }
-        QProgressBar::chunk {
-            background-color: #007acc;
-            border-radius: 3px;
-        }
-        QTextEdit, QPlainTextEdit {
-            background-color: #1e1e1e;
-            border: 1px solid #3c3c3f;
-            border-radius: 4px;
-            color: #dcdcdc;
-            selection-background-color: #264f78;
-        }
-        QLabel {
-            color: #dcdcdc;
-        }
-        QMessageBox {
-            background-color: #2d2d30;
-        }
-        QDialog {
-            background-color: #2d2d30;
-            border: 2px solid #555555;
-        }
-    """)
+    # Store theme setting on app for access by dialogs
+    app.setProperty("theme", current_theme)
 
     # Create and show launcher
     launcher = LabLinkLauncher()
