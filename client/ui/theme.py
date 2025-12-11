@@ -157,6 +157,33 @@ def _get_light_stylesheet() -> str:
         background-color: #D32F2F;
     }
 
+    /* Launcher-Specific Styles */
+    QLabel[headerLabel="true"] {
+        padding: 20px;
+        background-color: #1a252f;
+        color: white;
+        border-radius: 8px;
+        border: 2px solid #0d1419;
+    }
+
+    QLabel[headerLabel="true"][debugMode="true"] {
+        background-color: #c0392b;
+        border: 2px solid #e74c3c;
+    }
+
+    QLabel[statusLabel="true"] {
+        padding: 8px;
+        background-color: white;
+        border: 1px solid #BDBDBD;
+        border-radius: 4px;
+        color: #212121;
+    }
+
+    QLabel[infoLabel="true"] {
+        color: #757575;
+        padding: 10px;
+    }
+
     /* Input Fields */
     QLineEdit, QTextEdit, QPlainTextEdit {
         background-color: white;
@@ -527,6 +554,33 @@ def _get_dark_stylesheet() -> str:
         background-color: #EF5350;
     }
 
+    /* Launcher-Specific Styles */
+    QLabel[headerLabel="true"] {
+        padding: 20px;
+        background-color: #1a252f;
+        color: white;
+        border-radius: 8px;
+        border: 2px solid #0d1419;
+    }
+
+    QLabel[headerLabel="true"][debugMode="true"] {
+        background-color: #c0392b;
+        border: 2px solid #e74c3c;
+    }
+
+    QLabel[statusLabel="true"] {
+        padding: 8px;
+        background-color: #2b2b2b;
+        border: 1px solid #424242;
+        border-radius: 4px;
+        color: #e0e0e0;
+    }
+
+    QLabel[infoLabel="true"] {
+        color: #9E9E9E;
+        padding: 10px;
+    }
+
     /* Input Fields */
     QLineEdit, QTextEdit, QPlainTextEdit {
         background-color: #2b2b2b;
@@ -895,6 +949,33 @@ def _get_auto_stylesheet() -> str:
 
     QPushButton[buttonStyle="danger"]:hover {
         background-color: #D32F2F;
+    }
+
+    /* Launcher-Specific Styles */
+    QLabel[headerLabel="true"] {
+        padding: 20px;
+        background-color: #1a252f;
+        color: white;
+        border-radius: 8px;
+        border: 2px solid #0d1419;
+    }
+
+    QLabel[headerLabel="true"][debugMode="true"] {
+        background-color: #c0392b;
+        border: 2px solid #e74c3c;
+    }
+
+    QLabel[statusLabel="true"] {
+        padding: 8px;
+        background-color: #f5f5f5;
+        border: 1px solid #9E9E9E;
+        border-radius: 4px;
+        color: #1a1a1a;
+    }
+
+    QLabel[infoLabel="true"] {
+        color: #616161;
+        padding: 10px;
     }
 
     /* Input Fields */
