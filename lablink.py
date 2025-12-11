@@ -1275,7 +1275,6 @@ class LabLinkLauncher(QMainWindow):
         self.theme_combo.setFont(QFont("Arial", 10))
         self.theme_combo.setMinimumWidth(120)
         theme_layout.addWidget(self.theme_combo)
-        theme_layout.addStretch()
         main_layout.addLayout(theme_layout)
 
         # Status indicators section
