@@ -74,8 +74,14 @@ async def discover_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class USBDiagnosticsRequest(BaseModel):
+    """Request to run USB diagnostics."""
+
+    resource_string: str
+
+
 @router.post("/diagnostics/usb")
-async def run_usb_diagnostics(resource_string: str):
+async def run_usb_diagnostics(request: USBDiagnosticsRequest):
     """
     Run USB diagnostics on a device to troubleshoot connection issues.
 
@@ -85,8 +91,8 @@ async def run_usb_diagnostics(resource_string: str):
     try:
         from server.utils.usb_diagnostics import diagnose_usb_device
 
-        diagnostics = diagnose_usb_device(resource_string)
-        logger.info(f"USB diagnostics run for {resource_string}")
+        diagnostics = diagnose_usb_device(request.resource_string)
+        logger.info(f"USB diagnostics run for {request.resource_string}")
 
         return diagnostics
     except Exception as e:

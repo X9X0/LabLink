@@ -433,7 +433,15 @@ def _run_diagnostic_on_host(script_path: str) -> dict:
 
     except docker.errors.ContainerError as e:
         # Container exited with non-zero code
-        output = e.stderr.decode('utf-8', errors='replace') if e.stderr else str(e)
+        # Handle both bytes and string stderr
+        if e.stderr:
+            if isinstance(e.stderr, bytes):
+                output = e.stderr.decode('utf-8', errors='replace')
+            else:
+                output = str(e.stderr)
+        else:
+            output = str(e)
+
         return {
             "success": False,
             "output": output,

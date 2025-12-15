@@ -1421,7 +1421,7 @@ class LabLinkClient:
         """
         response = self._session.post(
             f"{self.base_url}/equipment/diagnostics/usb",
-            params={"resource_string": resource_string},
+            json={"resource_string": resource_string},
             timeout=10
         )
         response.raise_for_status()
