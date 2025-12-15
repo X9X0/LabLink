@@ -74,6 +74,26 @@ async def discover_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/diagnostics/usb")
+async def run_usb_diagnostics(resource_string: str):
+    """
+    Run USB diagnostics on a device to troubleshoot connection issues.
+
+    Helps identify why USB serial numbers may be unreadable and provides
+    recommendations for resolving the issue.
+    """
+    try:
+        from server.utils.usb_diagnostics import diagnose_usb_device
+
+        diagnostics = diagnose_usb_device(resource_string)
+        logger.info(f"USB diagnostics run for {resource_string}")
+
+        return diagnostics
+    except Exception as e:
+        logger.error(f"Error running USB diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/connect", response_model=dict)
 async def connect_device(request: ConnectDeviceRequest):
     """Connect to a device."""
