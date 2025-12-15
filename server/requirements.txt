@@ -1,35 +1,35 @@
 # Web Framework
 fastapi>=0.115.0  # Security: Fixes PYSEC-2024-38 (ReDoS), upgrades starlette to fix GHSA-f96h-pmfr-66vw, GHSA-2c2j-9gv5-cj73
-uvicorn[standard]==0.27.0
+uvicorn[standard]==0.38.0
 websockets==12.0
 python-multipart>=0.0.18  # Required for FastAPI file uploads (Form/File parameters). Security: Fixes GHSA-2jv5-9r88-3w3p (ReDoS), GHSA-59g5-xgcq-4qw3 (DoS)
 
 # Equipment Communication
-pyvisa==1.14.1
-pyvisa-py==0.7.1
+pyvisa==1.15.0
+pyvisa-py==0.8.1
 pyserial==3.5
 
 # USB/Device Access
-pyusb==1.2.1
+pyusb==1.3.1
 
 # Data Handling
 numpy==1.26.3
-pandas==2.2.0
-h5py==3.10.0
-scipy==1.11.4
+pandas==2.3.3
+h5py==3.15.1
+scipy==1.16.3
 
 # Configuration
-pydantic==2.5.3
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
-email-validator==2.1.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+python-dotenv==1.2.1
+email-validator==2.3.0
 
 # Utilities
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
 psutil==5.9.8
-apscheduler==3.10.4
-zeroconf==0.132.2
-requests==2.32.4  # HTTP library for Pi discovery. Security: Fixes GHSA-9wx4-h78v-vm56 (cert verification), GHSA-9hjg-9r4m-mvj7 (netrc leak)
+apscheduler==3.11.1
+zeroconf==0.148.0
+requests==2.32.5  # HTTP library for Pi discovery. Security: Fixes GHSA-9wx4-h78v-vm56 (cert verification), GHSA-9hjg-9r4m-mvj7 (netrc leak)
 docker==7.1.0  # Docker Python API for running Pi diagnostics on host
 
 # Testing
@@ -38,7 +38,7 @@ pytest-asyncio==0.23.3
 
 # Security & Authentication
 bcrypt==4.1.3         # Password hashing
-httpx==0.27.0         # Async HTTP client for OAuth2
+httpx==0.28.1         # Async HTTP client for OAuth2
 PyJWT==2.10.1         # JWT token handling
 pyotp==2.9.0          # TOTP multi-factor authentication
 qrcode[pil]==8.2      # QR code generation with PIL support
