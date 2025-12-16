@@ -9,23 +9,47 @@ echo "    LabLink Version Information"
 echo "======================================"
 echo ""
 
-# Get the LabLink directory
-LABLINK_DIR="/opt/lablink"
+# Get the LabLink directory - try multiple locations
+LABLINK_DIR=""
 
-# If not in /opt/lablink, try to find it from current directory
-if [ ! -d "$LABLINK_DIR" ]; then
-    # Try to find LabLink directory relative to script location
+# Method 1: Check common deployment locations
+for dir in "/opt/lablink" "$HOME/lablink" "$HOME/LabLink"; do
+    if [ -d "$dir" ] && [ -f "$dir/VERSION" ]; then
+        LABLINK_DIR="$dir"
+        break
+    fi
+done
+
+# Method 2: If not found, try to find it relative to script location (for symlinked command)
+if [ -z "$LABLINK_DIR" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$SCRIPT_DIR/VERSION" ]; then
         LABLINK_DIR="$SCRIPT_DIR"
-    else
-        echo "Error: LabLink directory not found"
-        echo "Expected at: /opt/lablink"
-        exit 1
     fi
 fi
 
+# Method 3: Check current directory as last resort
+if [ -z "$LABLINK_DIR" ] && [ -f "$(pwd)/VERSION" ]; then
+    LABLINK_DIR="$(pwd)"
+fi
+
+# Exit if LabLink directory not found
+if [ -z "$LABLINK_DIR" ]; then
+    echo "Error: LabLink directory not found"
+    echo ""
+    echo "Searched locations:"
+    echo "  - /opt/lablink (Pi image deployment)"
+    echo "  - $HOME/lablink (SSH deployment)"
+    echo "  - Script directory"
+    echo "  - Current directory"
+    echo ""
+    echo "Please ensure you are running this on a system with LabLink installed."
+    exit 1
+fi
+
 cd "$LABLINK_DIR"
+echo "LabLink Directory: $LABLINK_DIR"
+echo ""
 
 # Get version from VERSION file
 if [ -f "VERSION" ]; then
