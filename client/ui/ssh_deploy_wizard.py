@@ -718,6 +718,7 @@ lablink-help() {{
     echo ""
     echo "Status & Monitoring:"
     echo "  lablink-status      - Show container status"
+    echo "  lablink-version     - Show version and git commit info"
     echo "  lablink-logs        - View all logs (follow mode)"
     echo "  lablink-logs-server - View server logs only"
     echo "  lablink-logs-web    - View web dashboard logs only"

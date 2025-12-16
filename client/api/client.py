@@ -1401,6 +1401,32 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def run_usb_diagnostics(self, resource_string: str) -> Dict[str, Any]:
+        """Run USB device diagnostics to troubleshoot connection issues.
+
+        Analyzes why a USB device's serial number may not be readable and
+        provides recommendations for resolving the issue.
+
+        Args:
+            resource_string: VISA resource string of the device to diagnose
+
+        Returns:
+            Dictionary containing:
+            - resource_string: The analyzed resource string
+            - has_serial: Whether a serial number is present
+            - serial_readable: Whether the serial number can be read
+            - usb_info: USB vendor/product/serial information
+            - issues: List of detected issues
+            - recommendations: List of recommended fixes
+        """
+        response = self._session.post(
+            f"{self.base_url}/equipment/diagnostics/usb",
+            json={"resource_string": resource_string},
+            timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+
     # ==================== State Management API ====================
 
     def capture_state(
