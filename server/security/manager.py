@@ -13,7 +13,7 @@ Centralized management of:
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -73,6 +73,12 @@ class SecurityManager:
     # ========================================================================
     # Database Initialization
     # ========================================================================
+
+    def _open_db(self) -> sqlite3.Connection:
+        """Open a database connection with sqlite3.Row factory enabled."""
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def _init_database(self):
         """Initialize SQLite database schema."""
@@ -273,7 +279,7 @@ class SecurityManager:
             from secrets import token_urlsafe
 
             user_id = token_urlsafe(16)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             user = User(
                 user_id=user_id,
@@ -343,7 +349,7 @@ class SecurityManager:
 
     async def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -359,7 +365,7 @@ class SecurityManager:
 
     async def get_user_by_username(self, username: str) -> Optional[User]:
         """Get user by username."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -375,7 +381,7 @@ class SecurityManager:
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """Get user by email."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -391,7 +397,7 @@ class SecurityManager:
 
     async def list_users(self, is_active: Optional[bool] = None) -> List[User]:
         """List all users."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -432,7 +438,7 @@ class SecurityManager:
             if update.must_change_password is not None:
                 user.must_change_password = update.must_change_password
 
-            user.updated_at = datetime.utcnow()
+            user.updated_at = datetime.now(timezone.utc)
 
             # Update database
             cursor.execute(
@@ -519,9 +525,9 @@ class SecurityManager:
             """,
                 (
                     new_hash,
-                    datetime.utcnow()
+                    datetime.now(timezone.utc)
                     + timedelta(days=self.config.require_password_change_days),
-                    datetime.utcnow(),
+                    datetime.now(timezone.utc),
                     user_id,
                 ),
             )
@@ -544,38 +550,74 @@ class SecurityManager:
             conn.close()
 
     def _user_from_row(self, row) -> User:
-        """Convert database row to User object."""
+        """Convert database row (sqlite3.Row) to User object."""
+        keys = row.keys() if hasattr(row, "keys") else []
         return User(
-            user_id=row[0],
-            username=row[1],
-            email=row[2],
-            hashed_password=row[3],
-            full_name=row[4],
-            roles=json.loads(row[5]) if row[5] else [],
-            is_active=bool(row[6]),
-            is_superuser=bool(row[7]),
-            must_change_password=bool(row[8]),
-            password_expires_at=datetime.fromisoformat(row[9]) if row[9] else None,
-            failed_login_attempts=row[10] or 0,
-            locked_until=datetime.fromisoformat(row[11]) if row[11] else None,
-            last_login=datetime.fromisoformat(row[12]) if row[12] else None,
-            last_login_ip=row[13],
-            oauth2_providers=json.loads(row[14]) if row[14] else {},
-            metadata=json.loads(row[15]) if row[15] else {},
-            created_at=datetime.fromisoformat(row[16]),
-            updated_at=datetime.fromisoformat(row[17]),
-            created_by=row[18],
-            # MFA fields (indices 19, 20, 21) - handle gracefully if columns don't exist yet
-            mfa_enabled=(
-                bool(row[19]) if len(row) > 19 and row[19] is not None else False
-            ),
-            mfa_secret=row[20] if len(row) > 20 else None,
-            backup_codes=json.loads(row[21]) if len(row) > 21 and row[21] else [],
+            user_id=row["user_id"],
+            username=row["username"],
+            email=row["email"],
+            hashed_password=row["hashed_password"],
+            full_name=row["full_name"],
+            roles=json.loads(row["roles"]) if row["roles"] else [],
+            is_active=bool(row["is_active"]),
+            is_superuser=bool(row["is_superuser"]),
+            must_change_password=bool(row["must_change_password"]),
+            password_expires_at=datetime.fromisoformat(row["password_expires_at"]) if row["password_expires_at"] else None,
+            failed_login_attempts=row["failed_login_attempts"] or 0,
+            locked_until=datetime.fromisoformat(row["locked_until"]) if row["locked_until"] else None,
+            last_login=datetime.fromisoformat(row["last_login"]) if row["last_login"] else None,
+            last_login_ip=row["last_login_ip"],
+            oauth2_providers=json.loads(row["oauth2_providers"]) if row["oauth2_providers"] else {},
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_by=row["created_by"],
+            # MFA fields — handle gracefully if columns don't exist in older schemas
+            mfa_enabled=bool(row["mfa_enabled"]) if "mfa_enabled" in keys and row["mfa_enabled"] is not None else False,
+            mfa_secret=row["mfa_secret"] if "mfa_secret" in keys else None,
+            backup_codes=json.loads(row["backup_codes"]) if "backup_codes" in keys and row["backup_codes"] else [],
         )
 
     # ========================================================================
     # Multi-Factor Authentication
     # ========================================================================
+
+    async def store_pending_mfa_secret(
+        self, user_id: str, secret: str, backup_codes: List[str]
+    ) -> bool:
+        """
+        Store MFA secret and backup codes without enabling MFA yet.
+
+        Call this during setup. MFA is not active until the user verifies a
+        valid TOTP token via enable_mfa().
+
+        Args:
+            user_id: User ID
+            secret: Base32 encoded TOTP secret
+            backup_codes: List of hashed backup codes
+
+        Returns:
+            True if successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                UPDATE users
+                SET mfa_secret = ?, backup_codes = ?, updated_at = ?
+                WHERE user_id = ?
+            """,
+                (secret, json.dumps(backup_codes), datetime.now(timezone.utc), user_id),
+            )
+
+            conn.commit()
+            logger.info(f"Pending MFA secret stored for user: {user_id}")
+            return cursor.rowcount > 0
+
+        finally:
+            conn.close()
 
     async def enable_mfa(
         self, user_id: str, secret: str, backup_codes: List[str]
@@ -601,7 +643,7 @@ class SecurityManager:
                 SET mfa_enabled = 1, mfa_secret = ?, backup_codes = ?, updated_at = ?
                 WHERE user_id = ?
             """,
-                (secret, json.dumps(backup_codes), datetime.utcnow(), user_id),
+                (secret, json.dumps(backup_codes), datetime.now(timezone.utc), user_id),
             )
 
             conn.commit()
@@ -631,7 +673,7 @@ class SecurityManager:
                 SET mfa_enabled = 0, mfa_secret = NULL, backup_codes = NULL, updated_at = ?
                 WHERE user_id = ?
             """,
-                (datetime.utcnow(), user_id),
+                (datetime.now(timezone.utc), user_id),
             )
 
             conn.commit()
@@ -662,7 +704,7 @@ class SecurityManager:
                 SET backup_codes = ?, updated_at = ?
                 WHERE user_id = ? AND mfa_enabled = 1
             """,
-                (json.dumps(new_codes), datetime.utcnow(), user_id),
+                (json.dumps(new_codes), datetime.now(timezone.utc), user_id),
             )
 
             conn.commit()
@@ -706,7 +748,7 @@ class SecurityManager:
                 SET backup_codes = ?, updated_at = ?
                 WHERE user_id = ?
             """,
-                (json.dumps(remaining_codes), datetime.utcnow(), user_id),
+                (json.dumps(remaining_codes), datetime.now(timezone.utc), user_id),
             )
 
             conn.commit()
@@ -829,7 +871,7 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expires_at = None
             if key_create.expires_in_days:
                 expires_at = now + timedelta(days=key_create.expires_in_days)
@@ -988,7 +1030,7 @@ class SecurityManager:
         cursor = conn.cursor()
 
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expires_at = None
             if entry_create.expires_in_days:
                 expires_at = now + timedelta(days=entry_create.expires_in_days)
@@ -1209,7 +1251,7 @@ class SecurityManager:
             blacklist_entries = cursor.fetchone()[0]
 
             # Failed login attempts in last 24 hours
-            since = datetime.utcnow() - timedelta(hours=24)
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM audit_log

@@ -29,6 +29,16 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_TIMEOUT = 10  # seconds
+
+
+class _TimeoutSession(requests.Session):
+    """requests.Session that applies a default timeout to every request."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", _DEFAULT_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
 
 class LabLinkClient:
     """Client for communicating with LabLink server."""
@@ -49,7 +59,7 @@ class LabLinkClient:
 
         self.api_base_url = f"http://{host}:{api_port}/api"
 
-        self._session = requests.Session()
+        self._session = _TimeoutSession()
 
         # Session ID for equipment lock management
         self.session_id = str(uuid.uuid4())
@@ -147,7 +157,7 @@ class LabLinkClient:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Login request failed: {e}")
-            raise Exception(f"Login request failed: {e}")
+            raise
 
     def logout(self) -> bool:
         """Logout from LabLink server.
@@ -433,17 +443,26 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
-    def connect_equipment(self, equipment_id: str) -> Dict[str, Any]:
+    def connect_equipment(
+        self, resource_string: str, equipment_type: str, model: str
+    ) -> Dict[str, Any]:
         """Connect to equipment.
 
         Args:
-            equipment_id: Equipment ID
+            resource_string: VISA resource string or connection info
+            equipment_type: Equipment type (e.g. "oscilloscope")
+            model: Equipment model name
 
         Returns:
-            Response dictionary
+            Response dictionary with equipment_id and status
         """
+        payload = {
+            "resource_string": resource_string,
+            "equipment_type": equipment_type,
+            "model": model,
+        }
         response = self._session.post(
-            f"{self.api_base_url}/equipment/{equipment_id}/connect"
+            f"{self.api_base_url}/equipment/connect", json=payload
         )
         response.raise_for_status()
         return response.json()

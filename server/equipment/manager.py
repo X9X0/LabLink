@@ -257,13 +257,14 @@ class EquipmentManager:
         """Get equipment by ID."""
         return self.equipment.get(equipment_id)
 
-    def get_connected_devices(self) -> List[EquipmentInfo]:
+    async def get_connected_devices(self) -> List[EquipmentInfo]:
         """Get list of all connected devices."""
-        return [
-            equipment.cached_info
-            for equipment in self.equipment.values()
-            if equipment.cached_info
-        ]
+        async with self._lock:
+            return [
+                equipment.cached_info
+                for equipment in self.equipment.values()
+                if equipment.cached_info
+            ]
 
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""

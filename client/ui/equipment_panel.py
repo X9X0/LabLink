@@ -671,9 +671,13 @@ class EquipmentPanel(QWidget):
             return
 
         try:
-            result = self.client.connect_equipment(self.selected_equipment.equipment_id)
+            result = self.client.connect_equipment(
+                self.selected_equipment.resource_string,
+                self.selected_equipment.type,
+                self.selected_equipment.model,
+            )
 
-            if result.get("success"):
+            if result.get("status") == "connected":
                 QMessageBox.information(
                     self, "Success", "Equipment connected successfully"
                 )
@@ -681,8 +685,9 @@ class EquipmentPanel(QWidget):
                 self._on_equipment_selected()  # Refresh details
 
                 # Auto-start WebSocket streaming for connected equipment
-                equipment_id = self.selected_equipment.equipment_id
-                asyncio.create_task(self._start_equipment_stream(equipment_id))
+                equipment_id = result.get("equipment_id", "")
+                if equipment_id:
+                    asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Connection failed")

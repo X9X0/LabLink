@@ -12,7 +12,7 @@ Provides REST API for:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -244,7 +244,7 @@ async def login(request: Request, login_request: LoginRequest):
         """
         UPDATE users SET last_login = ?, last_login_ip = ? WHERE user_id = ?
     """,
-        (datetime.utcnow(), ip_address, user.user_id),
+        (datetime.now(timezone.utc), ip_address, user.user_id),
     )
     conn.commit()
     conn.close()
@@ -381,9 +381,8 @@ async def setup_mfa(current_user: User = Depends(get_current_user)):
     security_manager = get_security_manager()
     hashed_codes = hash_backup_codes(backup_codes)
 
-    # Temporarily store for verification
-    # Note: MFA is not enabled until verified via /mfa/enable
-    await security_manager.enable_mfa(current_user.user_id, secret, hashed_codes)
+    # Store secret and backup codes but keep mfa_enabled=False until verified
+    await security_manager.store_pending_mfa_secret(current_user.user_id, secret, hashed_codes)
 
     logger.info(f"MFA setup initiated for user: {current_user.username}")
 
@@ -424,6 +423,9 @@ async def verify_mfa_setup(
             detail="Invalid MFA token",
         )
 
+    # Token valid — now activate MFA (set mfa_enabled=1 in the DB)
+    await security_manager.enable_mfa(user.user_id, user.mfa_secret, user.backup_codes)
+
     logger.info(f"MFA verified and enabled for user: {current_user.username}")
 
     return {"message": "MFA successfully enabled"}
@@ -448,8 +450,14 @@ async def disable_mfa(
             detail="Invalid password",
         )
 
-    # If MFA is enabled, require MFA token
-    if current_user.mfa_enabled and disable_request.mfa_token:
+    # If MFA is enabled, always require a valid MFA token to disable it
+    if current_user.mfa_enabled:
+        if not disable_request.mfa_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="MFA token is required to disable MFA",
+            )
+
         from security.mfa import verify_mfa_token
 
         is_valid, _ = verify_mfa_token(
@@ -676,7 +684,7 @@ async def reset_password(
             (
                 new_hash,
                 password_reset.must_change_password,
-                datetime.utcnow(),
+                datetime.now(timezone.utc),
                 password_reset.user_id,
             ),
         )
@@ -1053,15 +1061,17 @@ async def oauth2_login(
             user = await security_manager.create_user(user_create, created_by=None)
 
             # Log audit event
-            await security_manager.log_audit_event(
-                event_type=AuditEventType.USER_CREATED,
-                user_id=user.user_id,
-                ip_address=request.client.host if request.client else None,
-                details={
-                    "method": "oauth2",
-                    "provider": login_request.provider.value,
-                    "external_id": external_id,
-                },
+            await security_manager.audit_log(
+                AuditLogEntry(
+                    event_type=AuditEventType.USER_CREATED,
+                    user_id=user.user_id,
+                    ip_address=request.client.host if request.client else None,
+                    details={
+                        "method": "oauth2",
+                        "provider": login_request.provider.value,
+                        "external_id": external_id,
+                    },
+                )
             )
 
             logger.info(
@@ -1073,38 +1083,34 @@ async def oauth2_login(
         # in a separate table (user_id, provider, external_id)
 
         # Create JWT tokens
-        access_token = create_access_token(
-            data={"sub": user.username, "user_id": user.user_id},
-            config=security_manager.config,
-        )
+        from security.models import AuthMethod as AuthMethodEnum
 
-        refresh_token = create_refresh_token(
-            data={"sub": user.username, "user_id": user.user_id},
-            config=security_manager.config,
-        )
+        access_token = create_access_token(user, security_manager.config, auth_method=AuthMethodEnum.OAUTH2)
+        refresh_token = create_refresh_token(user.user_id, security_manager.config)
 
         # Create session
         ip_address = request.client.host if request.client else None
-        user_agent = request.headers.get("user-agent")
 
         session_id = security_manager.session_manager.create_session(
-            user_id=user.user_id,
-            username=user.username,
-            ip_address=ip_address,
-            user_agent=user_agent,
+            user,
+            ip_address,
+            auth_method=AuthMethodEnum.OAUTH2,
+            expires_in_minutes=security_manager.config.access_token_expire_minutes,
         )
 
         # Log successful login
-        await security_manager.log_audit_event(
-            event_type=AuditEventType.LOGIN_SUCCESS,
-            user_id=user.user_id,
-            username=user.username,
-            ip_address=ip_address,
-            details={
-                "method": "oauth2",
-                "provider": login_request.provider.value,
-                "session_id": session_id,
-            },
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_SUCCESS,
+                user_id=user.user_id,
+                username=user.username,
+                ip_address=ip_address,
+                details={
+                    "method": "oauth2",
+                    "provider": login_request.provider.value,
+                    "session_id": session_id,
+                },
+            )
         )
 
         logger.info(
@@ -1162,16 +1168,18 @@ async def link_oauth2_account(
         # For now, we'll just log it
 
         # Log audit event
-        await security_manager.log_audit_event(
-            event_type=AuditEventType.OAUTH2_LINKED,
-            user_id=current_user.user_id,
-            username=current_user.username,
-            ip_address=request.client.host if request and request.client else None,
-            details={
-                "provider": link_request.provider.value,
-                "external_id": external_id,
-                "email": email,
-            },
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.OAUTH2_LINKED,
+                user_id=current_user.user_id,
+                username=current_user.username,
+                ip_address=request.client.host if request and request.client else None,
+                details={
+                    "provider": link_request.provider.value,
+                    "external_id": external_id,
+                    "email": email,
+                },
+            )
         )
 
         logger.info(

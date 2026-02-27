@@ -6,6 +6,7 @@ This wizard creates custom Raspberry Pi images with LabLink pre-installed.
 import logging
 import os
 import re
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -165,11 +166,11 @@ export ORIGINAL_UID='{current_uid}'
 export ORIGINAL_GID='{current_gid}'
 """
             if self.wifi_ssid:
-                script_wrapper += f"export WIFI_SSID='{self.wifi_ssid}'\n"
+                script_wrapper += f"export WIFI_SSID={shlex.quote(self.wifi_ssid)}\n"
             if self.wifi_password:
-                script_wrapper += f"export WIFI_PASSWORD='{self.wifi_password}'\n"
+                script_wrapper += f"export WIFI_PASSWORD={shlex.quote(self.wifi_password)}\n"
             if self.admin_password:
-                script_wrapper += f"export LABLINK_ADMIN_PASSWORD='{self.admin_password}'\n"
+                script_wrapper += f"export LABLINK_ADMIN_PASSWORD={shlex.quote(self.admin_password)}\n"
 
             script_wrapper += f"exec bash {script_path}\n"
 

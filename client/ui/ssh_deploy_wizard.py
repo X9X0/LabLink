@@ -1,9 +1,71 @@
 """SSH Deployment Wizard for deploying LabLink server to remote machines."""
 
 import asyncio
+import base64
+import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# LabLink-specific SSH known-hosts file (separate from user's ~/.ssh/known_hosts)
+_LABLINK_KNOWN_HOSTS = os.path.expanduser("~/.ssh/lablink_known_hosts")
+
+
+def _host_key_fingerprint(key) -> str:
+    """Return a SHA256 fingerprint string for a paramiko host key."""
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return "SHA256:" + base64.b64encode(digest).rstrip(b"=").decode()
+
+
+def _load_known_hosts(ssh_client, extra_path: str = _LABLINK_KNOWN_HOSTS):
+    """Load system and LabLink known_hosts files into an SSHClient."""
+    system_known = os.path.expanduser("~/.ssh/known_hosts")
+    for path in (system_known, extra_path):
+        if os.path.exists(path):
+            try:
+                ssh_client.load_host_keys(path)
+            except Exception:
+                pass
+
+
+def _save_host_key(hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS):
+    """Append a verified host key to the LabLink known_hosts file."""
+    Path(known_hosts_path).parent.mkdir(parents=True, exist_ok=True)
+    key_line = f"{hostname} {key.get_name()} {key.get_base64()}\n"
+    # Avoid writing duplicates
+    existing = ""
+    if os.path.exists(known_hosts_path):
+        with open(known_hosts_path, "r") as f:
+            existing = f.read()
+    if hostname not in existing:
+        with open(known_hosts_path, "a") as f:
+            f.write(key_line)
+
+
+try:
+    import paramiko
+
+    class _LabLinkHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+        """Reject unknown host keys and store the offending key for later inspection."""
+
+        def __init__(self):
+            self._unknown: Dict[str, object] = {}  # hostname -> key
+
+        def missing_host_key(self, client, hostname, key):
+            self._unknown[hostname] = key
+            fingerprint = _host_key_fingerprint(key)
+            raise paramiko.ssh_exception.SSHException(
+                f"Unknown host key for {hostname}\n"
+                f"Fingerprint ({key.get_name()}): {fingerprint}\n"
+                "Run 'Test Connection' to verify and accept this host key."
+            )
+
+        def get_unknown_key(self, hostname):
+            return self._unknown.get(hostname)
+
+except ImportError:
+    _LabLinkHostKeyPolicy = None
 
 try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -66,9 +128,10 @@ class ServiceStatusMonitorThread(QThread):
                     self.finished.emit()
                     return
 
-            # Create SSH client
+            # Create SSH client with TOFU host key verification
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(_LabLinkHostKeyPolicy())
 
             # Connect
             try:
@@ -89,6 +152,16 @@ class ServiceStatusMonitorThread(QThread):
                         key_filename=str(key_path),
                         timeout=15,
                     )
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    self.status_update.emit(
+                        f"❌ {msg}\n\nUse 'Test Connection' on the connection page to verify and accept this host."
+                    )
+                else:
+                    self.status_update.emit(f"❌ SSH error: {e}")
+                self.finished.emit()
+                return
             except Exception as e:
                 self.status_update.emit(f"❌ Failed to connect: {e}")
                 self.finished.emit()
@@ -189,9 +262,10 @@ class DeploymentThread(QThread):
                     self.finished.emit(False, f"Cannot resolve hostname {host}: {e}")
                     return
 
-            # Create SSH client
+            # Create SSH client with TOFU host key verification
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(_LabLinkHostKeyPolicy())
 
             # Connect
             try:
@@ -214,6 +288,16 @@ class DeploymentThread(QThread):
                     )
                 else:
                     raise ValueError(f"Unknown auth method: {auth_method}")
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    self.finished.emit(
+                        False,
+                        f"{msg}\n\nUse 'Test Connection' on the connection page to verify and accept this host key.",
+                    )
+                else:
+                    self.finished.emit(False, f"SSH error: {e}")
+                return
             except Exception as e:
                 self.finished.emit(False, f"Connection failed: {e}")
                 return
@@ -1128,10 +1212,12 @@ class ConnectionPage(QWizardPage):
                     self.test_result_label.setText(f"❌ Cannot resolve {host}: {e}")
                     return
 
+            policy = _LabLinkHostKeyPolicy()
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(policy)
 
-            try:
+            def _attempt_connect():
                 if self.password_radio.isChecked():
                     password = self.password_edit.text()
                     ssh.connect(
@@ -1152,11 +1238,58 @@ class ConnectionPage(QWizardPage):
                         timeout=10,
                     )
 
+            try:
+                _attempt_connect()
                 ssh.close()
                 if host != resolved_host:
                     self.test_result_label.setText(f"✅ Connection successful! ({host} → {resolved_host})")
                 else:
                     self.test_result_label.setText("✅ Connection successful!")
+
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    # TOFU: present fingerprint and ask user to confirm
+                    unknown_key = policy.get_unknown_key(resolved_host)
+                    if unknown_key:
+                        fingerprint = _host_key_fingerprint(unknown_key)
+                        from PyQt6.QtWidgets import QMessageBox
+                        reply = QMessageBox.question(
+                            self,
+                            "Unknown Host Key",
+                            f"The host key for <b>{host}</b> is not in your known hosts.\n\n"
+                            f"Key type: {unknown_key.get_name()}\n"
+                            f"Fingerprint: {fingerprint}\n\n"
+                            "Verify this fingerprint out-of-band before accepting.\n\n"
+                            "Do you want to trust and save this host key?",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.No,
+                        )
+                        if reply == QMessageBox.StandardButton.Yes:
+                            _save_host_key(resolved_host, unknown_key)
+                            if host != resolved_host:
+                                _save_host_key(host, unknown_key)
+                            # Retry with accepted key now in known_hosts
+                            try:
+                                ssh2 = paramiko.SSHClient()
+                                _load_known_hosts(ssh2)
+                                ssh2.set_missing_host_key_policy(paramiko.RejectPolicy())
+                                if self.password_radio.isChecked():
+                                    ssh2.connect(resolved_host, port=port, username=username,
+                                                 password=self.password_edit.text(), timeout=10)
+                                else:
+                                    ssh2.connect(resolved_host, port=port, username=username,
+                                                 key_filename=str(Path(self.key_edit.text()).expanduser()), timeout=10)
+                                ssh2.close()
+                                self.test_result_label.setText("✅ Host key accepted and connection successful!")
+                            except Exception as e2:
+                                self.test_result_label.setText(f"❌ Connection failed after key acceptance: {e2}")
+                        else:
+                            self.test_result_label.setText("❌ Connection aborted — host key rejected by user")
+                    else:
+                        self.test_result_label.setText(f"❌ Unknown host key error: {msg}")
+                else:
+                    self.test_result_label.setText(f"❌ SSH error: {e}")
             except Exception as e:
                 self.test_result_label.setText(f"❌ Connection failed: {e}")
 

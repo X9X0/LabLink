@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import platform
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -137,13 +138,15 @@ class ImageWriterThread(QThread):
             # Create a wrapper script for the write operation
             import tempfile
 
-            # Build the dd command
+            # Build the dd command — quote paths to prevent shell injection
+            qimage = shlex.quote(self.image_path)
+            qdevice = shlex.quote(self.device_path)
             if self.image_path.endswith(".xz"):
-                dd_cmd = f"xz -dc '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"xz -dc {qimage} | dd of={qdevice} bs=4M status=progress"
             elif self.image_path.endswith(".gz"):
-                dd_cmd = f"gunzip -c '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"gunzip -c {qimage} | dd of={qdevice} bs=4M status=progress"
             else:
-                dd_cmd = f"dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"dd if={qimage} of={qdevice} bs=4M status=progress"
 
             # Create wrapper script
             script_content = f"""#!/bin/bash
@@ -331,6 +334,8 @@ sync
             ).returncode == 0
 
             # Create verification script that compares first 100MB of image with device
+            qimage = shlex.quote(self.image_path)
+            qdevice = shlex.quote(self.device_path)
             verify_script = f"""#!/bin/bash
 set -e
 exec 2>&1
@@ -338,7 +343,7 @@ exec 2>&1
 echo "Verifying first 100MB of written image..."
 
 # Compare first 100MB (102400 blocks of 1024 bytes)
-if cmp -n 104857600 '{self.image_path}' '{self.device_path}'; then
+if cmp -n 104857600 {qimage} {qdevice}; then
     echo "Verification successful: Data matches!"
     exit 0
 else

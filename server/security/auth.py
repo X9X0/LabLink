@@ -10,7 +10,7 @@ Provides JWT-based authentication with:
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 
 # Password hashing
@@ -115,7 +115,7 @@ def create_access_token(
     Returns:
         Encoded JWT token
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=config.access_token_expire_minutes)
 
     payload = TokenPayload(
@@ -144,7 +144,7 @@ def create_refresh_token(user_id: str, config: AuthConfig) -> str:
     Returns:
         Encoded JWT refresh token
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires = now + timedelta(days=config.refresh_token_expire_days)
 
     payload = {
@@ -236,7 +236,7 @@ class SessionManager:
     ) -> str:
         """Create a new session."""
         session_id = secrets.token_urlsafe(32)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         session = SessionInfo(
             session_id=session_id,
@@ -261,12 +261,12 @@ class SessionManager:
             return None
 
         # Check if expired
-        if datetime.utcnow() > session.expires_at:
+        if datetime.now(timezone.utc) > session.expires_at:
             self.destroy_session(session_id)
             return None
 
         # Update last activity
-        session.last_activity = datetime.utcnow()
+        session.last_activity = datetime.now(timezone.utc)
         return session
 
     def destroy_session(self, session_id: str) -> bool:
@@ -291,7 +291,7 @@ class SessionManager:
 
     def get_active_sessions(self) -> list[SessionInfo]:
         """Get all active sessions."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         active = []
 
         # Clean up expired sessions
@@ -311,7 +311,7 @@ class SessionManager:
 
     def cleanup_expired_sessions(self) -> int:
         """Remove expired sessions."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         count = 0
 
         session_ids = list(self._sessions.keys())
@@ -343,7 +343,7 @@ class LoginAttemptTracker:
         Returns:
             Number of failed attempts
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if username not in self._attempts:
             self._attempts[username] = []
@@ -366,7 +366,7 @@ class LoginAttemptTracker:
         if username not in self._attempts:
             return 0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
 
         # Filter recent attempts
@@ -397,7 +397,7 @@ class LoginAttemptTracker:
         lockout_until = first_attempt + timedelta(
             minutes=self.config.account_lockout_duration_minutes
         )
-        remaining = (lockout_until - datetime.utcnow()).total_seconds()
+        remaining = (lockout_until - datetime.now(timezone.utc)).total_seconds()
 
         return max(0, int(remaining))
 

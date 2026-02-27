@@ -8,6 +8,7 @@ Provides decorators and middleware for:
 """
 
 import logging
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Callable, List, Optional
 
@@ -74,7 +75,7 @@ class RBACDependencies:
             )
 
         # Check if user is locked
-        if user.locked_until and user.locked_until > datetime.utcnow():
+        if user.locked_until and user.locked_until > datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is temporarily locked",
@@ -437,7 +438,7 @@ class APIKeyChecker:
             return None
 
         # Update usage
-        api_key.last_used = datetime.utcnow()
+        api_key.last_used = datetime.now(timezone.utc)
         api_key.last_used_ip = ip_address
         api_key.usage_count += 1
 
@@ -536,8 +537,6 @@ class IPWhitelistChecker:
 # Helper Functions
 # ============================================================================
 
-from datetime import datetime
-
 
 def extract_token_from_request(request: Request) -> Optional[str]:
     """Extract JWT token from request."""
@@ -563,19 +562,28 @@ def extract_api_key_from_request(request: Request) -> Optional[str]:
 
 
 def get_client_ip(request: Request) -> str:
-    """Get client IP address from request."""
-    # Check X-Forwarded-For header (if behind proxy)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    """Get client IP address from request.
 
-    # Check X-Real-IP header
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
+    X-Forwarded-For and X-Real-IP are only trusted when the direct client
+    connection comes from a recognised trusted proxy IP (LABLINK_TRUSTED_PROXIES
+    env var, comma-separated).  Otherwise the direct socket address is used to
+    prevent IP spoofing by arbitrary callers.
+    """
+    import os
 
-    # Fall back to direct client
-    if request.client:
-        return request.client.host
+    direct_ip = request.client.host if request.client else "unknown"
 
-    return "unknown"
+    trusted_raw = os.environ.get("LABLINK_TRUSTED_PROXIES", "")
+    trusted_proxies = {p.strip() for p in trusted_raw.split(",") if p.strip()}
+
+    if trusted_proxies and direct_ip in trusted_proxies:
+        # Only trust proxy headers when the connection comes from a known proxy
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip
+
+    return direct_ip

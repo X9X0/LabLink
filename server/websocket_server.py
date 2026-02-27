@@ -255,7 +255,14 @@ async def handle_websocket(websocket: WebSocket):
         while True:
             # Receive messages from client
             data = await websocket.receive_text()
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                logger.warning(f"Received invalid JSON from WebSocket client: {data!r}")
+                await stream_manager.send_to_client(
+                    websocket, {"type": "error", "detail": "Invalid JSON"}
+                )
+                continue
 
             # Handle different message types
             msg_type = message.get("type")
