@@ -603,6 +603,52 @@ class DatabaseManager:
                 "total_errors": row[5] or 0,
             }
 
+    def get_all_equipment_usage_by_days(self, days: int) -> List[Dict[str, Any]]:
+        """Get per-equipment usage stats aggregated over the last N days.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            List of dicts with usage stats per equipment, ordered by total duration
+        """
+        start_time = datetime.now() - timedelta(days=days)
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT equipment_id, equipment_type,
+                       COUNT(*) as session_count,
+                       SUM(duration_seconds) as total_duration,
+                       AVG(duration_seconds) as avg_duration,
+                       SUM(command_count) as total_commands,
+                       SUM(measurement_count) as total_measurements,
+                       SUM(error_count) as total_errors
+                FROM equipment_usage
+                WHERE session_start >= ?
+                GROUP BY equipment_id, equipment_type
+                ORDER BY total_duration DESC
+            """,
+                (start_time.isoformat(),),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+
+        return [
+            {
+                "equipment_id": r[0],
+                "equipment_type": r[1],
+                "session_count": r[2],
+                "total_duration_seconds": r[3] or 0.0,
+                "average_duration_seconds": r[4] or 0.0,
+                "total_commands": r[5] or 0,
+                "total_measurements": r[6] or 0,
+                "total_errors": r[7] or 0,
+            }
+            for r in rows
+        ]
+
     # === Data Session Operations ===
 
     def create_data_session(self, record: DataSessionRecord):

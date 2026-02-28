@@ -61,7 +61,7 @@ class SecurityManager:
         self.config = config
 
         # Session and attempt tracking
-        self.session_manager = SessionManager()
+        self.session_manager = SessionManager(db_path=self.db_path)
         self.attempt_tracker = LoginAttemptTracker(config)
 
         # Initialize database
@@ -80,10 +80,43 @@ class SecurityManager:
         conn.row_factory = sqlite3.Row
         return conn
 
+    def _write_audit_entry_sync(
+        self, conn: sqlite3.Connection, entry: AuditLogEntry
+    ):
+        """Write an audit log entry using an existing connection (no commit)."""
+        conn.execute(
+            """
+            INSERT INTO audit_log (
+                entry_id, timestamp, event_type, user_id, username,
+                ip_address, resource_type, resource_id, action, success,
+                error_message, details, auth_method
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                entry.entry_id,
+                entry.timestamp,
+                entry.event_type.value,
+                entry.user_id,
+                entry.username,
+                entry.ip_address,
+                entry.resource_type.value if entry.resource_type else None,
+                entry.resource_id,
+                entry.action,
+                entry.success,
+                entry.error_message,
+                json.dumps(entry.details),
+                entry.auth_method.value if entry.auth_method else None,
+            ),
+        )
+
     def _init_database(self):
         """Initialize SQLite database schema."""
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
+
+        # Enable WAL mode for better concurrent read performance
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
 
         # Users table
         cursor.execute(
@@ -187,6 +220,22 @@ class SecurityManager:
         """
         )
 
+        # Sessions table (persistent session store)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                auth_method TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_activity TEXT NOT NULL
+            )
+        """
+        )
+
         # Create indexes
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)"
@@ -257,7 +306,7 @@ class SecurityManager:
         self, user_create: UserCreate, created_by: Optional[str] = None
     ) -> User:
         """Create a new user."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -329,17 +378,17 @@ class SecurityManager:
                 ),
             )
 
-            conn.commit()
-
-            # Audit log
-            await self.audit_log(
+            # Write audit entry in the same transaction for atomicity (MED-6)
+            self._write_audit_entry_sync(
+                conn,
                 AuditLogEntry(
                     event_type=AuditEventType.USER_CREATED,
                     user_id=created_by,
                     resource_id=user.user_id,
                     details={"username": user.username, "email": user.email},
-                )
+                ),
             )
+            conn.commit()  # Both user row and audit entry committed atomically
 
             logger.info(f"User created: {user.username} (ID: {user.user_id})")
             return user
@@ -1115,7 +1164,7 @@ class SecurityManager:
 
     async def audit_log(self, entry: AuditLogEntry):
         """Record an audit log entry."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:
@@ -1151,7 +1200,7 @@ class SecurityManager:
 
     async def query_audit_log(self, query: AuditLogQuery) -> List[AuditLogEntry]:
         """Query audit log."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._open_db()
         cursor = conn.cursor()
 
         try:

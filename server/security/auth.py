@@ -10,7 +10,9 @@ Provides JWT-based authentication with:
 
 import logging
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 # Password hashing
@@ -222,10 +224,65 @@ def decode_refresh_token(token: str, config: AuthConfig) -> Optional[str]:
 
 
 class SessionManager:
-    """Manages active user sessions."""
+    """Manages active user sessions with optional SQLite write-through."""
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[Path] = None):
         self._sessions: Dict[str, SessionInfo] = {}  # session_id -> SessionInfo
+        self._db_path = db_path
+
+        if db_path is not None:
+            self._rehydrate_sessions()
+
+    # ------------------------------------------------------------------
+    # DB helpers
+    # ------------------------------------------------------------------
+
+    def _db_write(self, sql: str, params: tuple = ()):
+        """Execute a single write statement on the sessions DB."""
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            conn.execute(sql, params)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _rehydrate_sessions(self):
+        """Load non-expired sessions from DB into the in-memory dict."""
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            cursor = conn.cursor()
+            now = datetime.now(timezone.utc)
+            cursor.execute(
+                "SELECT session_id, user_id, username, ip_address, auth_method, "
+                "created_at, expires_at, last_activity FROM sessions WHERE expires_at > ?",
+                (now.isoformat(),),
+            )
+            loaded = 0
+            for row in cursor.fetchall():
+                try:
+                    session = SessionInfo(
+                        session_id=row[0],
+                        user_id=row[1],
+                        username=row[2],
+                        ip_address=row[3],
+                        auth_method=AuthMethod(row[4]),
+                        created_at=datetime.fromisoformat(row[5]),
+                        expires_at=datetime.fromisoformat(row[6]),
+                        last_activity=datetime.fromisoformat(row[7]),
+                    )
+                    self._sessions[row[0]] = session
+                    loaded += 1
+                except Exception as e:
+                    logger.warning(f"Failed to rehydrate session {row[0]}: {e}")
+            logger.info(f"Rehydrated {loaded} sessions from database")
+        except Exception as e:
+            logger.warning(f"Session rehydration skipped: {e}")
+        finally:
+            conn.close()
+
+    # ------------------------------------------------------------------
+    # Session operations
+    # ------------------------------------------------------------------
 
     def create_session(
         self,
@@ -237,6 +294,7 @@ class SessionManager:
         """Create a new session."""
         session_id = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=expires_in_minutes)
 
         session = SessionInfo(
             session_id=session_id,
@@ -245,11 +303,29 @@ class SessionManager:
             ip_address=ip_address,
             auth_method=auth_method,
             created_at=now,
-            expires_at=now + timedelta(minutes=expires_in_minutes),
+            expires_at=expires_at,
             last_activity=now,
         )
 
         self._sessions[session_id] = session
+
+        if self._db_path is not None:
+            self._db_write(
+                "INSERT OR REPLACE INTO sessions "
+                "(session_id, user_id, username, ip_address, auth_method, "
+                "created_at, expires_at, last_activity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    user.user_id,
+                    user.username,
+                    ip_address,
+                    auth_method.value,
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+
         logger.info(f"Session created for user {user.username} from {ip_address}")
         return session_id
 
@@ -267,6 +343,11 @@ class SessionManager:
 
         # Update last activity
         session.last_activity = datetime.now(timezone.utc)
+        if self._db_path is not None:
+            self._db_write(
+                "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
+                (session.last_activity.isoformat(), session_id),
+            )
         return session
 
     def destroy_session(self, session_id: str) -> bool:
@@ -274,6 +355,10 @@ class SessionManager:
         if session_id in self._sessions:
             session = self._sessions[session_id]
             del self._sessions[session_id]
+            if self._db_path is not None:
+                self._db_write(
+                    "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+                )
             logger.info(f"Session destroyed for user {session.username}")
             return True
         return False
@@ -285,8 +370,19 @@ class SessionManager:
         for session_id in session_ids:
             session = self._sessions[session_id]
             if session.user_id == user_id:
-                self.destroy_session(session_id)
+                # Remove from memory without triggering individual DB deletes;
+                # the bulk DELETE below handles the DB side atomically.
+                del self._sessions[session_id]
+                logger.info(f"Session destroyed for user {session.username}")
                 count += 1
+
+        # Bulk-delete all sessions for this user from DB in one query, which
+        # also catches any orphaned DB rows that were not in _sessions.
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM sessions WHERE user_id = ?", (user_id,)
+            )
+
         return count
 
     def get_active_sessions(self) -> list[SessionInfo]:
@@ -320,6 +416,12 @@ class SessionManager:
             if now > session.expires_at:
                 self.destroy_session(session_id)
                 count += 1
+
+        # Bulk-delete any orphaned expired rows from DB
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM sessions WHERE expires_at <= ?", (now.isoformat(),)
+            )
 
         return count
 
