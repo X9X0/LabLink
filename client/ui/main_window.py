@@ -219,12 +219,9 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        # Git branch indicator (debug mode only)
-        branch_info = self._get_git_branch()
-        if branch_info and not branch_info.startswith("main"):
-            self.branch_label = QLabel(f"📍 {branch_info}")
-            self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-            self.status_bar.addWidget(self.branch_label)
+        # Git branch indicator populated asynchronously to avoid blocking startup
+        import threading
+        threading.Thread(target=self._fetch_git_branch_async, daemon=True).start()
 
         # Connection status label
         self.connection_label = QLabel("Not Connected")
@@ -285,12 +282,25 @@ class MainWindow(QMainWindow):
 
         return None
 
+    def _fetch_git_branch_async(self):
+        """Fetch git branch info in background and update the status bar label."""
+        from PyQt6.QtCore import QTimer
+        branch_info = self._get_git_branch()
+        if branch_info and not branch_info.startswith("main"):
+            QTimer.singleShot(0, lambda: self._show_branch_label(branch_info))
+
+    def _show_branch_label(self, branch_info: str):
+        """Add the git branch indicator to the status bar (must run on main thread)."""
+        self.branch_label = QLabel(f"📍 {branch_info}")
+        self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        self.status_bar.addWidget(self.branch_label)
+
     # ==================== Connection Management ====================
 
     def show_connection_dialog(self):
         """Show connection dialog."""
-        if self.connection_dialog is None:
-            self.connection_dialog = ConnectionDialog(self)
+        # Recreate each time so the dialog always reflects current settings
+        self.connection_dialog = ConnectionDialog(self)
 
         if self.connection_dialog.exec():
             host = self.connection_dialog.get_host()
@@ -496,10 +506,9 @@ class MainWindow(QMainWindow):
         self.refresh_all()
 
         # Attempt WebSocket connection (optional, non-blocking)
-        # Schedule async task using asyncio's event loop (qasync provides it)
+        # _connect_websocket is an asyncSlot so calling it schedules it via qasync
         try:
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(self._connect_websocket(), loop=loop)
+            self._connect_websocket()
         except Exception as e:
             logger.error(f"Connection error: {e}")
 
@@ -543,11 +552,14 @@ class MainWindow(QMainWindow):
             logger.error(f"WebSocket connection error: {e}")
             # Don't show error to user - WebSocket is optional
 
-    def disconnect_from_server(self):
+    @qasync.asyncSlot()
+    async def disconnect_from_server(self):
         """Disconnect from server."""
         if self.client:
-            # Schedule async disconnect properly
-            asyncio.create_task(self.client.disconnect())
+            try:
+                await self.client.disconnect()
+            except Exception as e:
+                logger.debug(f"Error during disconnect: {e}")
             self.client = None
 
         # Reset connection states

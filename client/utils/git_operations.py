@@ -133,7 +133,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                     # If no output, branch has no commits in last 3 months
                     if not commit_check.stdout.strip():
                         continue
-                except:
+                except Exception:
                     # If check fails, include the branch anyway
                     pass
 

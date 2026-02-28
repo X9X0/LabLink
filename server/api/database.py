@@ -403,48 +403,7 @@ async def get_usage_summary(
         db = get_database_manager()
         start_time = datetime.now() - timedelta(days=days)
 
-        # Get statistics for all equipment (no equipment_id filter)
-        # This requires a custom query
-        import sqlite3
-
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                equipment_id,
-                equipment_type,
-                COUNT(*) as session_count,
-                SUM(duration_seconds) as total_duration,
-                AVG(duration_seconds) as avg_duration,
-                SUM(command_count) as total_commands,
-                SUM(measurement_count) as total_measurements,
-                SUM(error_count) as total_errors
-            FROM equipment_usage
-            WHERE session_start >= ?
-            GROUP BY equipment_id, equipment_type
-            ORDER BY total_duration DESC
-        """,
-            (start_time.isoformat(),),
-        )
-
-        results = []
-        for row in cursor.fetchall():
-            results.append(
-                {
-                    "equipment_id": row[0],
-                    "equipment_type": row[1],
-                    "session_count": row[2],
-                    "total_duration_seconds": row[3] or 0.0,
-                    "average_duration_seconds": row[4] or 0.0,
-                    "total_commands": row[5] or 0,
-                    "total_measurements": row[6] or 0,
-                    "total_errors": row[7] or 0,
-                }
-            )
-
-        conn.close()
+        results = db.get_all_equipment_usage_by_days(days)
 
         return {
             "period_days": days,

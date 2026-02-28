@@ -180,7 +180,7 @@ class BaseEquipment(ABC):
         error_msg = None
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.instrument.write, command)
             success = True
         except Exception as e:
@@ -219,7 +219,7 @@ class BaseEquipment(ABC):
         response = ""
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(None, self.instrument.query, command)
             success = True
             return response.strip()

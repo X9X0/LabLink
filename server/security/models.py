@@ -12,7 +12,7 @@ Provides data models for:
 
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -122,7 +122,7 @@ class Permission(BaseModel):
     action: PermissionAction
     description: Optional[str] = None
     resource_id: Optional[str] = None  # Specific resource instance (e.g., equipment_id)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def matches(
         self, resource: str, action: str, resource_id: Optional[str] = None
@@ -155,8 +155,8 @@ class Role(BaseModel):
     role_type: RoleType
     description: Optional[str] = None
     permissions: List[Permission] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def has_permission(
         self, resource: str, action: str, resource_id: Optional[str] = None
@@ -198,8 +198,8 @@ class User(BaseModel):
     mfa_secret: Optional[str] = None  # TOTP secret (encrypted)
     backup_codes: List[str] = Field(default_factory=list)  # Hashed backup codes
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: Optional[str] = None  # user_id of creator
 
     @validator("username")
@@ -414,7 +414,7 @@ class APIKey(BaseModel):
     last_used: Optional[datetime] = None
     last_used_ip: Optional[str] = None
     usage_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str  # user_id
 
     def __init__(self, **data):
@@ -426,7 +426,7 @@ class APIKey(BaseModel):
         """Check if API key is valid."""
         if not self.is_active:
             return False
-        if self.expires_at and datetime.utcnow() > self.expires_at:
+        if self.expires_at and datetime.now(timezone.utc) > self.expires_at:
             return False
         return True
 
@@ -483,7 +483,7 @@ class IPWhitelistEntry(BaseModel):
     ip_address: str  # Can be single IP or CIDR range
     is_whitelist: bool = True  # True = whitelist, False = blacklist
     description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str  # user_id
     expires_at: Optional[datetime] = None
 
@@ -542,7 +542,7 @@ class AuditLogEntry(BaseModel):
     """Security audit log entry."""
 
     entry_id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     event_type: AuditEventType
     user_id: Optional[str] = None
     username: Optional[str] = None

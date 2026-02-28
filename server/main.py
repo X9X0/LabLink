@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -348,51 +348,58 @@ async def lifespan(app: FastAPI):
         if settings.create_default_admin:
             from security import UserCreate
 
-            try:
-                admin_user = await security_manager.get_user_by_username(
-                    settings.default_admin_username
+            if not settings.default_admin_password:
+                logger.error(
+                    "⚠️  LABLINK_DEFAULT_ADMIN_PASSWORD is not set. "
+                    "Default admin user will NOT be created. "
+                    "Set this environment variable to enable first-time login."
                 )
-                if not admin_user:
-                    # Get admin role
-                    admin_role = security_manager.get_role_by_name("admin")
-                    admin_user = await security_manager.create_user(
-                        UserCreate(
-                            username=settings.default_admin_username,
-                            email=settings.default_admin_email,
-                            password=settings.default_admin_password,
-                            full_name="Default Administrator",
-                            roles=[admin_role.role_id] if admin_role else [],
-                            must_change_password=True,
-                        ),
-                        created_by=None,
+            else:
+                try:
+                    admin_user = await security_manager.get_user_by_username(
+                        settings.default_admin_username
                     )
-                    admin_user.is_superuser = True
+                    if not admin_user:
+                        # Get admin role
+                        admin_role = security_manager.get_role_by_name("admin")
+                        admin_user = await security_manager.create_user(
+                            UserCreate(
+                                username=settings.default_admin_username,
+                                email=settings.default_admin_email,
+                                password=settings.default_admin_password,
+                                full_name="Default Administrator",
+                                roles=[admin_role.role_id] if admin_role else [],
+                                must_change_password=True,
+                            ),
+                            created_by=None,
+                        )
+                        admin_user.is_superuser = True
 
-                    # Update superuser flag in database
-                    from datetime import datetime
-                    from sqlite3 import connect
+                        # Update superuser flag in database
+                        from datetime import datetime
+                        from sqlite3 import connect
 
-                    conn = connect(str(security_manager.db_path))
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        UPDATE users SET is_superuser = 1, updated_at = ? WHERE user_id = ?
-                    """,
-                        (datetime.utcnow(), admin_user.user_id),
-                    )
-                    conn.commit()
-                    conn.close()
+                        conn = connect(str(security_manager.db_path))
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """
+                            UPDATE users SET is_superuser = 1, updated_at = ? WHERE user_id = ?
+                        """,
+                            (datetime.now(timezone.utc), admin_user.user_id),
+                        )
+                        conn.commit()
+                        conn.close()
 
-                    logger.warning(
-                        f"⚠️  DEFAULT ADMIN CREATED - Username: {settings.default_admin_username}, Password: {settings.default_admin_password}"
-                    )
-                    logger.warning("⚠️  CHANGE THE DEFAULT PASSWORD IMMEDIATELY!")
-                else:
-                    logger.info(
-                        f"Default admin user already exists: {settings.default_admin_username}"
-                    )
-            except Exception as e:
-                logger.error(f"Failed to create default admin user: {e}")
+                        logger.warning(
+                            f"⚠️  DEFAULT ADMIN CREATED - Username: {settings.default_admin_username}"
+                        )
+                        logger.warning("⚠️  CHANGE THE DEFAULT PASSWORD IMMEDIATELY!")
+                    else:
+                        logger.info(
+                            f"Default admin user already exists: {settings.default_admin_username}"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create default admin user: {e}")
 
         logger.info(
             "Advanced security initialized - JWT auth, RBAC, API keys, IP whitelisting, audit logging enabled"
@@ -494,7 +501,7 @@ async def lifespan(app: FastAPI):
 
     # Detect if running inside Docker
     import os
-    running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False)
+    running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', '').lower() in ('1', 'true', 'yes')
 
     if settings.enable_mdns_discovery and not running_in_docker:
         from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
@@ -601,9 +608,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Allowed origins come from settings (LABLINK_CORS_ORIGINS env var).
+# The default "*" is intentionally broad for a local-network lab tool;
+# override with a comma-separated list of origins for production deployments.
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -659,13 +670,36 @@ async def health():
 
     return {
         "status": "healthy",
-        "connected_devices": len(equipment_manager.get_connected_devices()),
+        "connected_devices": len(await equipment_manager.get_connected_devices()),
     }
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time data streaming."""
+async def websocket_endpoint(websocket: WebSocket, token: str = None):
+    """WebSocket endpoint for real-time data streaming.
+
+    Requires a valid JWT access token passed as the ``token`` query parameter
+    when advanced security is enabled (e.g. ``wss://host/ws?token=<jwt>``).
+    """
+    if settings.enable_advanced_security:
+        try:
+            from security import get_security_manager
+            from security.auth import decode_token
+
+            security_manager = get_security_manager()
+            if security_manager:
+                if not token:
+                    await websocket.close(code=4001, reason="Authentication token required")
+                    return
+                payload = decode_token(token, security_manager.config)
+                if not payload:
+                    await websocket.close(code=4001, reason="Invalid or expired token")
+                    return
+        except Exception as e:
+            logger.warning(f"WebSocket auth check failed: {e}")
+            await websocket.close(code=4001, reason="Authentication error")
+            return
+
     await handle_websocket(websocket)
 
 

@@ -111,7 +111,7 @@ async def disconnect_device(equipment_id: str, session_id: Optional[str] = None)
 async def list_devices():
     """List all connected devices."""
     try:
-        devices = equipment_manager.get_connected_devices()
+        devices = await equipment_manager.get_connected_devices()
         return devices
     except Exception as e:
         logger.error(f"Error listing devices: {e}")

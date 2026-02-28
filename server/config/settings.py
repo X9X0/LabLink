@@ -203,7 +203,7 @@ class Settings(BaseSettings):
     # ==================== Advanced Security System (v0.23.0) ====================
     # Security Enable/Disable
     enable_advanced_security: bool = Field(
-        default=False, description="Enable advanced security system (JWT, RBAC, etc.)"
+        default=True, description="Enable advanced security system (JWT, RBAC, etc.)"
     )
     security_db_path: str = Field(
         default="./data/security.db", description="Security database path"
@@ -300,9 +300,9 @@ class Settings(BaseSettings):
     default_admin_username: str = Field(
         default="admin", description="Default admin username"
     )
-    default_admin_password: str = Field(
-        default="LabLink@2025",
-        description="Default admin password (change immediately!)",
+    default_admin_password: Optional[str] = Field(
+        default=None,
+        description="Default admin password — must be set via LABLINK_DEFAULT_ADMIN_PASSWORD env var",
     )
     default_admin_email: str = Field(
         default="admin@lablink.local", description="Default admin email"

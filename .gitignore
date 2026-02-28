@@ -49,6 +49,7 @@ logs/
 # Configuration
 .env
 config.local.json
+config/update_config.json
 *.key
 *.pem
 

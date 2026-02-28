@@ -32,3 +32,4 @@ python-dotenv==1.0.0
 # Utilities
 python-dateutil==2.8.2
 qasync
+keyring==25.4.1

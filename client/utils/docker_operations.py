@@ -1,6 +1,8 @@
 """Docker operations utility for server rebuild management."""
 
 import logging
+import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
@@ -139,19 +141,24 @@ def rebuild_docker_ssh(host: str, project_dir: str, no_cache: bool = True) -> Do
     try:
         output_lines = []
 
-        # Build the command string to execute remotely
+        # Validate project_dir to prevent shell injection — allow only safe path characters
+        if not re.fullmatch(r"[a-zA-Z0-9_./@~-]+", project_dir):
+            raise ValueError(f"project_dir contains unsafe characters: {project_dir!r}")
+
+        # Build the command string to execute remotely — use shlex.quote for safety
         no_cache_flag = "--no-cache" if no_cache else ""
+        quoted_dir = shlex.quote(project_dir)
 
         # Create a shell script to run all commands
-        commands = f"""
-cd {project_dir} && \
-echo "=== Stopping containers ===" && \
-docker compose down && \
-echo "=== Building containers ===" && \
-docker compose build {no_cache_flag} && \
-echo "=== Starting containers ===" && \
-docker compose up -d
-"""
+        commands = (
+            f"cd {quoted_dir} && "
+            f"echo '=== Stopping containers ===' && "
+            f"docker compose down && "
+            f"echo '=== Building containers ===' && "
+            f"docker compose build {no_cache_flag} && "
+            f"echo '=== Starting containers ===' && "
+            f"docker compose up -d"
+        )
 
         logger.info(f"Rebuilding Docker on {host}...")
 

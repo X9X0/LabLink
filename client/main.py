@@ -54,10 +54,12 @@ def main():
     setup_logging(debug=args.debug)
     logger = logging.getLogger(__name__)
 
+    _version_file = Path(__file__).parent.parent / "VERSION"
+    _version = _version_file.read_text().strip() if _version_file.exists() else "unknown"
     if args.debug:
-        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support (DEBUG MODE)")
+        logger.info(f"Starting LabLink GUI Client v{_version} with async WebSocket support (DEBUG MODE)")
     else:
-        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support")
+        logger.info(f"Starting LabLink GUI Client v{_version} with async WebSocket support")
 
     # Check for pending client update
     from client.utils.self_update import check_update_flag, clear_update_flag, perform_client_update
