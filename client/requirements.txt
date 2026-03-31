@@ -7,7 +7,7 @@ pyqtgraph==0.13.3
 
 # Networking
 requests==2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
-websockets==12.0
+websockets==15.0.1
 aiohttp==3.12.14  # Security: Fixes CVE-2024-23334 (directory traversal), CVE-2024-30251 (DoS), CVE-2024-52304 (request smuggling), CVE-2024-27306 (XSS), CVE-2024-23829 (HTTP parser), CVE-2025-53643 (smuggling)
 
 # SSH and Deployment
