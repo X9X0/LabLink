@@ -190,6 +190,17 @@ setup_environment() {
     else
         print_step ".env file already exists"
     fi
+
+    # Make version check script executable
+    if [ -f "lablink-version.sh" ]; then
+        chmod +x lablink-version.sh
+
+        # Create symlink in /usr/local/bin for easy access
+        if [ -w /usr/local/bin ] || [ -n "$SUDO" ]; then
+            $SUDO ln -sf "$LABLINK_DIR/lablink-version.sh" /usr/local/bin/lablink-version
+            print_step "Installed 'lablink-version' command"
+        fi
+    fi
 }
 
 deploy_with_docker() {
@@ -313,6 +324,9 @@ print_success() {
         echo "  Restart:       sudo systemctl restart lablink.service"
     fi
 
+    echo ""
+    echo "Utility Commands:"
+    echo "  Check version: lablink-version"
     echo ""
     echo "For help and documentation: https://docs.lablink.io"
     echo ""

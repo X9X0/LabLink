@@ -506,6 +506,28 @@ class BK9205B(BaseEquipment):
             self.cached_info = await self.get_info()
 
         except Exception as e:
+            error_msg = str(e).lower()
+
+            # If device not found, provide diagnostic information
+            if "not found" in error_msg or "no device" in error_msg:
+                from server.utils.usb_diagnostics import log_usb_diagnostics
+                logger.error(f"Device not found at {self.resource_string}")
+                log_usb_diagnostics(self.resource_string)
+                logger.error(
+                    "\n" + "=" * 70 + "\n"
+                    "USB DEVICE CONNECTION FAILED\n"
+                    "=" * 70 + "\n"
+                    "If the serial number is unreadable (shows as ???), this indicates\n"
+                    "a USB communication issue after long server uptime.\n\n"
+                    "COMMON FIXES:\n"
+                    "  1. Unplug and replug the USB device\n"
+                    "  2. Restart the LabLink server\n"
+                    "  3. Check USB cable and connection quality\n"
+                    "  4. Update device firmware if available\n"
+                    "  5. Run 'USB Device Diagnostics' from the client's Diagnostic tab\n"
+                    "=" * 70
+                )
+
             logger.error(f"Failed to connect to {self.resource_string}: {e}")
             self.connected = False
             raise
