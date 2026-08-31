@@ -1,4 +1,13 @@
-"""Test mDNS/Zeroconf service discovery."""
+"""Test mDNS/Zeroconf service discovery.
+
+This is a MANUAL test script: it broadcasts on the real network, sleeps for
+tens of seconds, and prompts for input. Under pytest it would hang the run,
+so the module is skipped unless explicitly opted into:
+
+    LABLINK_MDNS_TESTS=1 pytest tests/unit/test_mdns.py
+
+It can also still be run directly: python tests/unit/test_mdns.py
+"""
 
 import sys
 import os
@@ -13,10 +22,20 @@ try:
     from zeroconf import Zeroconf
     ZEROCONF_AVAILABLE = True
 except ImportError:
-    print("Error: zeroconf package not installed")
-    print("\nInstall with: pip install zeroconf")
     ZEROCONF_AVAILABLE = False
-    sys.exit(1)
+
+# Requires a live network and real waits; opt in explicitly.
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        os.environ.get("LABLINK_MDNS_TESTS") != "1",
+        reason="manual network test; set LABLINK_MDNS_TESTS=1 to run",
+    ),
+    pytest.mark.skipif(
+        not ZEROCONF_AVAILABLE, reason="zeroconf package not installed"
+    ),
+]
 
 
 def test_server_mdns():
