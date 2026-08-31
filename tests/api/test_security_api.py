@@ -46,8 +46,7 @@ def api(security_manager):
 
 
 def _make_user(security_manager, username, is_superuser=False):
-    loop = asyncio.get_event_loop()
-    user = loop.run_until_complete(
+    user = asyncio.run(
         security_manager.create_user(
             UserCreate(
                 username=username,

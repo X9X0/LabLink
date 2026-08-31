@@ -45,11 +45,11 @@ def client(security_manager):
 
 
 @pytest.fixture
-def account(security_manager, event_loop=None):
+def account(security_manager):
     """A real user in the real database."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(
+    return asyncio.run(
         security_manager.create_user(
             UserCreate(
                 username="testuser",
@@ -153,9 +153,8 @@ class TestLogoutRevokesTheToken:
     def test_logout_does_not_affect_other_users(self, client, security_manager):
         import asyncio
 
-        loop = asyncio.get_event_loop()
         for name in ("alice", "bob"):
-            loop.run_until_complete(
+            asyncio.run(
                 security_manager.create_user(
                     UserCreate(
                         username=name,
