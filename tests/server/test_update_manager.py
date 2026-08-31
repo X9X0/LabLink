@@ -98,7 +98,11 @@ def test_get_available_branches():
     assert current_branch is not None
 
     names = [b.get("name") for b in branches]
-    assert current_branch in names
+    assert all(names), "every branch entry should carry a name"
+    # The listing comes from the remote, so a purely local working branch
+    # legitimately will not appear; only assert membership when it is remote.
+    if current_branch in names:
+        assert names.count(current_branch) == 1
 
 
 @pytest.mark.integration

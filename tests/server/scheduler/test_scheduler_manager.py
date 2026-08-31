@@ -191,7 +191,7 @@ class TestJobManagement:
         except (NotImplementedError, AttributeError):
             pytest.skip("get_job not implemented")
 
-    def test_update_job(self, scheduler_manager):
+    async def test_update_job(self, scheduler_manager):
         """Test updating job configuration."""
         try:
             # Create a job
@@ -201,17 +201,22 @@ class TestJobManagement:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
+            assert created is not None
 
-            if created:
-                # Update it
-                update = ScheduleConfig(
-                    name="Updated name",
-                    interval_seconds=7200
-                )
-                updated = scheduler_manager.update_job(created.job_id, update)
-                if updated:
-                    assert updated.name == "Updated name"
+            # Update it. ScheduleConfig requires schedule_type/trigger_type,
+            # so an update carries the full config, not just changed fields.
+            update = ScheduleConfig(
+                name="Updated name",
+                schedule_type=ScheduleType.COMMAND,
+                trigger_type=TriggerType.INTERVAL,
+                interval_seconds=7200,
+            )
+            updated = await scheduler_manager.update_job(created.job_id, update)
+
+            assert updated is not None
+            assert updated.name == "Updated name"
+            assert updated.interval_seconds == 7200
         except (NotImplementedError, AttributeError):
             pytest.skip("update_job not implemented")
 

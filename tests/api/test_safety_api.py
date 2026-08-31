@@ -56,7 +56,10 @@ class TestEmergencyStop:
         mock_psu2 = MagicMock()
         mock_psu2.set_output = AsyncMock()
 
-        mock_load = MagicMock()
+        # An electronic load has set_input but no set_output. A bare
+        # MagicMock auto-creates set_output, so the endpoint would take the
+        # power-supply branch and fail awaiting a non-async attribute.
+        mock_load = MagicMock(spec=["set_input"])
         mock_load.set_input = AsyncMock()
 
         mock_equipment_manager.equipment = {
