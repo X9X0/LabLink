@@ -2,7 +2,24 @@
 
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from shared.models.equipment import EquipmentInfo, EquipmentType, EquipmentStatus
+from shared.models.equipment import (
+    ConnectionType,
+    EquipmentInfo,
+    EquipmentStatus,
+    EquipmentType,
+)
+
+
+def _discovered(device_id, resource_name, model):
+    """Build a DiscoveredDevice the way equipment_manager.discover_devices does."""
+    from discovery.models import DiscoveredDevice, DiscoveryMethod
+
+    return DiscoveredDevice(
+        device_id=device_id,
+        resource_name=resource_name,
+        model=model,
+        discovery_method=DiscoveryMethod.VISA,
+    )
 
 
 @pytest.mark.api
@@ -12,11 +29,11 @@ class TestEquipmentDiscovery:
     def test_discover_devices_success(self, client, mock_equipment_manager):
         """Test successful device discovery."""
         # Arrange
-        expected_resources = [
-            "USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
-            "USB0::0x0957::0x0F07::MY12345678::INSTR",
+        expected_devices = [
+            _discovered("dev-1", "USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR", "DS1054Z"),
+            _discovered("dev-2", "USB0::0x0957::0x0F07::MY12345678::INSTR", "E36312A"),
         ]
-        mock_equipment_manager.discover_devices.return_value = expected_resources
+        mock_equipment_manager.discover_devices.return_value = expected_devices
 
         # Patch the manager in the equipment module
         with patch("api.equipment.equipment_manager", mock_equipment_manager):
@@ -26,9 +43,12 @@ class TestEquipmentDiscovery:
             # Assert
             assert response.status_code == 200
             data = response.json()
-            assert "resources" in data
-            assert len(data["resources"]) == 2
-            assert data["resources"] == expected_resources
+            assert "devices" in data
+            assert len(data["devices"]) == 2
+            assert [d["resource_name"] for d in data["devices"]] == [
+                "USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
+                "USB0::0x0957::0x0F07::MY12345678::INSTR",
+            ]
             mock_equipment_manager.discover_devices.assert_called_once()
 
     def test_discover_devices_empty(self, client, mock_equipment_manager):
@@ -43,7 +63,7 @@ class TestEquipmentDiscovery:
             # Assert
             assert response.status_code == 200
             data = response.json()
-            assert data["resources"] == []
+            assert data["devices"] == []
 
     def test_discover_devices_error(self, client, mock_equipment_manager):
         """Test device discovery with error."""
@@ -116,7 +136,7 @@ class TestEquipmentConnection:
         equipment_id = "test_scope_001"
         session_id = "session_123"
 
-        with patch("server.api.equipment.equipment_manager", mock_equipment_manager), \
+        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
              patch("api.equipment.lock_manager", mock_lock_manager), \
              patch("api.equipment.settings") as mock_settings:
 
@@ -178,18 +198,16 @@ class TestEquipmentList:
                 type=EquipmentType.OSCILLOSCOPE,
                 model="Rigol DS1054Z",
                 manufacturer="Rigol",
-                resource="USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
-                capabilities={"num_channels": 4},
-                status=EquipmentStatus.CONNECTED,
+                connection_type=ConnectionType.USB,
+                resource_string="USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
             ),
             EquipmentInfo(
                 id="test_psu_001",
                 type=EquipmentType.POWER_SUPPLY,
                 model="Keysight E36312A",
                 manufacturer="Keysight",
-                resource="USB0::0x0957::0x0F07::MY12345678::INSTR",
-                capabilities={"num_channels": 3},
-                status=EquipmentStatus.CONNECTED,
+                connection_type=ConnectionType.USB,
+                resource_string="USB0::0x0957::0x0F07::MY12345678::INSTR",
             ),
         ]
         mock_equipment_manager.get_connected_devices.return_value = mock_devices
@@ -255,18 +273,28 @@ class TestEquipmentInfo:
 class TestEquipmentControl:
     """Tests for equipment control endpoints."""
 
-    def test_send_command_success(self, client, mock_equipment_manager, mock_equipment):
-        """Test sending command to equipment."""
+    def test_send_command_success(
+        self, client, mock_equipment_manager, mock_equipment, mock_lock_manager
+    ):
+        """Test sending command to equipment.
+
+        "reset" is a control command, so with locks enabled the request must
+        carry a session_id that holds the lock.
+        """
         # Arrange
         equipment_id = "test_scope_001"
         command_data = {
+            "command_id": "cmd-1",
+            "equipment_id": equipment_id,
             "action": "reset",
             "parameters": {},
+            "session_id": "session_123",
         }
 
-        mock_equipment_manager.get_device.return_value = mock_equipment
+        mock_equipment_manager.get_equipment.return_value = mock_equipment
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
+             patch("api.equipment.lock_manager", mock_lock_manager):
             # Act - testing command endpoint
             response = client.post(
                 f"/api/equipment/{equipment_id}/command",
@@ -279,8 +307,12 @@ class TestEquipmentControl:
     def test_send_command_device_not_found(self, client, mock_equipment_manager):
         """Test sending command to non-existent device."""
         # Arrange
-        mock_equipment_manager.get_device.return_value = None
-        command_data = {"action": "reset"}
+        mock_equipment_manager.get_equipment.return_value = None
+        command_data = {
+            "command_id": "cmd-1",
+            "equipment_id": "nonexistent",
+            "action": "reset",
+        }
 
         with patch("api.equipment.equipment_manager", mock_equipment_manager):
             # Act
@@ -300,18 +332,18 @@ class TestEquipmentWorkflow:
 
     def test_discover_connect_disconnect_workflow(self, client, mock_equipment_manager, mock_lock_manager):
         """Test complete workflow: discover -> connect -> disconnect."""
-        with patch("server.api.equipment.equipment_manager", mock_equipment_manager), \
+        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
              patch("server.api.equipment.lock_manager", mock_lock_manager):
 
             # Step 1: Discover devices
             discover_response = client.post("/api/equipment/discover")
             assert discover_response.status_code == 200
-            resources = discover_response.json()["resources"]
-            assert len(resources) > 0
+            devices = discover_response.json()["devices"]
+            assert len(devices) > 0
 
             # Step 2: Connect to first device
             connect_data = {
-                "resource_string": resources[0],
+                "resource_string": devices[0]["resource_name"],
                 "equipment_type": "oscilloscope",
                 "model": "Rigol DS1054Z",
             }
