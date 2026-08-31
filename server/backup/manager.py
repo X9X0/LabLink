@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import secrets
 import sys
 import tarfile
 import zipfile
@@ -82,7 +83,13 @@ class BackupManager:
             Exception: If backup creation fails
         """
         # Generate backup ID
-        backup_id = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Second-resolution alone collides when two backups are taken in the
+        # same second, and the later one silently overwrites the earlier one's
+        # metadata; the suffix keeps ids unique while staying sortable.
+        backup_id = (
+            f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            f"_{secrets.token_hex(3)}"
+        )
 
         logger.info(f"Creating backup: {backup_id} ({request.backup_type})")
 
@@ -124,6 +131,11 @@ class BackupManager:
             metadata.file_count = file_count
             metadata.directory_count = dir_count
 
+            # Register the backup before verifying: verify_backup() looks the
+            # backup up in self.metadata, so registering afterwards made it
+            # raise "Backup not found" and fail every verified backup.
+            self.metadata[backup_id] = metadata
+
             # Verify if requested
             verify = (
                 request.verify_after_backup
@@ -137,7 +149,6 @@ class BackupManager:
                 metadata.verification_time = verification.verification_time
 
             # Save metadata
-            self.metadata[backup_id] = metadata
             self._save_metadata()
 
             logger.info(

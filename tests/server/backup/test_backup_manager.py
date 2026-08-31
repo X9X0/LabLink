@@ -60,7 +60,7 @@ class TestBackupManagerInit:
                 enable_auto_backup=True,
                 auto_backup_interval_hours=24,
                 retention_days=30,
-                max_backups=10,
+                max_backup_count=10,
                 compression=CompressionType.GZIP
             )
 
@@ -334,7 +334,7 @@ class TestBackupCleanup:
             config = BackupConfig(
                 backup_dir=temp_dir,
                 retention_days=7,
-                max_backups=5
+                max_backup_count=5
             )
             try:
                 yield BackupManager(config)
@@ -425,20 +425,18 @@ class TestBackupConfig:
             enable_auto_backup=True,
             auto_backup_interval_hours=24,
             retention_days=30,
-            max_backups=10,
+            max_backup_count=10,
             compression=CompressionType.GZIP,
-            verify_backups=True,
-            create_restore_backup=True
+            verify_after_backup=True,
         )
 
         assert config.backup_dir == "/tmp/backups"
         assert config.enable_auto_backup is True
         assert config.auto_backup_interval_hours == 24
         assert config.retention_days == 30
-        assert config.max_backups == 10
+        assert config.max_backup_count == 10
         assert config.compression == CompressionType.GZIP
-        assert config.verify_backups is True
-        assert config.create_restore_backup is True
+        assert config.verify_after_backup is True
 
     def test_backup_config_defaults(self):
         """Test BackupConfig with default values."""
