@@ -295,7 +295,7 @@ sync
                 # Clean up script on error
                 try:
                     os.unlink(script_path)
-                except:
+                except Exception:
                     pass
                 raise
 
@@ -403,7 +403,7 @@ fi
                 # Clean up script on error
                 try:
                     os.unlink(script_path)
-                except:
+                except Exception:
                     pass
                 raise
 

@@ -53,7 +53,7 @@ class TestJobCreation:
         except Exception:
             pytest.skip("SchedulerManager not implemented")
 
-    def test_create_cron_job(self, scheduler_manager):
+    async def test_create_cron_job(self, scheduler_manager):
         """Test creating cron-based job."""
         try:
             job = ScheduleConfig(
@@ -64,13 +64,13 @@ class TestJobCreation:
                 enabled=True
             )
 
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
             if result:
                 assert result.trigger_type == TriggerType.CRON
         except (NotImplementedError, AttributeError):
             pytest.skip("create_job not implemented")
 
-    def test_create_interval_job(self, scheduler_manager):
+    async def test_create_interval_job(self, scheduler_manager):
         """Test creating interval-based job."""
         try:
             job = ScheduleConfig(
@@ -81,13 +81,13 @@ class TestJobCreation:
                 enabled=True
             )
 
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
             if result:
                 assert result.trigger_type == TriggerType.INTERVAL
         except (NotImplementedError, AttributeError):
             pytest.skip("create_job not implemented")
 
-    def test_create_one_time_job(self, scheduler_manager):
+    async def test_create_one_time_job(self, scheduler_manager):
         """Test creating one-time job."""
         try:
             run_time = datetime.utcnow() + timedelta(hours=1)
@@ -99,7 +99,7 @@ class TestJobCreation:
                 enabled=True
             )
 
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
             if result:
                 assert result.trigger_type == TriggerType.DATE
         except (NotImplementedError, AttributeError):
@@ -172,7 +172,7 @@ class TestJobManagement:
         except (NotImplementedError, AttributeError):
             pytest.skip("list_jobs not implemented")
 
-    def test_get_job_info(self, scheduler_manager):
+    async def test_get_job_info(self, scheduler_manager):
         """Test getting job information."""
         try:
             # Create a job first
@@ -182,7 +182,7 @@ class TestJobManagement:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
             if created:
                 info = scheduler_manager.get_job(created.job_id)
@@ -191,7 +191,7 @@ class TestJobManagement:
         except (NotImplementedError, AttributeError):
             pytest.skip("get_job not implemented")
 
-    def test_update_job(self, scheduler_manager):
+    async def test_update_job(self, scheduler_manager):
         """Test updating job configuration."""
         try:
             # Create a job
@@ -201,21 +201,26 @@ class TestJobManagement:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
+            assert created is not None
 
-            if created:
-                # Update it
-                update = ScheduleConfig(
-                    name="Updated name",
-                    interval_seconds=7200
-                )
-                updated = scheduler_manager.update_job(created.job_id, update)
-                if updated:
-                    assert updated.name == "Updated name"
+            # Update it. ScheduleConfig requires schedule_type/trigger_type,
+            # so an update carries the full config, not just changed fields.
+            update = ScheduleConfig(
+                name="Updated name",
+                schedule_type=ScheduleType.COMMAND,
+                trigger_type=TriggerType.INTERVAL,
+                interval_seconds=7200,
+            )
+            updated = await scheduler_manager.update_job(created.job_id, update)
+
+            assert updated is not None
+            assert updated.name == "Updated name"
+            assert updated.interval_seconds == 7200
         except (NotImplementedError, AttributeError):
             pytest.skip("update_job not implemented")
 
-    def test_delete_job(self, scheduler_manager):
+    async def test_delete_job(self, scheduler_manager):
         """Test deleting a job."""
         try:
             # Create a job
@@ -225,10 +230,10 @@ class TestJobManagement:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
             if created:
-                result = scheduler_manager.delete_job(created.job_id)
+                result = await scheduler_manager.delete_job(created.job_id)
                 # Should return success
         except (NotImplementedError, AttributeError):
             pytest.skip("delete_job not implemented")
@@ -245,7 +250,7 @@ class TestJobControl:
         except Exception:
             pytest.skip("SchedulerManager not implemented")
 
-    def test_pause_job(self, scheduler_manager):
+    async def test_pause_job(self, scheduler_manager):
         """Test pausing a job."""
         try:
             # Create and pause job
@@ -255,15 +260,15 @@ class TestJobControl:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
             if created:
-                scheduler_manager.pause_job(created.job_id)
+                await scheduler_manager.pause_job(created.job_id)
                 # Job should be paused
         except (NotImplementedError, AttributeError):
             pytest.skip("pause_job not implemented")
 
-    def test_resume_job(self, scheduler_manager):
+    async def test_resume_job(self, scheduler_manager):
         """Test resuming a paused job."""
         try:
             job = ScheduleConfig(
@@ -272,16 +277,16 @@ class TestJobControl:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
             if created:
-                scheduler_manager.pause_job(created.job_id)
-                scheduler_manager.resume_job(created.job_id)
+                await scheduler_manager.pause_job(created.job_id)
+                await scheduler_manager.resume_job(created.job_id)
                 # Job should be active again
         except (NotImplementedError, AttributeError):
             pytest.skip("resume_job not implemented")
 
-    def test_trigger_job_manually(self, scheduler_manager):
+    async def test_trigger_job_manually(self, scheduler_manager):
         """Test manually triggering a job."""
         try:
             job = ScheduleConfig(
@@ -290,13 +295,15 @@ class TestJobControl:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=86400  # Daily, but we'll trigger manually
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
-            if created:
-                result = scheduler_manager.trigger_job(created.job_id)
-                # Should execute immediately
+            # The manager's immediate-run entry point is run_job_now()
+            execution = await scheduler_manager.run_job_now(created.job_id)
+
+            assert execution is not None
+            assert execution.job_id == created.job_id
         except (NotImplementedError, AttributeError):
-            pytest.skip("trigger_job not implemented")
+            pytest.skip("run_job_now not implemented")
 
 
 class TestJobExecution:
@@ -310,7 +317,7 @@ class TestJobExecution:
         except Exception:
             pytest.skip("SchedulerManager not implemented")
 
-    def test_get_execution_history(self, scheduler_manager):
+    async def test_get_execution_history(self, scheduler_manager):
         """Test getting job execution history."""
         try:
             # Create and execute a job
@@ -320,29 +327,25 @@ class TestJobExecution:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
-            if created:
-                history = scheduler_manager.get_execution_history(created.job_id)
-                assert isinstance(history, (list, tuple, type(None)))
-        except (NotImplementedError, AttributeError):
-            pytest.skip("get_execution_history not implemented")
+            # Per-job history comes from list_executions(job_id=...)
+            history = scheduler_manager.list_executions(job_id=created.job_id)
 
-    def test_get_recent_executions(self, scheduler_manager):
-        """Test getting recent executions across all jobs."""
-        try:
-            recent = scheduler_manager.get_recent_executions(limit=10)
-            assert isinstance(recent, (list, tuple, type(None)))
+            assert isinstance(history, list)
         except (NotImplementedError, AttributeError):
-            pytest.skip("get_recent_executions not implemented")
+            pytest.skip("list_executions not implemented")
 
-    def test_get_failed_executions(self, scheduler_manager):
-        """Test getting failed executions."""
-        try:
-            failed = scheduler_manager.get_failed_executions(hours=24)
-            assert isinstance(failed, (list, tuple, type(None)))
-        except (NotImplementedError, AttributeError):
-            pytest.skip("get_failed_executions not implemented")
+    def test_list_recent_executions(self, scheduler_manager):
+        """Recent executions across all jobs come from list_executions()."""
+        recent = scheduler_manager.list_executions(limit=10)
+
+        assert isinstance(recent, list)
+        assert len(recent) <= 10
+
+    def test_list_executions_is_bounded_by_limit(self, scheduler_manager):
+        """The limit argument must be honoured."""
+        assert len(scheduler_manager.list_executions(limit=1)) <= 1
 
 
 class TestScheduleTypes:
@@ -356,7 +359,7 @@ class TestScheduleTypes:
         except Exception:
             pytest.skip("SchedulerManager not implemented")
 
-    def test_acquisition_schedule(self, scheduler_manager):
+    async def test_acquisition_schedule(self, scheduler_manager):
         """Test acquisition schedule type."""
         try:
             job = ScheduleConfig(
@@ -366,11 +369,11 @@ class TestScheduleTypes:
                 interval_seconds=600,
                 config={"equipment_id": "scope-001", "duration": 10}
             )
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
         except (NotImplementedError, AttributeError):
             pytest.skip("Acquisition schedule not implemented")
 
-    def test_measurement_schedule(self, scheduler_manager):
+    async def test_measurement_schedule(self, scheduler_manager):
         """Test measurement schedule type."""
         try:
             job = ScheduleConfig(
@@ -380,11 +383,11 @@ class TestScheduleTypes:
                 cron_expression="0 * * * *",  # Hourly
                 config={"equipment_id": "ps-001", "measurement": "voltage"}
             )
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
         except (NotImplementedError, AttributeError):
             pytest.skip("Measurement schedule not implemented")
 
-    def test_command_schedule(self, scheduler_manager):
+    async def test_command_schedule(self, scheduler_manager):
         """Test command execution schedule."""
         try:
             job = ScheduleConfig(
@@ -394,7 +397,7 @@ class TestScheduleTypes:
                 interval_seconds=3600,
                 config={"equipment_id": "load-001", "command": "*RST"}
             )
-            result = scheduler_manager.create_job(job)
+            result = await scheduler_manager.create_job(job)
         except (NotImplementedError, AttributeError):
             pytest.skip("Command schedule not implemented")
 
@@ -420,7 +423,7 @@ class TestJobStatistics:
         except (NotImplementedError, AttributeError):
             pytest.skip("get_statistics not implemented")
 
-    def test_get_next_run_times(self, scheduler_manager):
+    async def test_get_next_run_times(self, scheduler_manager):
         """Test getting next run times for jobs."""
         try:
             job = ScheduleConfig(
@@ -429,7 +432,7 @@ class TestJobStatistics:
                 trigger_type=TriggerType.INTERVAL,
                 interval_seconds=3600
             )
-            created = scheduler_manager.create_job(job)
+            created = await scheduler_manager.create_job(job)
 
             if created:
                 next_run = scheduler_manager.get_next_run_time(created.job_id)

@@ -63,3 +63,7 @@ benchmark-results.json
 # Local conversation logs
 docs/CONVERSATION_LOG.md
 docs/DEVELOPMENT_CONVERSATION_VERBOSE.md
+
+# Auto-generated JWT signing secret (never commit)
+.jwt_secret
+**/.jwt_secret

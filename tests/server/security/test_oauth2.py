@@ -77,30 +77,33 @@ class TestOAuth2Defaults:
 
     def test_google_defaults(self):
         """Test Google OAuth2 defaults."""
-        if "google" in OAUTH2_DEFAULTS:
-            google = OAUTH2_DEFAULTS["google"]
-            assert "auth_url" in google
-            assert "token_url" in google
-            assert "user_info_url" in google
-            assert "scope" in google
+        google = OAUTH2_DEFAULTS["google"]
+
+        assert "authorization_url" in google
+        assert "token_url" in google
+        assert "user_info_url" in google
+        assert "scopes" in google
+        assert isinstance(google["scopes"], list)
 
     def test_github_defaults(self):
         """Test GitHub OAuth2 defaults."""
-        if "github" in OAUTH2_DEFAULTS:
-            github = OAUTH2_DEFAULTS["github"]
-            assert "auth_url" in github
-            assert "token_url" in github
-            assert "user_info_url" in github
-            assert "scope" in github
+        github = OAUTH2_DEFAULTS["github"]
+
+        assert "authorization_url" in github
+        assert "token_url" in github
+        assert "user_info_url" in github
+        assert "scopes" in github
+        assert isinstance(github["scopes"], list)
 
     def test_microsoft_defaults(self):
         """Test Microsoft OAuth2 defaults."""
-        if "microsoft" in OAUTH2_DEFAULTS:
-            microsoft = OAUTH2_DEFAULTS["microsoft"]
-            assert "auth_url" in microsoft
-            assert "token_url" in microsoft
-            assert "user_info_url" in microsoft
-            assert "scope" in microsoft
+        microsoft = OAUTH2_DEFAULTS["microsoft"]
+
+        assert "authorization_url" in microsoft
+        assert "token_url" in microsoft
+        assert "user_info_url" in microsoft
+        assert "scopes" in microsoft
+        assert isinstance(microsoft["scopes"], list)
 
 
 class TestOAuth2Manager:
@@ -462,24 +465,24 @@ class TestOAuth2ProviderSpecifics:
 
     def test_google_oauth2_scopes(self):
         """Test Google OAuth2 required scopes."""
-        if "google" in OAUTH2_DEFAULTS:
-            scopes = OAUTH2_DEFAULTS["google"].get("scope", "")
-            # Google typically requires email and profile scopes
-            assert "email" in scopes.lower() or "userinfo.email" in scopes
+        scopes = " ".join(OAUTH2_DEFAULTS["google"]["scopes"]).lower()
+
+        # Google needs an email scope to identify the user
+        assert "email" in scopes
 
     def test_github_oauth2_scopes(self):
         """Test GitHub OAuth2 required scopes."""
-        if "github" in OAUTH2_DEFAULTS:
-            scopes = OAUTH2_DEFAULTS["github"].get("scope", "")
-            # GitHub typically requires user scope for email
-            assert "user" in scopes.lower() or "email" in scopes.lower()
+        scopes = " ".join(OAUTH2_DEFAULTS["github"]["scopes"]).lower()
+
+        # GitHub needs a user/email scope to read the address
+        assert "user" in scopes or "email" in scopes
 
     def test_microsoft_oauth2_scopes(self):
         """Test Microsoft OAuth2 required scopes."""
-        if "microsoft" in OAUTH2_DEFAULTS:
-            scopes = OAUTH2_DEFAULTS["microsoft"].get("scope", "")
-            # Microsoft typically requires User.Read scope
-            assert "user.read" in scopes.lower() or "openid" in scopes.lower()
+        scopes = " ".join(OAUTH2_DEFAULTS["microsoft"]["scopes"]).lower()
+
+        # Microsoft needs User.Read or openid to identify the user
+        assert "user.read" in scopes or "openid" in scopes
 
 
 if __name__ == "__main__":

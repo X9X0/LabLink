@@ -276,9 +276,42 @@ class MicrosoftOAuth2Provider(OAuth2ProviderBase):
 class OAuth2Manager:
     """Manages OAuth2 providers and authentication flows."""
 
+    #: How long an issued ``state`` stays valid before it must be re-issued.
+    STATE_TTL_MINUTES = 10
+
     def __init__(self):
         """Initialize OAuth2 manager."""
         self.providers: Dict[OAuth2Provider, OAuth2ProviderBase] = {}
+        self._pending_states: Dict[str, datetime] = {}
+
+    def register_state(self, state: str) -> None:
+        """Record a ``state`` value issued to a client starting an OAuth2 flow."""
+        self._prune_states()
+        self._pending_states[state] = datetime.now() + timedelta(
+            minutes=self.STATE_TTL_MINUTES
+        )
+
+    def consume_state(self, state: Optional[str]) -> bool:
+        """Validate and single-use-consume a ``state`` returned from the provider.
+
+        Rejects unknown, expired, and replayed values, which is what stops an
+        attacker from feeding their own authorization code into a victim's
+        session (OAuth2 login CSRF).
+        """
+        self._prune_states()
+
+        if not state:
+            return False
+
+        expires_at = self._pending_states.pop(state, None)
+        return expires_at is not None and expires_at > datetime.now()
+
+    def _prune_states(self) -> None:
+        """Drop expired pending states so the dict can't grow without bound."""
+        now = datetime.now()
+        expired = [s for s, exp in self._pending_states.items() if exp <= now]
+        for s in expired:
+            del self._pending_states[s]
 
     def configure_provider(self, config: OAuth2Config):
         """

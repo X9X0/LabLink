@@ -583,10 +583,13 @@ class TestFirmwareUpdate:
             mock_equipment.update_firmware = AsyncMock(return_value=True)
 
             with patch.object(manager, '_perform_update', new=AsyncMock(return_value=None)):
-                update_id = await manager.start_update(request, mock_equipment)
+                # start_update returns the FirmwareUpdateProgress object, which
+                # is what api/firmware.py returns as its response model.
+                progress = await manager.start_update(request, mock_equipment)
 
-                assert update_id is not None
-                assert update_id in manager.active_updates
+                assert progress is not None
+                assert progress.equipment_id == "SCOPE_001"
+                assert progress.update_id in manager.active_updates
 
     @pytest.mark.asyncio
     async def test_get_update_progress(self):
@@ -611,13 +614,13 @@ class TestFirmwareUpdate:
             mock_equipment.get_status = AsyncMock(return_value=type("Status", (), {"firmware_version": "1.0.0", "connected": True})())
 
             with patch.object(manager, '_perform_update', new=AsyncMock()):
-                update_id = await manager.start_update(request, mock_equipment)
+                started = await manager.start_update(request, mock_equipment)
 
                 # Get progress
-                progress = await manager.get_update_progress(update_id)
+                progress = await manager.get_update_progress(started.update_id)
 
                 assert progress is not None
-                assert progress.update_id == update_id
+                assert progress.update_id == started.update_id
                 assert progress.equipment_id == "SCOPE_001"
 
     @pytest.mark.asyncio

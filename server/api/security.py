@@ -59,6 +59,17 @@ async def get_current_user(
             detail="Invalid or expired token",
         )
 
+    # A valid signature/expiry isn't enough on its own: the token must still
+    # have a live backing session, so logout/password-change/admin-revoke can
+    # actually invalidate an access token before it naturally expires.
+    if not token_payload.session_id or not security_manager.session_manager.get_session(
+        token_payload.session_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has been revoked or expired",
+        )
+
     user = await security_manager.get_user(token_payload.sub)
     if not user or not user.is_active:
         raise HTTPException(
@@ -249,11 +260,8 @@ async def login(request: Request, login_request: LoginRequest):
     conn.commit()
     conn.close()
 
-    # Create tokens
-    access_token = create_access_token(user, security_manager.config)
-    refresh_token = create_refresh_token(user.user_id, security_manager.config)
-
-    # Create session
+    # Create session, then mint the access token bound to it so logout /
+    # password-change can revoke it before its natural expiry.
     from security.models import AuthMethod as AuthMethodEnum
 
     session_id = security_manager.session_manager.create_session(
@@ -262,6 +270,11 @@ async def login(request: Request, login_request: LoginRequest):
         auth_method=AuthMethodEnum.PASSWORD,
         expires_in_minutes=security_manager.config.access_token_expire_minutes,
     )
+
+    access_token = create_access_token(
+        user, security_manager.config, auth_method=AuthMethodEnum.PASSWORD, session_id=session_id
+    )
+    refresh_token = create_refresh_token(user.user_id, security_manager.config)
 
     # Audit log
     await security_manager.audit_log(
@@ -310,7 +323,7 @@ async def logout(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/refresh", response_model=TokenResponse, tags=["authentication"])
-async def refresh_token(refresh_request: RefreshTokenRequest):
+async def refresh_token(request: Request, refresh_request: RefreshTokenRequest):
     """Refresh access token using refresh token."""
     security_manager = get_security_manager()
 
@@ -332,8 +345,20 @@ async def refresh_token(refresh_request: RefreshTokenRequest):
             detail="User not found or inactive",
         )
 
-    # Create new tokens
-    access_token = create_access_token(user, security_manager.config)
+    # Create a fresh session for the new access token so it remains
+    # revocable (logout/password-change) just like a token from /login.
+    from security.models import AuthMethod as AuthMethodEnum
+
+    session_id = security_manager.session_manager.create_session(
+        user,
+        get_client_ip(request),
+        auth_method=AuthMethodEnum.PASSWORD,
+        expires_in_minutes=security_manager.config.access_token_expire_minutes,
+    )
+
+    access_token = create_access_token(
+        user, security_manager.config, auth_method=AuthMethodEnum.PASSWORD, session_id=session_id
+    )
     new_refresh_token = create_refresh_token(user.user_id, security_manager.config)
 
     logger.info(f"Token refreshed for user: {user.username}")
@@ -697,6 +722,10 @@ async def reset_password(
 
         conn.commit()
 
+        # Revoke the target user's sessions so a compromised/stolen access
+        # token can't outlive an admin-initiated password reset.
+        security_manager.session_manager.destroy_user_sessions(password_reset.user_id)
+
         await security_manager.audit_log(
             AuditLogEntry(
                 event_type=AuditEventType.PASSWORD_CHANGED,
@@ -987,6 +1016,10 @@ async def get_oauth2_authorization_url(
     if not state:
         state = secrets.token_urlsafe(32)
 
+    # Remember the state server-side so /oauth2/login can verify the value
+    # actually came from a flow this server started.
+    oauth2_manager.register_state(state)
+
     authorization_url = prov.get_authorization_url(redirect_uri, state)
 
     return {
@@ -1017,6 +1050,24 @@ async def oauth2_login(
 
     security_manager = get_security_manager()
     oauth2_manager = get_oauth2_manager()
+
+    # Verify the CSRF state before spending the authorization code, so an
+    # attacker can't have a victim's browser complete a flow the attacker
+    # started (OAuth2 login CSRF / account-linking attack).
+    if not oauth2_manager.consume_state(login_request.state):
+        await security_manager.audit_log(
+            AuditLogEntry(
+                event_type=AuditEventType.LOGIN_FAILED,
+                ip_address=get_client_ip(request),
+                success=False,
+                error_message="Invalid or expired OAuth2 state parameter",
+                details={"provider": login_request.provider.value},
+            )
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth2 state parameter",
+        )
 
     try:
         # Authenticate with OAuth2 provider
@@ -1082,13 +1133,10 @@ async def oauth2_login(
         # Note: In production, you'd want to store OAuth2 provider associations
         # in a separate table (user_id, provider, external_id)
 
-        # Create JWT tokens
+        # Create session, then mint the access token bound to it (same
+        # revocable-session pattern as password login).
         from security.models import AuthMethod as AuthMethodEnum
 
-        access_token = create_access_token(user, security_manager.config, auth_method=AuthMethodEnum.OAUTH2)
-        refresh_token = create_refresh_token(user.user_id, security_manager.config)
-
-        # Create session
         ip_address = request.client.host if request.client else None
 
         session_id = security_manager.session_manager.create_session(
@@ -1097,6 +1145,11 @@ async def oauth2_login(
             auth_method=AuthMethodEnum.OAUTH2,
             expires_in_minutes=security_manager.config.access_token_expire_minutes,
         )
+
+        access_token = create_access_token(
+            user, security_manager.config, auth_method=AuthMethodEnum.OAUTH2, session_id=session_id
+        )
+        refresh_token = create_refresh_token(user.user_id, security_manager.config)
 
         # Log successful login
         await security_manager.audit_log(

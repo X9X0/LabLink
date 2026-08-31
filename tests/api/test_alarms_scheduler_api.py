@@ -491,8 +491,9 @@ class TestCompleteWorkflows:
         mock_psu = MagicMock()
         mock_equipment_manager.get_device.return_value = mock_psu
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager), \
-             patch("api.alarms.equipment_manager", mock_equipment_manager):
+        # api/alarms.py does not use equipment_manager, so there is nothing
+        # to patch for it here.
+        with patch("api.alarms.alarm_manager", mock_alarm_manager):
 
             # Step 1: Create alarm
             alarm_data = {

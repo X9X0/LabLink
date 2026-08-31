@@ -60,12 +60,13 @@ class SecurityManager:
             config = AuthConfig(secret_key=token_urlsafe(64))
         self.config = config
 
+        # Initialize database first: the managers below rehydrate their state
+        # from tables created here.
+        self._init_database()
+
         # Session and attempt tracking
         self.session_manager = SessionManager(db_path=self.db_path)
-        self.attempt_tracker = LoginAttemptTracker(config)
-
-        # Initialize database
-        self._init_database()
+        self.attempt_tracker = LoginAttemptTracker(config, db_path=self.db_path)
 
         # Create default roles if not exist
         self._ensure_default_roles()
@@ -232,6 +233,17 @@ class SecurityManager:
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 last_activity TEXT NOT NULL
+            )
+        """
+        )
+
+        # Failed login attempts, persisted so a restart can't hand an attacker
+        # a fresh attempt budget.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                username TEXT NOT NULL,
+                attempted_at TEXT NOT NULL
             )
         """
         )
@@ -582,6 +594,11 @@ class SecurityManager:
             )
 
             conn.commit()
+
+            # Revoke all existing sessions so previously issued access tokens
+            # stop working immediately instead of surviving up to their
+            # natural (refresh-token) lifetime.
+            self.session_manager.destroy_user_sessions(user_id)
 
             # Audit log
             await self.audit_log(

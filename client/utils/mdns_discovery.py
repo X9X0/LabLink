@@ -194,7 +194,7 @@ class LabLinkDiscovery:
             for key, value in info.properties.items():
                 try:
                     properties[key.decode("utf-8")] = value.decode("utf-8")
-                except:
+                except Exception:
                     pass
 
             # Get WebSocket port from properties

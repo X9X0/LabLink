@@ -29,6 +29,15 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+async def call_blocking(fn, *args, **kwargs):
+    """Run a blocking LabLinkClient call off the Qt/asyncio event loop.
+
+    LabLinkClient is synchronous (requests-based), so calling it directly from
+    a slot or a qasync coroutine freezes the GUI for the whole round-trip.
+    """
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
 _DEFAULT_TIMEOUT = 10  # seconds
 
 

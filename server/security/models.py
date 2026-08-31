@@ -328,6 +328,7 @@ class TokenPayload(BaseModel):
     exp: datetime  # expiration
     iat: datetime  # issued at
     auth_method: AuthMethod = AuthMethod.PASSWORD
+    session_id: Optional[str] = None  # backing session; token is revoked if session is gone
 
 
 class RefreshTokenRequest(BaseModel):

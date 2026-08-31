@@ -285,7 +285,7 @@ class WaveformDisplay(QWidget):
                 freq = 1 / period if period > 0 else 0
             else:
                 freq = 0
-        except:
+        except Exception:
             freq = 0
 
         # Store measurements

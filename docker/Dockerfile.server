@@ -26,7 +26,7 @@ FROM python:3.11-slim
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Server - Laboratory Equipment Control"
-LABEL version="1.2.4"
+LABEL version="1.3.0"
 
 WORKDIR /app
 
@@ -34,7 +34,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    sudo \
     iproute2 \
     iputils-ping \
     procps \

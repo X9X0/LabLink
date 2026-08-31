@@ -54,7 +54,7 @@ def count_functions(filepath):
         classes = sum(1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
 
         return functions, classes
-    except:
+    except Exception:
         return 0, 0
 
 

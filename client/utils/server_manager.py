@@ -45,7 +45,7 @@ class ServerConnection:
         if data.get("last_connected"):
             try:
                 last_connected = datetime.fromisoformat(data["last_connected"])
-            except:
+            except Exception:
                 pass
 
         return cls(
@@ -295,7 +295,7 @@ class ServerManager:
             if server.connected and server.client:
                 try:
                     server.client.disconnect()
-                except:
+                except Exception:
                     pass
 
             server.connected = False

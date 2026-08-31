@@ -14,8 +14,24 @@ class TestClientServerIntegration:
 
     @pytest.fixture(scope="class")
     def server_url(self):
-        """Get server URL (assumes server is running)."""
-        return "http://localhost:8000"
+        """URL of a running LabLink server, or skip.
+
+        Checking only for a ConnectionError is not enough: an unrelated
+        service may occupy the port, in which case the request succeeds and
+        the test then fails on non-JSON content. Probe for a response that
+        actually looks like LabLink.
+        """
+        url = "http://localhost:8000"
+        try:
+            response = requests.get(f"{url}/health", timeout=5)
+            payload = response.json()
+        except (requests.exceptions.RequestException, ValueError):
+            pytest.skip("LabLink server not running on localhost:8000")
+
+        if response.status_code != 200 or "status" not in payload:
+            pytest.skip("localhost:8000 is not a LabLink server")
+
+        return url
 
     @pytest.fixture(scope="class")
     def ws_url(self):

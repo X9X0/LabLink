@@ -111,7 +111,7 @@ class SchedulerManager:
             await self._validate_profile(config.profile_id)
 
         # Save to database
-        self._storage.save_job(config)
+        await asyncio.to_thread(self._storage.save_job, config)
 
         self._jobs[config.job_id] = config
 
@@ -151,7 +151,7 @@ class SchedulerManager:
             self._scheduler.remove_job(job_id)
 
         # Update database
-        self._storage.save_job(config)
+        await asyncio.to_thread(self._storage.save_job, config)
 
         self._jobs[job_id] = config
 
@@ -184,7 +184,7 @@ class SchedulerManager:
             self._scheduler.remove_job(job_id)
 
         # Delete from database
-        self._storage.delete_job(job_id)
+        await asyncio.to_thread(self._storage.delete_job, job_id)
 
         del self._jobs[job_id]
         logger.info(f"Deleted job: {job_id}")
@@ -203,7 +203,7 @@ class SchedulerManager:
             self._scheduler.pause_job(job_id)
 
         self._jobs[job_id].enabled = False
-        self._storage.save_job(self._jobs[job_id])
+        await asyncio.to_thread(self._storage.save_job, self._jobs[job_id])
 
         logger.info(f"Paused job: {job_id}")
         return True
@@ -219,7 +219,7 @@ class SchedulerManager:
             await self._add_to_scheduler(self._jobs[job_id])
 
         self._jobs[job_id].enabled = True
-        self._storage.save_job(self._jobs[job_id])
+        await asyncio.to_thread(self._storage.save_job, self._jobs[job_id])
 
         logger.info(f"Resumed job: {job_id}")
         return True
@@ -397,7 +397,7 @@ class SchedulerManager:
 
     async def _load_jobs_from_storage(self):
         """Load all jobs from persistent storage."""
-        jobs = self._storage.load_all_jobs()
+        jobs = await asyncio.to_thread(self._storage.load_all_jobs)
         logger.info(f"Loading {len(jobs)} jobs from storage...")
 
         for config in jobs:
@@ -417,7 +417,9 @@ class SchedulerManager:
         while True:
             try:
                 await asyncio.sleep(86400)  # Run daily
-                deleted = self._storage.cleanup_old_executions(days=30)
+                deleted = await asyncio.to_thread(
+                    self._storage.cleanup_old_executions, days=30
+                )
                 logger.info(
                     f"Periodic cleanup: removed {deleted} old execution records"
                 )
@@ -508,11 +510,13 @@ class SchedulerManager:
         self._executions[execution.execution_id] = execution
 
         # Check execution limit
-        count = self._storage.get_execution_count(config.job_id)
+        count = await asyncio.to_thread(
+            self._storage.get_execution_count, config.job_id
+        )
         if config.max_executions and count >= config.max_executions:
             execution.status = JobStatus.SKIPPED
             execution.error = "Maximum executions reached"
-            self._storage.save_execution(execution)
+            await asyncio.to_thread(self._storage.save_execution, execution)
             del self._executions[execution.execution_id]
             return
 
@@ -521,7 +525,7 @@ class SchedulerManager:
             if config.conflict_policy == "skip":
                 execution.status = JobStatus.SKIPPED
                 execution.error = "Job already running (conflict_policy=skip)"
-                self._storage.save_execution(execution)
+                await asyncio.to_thread(self._storage.save_execution, execution)
                 del self._executions[execution.execution_id]
                 logger.info(f"Skipped job {config.job_id} due to conflict")
                 return
@@ -591,8 +595,10 @@ class SchedulerManager:
                 ).total_seconds()
 
             # Save to storage
-            self._storage.save_execution(execution)
-            self._storage.increment_execution_count(config.job_id)
+            await asyncio.to_thread(self._storage.save_execution, execution)
+            await asyncio.to_thread(
+                self._storage.increment_execution_count, config.job_id
+            )
 
             # Remove from memory and running set
             if execution.execution_id in self._executions:

@@ -1,534 +1,296 @@
-"""Tests for security and authentication API endpoints."""
+"""
+End-to-end HTTP tests for the user-management and role endpoints.
+
+These drive the real router against a real SecurityManager on a throwaway
+database. Authentication lifecycle tests live in
+test_security_api_integration.py; this module covers user CRUD, the superuser
+authorization on those endpoints, and role listing.
+"""
+
+import asyncio
+import os
+import sys
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from datetime import datetime, timedelta
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../server"))
+
+import security.manager as manager_module
+from api.security import router
+from security.auth import AuthConfig
+from security.manager import SecurityManager
+from security.models import UserCreate
+
+PASSWORD = "Str0ng-Passw0rd!"
 
 
-@pytest.mark.api
-class TestAuthentication:
-    """Tests for authentication endpoints."""
-
-    def test_login_success(self, client, mock_security_manager):
-        """Test successful user login."""
-        # Arrange
-        login_data = {
-            "username": "testuser",
-            "password": "testpassword123",
-        }
-
-        mock_token = {
-            "access_token": "mock_access_token_12345",
-            "refresh_token": "mock_refresh_token_67890",
-            "token_type": "bearer",
-            "expires_in": 3600,
-        }
-
-        mock_user = MagicMock()
-        mock_user.username = "testuser"
-        mock_user.is_active = True
-
-        mock_security_manager.authenticate_user.return_value = mock_user
-        mock_security_manager.create_access_token.return_value = mock_token
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/auth/login", json=login_data)
-
-            # Assert - endpoint may not exist yet
-            if response.status_code == 200:
-                data = response.json()
-                assert "access_token" in data
-                assert data["token_type"] == "bearer"
-                mock_security_manager.authenticate_user.assert_called_once()
-
-    def test_login_invalid_credentials(self, client, mock_security_manager):
-        """Test login with invalid credentials."""
-        # Arrange
-        login_data = {
-            "username": "testuser",
-            "password": "wrongpassword",
-        }
-
-        mock_security_manager.authenticate_user.return_value = None
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/auth/login", json=login_data)
-
-            # Assert - expecting 401 Unauthorized or 404 if endpoint doesn't exist
-            assert response.status_code in [401, 404]
-
-    def test_login_inactive_user(self, client, mock_security_manager):
-        """Test login with inactive user account."""
-        # Arrange
-        login_data = {
-            "username": "inactiveuser",
-            "password": "password123",
-        }
-
-        mock_user = MagicMock()
-        mock_user.username = "inactiveuser"
-        mock_user.is_active = False
-
-        mock_security_manager.authenticate_user.return_value = mock_user
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/auth/login", json=login_data)
-
-            # Assert
-            assert response.status_code in [401, 403, 404]
-
-    def test_logout(self, client, auth_headers):
-        """Test user logout."""
-        # Act
-        response = client.post("/api/security/auth/logout", headers=auth_headers)
-
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 204, 404]
-
-    def test_refresh_token(self, client, mock_security_manager):
-        """Test refreshing access token."""
-        # Arrange
-        refresh_data = {
-            "refresh_token": "mock_refresh_token_67890",
-        }
-
-        new_token = {
-            "access_token": "new_access_token_99999",
-            "token_type": "bearer",
-            "expires_in": 3600,
-        }
-
-        mock_security_manager.create_access_token.return_value = new_token
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/auth/refresh", json=refresh_data)
-
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert "access_token" in data
+@pytest.fixture
+def security_manager(tmp_path, monkeypatch):
+    config = AuthConfig(
+        secret_key="user-management-test-secret-key",
+        access_token_expire_minutes=30,
+        max_failed_login_attempts=50,  # these tests log in repeatedly
+    )
+    mgr = SecurityManager(db_path=str(tmp_path / "security.db"), config=config)
+    monkeypatch.setattr(manager_module, "_security_manager", mgr)
+    return mgr
 
 
-@pytest.mark.api
-class TestUserManagement:
-    """Tests for user management endpoints."""
+@pytest.fixture
+def api(security_manager):
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app)
 
-    def test_create_user_success(self, client, mock_security_manager, auth_headers):
-        """Test successful user creation."""
-        # Arrange
-        user_data = {
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "password": "SecurePass123!",
-            "full_name": "New User",
-            "roles": [],
-        }
 
-        mock_user = MagicMock()
-        mock_user.user_id = "user_002"
-        mock_user.username = "newuser"
-        mock_user.email = "newuser@example.com"
-
-        mock_security_manager.create_user.return_value = mock_user
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/users", json=user_data, headers=auth_headers)
-
-            # Assert
-            if response.status_code in [200, 201]:
-                data = response.json()
-                assert "user_id" in data or "username" in data
-                mock_security_manager.create_user.assert_called_once()
-
-    def test_create_user_duplicate_username(self, client, mock_security_manager, auth_headers):
-        """Test creating user with duplicate username."""
-        # Arrange
-        user_data = {
-            "username": "existinguser",
-            "email": "new@example.com",
-            "password": "SecurePass123!",
-        }
-
-        mock_security_manager.create_user.side_effect = Exception("Username already exists")
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post("/api/security/users", json=user_data, headers=auth_headers)
-
-            # Assert
-            assert response.status_code in [400, 409, 404, 500]
-
-    def test_get_user_info(self, client, mock_security_manager, auth_headers):
-        """Test getting user information."""
-        # Arrange
-        user_id = "user_001"
-
-        mock_user = MagicMock()
-        mock_user.user_id = user_id
-        mock_user.username = "testuser"
-        mock_user.email = "test@example.com"
-
-        mock_security_manager.get_user_by_id.return_value = mock_user
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.get(f"/api/security/users/{user_id}", headers=auth_headers)
-
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert data["user_id"] == user_id
-
-    def test_update_user(self, client, mock_security_manager, auth_headers):
-        """Test updating user information."""
-        # Arrange
-        user_id = "user_001"
-        update_data = {
-            "email": "newemail@example.com",
-            "full_name": "Updated Name",
-        }
-
-        mock_user = MagicMock()
-        mock_user.user_id = user_id
-        mock_user.email = "newemail@example.com"
-
-        mock_security_manager.update_user.return_value = mock_user
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.patch(
-                f"/api/security/users/{user_id}",
-                json=update_data,
-                headers=auth_headers
+def _make_user(security_manager, username, is_superuser=False):
+    user = asyncio.run(
+        security_manager.create_user(
+            UserCreate(
+                username=username,
+                email=f"{username}@example.com",
+                password=PASSWORD,
+                full_name=username.title(),
             )
+        )
+    )
+    if is_superuser:
+        # Promote directly in the DB; there is no "make superuser" endpoint.
+        import sqlite3
 
-            # Assert
-            if response.status_code == 200:
-                mock_security_manager.update_user.assert_called_once()
+        conn = sqlite3.connect(str(security_manager.db_path))
+        try:
+            conn.execute(
+                "UPDATE users SET is_superuser = 1 WHERE user_id = ?", (user.user_id,)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return user
 
-    def test_delete_user(self, client, mock_security_manager, auth_headers):
-        """Test deleting user."""
-        # Arrange
-        user_id = "user_002"
 
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.delete(f"/api/security/users/{user_id}", headers=auth_headers)
+def _token(api, username):
+    response = api.post(
+        "/api/security/login", json={"username": username, "password": PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
-            # Assert
-            if response.status_code in [200, 204]:
-                mock_security_manager.delete_user.assert_called_once()
 
-    def test_list_users(self, client, mock_security_manager, auth_headers):
-        """Test listing all users."""
-        # Arrange
-        mock_users = [
-            {"user_id": "user_001", "username": "user1"},
-            {"user_id": "user_002", "username": "user2"},
-        ]
+def _auth(token):
+    return {"Authorization": f"Bearer {token}"}
 
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.get("/api/security/users", headers=auth_headers)
 
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert isinstance(data, list)
+@pytest.fixture
+def admin_token(api, security_manager):
+    _make_user(security_manager, "admin", is_superuser=True)
+    return _token(api, "admin")
+
+
+@pytest.fixture
+def plain_token(api, security_manager):
+    _make_user(security_manager, "operator")
+    return _token(api, "operator")
 
 
 @pytest.mark.api
-class TestRoleBasedAccessControl:
-    """Tests for RBAC functionality."""
-
-    def test_create_role(self, client, auth_headers):
-        """Test creating a new role."""
-        # Arrange
-        role_data = {
-            "name": "operator",
-            "description": "Equipment operator role",
-            "permissions": ["equipment.read", "equipment.control"],
-        }
-
-        # Act
-        response = client.post("/api/security/roles", json=role_data, headers=auth_headers)
-
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 201, 404]
-
-    def test_assign_role_to_user(self, client, auth_headers):
-        """Test assigning role to user."""
-        # Arrange
-        user_id = "user_001"
-        role_data = {"role_id": "role_operator"}
-
-        # Act
-        response = client.post(
-            f"/api/security/users/{user_id}/roles",
-            json=role_data,
-            headers=auth_headers
+class TestCreateUser:
+    def test_superuser_can_create_a_user(self, api, admin_token):
+        response = api.post(
+            "/api/security/users",
+            headers=_auth(admin_token),
+            json={
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": PASSWORD,
+                "full_name": "New User",
+            },
         )
 
-        # Assert
-        assert response.status_code in [200, 201, 404]
+        assert response.status_code == 200, response.text
+        assert response.json()["username"] == "newuser"
 
-    def test_remove_role_from_user(self, client, auth_headers):
-        """Test removing role from user."""
-        # Arrange
-        user_id = "user_001"
-        role_id = "role_operator"
+    def test_duplicate_username_is_rejected(self, api, admin_token):
+        payload = {
+            "username": "dupe",
+            "email": "dupe@example.com",
+            "password": PASSWORD,
+            "full_name": "Dupe",
+        }
+        assert api.post(
+            "/api/security/users", headers=_auth(admin_token), json=payload
+        ).status_code == 200
 
-        # Act
-        response = client.delete(
-            f"/api/security/users/{user_id}/roles/{role_id}",
-            headers=auth_headers
+        second = api.post(
+            "/api/security/users", headers=_auth(admin_token), json=payload
         )
 
-        # Assert
-        assert response.status_code in [200, 204, 404]
+        assert second.status_code == 400
 
-    def test_check_permission(self, client, mock_security_manager, auth_headers):
-        """Test checking user permission."""
-        # Arrange
-        permission_data = {
-            "user_id": "user_001",
-            "permission": "equipment.control",
-        }
-
-        mock_security_manager.check_permission.return_value = True
-
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Act
-            response = client.post(
-                "/api/security/permissions/check",
-                json=permission_data,
-                headers=auth_headers
-            )
-
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert "allowed" in data or "has_permission" in data
-
-
-@pytest.mark.api
-class TestAPIKeys:
-    """Tests for API key management."""
-
-    def test_create_api_key(self, client, auth_headers):
-        """Test creating API key."""
-        # Arrange
-        api_key_data = {
-            "name": "Integration API Key",
-            "permissions": ["equipment.read"],
-            "expires_in_days": 90,
-        }
-
-        # Act
-        response = client.post("/api/security/api-keys", json=api_key_data, headers=auth_headers)
-
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 201, 404]
-
-    def test_list_api_keys(self, client, auth_headers):
-        """Test listing API keys."""
-        # Act
-        response = client.get("/api/security/api-keys", headers=auth_headers)
-
-        # Assert
-        assert response.status_code in [200, 404]
-
-    def test_revoke_api_key(self, client, auth_headers):
-        """Test revoking API key."""
-        # Arrange
-        api_key_id = "key_001"
-
-        # Act
-        response = client.delete(f"/api/security/api-keys/{api_key_id}", headers=auth_headers)
-
-        # Assert
-        assert response.status_code in [200, 204, 404]
-
-
-@pytest.mark.api
-class TestAuditLog:
-    """Tests for audit logging."""
-
-    def test_get_audit_logs(self, client, auth_headers):
-        """Test getting audit logs."""
-        # Act
-        response = client.get("/api/security/audit-logs", headers=auth_headers)
-
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 404]
-
-    def test_get_audit_logs_filtered(self, client, auth_headers):
-        """Test getting filtered audit logs."""
-        # Arrange
-        params = {
-            "user_id": "user_001",
-            "action": "login",
-            "start_date": "2024-01-01",
-        }
-
-        # Act
-        response = client.get("/api/security/audit-logs", params=params, headers=auth_headers)
-
-        # Assert
-        assert response.status_code in [200, 404]
-
-
-@pytest.mark.api
-class TestMultiFactorAuthentication:
-    """Tests for MFA functionality."""
-
-    def test_enable_mfa(self, client, auth_headers):
-        """Test enabling MFA for user."""
-        # Act
-        response = client.post("/api/security/mfa/enable", headers=auth_headers)
-
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 404]
-
-    def test_verify_mfa_code(self, client, auth_headers):
-        """Test verifying MFA code."""
-        # Arrange
-        mfa_data = {"code": "123456"}
-
-        # Act
-        response = client.post("/api/security/mfa/verify", json=mfa_data, headers=auth_headers)
-
-        # Assert
-        assert response.status_code in [200, 404]
-
-    def test_disable_mfa(self, client, auth_headers):
-        """Test disabling MFA."""
-        # Act
-        response = client.post("/api/security/mfa/disable", headers=auth_headers)
-
-        # Assert
-        assert response.status_code in [200, 404]
-
-
-@pytest.mark.api
-@pytest.mark.integration
-class TestSecurityWorkflow:
-    """Integration tests for complete security workflows."""
-
-    def test_complete_user_lifecycle(self, client, mock_security_manager, auth_headers):
-        """Test complete user lifecycle: create -> login -> update -> delete."""
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Step 1: Create user
-            create_data = {
-                "username": "testuser",
-                "email": "test@example.com",
-                "password": "SecurePass123!",
-            }
-            create_response = client.post(
-                "/api/security/users",
-                json=create_data,
-                headers=auth_headers
-            )
-
-            if create_response.status_code not in [200, 201]:
-                pytest.skip("Security API not fully implemented yet")
-
-            # Step 2: Login
-            login_data = {
-                "username": "testuser",
-                "password": "SecurePass123!",
-            }
-            login_response = client.post("/api/security/auth/login", json=login_data)
-
-            if login_response.status_code == 200:
-                assert "access_token" in login_response.json()
-
-            # Step 3: Update user
-            user_id = "user_001"
-            update_data = {"email": "newemail@example.com"}
-            update_response = client.patch(
-                f"/api/security/users/{user_id}",
-                json=update_data,
-                headers=auth_headers
-            )
-
-            # Step 4: Delete user
-            delete_response = client.delete(
-                f"/api/security/users/{user_id}",
-                headers=auth_headers
-            )
-
-    def test_authentication_authorization_workflow(self, client, mock_security_manager):
-        """Test authentication and authorization workflow."""
-        with patch("api.security.init_security_manager", return_value=mock_security_manager):
-            # Step 1: Login
-            login_response = client.post(
-                "/api/security/auth/login",
-                json={"username": "testuser", "password": "password"}
-            )
-
-            if login_response.status_code != 200:
-                pytest.skip("Authentication not implemented")
-
-            token = login_response.json().get("access_token")
-
-            # Step 2: Use token to access protected resource
-            headers = {"Authorization": f"Bearer {token}"}
-            protected_response = client.get("/api/security/users/me", headers=headers)
-
-            # Should be authorized
-            if protected_response.status_code == 200:
-                pass  # Success
-
-
-@pytest.mark.api
-class TestPasswordManagement:
-    """Tests for password management."""
-
-    def test_change_password(self, client, auth_headers):
-        """Test changing user password."""
-        # Arrange
-        password_data = {
-            "old_password": "OldPass123!",
-            "new_password": "NewPass123!",
-        }
-
-        # Act
-        response = client.post(
-            "/api/security/users/me/change-password",
-            json=password_data,
-            headers=auth_headers
+    def test_non_superuser_cannot_create_a_user(self, api, plain_token):
+        """The authorization check the previous mocked tests never exercised."""
+        response = api.post(
+            "/api/security/users",
+            headers=_auth(plain_token),
+            json={
+                "username": "sneaky",
+                "email": "sneaky@example.com",
+                "password": PASSWORD,
+                "full_name": "Sneaky",
+            },
         )
 
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 404]
+        assert response.status_code == 403
 
-    def test_reset_password_request(self, client):
-        """Test requesting password reset."""
-        # Arrange
-        reset_data = {"email": "user@example.com"}
+    def test_unauthenticated_cannot_create_a_user(self, api):
+        response = api.post(
+            "/api/security/users",
+            json={
+                "username": "anon",
+                "email": "anon@example.com",
+                "password": PASSWORD,
+                "full_name": "Anon",
+            },
+        )
 
-        # Act
-        response = client.post("/api/security/password/reset-request", json=reset_data)
+        assert response.status_code == 401
 
-        # Assert
-        assert response.status_code in [200, 202, 404]
+    def test_weak_password_is_rejected(self, api, admin_token):
+        response = api.post(
+            "/api/security/users",
+            headers=_auth(admin_token),
+            json={
+                "username": "weak",
+                "email": "weak@example.com",
+                "password": "short",
+                "full_name": "Weak",
+            },
+        )
 
-    def test_reset_password(self, client):
-        """Test resetting password with token."""
-        # Arrange
-        reset_data = {
-            "reset_token": "reset_token_12345",
-            "new_password": "NewPass123!",
-        }
+        assert response.status_code == 422
 
-        # Act
-        response = client.post("/api/security/password/reset", json=reset_data)
 
-        # Assert
-        assert response.status_code in [200, 404]
+@pytest.mark.api
+class TestListAndGetUsers:
+    def test_superuser_can_list_users(self, api, admin_token, security_manager):
+        _make_user(security_manager, "listed")
+
+        response = api.get("/api/security/users", headers=_auth(admin_token))
+
+        assert response.status_code == 200
+        assert {u["username"] for u in response.json()} >= {"admin", "listed"}
+
+    def test_non_superuser_cannot_list_users(self, api, plain_token):
+        response = api.get("/api/security/users", headers=_auth(plain_token))
+
+        assert response.status_code == 403
+
+    def test_user_can_read_their_own_record(self, api, security_manager):
+        user = _make_user(security_manager, "selfreader")
+        token = _token(api, "selfreader")
+
+        response = api.get(
+            f"/api/security/users/{user.user_id}", headers=_auth(token)
+        )
+
+        assert response.status_code == 200
+        assert response.json()["username"] == "selfreader"
+
+    def test_user_cannot_read_another_users_record(self, api, security_manager):
+        other = _make_user(security_manager, "other")
+        _make_user(security_manager, "nosy")
+        token = _token(api, "nosy")
+
+        response = api.get(
+            f"/api/security/users/{other.user_id}", headers=_auth(token)
+        )
+
+        assert response.status_code == 403
+
+    def test_unknown_user_id_returns_404(self, api, admin_token):
+        response = api.get(
+            "/api/security/users/no-such-user", headers=_auth(admin_token)
+        )
+
+        assert response.status_code == 404
+
+
+@pytest.mark.api
+class TestUpdateAndDeleteUser:
+    def test_superuser_can_update_a_user(self, api, admin_token, security_manager):
+        user = _make_user(security_manager, "updatable")
+
+        response = api.patch(
+            f"/api/security/users/{user.user_id}",
+            headers=_auth(admin_token),
+            json={"full_name": "Updated Name"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Updated Name"
+
+    def test_updating_an_unknown_user_returns_404(self, api, admin_token):
+        response = api.patch(
+            "/api/security/users/no-such-user",
+            headers=_auth(admin_token),
+            json={"full_name": "Nobody"},
+        )
+
+        assert response.status_code == 404
+
+    def test_non_superuser_cannot_update_a_user(
+        self, api, plain_token, security_manager
+    ):
+        user = _make_user(security_manager, "target")
+
+        response = api.patch(
+            f"/api/security/users/{user.user_id}",
+            headers=_auth(plain_token),
+            json={"full_name": "Hijacked"},
+        )
+
+        assert response.status_code == 403
+
+    def test_superuser_can_delete_a_user(self, api, admin_token, security_manager):
+        user = _make_user(security_manager, "deletable")
+
+        response = api.delete(
+            f"/api/security/users/{user.user_id}", headers=_auth(admin_token)
+        )
+
+        assert response.status_code == 200
+        assert api.get(
+            f"/api/security/users/{user.user_id}", headers=_auth(admin_token)
+        ).status_code == 404
+
+    def test_non_superuser_cannot_delete_a_user(
+        self, api, plain_token, security_manager
+    ):
+        user = _make_user(security_manager, "victim")
+
+        response = api.delete(
+            f"/api/security/users/{user.user_id}", headers=_auth(plain_token)
+        )
+
+        assert response.status_code == 403
+
+
+@pytest.mark.api
+class TestRoles:
+    def test_default_roles_are_listed(self, api, plain_token):
+        response = api.get("/api/security/roles", headers=_auth(plain_token))
+
+        assert response.status_code == 200
+        assert {r["name"] for r in response.json()} >= {"admin", "operator", "viewer"}
+
+    def test_roles_require_authentication(self, api):
+        assert api.get("/api/security/roles").status_code == 401
+
+    def test_unknown_role_returns_404(self, api, plain_token):
+        response = api.get(
+            "/api/security/roles/no-such-role", headers=_auth(plain_token)
+        )
+
+        assert response.status_code == 404

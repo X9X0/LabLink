@@ -365,7 +365,7 @@ class AcquisitionManager:
                 if isinstance(result, dict) and "value" in result:
                     return float(result["value"])
                 return float(result)
-            except:
+            except Exception:
                 raise NotImplementedError(
                     f"Equipment doesn't implement data acquisition for channel {channel}"
                 )

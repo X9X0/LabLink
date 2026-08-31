@@ -402,7 +402,10 @@ class FirmwareManager:
             self._perform_update(update_id, request, equipment)
         )
 
-        return update_id
+        # Return the progress object, as annotated: the API endpoint declares
+        # response_model=FirmwareUpdateProgress and reads progress.update_id,
+        # which raised AttributeError while this returned a bare string.
+        return progress
 
     async def _perform_update(
         self,

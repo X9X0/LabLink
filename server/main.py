@@ -329,8 +329,32 @@ async def lifespan(app: FastAPI):
 
         logger.info("Initializing advanced security system...")
 
-        # Generate or use configured JWT secret
-        jwt_secret = settings.jwt_secret_key or generate_secure_secret_key()
+        # Generate or use configured JWT secret.
+        # A freshly generated secret is persisted next to the security DB:
+        # without that, every restart invalidates all outstanding tokens, and
+        # each worker in a multi-worker deployment would sign with a different
+        # key, producing intermittent 401s.
+        jwt_secret = settings.jwt_secret_key
+        if not jwt_secret:
+            secret_file = Path(settings.security_db_path).parent / ".jwt_secret"
+            try:
+                if secret_file.exists():
+                    jwt_secret = secret_file.read_text().strip()
+                if not jwt_secret:
+                    jwt_secret = generate_secure_secret_key()
+                    secret_file.parent.mkdir(parents=True, exist_ok=True)
+                    secret_file.write_text(jwt_secret)
+                    secret_file.chmod(0o600)
+                logger.warning(
+                    "LABLINK_JWT_SECRET_KEY is not set; using the generated secret at "
+                    f"{secret_file}. Set the environment variable in production."
+                )
+            except OSError as e:
+                jwt_secret = jwt_secret or generate_secure_secret_key()
+                logger.error(
+                    f"Could not persist JWT secret to {secret_file}: {e}. "
+                    "Using an in-memory secret - all tokens will be invalidated on restart."
+                )
 
         auth_config = AuthConfig(
             secret_key=jwt_secret,
@@ -694,6 +718,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                 payload = decode_token(token, security_manager.config)
                 if not payload:
                     await websocket.close(code=4001, reason="Invalid or expired token")
+                    return
+                if not payload.session_id or not security_manager.session_manager.get_session(
+                    payload.session_id
+                ):
+                    await websocket.close(code=4001, reason="Session has been revoked or expired")
                     return
         except Exception as e:
             logger.warning(f"WebSocket auth check failed: {e}")

@@ -277,15 +277,16 @@ class TestPermissionChecking:
             email="test@example.com",
             full_name="Test User",
             hashed_password="hashed",
-            roles=[role],
+            roles=[role.role_id],
             is_active=True
         )
+        roles_by_id = {role.role_id: role}
 
-        # Check if user has the permission
+        # Check if user has the permission, resolving role IDs to roles
         has_permission = any(
             p.action == PermissionAction.READ and p.resource == ResourceType.EQUIPMENT
-            for role in user.roles
-            for p in role.permissions
+            for role_id in user.roles
+            for p in roles_by_id[role_id].permissions
         )
 
         assert has_permission is True
@@ -308,15 +309,16 @@ class TestPermissionChecking:
             email="test@example.com",
             full_name="Test User",
             hashed_password="hashed",
-            roles=[role],
+            roles=[role.role_id],
             is_active=True
         )
+        roles_by_id = {role.role_id: role}
 
         # Check if user has WRITE permission (should not have)
         has_write = any(
             p.action == PermissionAction.WRITE and p.resource == ResourceType.EQUIPMENT
-            for role in user.roles
-            for p in role.permissions
+            for role_id in user.roles
+            for p in roles_by_id[role_id].permissions
         )
 
         assert has_write is False
@@ -345,7 +347,7 @@ class TestRoleTypes:
         for role_type in types:
             role = Role(
                 name=f"test_{role_type.value}",
-                type=role_type,
+                role_type=role_type,
                 permissions=[]
             )
             assert role.role_type == role_type
