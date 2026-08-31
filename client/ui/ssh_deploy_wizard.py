@@ -29,9 +29,23 @@ def _load_known_hosts(ssh_client, extra_path: str = _LABLINK_KNOWN_HOSTS):
                 pass
 
 
-def _save_host_key(hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS):
+def _known_hosts_name(hostname: str, port: int = 22) -> str:
+    """Canonical known_hosts entry name, matching paramiko's own format.
+
+    paramiko brackets the host and appends the port for anything other than
+    22, and looks entries up that way on reconnect. Writing a bare hostname
+    for a non-standard port produces an entry that is never matched, so the
+    host stays "unknown" forever.
+    """
+    return hostname if port == 22 else f"[{hostname}]:{port}"
+
+
+def _save_host_key(
+    hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+):
     """Append a verified host key to the LabLink known_hosts file."""
     Path(known_hosts_path).parent.mkdir(parents=True, exist_ok=True)
+    hostname = _known_hosts_name(hostname, port)
     key_line = f"{hostname} {key.get_name()} {key.get_base64()}\n"
     # Avoid writing duplicates
     existing = ""
@@ -52,8 +66,23 @@ try:
         def __init__(self):
             self._unknown: Dict[str, object] = {}  # hostname -> key
 
+        @staticmethod
+        def _bare_host(hostname: str) -> str:
+            """Strip paramiko's "[host]:port" form down to just the host.
+
+            paramiko only brackets the host when the port is not 22, so a
+            caller looking up by plain hostname would miss the entry on any
+            non-standard port.
+            """
+            if hostname.startswith("[") and "]:" in hostname:
+                return hostname[1:hostname.index("]:")]
+            return hostname
+
         def missing_host_key(self, client, hostname, key):
+            # Store under both the form paramiko used and the bare host, so a
+            # lookup by either succeeds.
             self._unknown[hostname] = key
+            self._unknown[self._bare_host(hostname)] = key
             fingerprint = _host_key_fingerprint(key)
             raise paramiko.ssh_exception.SSHException(
                 f"Unknown host key for {hostname}\n"
@@ -62,7 +91,10 @@ try:
             )
 
         def get_unknown_key(self, hostname):
-            return self._unknown.get(hostname)
+            key = self._unknown.get(hostname)
+            if key is None:
+                key = self._unknown.get(self._bare_host(hostname))
+            return key
 
 except ImportError:
     _LabLinkHostKeyPolicy = None
@@ -1266,9 +1298,9 @@ class ConnectionPage(QWizardPage):
                             QMessageBox.StandardButton.No,
                         )
                         if reply == QMessageBox.StandardButton.Yes:
-                            _save_host_key(resolved_host, unknown_key)
+                            _save_host_key(resolved_host, unknown_key, port=port)
                             if host != resolved_host:
-                                _save_host_key(host, unknown_key)
+                                _save_host_key(host, unknown_key, port=port)
                             # Retry with accepted key now in known_hosts
                             try:
                                 ssh2 = paramiko.SSHClient()

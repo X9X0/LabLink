@@ -61,6 +61,20 @@ ssh-ed25519, ecdsa-sha2-nistp256/384/521, rsa-sha2-512, rsa-sha2-256
 
 `ssh-rsa` and `ssh-dss` are gone.
 
+**Verified against a real SSH server** (an OpenSSH container configured to
+offer only an `ssh-rsa` host key, i.e. the old-Pi case):
+
+| | result |
+|---|---|
+| paramiko 3.4.0 (LabLink 1.x) | connects, negotiating `ssh-rsa` |
+| paramiko 5.0.0 (LabLink 2.0.0) | refuses |
+
+The error you will see is:
+
+```
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+```
+
 **What this means in practice:**
 
 - A device whose SSH server offers **only** an `ssh-rsa` host key can no longer
@@ -119,12 +133,21 @@ This release was validated before merge:
 
 - all four requirements files resolve and install together on Python 3.12
 - every one of the 192 server/client/shared modules imports cleanly
-- full test suite: 955 passed, 63 skipped — unchanged from 1.3.0
+- full test suite: 968 passed, 63 skipped
 - `pip-audit` over `shared/` + `server/`: no known vulnerabilities
+- **against a real OpenSSH server in Docker**, under paramiko 5.0.0: the TOFU
+  policy rejects an unknown host, the offered key is retrievable, saving it to
+  known_hosts lets a subsequent `RejectPolicy` connect without re-prompting,
+  and `exec_command` plus SCP upload/download round-trip correctly — on both
+  the default port and a non-standard one
 
-**Not covered by any of the above:** the PyQt6 client has no automated
-coverage against a real Qt event loop, and no test exercises real instruments
-or a real SSH target. The PyQt6 6.6 -> 6.11, pyqtgraph 0.13 -> 0.14, pyvisa
-1.14 -> 1.16 and paramiko 3 -> 5 bumps are therefore verified only by import
-and unit tests. Exercise the GUI, an instrument connection and an SSH deploy
-against real hardware before relying on this in a lab.
+**Still not covered:** no test drives a real Qt event loop or a real
+instrument. The PyQt6 6.6 -> 6.11, pyqtgraph 0.13 -> 0.14 and pyvisa
+1.14 -> 1.16 bumps rest on import checks and unit tests alone, and pyvisa is
+the one to watch — it is the instrument I/O layer, and the mock-equipment
+tests would not catch a behavioural change in real VISA transport. Exercise
+the GUI and an instrument connection against real hardware before relying on
+this in a lab.
+
+The SSH path is no longer in that category: paramiko 5 is verified against a
+real OpenSSH server, including the `ssh-rsa`-only case, as described above.
