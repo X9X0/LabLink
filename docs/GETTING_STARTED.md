@@ -16,13 +16,13 @@ LabLink is a modular client-server application for remote control and data acqui
 
 - Raspberry Pi 4 or 5
 - Raspberry Pi OS Lite (64-bit recommended)
-- Python 3.11 or higher
+- Python 3.12 or higher
 - USB/Serial/Ethernet connections to lab equipment
 
 ### Client (Development Machine)
 
 - Windows 10/11 or Linux
-- Python 3.11 or higher
+- Python 3.12 or higher
 - Network connection to Raspberry Pi
 
 ## Installation

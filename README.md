@@ -316,7 +316,7 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ## Technology Stack
 
-- **Language**: Python 3.11+
+- **Language**: Python 3.12+
 - **Server**: FastAPI, PyVISA
 - **Client**: PyQt6, pyqtgraph
 - **Communication**: WebSockets, REST API

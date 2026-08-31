@@ -505,7 +505,7 @@ Now that you know the basics:
 
 ## ✅ Checklist for New Users
 
-- [ ] Installed Python 3.11+
+- [ ] Installed Python 3.12+
 - [ ] Installed client dependencies
 - [ ] Started LabLink server
 - [ ] Launched GUI client

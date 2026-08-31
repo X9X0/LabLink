@@ -1,47 +1,50 @@
+# LabLink Server dependencies (2.x baseline)
+#
+# Pinned exactly for reproducible builds. Security floors use >= so a patched
+# release can be picked up without editing this file.
+
 # Web Framework
-fastapi>=0.135.0  # Security: Fixes PYSEC-2024-38 (ReDoS). >=0.135.0 drops the starlette upper bound so the pin below can apply
-starlette>=1.3.1  # Security: Fixes PYSEC-2026-161, -2280, -2281, -248, -249. Pinned directly; it reaches us via fastapi
-uvicorn[standard]==0.27.0
-websockets==12.0
-python-multipart>=0.0.18  # Required for FastAPI file uploads (Form/File parameters). Security: Fixes GHSA-2jv5-9r88-3w3p (ReDoS), GHSA-59g5-xgcq-4qw3 (DoS)
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+websockets==17.1
+python-multipart==0.0.32
 
 # Equipment Communication
-pyvisa==1.14.1
-pyvisa-py==0.7.1
+pyvisa==1.16.2
+pyvisa-py==0.8.1
 pyserial==3.5
-
-# USB/Device Access
-pyusb==1.2.1
+pyusb==1.3.1
 
 # Data Handling
-numpy==1.26.3
-pandas==2.2.0
-h5py==3.10.0
-scipy==1.11.4
+numpy==2.5.2
+pandas==3.0.5
+h5py==3.16.0
+scipy==1.18.1
 
 # Configuration
-pydantic==2.13.5        # Required by fastapi>=0.135.0
-pydantic-settings==2.15.0  # Required for python-dotenv>=1.2
-python-dotenv==1.2.2  # Security: Fixes PYSEC-2026-2270
-email-validator==2.3.0  # 2.1.0 was yanked upstream
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.2
+email-validator==2.3.0
 
 # Utilities
-python-dateutil==2.8.2
-psutil==5.9.8
-apscheduler==3.10.4
-zeroconf==0.149.16  # Security: Fixes PYSEC-2026-3435, -3436, -3437, -3438, -3439
-requests==2.33.0  # HTTP library for Pi discovery. Security: Fixes GHSA-9wx4-h78v-vm56 (cert verification), GHSA-9hjg-9r4m-mvj7 (netrc leak), PYSEC-2026-2275
-docker==7.1.0  # Docker Python API for running Pi diagnostics on host
+python-dateutil==2.9.0.post0
+psutil==7.2.2
+apscheduler==3.11.3
+zeroconf==0.151.3
+requests==2.34.2
+docker==7.2.0
 
 # Testing
-pytest==9.0.3           # Security: Fixes PYSEC-2026-1845
-pytest-asyncio==1.3.0   # Required for pytest 9 compatibility
+pytest==9.1.1
+pytest-asyncio==1.4.0
 
 # Security & Authentication
-bcrypt==4.1.3         # Password hashing
-httpx==0.27.0         # Async HTTP client for OAuth2
-PyJWT==2.13.0         # JWT token handling. Security: Fixes PYSEC-2026-120, -175, -176, -177, -178, -179
-pyotp==2.9.0          # TOTP multi-factor authentication
-qrcode[pil]==8.2      # QR code generation with PIL support
-cryptography>=46.0.0  # CVE fixes: PYSEC-2024-225, GHSA-3ww4-gg4f-jr7f, GHSA-9v9h-cgj8-h64p, GHSA-h4gh-qq45-vh27
-setuptools>=83.0.0    # CVE fixes: PYSEC-2025-49 (RCE), GHSA-cx63-2mw6-8hw5 (RCE), PYSEC-2026-3447
+bcrypt==5.0.0
+httpx==0.28.1
+PyJWT==2.13.0
+pyotp==2.10.0
+qrcode[pil]==8.2
+cryptography>=50.0.1
+setuptools>=84.0.0

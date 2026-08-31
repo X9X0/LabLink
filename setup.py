@@ -70,7 +70,7 @@ def print_info(text: str):
 
 
 def check_python_version() -> bool:
-    """Check if Python version is >= 3.8."""
+    """Check if Python version is >= 3.12."""
     print_header("Checking Python Version")
 
     version = sys.version_info
@@ -78,12 +78,13 @@ def check_python_version() -> bool:
 
     print(f"Python version: {version_str}")
 
-    if version.major >= 3 and version.minor >= 8:
+    if (version.major, version.minor) >= (3, 12):
         print_success(f"Python {version_str} is supported")
         return True
     else:
         print_error(f"Python {version_str} is not supported")
-        print_error("LabLink requires Python 3.8 or higher")
+        print_error("LabLink 2.x requires Python 3.12 or higher")
+        print_error("(numpy >= 2.5 and scipy >= 1.18 dropped Python 3.11)")
         return False
 
 

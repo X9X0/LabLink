@@ -9,7 +9,15 @@ from typing import Any, Callable, Dict, List, Optional
 
 try:
     import websockets
-    from websockets.client import WebSocketClientProtocol
+
+    # websockets 14 replaced the legacy client with the asyncio implementation;
+    # websockets.client.WebSocketClientProtocol still resolves but is deprecated
+    # and slated for removal. Prefer the modern type and fall back for older
+    # installs.
+    try:
+        from websockets.asyncio.client import ClientConnection as WebSocketClientProtocol
+    except ImportError:  # websockets < 14
+        from websockets.client import WebSocketClientProtocol
 except ImportError:
     websockets = None
     WebSocketClientProtocol = None
