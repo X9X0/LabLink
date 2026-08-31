@@ -246,14 +246,11 @@ class TestSchedulerManagerAsync:
         assert created_job is not None
         job_id = created_job.job_id
 
-        # Try to trigger it manually
-        try:
-            result = await scheduler_manager.trigger_job(job_id)
-            # Should return something or None
-            assert result is not None or result is None
-        except AttributeError:
-            # Method might not exist
-            pytest.skip("trigger_job not implemented")
+        # Trigger it manually; the entry point is run_job_now()
+        execution = await scheduler_manager.run_job_now(job_id)
+
+        assert execution is not None
+        assert execution.job_id == job_id
 
     def test_list_jobs_sync(self, scheduler_manager):
         """Test synchronous job listing."""
@@ -281,39 +278,24 @@ class TestDiscoveryManagerAsync:
         yield DiscoveryManager(config)
 
     @pytest.mark.asyncio
-    async def test_scan_visa_async(self, discovery_manager):
-        """Test async VISA scanning."""
-        try:
-            devices = await discovery_manager.scan_visa()
-            # Should return a list (empty if no devices)
-            assert devices is not None
-            assert isinstance(devices, list)
-        except AttributeError:
-            # Method might be sync not async
-            pytest.skip("scan_visa is not async or not implemented")
+    async def test_scan_is_a_single_async_entry_point(self, discovery_manager):
+        """Discovery exposes one async scan(), not per-transport methods.
 
-    @pytest.mark.asyncio
-    async def test_scan_mdns_async(self, discovery_manager):
-        """Test async mDNS scanning."""
-        try:
-            devices = await discovery_manager.scan_mdns(timeout=1.0)
-            # Should return a list (empty if no devices)
-            assert devices is not None
-            assert isinstance(devices, list)
-        except AttributeError:
-            pytest.skip("scan_mdns is not async or not implemented")
-        except TypeError:
-            # Might not accept timeout parameter
-            pytest.skip("scan_mdns signature different")
+        The scan itself is not driven here: it starts real mDNS/VISA traffic
+        and belongs in the opt-in network tests. This asserts the shape of the
+        API that replaced scan_visa()/scan_mdns().
+        """
+        import inspect
 
-    def test_get_cached_devices_sync(self, discovery_manager):
-        """Test synchronous cached device retrieval."""
-        try:
-            devices = discovery_manager.get_cached_devices()
-            assert devices is not None
-            assert isinstance(devices, list)
-        except AttributeError:
-            pytest.skip("get_cached_devices not implemented")
+        assert inspect.iscoroutinefunction(discovery_manager.scan)
+        assert not hasattr(discovery_manager, "scan_visa")
+        assert not hasattr(discovery_manager, "scan_mdns")
+
+    def test_get_devices_sync(self, discovery_manager):
+        """Cached devices are read with get_devices()."""
+        devices = discovery_manager.get_devices()
+
+        assert isinstance(devices, list)
 
     @pytest.mark.asyncio
     async def test_start_auto_discovery_async(self, discovery_manager):
