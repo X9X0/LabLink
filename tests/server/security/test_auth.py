@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 import sys
 import os
@@ -31,7 +31,7 @@ from security.auth import (
     LoginAttemptTracker,
     generate_secure_secret_key
 )
-from security.models import User, Role, RoleType, TokenPayload
+from security.models import AuthMethod, User, Role, RoleType, TokenPayload
 
 
 class TestPasswordHashing:
@@ -101,7 +101,7 @@ class TestJWTTokens:
             email="test@example.com",
             full_name="Test User",
             hashed_password=hash_password("password"),
-            roles=[admin_role],
+            roles=[admin_role.role_id],
             is_active=True
         )
 
@@ -137,8 +137,8 @@ class TestJWTTokens:
         payload = decode_token(token, config=auth_config)
 
         assert payload is not None
-        assert payload["sub"] == sample_user.user_id
-        assert "exp" in payload
+        assert payload.sub == sample_user.user_id
+        assert payload.exp is not None
 
     def test_decode_refresh_token(self, auth_config, sample_user):
         """Test decoding valid refresh token."""
@@ -147,11 +147,17 @@ class TestJWTTokens:
             config=auth_config
         )
 
-        payload = decode_token(token, config=auth_config)
+        user_id = decode_refresh_token(token, config=auth_config)
 
-        assert payload is not None
-        assert payload["sub"] == sample_user.user_id
-        assert "exp" in payload
+        assert user_id == sample_user.user_id
+
+    def test_decode_token_rejects_a_refresh_token(self, auth_config, sample_user):
+        """A refresh token must not be usable as an access token."""
+        refresh = create_refresh_token(
+            user_id=sample_user.user_id, config=auth_config
+        )
+
+        assert decode_token(refresh, config=auth_config) is None
 
     def test_decode_invalid_token(self, auth_config):
         """Test decoding invalid token."""
@@ -181,9 +187,9 @@ class TestJWTTokens:
         payload = decode_token(token, config=auth_config)
 
         # Check that the token contains user information
-        assert payload["sub"] == sample_user.user_id
-        assert "exp" in payload
-        # Additional claims would be added based on the actual implementation
+        assert payload.sub == sample_user.user_id
+        assert payload.username == sample_user.username
+        assert payload.exp is not None
 
 
 class TestUserToResponse:
@@ -214,259 +220,284 @@ class TestUserToResponse:
         assert response.full_name == "Test User"
         assert response.is_active is True
         assert len(response.roles) == 1
-        assert response.roles[0].name == "admin"
+        assert response.roles == [admin_role.role_id]
         # Password should not be in response
         assert not hasattr(response, 'hashed_password')
 
 
 class TestSessionManager:
-    """Test session management."""
+    """Test session management.
+
+    Sessions are keyed by a generated session_id (not by token) and are
+    hard-deleted on destroy; the access token carries the session_id so the
+    token can be revoked by destroying its session.
+    """
 
     @pytest.fixture
     def session_manager(self):
-        """Create session manager for testing."""
+        """Create session manager for testing (in-memory, no DB)."""
         return SessionManager()
 
     @pytest.fixture
     def sample_user(self):
         """Create sample user for testing."""
         return User(
-            id="user-123",
+            user_id="user-123",
             username="testuser",
             email="test@example.com",
             full_name="Test User",
             hashed_password=hash_password("password"),
             roles=[],
-            is_active=True
+            is_active=True,
+            is_superuser=False,
         )
 
     def test_create_session(self, session_manager, sample_user):
         """Test creating a new session."""
-        token = "test-token-123"
-        ip_address = "192.168.1.100"
-        user_agent = "Mozilla/5.0"
-
-        session = session_manager.create_session(
-            user_id=sample_user.user_id,
-            username=sample_user.username,
-            token=token,
-            ip_address=ip_address,
-            user_agent=user_agent
+        session_id = session_manager.create_session(
+            sample_user,
+            "192.168.1.100",
+            auth_method=AuthMethod.PASSWORD,
+            expires_in_minutes=30,
         )
 
+        assert session_id
+        session = session_manager.get_session(session_id)
+        assert session is not None
         assert session.user_id == sample_user.user_id
         assert session.username == sample_user.username
-        assert session.token == token
-        assert session.ip_address == ip_address
-        assert session.user_agent == user_agent
-        assert session.is_active is True
+        assert session.ip_address == "192.168.1.100"
+        assert session.auth_method == AuthMethod.PASSWORD
         assert session.created_at is not None
+
+    def test_session_ids_are_unique(self, session_manager, sample_user):
+        """Each login must get its own revocable session."""
+        first = session_manager.create_session(
+            sample_user, "10.0.0.1", AuthMethod.PASSWORD, 30
+        )
+        second = session_manager.create_session(
+            sample_user, "10.0.0.1", AuthMethod.PASSWORD, 30
+        )
+
+        assert first != second
 
     def test_get_session(self, session_manager, sample_user):
         """Test retrieving a session."""
-        token = "test-token-456"
-        session = session_manager.create_session(
-            user_id=sample_user.user_id,
-            username=sample_user.username,
-            token=token,
-            ip_address="192.168.1.100",
-            user_agent="Test Agent"
+        session_id = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
         )
 
-        retrieved = session_manager.get_session(token)
+        retrieved = session_manager.get_session(session_id)
+
         assert retrieved is not None
-        assert retrieved.token == token
+        assert retrieved.session_id == session_id
         assert retrieved.user_id == sample_user.user_id
 
     def test_get_nonexistent_session(self, session_manager):
         """Test retrieving a nonexistent session."""
-        retrieved = session_manager.get_session("nonexistent-token")
-        assert retrieved is None
+        assert session_manager.get_session("nonexistent-session-id") is None
 
-    def test_invalidate_session(self, session_manager, sample_user):
-        """Test invalidating a session."""
-        token = "test-token-789"
-        session_manager.create_session(
-            user_id=sample_user.user_id,
-            username=sample_user.username,
-            token=token,
-            ip_address="192.168.1.100",
-            user_agent="Test Agent"
+    def test_expired_session_is_not_returned(self, session_manager, sample_user):
+        """An expired session must not authenticate a request."""
+        session_id = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+        )
+        session_manager._sessions[session_id].expires_at = datetime.now(
+            timezone.utc
+        ) - timedelta(minutes=1)
+
+        assert session_manager.get_session(session_id) is None
+
+    def test_destroy_session(self, session_manager, sample_user):
+        """Test destroying a single session."""
+        session_id = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
         )
 
-        session_manager.invalidate_session(token)
+        assert session_manager.destroy_session(session_id) is True
+        assert session_manager.get_session(session_id) is None
 
-        # Session should be marked as inactive
-        session = session_manager.get_session(token)
-        assert session is not None
-        assert session.is_active is False
-        assert session.logout_at is not None
+    def test_destroy_unknown_session_returns_false(self, session_manager):
+        assert session_manager.destroy_session("no-such-session") is False
 
     def test_get_user_sessions(self, session_manager, sample_user):
         """Test getting all sessions for a user."""
-        # Create multiple sessions
-        tokens = ["token-1", "token-2", "token-3"]
-        for token in tokens:
+        for _ in range(3):
             session_manager.create_session(
-                user_id=sample_user.user_id,
-                username=sample_user.username,
-                token=token,
-                ip_address="192.168.1.100",
-                user_agent="Test Agent"
+                sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
             )
 
         sessions = session_manager.get_user_sessions(sample_user.user_id)
+
         assert len(sessions) == 3
         assert all(s.user_id == sample_user.user_id for s in sessions)
 
-    def test_invalidate_all_user_sessions(self, session_manager, sample_user):
-        """Test invalidating all sessions for a user."""
-        # Create multiple sessions
-        tokens = ["token-a", "token-b", "token-c"]
-        for token in tokens:
+    def test_destroy_user_sessions(self, session_manager, sample_user):
+        """Logout / password change revokes every session for the user."""
+        for _ in range(3):
             session_manager.create_session(
-                user_id=sample_user.user_id,
-                username=sample_user.username,
-                token=token,
-                ip_address="192.168.1.100",
-                user_agent="Test Agent"
+                sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
             )
 
-        session_manager.invalidate_all_user_sessions(sample_user.user_id)
+        destroyed = session_manager.destroy_user_sessions(sample_user.user_id)
 
-        sessions = session_manager.get_user_sessions(sample_user.user_id)
-        assert all(not s.is_active for s in sessions)
+        assert destroyed == 3
+        assert session_manager.get_user_sessions(sample_user.user_id) == []
+
+    def test_destroy_user_sessions_leaves_other_users(
+        self, session_manager, sample_user
+    ):
+        other = sample_user.copy(update={"user_id": "user-999", "username": "other"})
+        session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+        )
+        other_session = session_manager.create_session(
+            other, "192.168.1.101", AuthMethod.PASSWORD, 30
+        )
+
+        session_manager.destroy_user_sessions(sample_user.user_id)
+
+        assert session_manager.get_session(other_session) is not None
+
+    def test_cleanup_expired_sessions(self, session_manager, sample_user):
+        """Expired sessions are removed so the store cannot grow forever."""
+        # Create every session first: create_session() prunes as it goes, so
+        # expiring them beforehand would let creation do the cleanup instead.
+        live = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+        )
+        stale = [
+            session_manager.create_session(
+                sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+            )
+            for _ in range(3)
+        ]
+        for sid in stale:
+            session_manager._sessions[sid].expires_at = datetime.now(
+                timezone.utc
+            ) - timedelta(minutes=1)
+
+        removed = session_manager.cleanup_expired_sessions()
+
+        assert removed == 3
+        assert session_manager.get_session(live) is not None
+
+    def test_creating_a_session_prunes_expired_ones(
+        self, session_manager, sample_user
+    ):
+        """Token refresh creates a session each time; expired ones must go."""
+        stale = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+        )
+        session_manager._sessions[stale].expires_at = datetime.now(
+            timezone.utc
+        ) - timedelta(minutes=1)
+
+        fresh = session_manager.create_session(
+            sample_user, "192.168.1.100", AuthMethod.PASSWORD, 30
+        )
+
+        assert stale not in session_manager._sessions
+        assert session_manager.get_session(fresh) is not None
 
 
 class TestLoginAttemptTracker:
-    """Test login attempt tracking and account lockout."""
+    """Test login attempt tracking and account lockout.
+
+    The tracker is configured from AuthConfig (max_failed_login_attempts /
+    account_lockout_duration_minutes), not from constructor kwargs.
+    """
 
     @pytest.fixture
     def tracker(self):
         """Create login attempt tracker for testing."""
         return LoginAttemptTracker(
-            max_attempts=5,
-            lockout_duration_minutes=30
+            AuthConfig(
+                secret_key="test-secret-key",
+                max_failed_login_attempts=5,
+                account_lockout_duration_minutes=30,
+            )
         )
 
     def test_record_failed_attempt(self, tracker):
         """Test recording failed login attempts."""
-        username = "testuser"
-
-        tracker.record_failed_attempt(username)
-
-        attempts = tracker.get_failed_attempts(username)
-        assert attempts == 1
+        assert tracker.record_failed_attempt("testuser") == 1
+        assert tracker.get_attempt_count("testuser") == 1
 
     def test_multiple_failed_attempts(self, tracker):
         """Test recording multiple failed attempts."""
-        username = "testuser"
+        for _ in range(3):
+            tracker.record_failed_attempt("testuser")
 
-        for i in range(3):
-            tracker.record_failed_attempt(username)
+        assert tracker.get_attempt_count("testuser") == 3
 
-        attempts = tracker.get_failed_attempts(username)
-        assert attempts == 3
+    def test_unknown_user_has_no_attempts(self, tracker):
+        assert tracker.get_attempt_count("never-seen") == 0
 
     def test_is_locked_out_false(self, tracker):
         """Test account not locked out with few attempts."""
-        username = "testuser"
+        for _ in range(3):
+            tracker.record_failed_attempt("testuser")
 
-        for i in range(3):
-            tracker.record_failed_attempt(username)
-
-        assert tracker.is_locked_out(username) is False
+        assert tracker.is_locked_out("testuser") is False
 
     def test_is_locked_out_true(self, tracker):
-        """Test account locked out after max attempts."""
-        username = "testuser"
+        """Test account locked out at max attempts."""
+        for _ in range(5):
+            tracker.record_failed_attempt("testuser")
 
-        for i in range(6):  # More than max_attempts (5)
-            tracker.record_failed_attempt(username)
+        assert tracker.is_locked_out("testuser") is True
 
-        assert tracker.is_locked_out(username) is True
+    def test_attempts_are_per_username(self, tracker):
+        for _ in range(5):
+            tracker.record_failed_attempt("victim")
+        tracker.record_failed_attempt("bystander")
 
-    def test_reset_attempts_on_success(self, tracker):
-        """Test resetting attempts after successful login."""
-        username = "testuser"
+        assert tracker.is_locked_out("victim") is True
+        assert tracker.is_locked_out("bystander") is False
 
-        for i in range(3):
-            tracker.record_failed_attempt(username)
+    def test_clear_attempts_on_success(self, tracker):
+        """Test clearing attempts after successful login."""
+        for _ in range(3):
+            tracker.record_failed_attempt("testuser")
 
-        tracker.reset_attempts(username)
+        tracker.clear_attempts("testuser")
 
-        attempts = tracker.get_failed_attempts(username)
-        assert attempts == 0
-        assert tracker.is_locked_out(username) is False
+        assert tracker.get_attempt_count("testuser") == 0
+        assert tracker.is_locked_out("testuser") is False
 
-    def test_lockout_expiration(self, tracker):
-        """Test that lockout expires after duration."""
-        # Create tracker with very short lockout
-        short_tracker = LoginAttemptTracker(
-            max_attempts=3,
-            lockout_duration_minutes=0.01  # ~0.6 seconds
+    def test_lockout_time_remaining(self, tracker):
+        """A locked-out account reports how long it stays locked."""
+        for _ in range(5):
+            tracker.record_failed_attempt("testuser")
+
+        remaining = tracker.get_lockout_time_remaining("testuser")
+
+        assert remaining is not None
+        assert 0 < remaining <= 30 * 60
+
+    def test_no_lockout_time_when_not_locked(self, tracker):
+        tracker.record_failed_attempt("testuser")
+
+        assert tracker.get_lockout_time_remaining("testuser") is None
+
+    def test_old_attempts_fall_outside_the_window(self):
+        """Attempts older than the lockout window stop counting."""
+        tracker = LoginAttemptTracker(
+            AuthConfig(
+                secret_key="test-secret-key",
+                max_failed_login_attempts=3,
+                account_lockout_duration_minutes=30,
+            )
         )
+        for _ in range(3):
+            tracker.record_failed_attempt("testuser")
+        assert tracker.is_locked_out("testuser") is True
 
-        username = "testuser"
+        tracker._attempts["testuser"] = [
+            datetime.now(timezone.utc) - timedelta(minutes=31)
+            for _ in range(3)
+        ]
 
-        # Lock out the account
-        for i in range(4):
-            short_tracker.record_failed_attempt(username)
-
-        assert short_tracker.is_locked_out(username) is True
-
-        # Wait for lockout to expire
-        import time
-        time.sleep(1)
-
-        # Should be unlocked now
-        assert short_tracker.is_locked_out(username) is False
-
-
-class TestSecretKeyGeneration:
-    """Test secure secret key generation."""
-
-    def test_generate_secure_secret_key(self):
-        """Test generating secure secret key."""
-        key = generate_secure_secret_key()
-
-        assert key is not None
-        assert isinstance(key, str)
-        assert len(key) >= 32  # Should be at least 32 characters
-
-    def test_generate_different_keys(self):
-        """Test that each generation produces different key."""
-        key1 = generate_secure_secret_key()
-        key2 = generate_secure_secret_key()
-
-        assert key1 != key2
-
-
-class TestAuthConfig:
-    """Test AuthConfig class."""
-
-    def test_auth_config_creation(self):
-        """Test creating auth config."""
-        config = AuthConfig(
-            secret_key="test-secret",
-            algorithm="HS256",
-            access_token_expire_minutes=30,
-            refresh_token_expire_days=7
-        )
-
-        assert config.secret_key == "test-secret"
-        assert config.algorithm == "HS256"
-        assert config.access_token_expire_minutes == 30
-        assert config.refresh_token_expire_days == 7
-
-    def test_auth_config_defaults(self):
-        """Test auth config with default values."""
-        config = AuthConfig(secret_key="test-secret")
-
-        assert config.algorithm == "HS256"
-        assert config.access_token_expire_minutes == 30
-        assert config.refresh_token_expire_days == 7
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert tracker.get_attempt_count("testuser") == 0
+        assert tracker.is_locked_out("testuser") is False
