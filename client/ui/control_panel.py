@@ -7,6 +7,7 @@ from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
 
+import qasync
 from client.models.equipment import ConnectionStatus, Equipment
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -17,7 +18,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont, QPalette, QColor, QPainter
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,7 @@ class ControlPanel(QWidget):
 
         # Track last command time to prevent reading updates from overwriting user actions
         self._last_output_command_time = 0
+        self._readings_in_flight = False
 
         # Timer for reading updates (single timer to prevent serial port overload)
         self.readings_timer = QTimer()
@@ -638,13 +640,15 @@ class ControlPanel(QWidget):
             self.analog_display.hide()
             self.graph_display.show()
 
-    def _send_voltage_command(self, voltage: float):
+    @qasync.asyncSlot(float)
+    async def _send_voltage_command(self, voltage: float):
         """Send voltage command to equipment."""
         if not self.selected_equipment or not self.client:
             return
 
         try:
-            self.client.send_command(
+            await call_blocking(
+                self.client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_voltage",
                 {"voltage": voltage, "channel": 1}
@@ -652,13 +656,15 @@ class ControlPanel(QWidget):
         except Exception as e:
             logger.error(f"Error sending voltage command: {e}")
 
-    def _send_current_command(self, current: float):
+    @qasync.asyncSlot(float)
+    async def _send_current_command(self, current: float):
         """Send current command to equipment."""
         if not self.selected_equipment or not self.client:
             return
 
         try:
-            self.client.send_command(
+            await call_blocking(
+                self.client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_current",
                 {"current": current, "channel": 1}
@@ -666,7 +672,8 @@ class ControlPanel(QWidget):
         except Exception as e:
             logger.error(f"Error sending current command: {e}")
 
-    def _send_output_command(self, enabled: bool):
+    @qasync.asyncSlot(bool)
+    async def _send_output_command(self, enabled: bool):
         """Send output enable/disable command."""
         if not self.selected_equipment or not self.client:
             return
@@ -675,7 +682,8 @@ class ControlPanel(QWidget):
             # Mark that we just sent a command - don't let readings overwrite button for 2 seconds
             self._last_output_command_time = time.time()
 
-            self.client.send_command(
+            await call_blocking(
+                self.client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_output",
                 {"enabled": enabled, "channel": 1}
@@ -697,7 +705,8 @@ class ControlPanel(QWidget):
         """Stop acquiring data."""
         self.readings_timer.stop()
 
-    def _update_readings(self):
+    @qasync.asyncSlot()
+    async def _update_readings(self):
         """Update voltage and current readings from equipment.
 
         Uses a single get_readings() call to update both voltage and current,
@@ -706,9 +715,17 @@ class ControlPanel(QWidget):
         if not self.selected_equipment or not self.client:
             return
 
+        # The 1 Hz timer can outpace a slow server, so skip ticks while a
+        # request is still in flight instead of queueing them up.
+        if self._readings_in_flight:
+            return
+
+        self._readings_in_flight = True
         try:
             # Get all readings in one call (sends 3 serial commands: GETD, GOUT, GETS)
-            readings = self.client.get_readings(self.selected_equipment.equipment_id)
+            readings = await call_blocking(
+                self.client.get_readings, self.selected_equipment.equipment_id
+            )
 
             # Extract values
             voltage_actual = readings.get("voltage_actual", 0.0)
@@ -773,6 +790,8 @@ class ControlPanel(QWidget):
 
         except Exception as e:
             logger.error(f"Error updating readings: {e}")
+        finally:
+            self._readings_in_flight = False
 
     def _update_graph(self):
         """Update the graph with current data."""
@@ -805,13 +824,14 @@ class ControlPanel(QWidget):
 
         logger.info("Graph data cleared")
 
-    def refresh_equipment_list(self):
+    @qasync.asyncSlot()
+    async def refresh_equipment_list(self):
         """Refresh the equipment list from server."""
         if not self.client:
             return
 
         try:
-            equipment_list = self.client.list_equipment()
+            equipment_list = await call_blocking(self.client.list_equipment)
             self.equipment_list = [Equipment.from_api_dict(eq) for eq in equipment_list]
 
             # Update list widget

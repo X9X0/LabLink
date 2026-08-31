@@ -79,7 +79,7 @@ class EquipmentStatus(BaseModel):
         None, description="Last self-test execution time"
     )
     health_score: Optional[float] = Field(
-        None, description="Equipment health score (0-100)"
+        None, ge=0, le=100, description="Equipment health score (0-100)"
     )
     last_error_messages: List[str] = Field(
         default_factory=list, description="Recent error messages"
@@ -90,5 +90,10 @@ class EquipmentCommand(BaseModel):
     """Command to send to equipment."""
 
     equipment_id: str = Field(..., description="Target equipment ID")
-    command: str = Field(..., description="Command to execute")
+    command: str = Field(
+        ...,
+        min_length=1,
+        max_length=4096,
+        description="Command to execute",
+    )
     parameters: dict = Field(default_factory=dict, description="Command parameters")

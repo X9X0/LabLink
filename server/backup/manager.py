@@ -947,7 +947,7 @@ class BackupManager:
                                 version = parts[1].split('"')[1]
                                 return version
             return "unknown"
-        except:
+        except Exception:
             return "unknown"
 
     def _get_python_version(self) -> str:

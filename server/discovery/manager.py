@@ -670,7 +670,7 @@ class DiscoveryManager:
                     asyncio.create_task(self.stop_auto_discovery())
                 else:
                     loop.run_until_complete(self.stop_auto_discovery())
-            except:
+            except Exception:
                 self.is_running = False
 
         # Close VISA scanner to release file descriptors

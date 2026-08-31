@@ -127,7 +127,7 @@ class LogMonitor:
             try:
                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                 timestamp = dt.strftime("%H:%M:%S.%f")[:-3]
-            except:
+            except Exception:
                 pass
 
         level = entry.get("level", "UNKNOWN")

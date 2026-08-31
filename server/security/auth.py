@@ -105,6 +105,7 @@ def create_access_token(
     user: User,
     config: AuthConfig,
     auth_method: AuthMethod = AuthMethod.PASSWORD,
+    session_id: Optional[str] = None,
 ) -> str:
     """
     Create a JWT access token.
@@ -113,6 +114,8 @@ def create_access_token(
         user: User object
         config: Authentication configuration
         auth_method: How the user authenticated
+        session_id: Backing SessionManager session; the token is revoked
+            whenever this session is destroyed (logout, password change, etc.)
 
     Returns:
         Encoded JWT token
@@ -128,6 +131,7 @@ def create_access_token(
         exp=expires,
         iat=now,
         auth_method=auth_method,
+        session_id=session_id,
     )
 
     token = jwt.encode(payload.dict(), config.secret_key, algorithm=config.algorithm)
@@ -292,6 +296,10 @@ class SessionManager:
         expires_in_minutes: int = 30,
     ) -> str:
         """Create a new session."""
+        # Login and token-refresh are the only paths that grow this table, so
+        # prune here rather than running a separate cleanup task.
+        self.cleanup_expired_sessions()
+
         session_id = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=expires_in_minutes)
@@ -432,11 +440,56 @@ class SessionManager:
 
 
 class LoginAttemptTracker:
-    """Tracks failed login attempts for account lockout."""
+    """Tracks failed login attempts for account lockout.
 
-    def __init__(self, config: AuthConfig):
+    Attempts are written through to SQLite when a ``db_path`` is supplied, so
+    a restart doesn't reset an in-progress attacker's attempt budget.
+    """
+
+    def __init__(self, config: AuthConfig, db_path: Optional[Path] = None):
         self.config = config
         self._attempts: Dict[str, list[datetime]] = {}  # username -> [timestamps]
+        self._db_path = db_path
+
+        if db_path is not None:
+            self._rehydrate_attempts()
+
+    def _db_write(self, sql: str, params: tuple = ()):
+        """Execute a single write statement on the attempts DB."""
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            try:
+                conn.execute(sql, params)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            # Lockout tracking must never block a login response.
+            logger.warning(f"Could not persist login attempt: {e}")
+
+    def _rehydrate_attempts(self):
+        """Load recent attempts from DB so lockouts survive a restart."""
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=self.config.account_lockout_duration_minutes
+        )
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            try:
+                rows = conn.execute(
+                    "SELECT username, attempted_at FROM login_attempts WHERE attempted_at > ?",
+                    (cutoff.isoformat(),),
+                ).fetchall()
+            finally:
+                conn.close()
+
+            for username, attempted_at in rows:
+                self._attempts.setdefault(username, []).append(
+                    datetime.fromisoformat(attempted_at)
+                )
+            if rows:
+                logger.info(f"Rehydrated {len(rows)} recent failed login attempts")
+        except Exception as e:
+            logger.warning(f"Login attempt rehydration skipped: {e}")
 
     def record_failed_attempt(self, username: str) -> int:
         """
@@ -456,12 +509,27 @@ class LoginAttemptTracker:
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
         self._attempts[username] = [t for t in self._attempts[username] if t > cutoff]
 
+        if self._db_path is not None:
+            self._db_write(
+                "INSERT INTO login_attempts (username, attempted_at) VALUES (?, ?)",
+                (username, now.isoformat()),
+            )
+            self._db_write(
+                "DELETE FROM login_attempts WHERE attempted_at <= ?",
+                (cutoff.isoformat(),),
+            )
+
         return len(self._attempts[username])
 
     def clear_attempts(self, username: str):
         """Clear failed attempts for a user."""
         if username in self._attempts:
             del self._attempts[username]
+
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM login_attempts WHERE username = ?", (username,)
+            )
 
     def get_attempt_count(self, username: str) -> int:
         """Get current failed attempt count."""

@@ -161,7 +161,7 @@ class MDNSScanner:
                         value.decode("utf-8") if isinstance(value, bytes) else value
                     )
                     properties[key_str] = value_str
-                except:
+                except Exception:
                     pass
 
         # Create device
@@ -365,7 +365,7 @@ def scan_local_network_devices(timeout: float = 5.0) -> List[str]:
                             logger.info(f"Found open port {port} on {ip}")
                             if ip not in devices:
                                 devices.append(ip)
-                    except:
+                    except Exception:
                         pass
                     finally:
                         sock.close()

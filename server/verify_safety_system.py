@@ -55,7 +55,7 @@ def count_classes_and_functions(filepath):
         )
 
         return classes, functions
-    except:
+    except Exception:
         return 0, 0
 
 

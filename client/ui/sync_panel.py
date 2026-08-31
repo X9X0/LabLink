@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
                              QMessageBox, QPushButton, QTableWidget,
                              QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+import qasync
+from client.api.client import LabLinkClient, call_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class SyncPanel(QWidget):
         )  # equipment_id -> [acquisition_ids]
 
         # Auto-refresh timer
+        self._groups_refresh_in_flight = False
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self._auto_refresh)
         self.refresh_timer.setInterval(2000)  # 2 seconds
@@ -277,13 +279,14 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         if self.auto_refresh_check.isChecked():
             self.refresh_timer.start()
 
-    def refresh_equipment(self):
+    @qasync.asyncSlot()
+    async def refresh_equipment(self):
         """Refresh available equipment list."""
         if not self.client:
             return
 
         try:
-            equipment_list = self.client.list_equipment()
+            equipment_list = await call_blocking(self.client.list_equipment)
             self.available_equipment = equipment_list
 
             # Update equipment list widget
@@ -305,18 +308,18 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
                 self.master_combo.addItem(f"{eq_name} ({eq_type})", eq_id)
 
             # Also refresh available acquisitions
-            self.refresh_acquisitions()
+            await self.refresh_acquisitions()
 
         except Exception as e:
             logger.error(f"Error refreshing equipment: {e}")
 
-    def refresh_acquisitions(self):
+    async def refresh_acquisitions(self):
         """Refresh available acquisition sessions."""
         if not self.client:
             return
 
         try:
-            sessions = self.client.list_acquisition_sessions()
+            sessions = await call_blocking(self.client.list_acquisition_sessions)
             self.available_acquisitions.clear()
 
             # Group acquisitions by equipment
@@ -344,13 +347,18 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         """Refresh sync panel data."""
         self.refresh_groups(silent=True)
 
-    def refresh_groups(self, silent: bool = False):
+    @qasync.asyncSlot()
+    async def refresh_groups(self, silent: bool = False):
         """Refresh sync groups list."""
         if not self.client:
             return
 
+        if self._groups_refresh_in_flight:
+            return
+
+        self._groups_refresh_in_flight = True
         try:
-            groups = self.client.list_sync_groups()
+            groups = await call_blocking(self.client.list_sync_groups)
             self.sync_groups.clear()
             self.groups_list.clear()
 
@@ -359,7 +367,9 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
 
                 # Get detailed status
                 try:
-                    status = self.client.get_sync_group_status(group_id)
+                    status = await call_blocking(
+                        self.client.get_sync_group_status, group_id
+                    )
                     group["status"] = status.get("status", {})
                 except Exception as e:
                     logger.warning(f"Could not get status for group {group_id}: {e}")
@@ -382,6 +392,8 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         except Exception as e:
             if not silent:
                 logger.error(f"Error refreshing sync groups: {e}")
+        finally:
+            self._groups_refresh_in_flight = False
 
     def create_sync_group(self):
         """Create new sync group."""

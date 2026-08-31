@@ -1688,7 +1688,7 @@ class SystemPanel(QWidget):
                     # (Note: This only refreshes if currently connected to this remote server)
                     try:
                         self.refresh()
-                    except:
+                    except Exception:
                         pass  # May not be connected to the updated server
                 else:
                     # Rebuild failed - show manual instructions

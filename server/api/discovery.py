@@ -1,5 +1,6 @@
 """API endpoints for Equipment Discovery system."""
 
+import asyncio
 from typing import List, Optional
 
 from discovery import (ConnectionHistoryEntry, ConnectionStatistics,
@@ -302,8 +303,11 @@ async def get_connection_history(
     """
     try:
         manager = get_discovery_manager()
-        history = manager.history.get_history(
-            device_id=device_id, event_type=event_type, limit=limit
+        history = await asyncio.to_thread(
+            manager.history.get_history,
+            device_id=device_id,
+            event_type=event_type,
+            limit=limit,
         )
         return history
     except Exception as e:
@@ -345,7 +349,7 @@ async def get_connection_statistics(device_id: str):
     """
     try:
         manager = get_discovery_manager()
-        stats = manager.history.get_statistics(device_id)
+        stats = await asyncio.to_thread(manager.history.get_statistics, device_id)
 
         if stats is None:
             raise HTTPException(
@@ -377,7 +381,7 @@ async def get_last_known_good(device_id: str):
     """
     try:
         manager = get_discovery_manager()
-        lkg = manager.history.get_last_known_good(device_id)
+        lkg = await asyncio.to_thread(manager.history.get_last_known_good, device_id)
 
         if lkg is None:
             raise HTTPException(
