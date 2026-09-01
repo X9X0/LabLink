@@ -239,9 +239,11 @@ class TestBK1685B:
     @pytest.mark.asyncio
     async def test_get_readings(self, power_supply, mock_instrument):
         """Test getting readings from the power supply."""
-        # GETD: VVVV(/100) IIII(/1000) mode  -> 5.02 V, 1.25 A, CV
+        # GETD: VVVV(/100) IIII(/100) mode  -> 5.02 V, 12.50 A, CV.
+        # Both reading fields are two decimals, per the worked example in the
+        # 1685B/1900B manuals (030201450 = 3.02 V, 1.45 A).
         # GOUT: "0" means output ON (the protocol inverts this)
-        # GETS: VVV(/10) CCC(/10)              -> 5.0 V, 2.0 A setpoints
+        # GETS on a 1685B: VVV(/10) CCC(/100) -> 5.0 V, 0.20 A setpoints
         bk_responses = {
             "GETD": "050212500",
             "GOUT": "0",
@@ -256,10 +258,10 @@ class TestBK1685B:
             readings = await power_supply.get_readings()
 
         assert readings.voltage_actual == 5.02
-        assert readings.current_actual == 1.25
+        assert readings.current_actual == 12.50
         assert readings.output_enabled is True
         assert readings.voltage_set == 5.00
-        assert readings.current_set == 2.00
+        assert readings.current_set == 0.20
 
     @pytest.mark.asyncio
     async def test_cv_cc_mode_detection(self, power_supply, mock_instrument):

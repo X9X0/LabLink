@@ -40,6 +40,8 @@ class ImageBuildThread(QThread):
         admin_password: str = "",
         enable_ssh: bool = True,
         auto_expand: bool = True,
+        branch: str = "main",
+        os_variant: str = "lite",
     ):
         """Initialize build thread.
 
@@ -52,6 +54,8 @@ class ImageBuildThread(QThread):
             admin_password: Admin user password (optional)
             enable_ssh: Enable SSH on first boot
             auto_expand: Auto-expand filesystem on first boot
+            branch: Git branch the image installs on first boot
+            os_variant: Raspberry Pi OS base image, "lite" or "full"
         """
         super().__init__()
         self.output_path = output_path
@@ -62,6 +66,8 @@ class ImageBuildThread(QThread):
         self.admin_password = admin_password
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
+        self.branch = branch
+        self.os_variant = os_variant
         self.recent_output = []  # Buffer for recent output lines
 
     def _parse_progress_only(self, line: str):
@@ -131,11 +137,15 @@ class ImageBuildThread(QThread):
 
             env["ENABLE_SSH"] = "yes" if self.enable_ssh else "no"
             env["AUTO_EXPAND"] = "yes" if self.auto_expand else "no"
+            env["LABLINK_BRANCH"] = self.branch
+            env["PI_OS_VARIANT"] = self.os_variant
 
             self.progress.emit(5, "Launching build script...")
             self.output.emit(f"Build script: {script_path}\n")
             self.output.emit(f"Building image: {self.output_path}\n")
             self.output.emit(f"Hostname: {self.hostname}\n")
+            self.output.emit(f"Branch: {self.branch}\n")
+            self.output.emit(f"Base image: Raspberry Pi OS {self.os_variant}\n")
             self.output.emit(f"\n--- Starting build process ---\n")
 
             logger.info(f"Launching bash with script: {script_path}")
@@ -161,6 +171,8 @@ export LABLINK_HOSTNAME='{self.hostname}'
 export PI_MODEL='{self.pi_model}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
 export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
+export LABLINK_BRANCH={shlex.quote(self.branch)}
+export PI_OS_VARIANT={shlex.quote(self.os_variant)}
 export SUDO_USER='{current_user}'
 export ORIGINAL_UID='{current_uid}'
 export ORIGINAL_GID='{current_gid}'
@@ -415,6 +427,40 @@ class ConfigurationPage(QWizardPage):
         self.pi_model_combo.setCurrentIndex(0)  # Default to Pi 5
         hardware_layout.addRow("Raspberry Pi Model:", self.pi_model_combo)
 
+        # Branch the image installs on first boot. Editable so an unlisted
+        # branch can be typed in; defaults to main.
+        self.branch_combo = QComboBox()
+        self.branch_combo.setEditable(True)
+        self.branch_combo.addItem("main")
+        try:
+            from client.utils.git_operations import get_git_branches
+
+            for name in get_git_branches() or []:
+                if name and name != "main":
+                    self.branch_combo.addItem(name)
+        except Exception as e:  # branch list is a convenience, not required
+            logger.warning(f"Could not list git branches for image builder: {e}")
+        self.branch_combo.setCurrentText("main")
+        self.branch_combo.setToolTip(
+            "Git branch the Pi installs on first boot. Use main for releases, "
+            "or a feature branch to build a test image."
+        )
+        hardware_layout.addRow("LabLink Branch:", self.branch_combo)
+
+        # Base OS. Lite is correct for a headless appliance: LabLink runs in
+        # Docker and needs no desktop. Full is only useful if the client GUI
+        # will run on the Pi itself.
+        self.os_variant_combo = QComboBox()
+        self.os_variant_combo.addItem("Lite (headless, recommended)", "lite")
+        self.os_variant_combo.addItem("Full (includes desktop)", "full")
+        self.os_variant_combo.setCurrentIndex(0)
+        self.os_variant_combo.setToolTip(
+            "Lite has no desktop and is the right choice for a headless lab "
+            "server. Choose Full only if you intend to run the LabLink desktop "
+            "client on the Pi itself."
+        )
+        hardware_layout.addRow("Base Image:", self.os_variant_combo)
+
         hardware_group.setLayout(hardware_layout)
         layout.addWidget(hardware_group)
 
@@ -462,6 +508,13 @@ class ConfigurationPage(QWizardPage):
 
         self.auto_expand_check = QCheckBox("Auto-expand filesystem on first boot")
         self.auto_expand_check.setChecked(True)
+        self.auto_expand_check.setToolTip(
+            "Raspberry Pi OS grows the root filesystem to fill the card on "
+            "first boot, so the image itself stays small and burns faster.\n\n"
+            "Untick only if that growth is not wanted: the image is then "
+            "padded by 2GB so there is room for Docker and the containers, "
+            "which makes it correspondingly slower to write."
+        )
         options_layout.addWidget(self.auto_expand_check)
 
         options_group.setLayout(options_layout)
@@ -507,6 +560,8 @@ class ConfigurationPage(QWizardPage):
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
         self.registerField("admin_password", self.admin_password_edit)
+        self.registerField("branch", self.branch_combo, "currentText")
+        self.registerField("os_variant", self.os_variant_combo, "currentData")
 
         # Connect text changes to notify wizard of completion status
         self.hostname_edit.textChanged.connect(self.completeChanged)
@@ -640,6 +695,8 @@ class BuildProgressPage(QWizardPage):
         config_page = self.wizard().page(0)
         enable_ssh = config_page.enable_ssh_check.isChecked()
         auto_expand = config_page.auto_expand_check.isChecked()
+        branch = (self.field("branch") or "main").strip() or "main"
+        os_variant = self.field("os_variant") or "lite"
 
         # Reset state
         self.build_complete = False
@@ -657,6 +714,8 @@ class BuildProgressPage(QWizardPage):
             admin_password=admin_password,
             enable_ssh=enable_ssh,
             auto_expand=auto_expand,
+            branch=branch,
+            os_variant=os_variant,
         )
 
         # Connect signals

@@ -70,3 +70,9 @@ README.md
 DEPLOYMENT.md
 PROJECT_SUMMARY.md
 TESTING.md
+
+# Never bake environment files into the image. COPY server/ would
+# otherwise pick up server/.env, freezing deployment config (and any
+# secrets put there) into a distributable artefact.
+.env
+**/.env

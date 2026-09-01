@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
+from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
+                                          catalog, resolve_model)
 from server.equipment.locks import lock_manager
 from server.equipment.manager import equipment_manager
 from shared.models.commands import Command, CommandResponse
@@ -72,6 +74,61 @@ async def discover_devices():
     except Exception as e:
         logger.error(f"Error discovering devices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/models")
+async def list_supported_models(
+    manufacturer: Optional[str] = None,
+    equipment_type: Optional[str] = None,
+    supported_only: bool = False,
+):
+    """List the instrument models LabLink knows about.
+
+    Every B&K Precision family with a published programming manual is listed,
+    each with the interfaces it actually carries, the protocol it speaks, and
+    whether LabLink has a driver for it. A family with ``supported: false`` is
+    still identified during discovery — it just cannot be connected yet.
+
+    **Query parameters:**
+    - `manufacturer`: filter by manufacturer (currently only B&K Precision)
+    - `equipment_type`: filter by LabLink equipment type
+    - `supported_only`: omit families with no driver
+
+    **Returns:** a list of model entries.
+    """
+    entries = catalog()
+
+    if manufacturer and manufacturer.lower() not in MANUFACTURER.lower():
+        entries = []
+    if equipment_type:
+        entries = [e for e in entries if e["equipment_type"] == equipment_type]
+    if supported_only:
+        entries = [e for e in entries if e["supported"]]
+
+    return {
+        "count": len(entries),
+        "models": entries,
+        "categories": CATEGORY_LABELS,
+    }
+
+
+@router.get("/models/{model}")
+async def describe_model(model: str):
+    """Resolve a model or SKU string to its family and interface facts.
+
+    Accepts what an instrument actually reports — a SKU (`9241`), a variant
+    (`2569B-MSO`), a hyphenated part number (`HVL-1000-25`) or a full
+    `B&K Precision 9130B` string — and returns the family it belongs to.
+    """
+    info = resolve_model(model)
+    if info is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No B&K Precision family matches model {model!r}",
+        )
+
+    entry = next(e for e in catalog() if e["key"] == info.key)
+    return {"query": model, **entry}
 
 
 @router.post("/connect", response_model=dict)

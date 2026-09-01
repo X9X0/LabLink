@@ -68,8 +68,10 @@ def parse_getd(response):
         print(f"ERROR: Invalid GETD response length: {len(response)}")
         return
 
+    # Both reading fields are four digits at two decimals. The 1685B and
+    # 1900B manuals give the worked example: 030201450 is 3.02 V and 1.45 A.
     voltage = int(response[:4]) / 100.0
-    current = int(response[4:8]) / 1000.0
+    current = int(response[4:8]) / 100.0
     mode = int(response[8])
     mode_str = "CV" if mode == 0 else "CC"
 
@@ -84,11 +86,13 @@ def parse_gets(response):
         print(f"ERROR: Invalid GETS response length: {len(response)}")
         return
 
+    # Current is one decimal on the 1687B/1688B/1900B/1901B/1902B and two on
+    # the 1685B, so pass the model if you need the setpoint to be exact.
     voltage = int(response[:3]) / 10.0
     current = int(response[3:6]) / 10.0
 
     print(f"    Voltage setpoint: {voltage:.1f}V")
-    print(f"    Current setpoint: {current:.1f}A")
+    print(f"    Current setpoint: {current:.1f}A (1685B: divide by 10 again)")
 
 
 def parse_gmax(response):

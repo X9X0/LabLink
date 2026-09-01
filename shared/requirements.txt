@@ -1,3 +1,3 @@
-# Shared dependencies between client and server
+# Shared models and constants (LabLink 2.x)
 pydantic==2.13.5
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0

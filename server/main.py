@@ -51,7 +51,6 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     logger.info(f"API Port: {settings.api_port}")
-    logger.info(f"WebSocket Port: {settings.ws_port}")
     logger.info(f"Log Level: {settings.log_level}")
     logger.info(
         f"Auto-reconnect: {'enabled' if settings.enable_auto_reconnect else 'disabled'}"
@@ -290,6 +289,9 @@ async def lifespan(app: FastAPI):
             scan_usb=settings.discovery_scan_usb,
             scan_gpib=settings.discovery_scan_gpib,
             scan_serial=settings.discovery_scan_serial,
+            enable_serial_probe=settings.discovery_enable_serial_probe,
+            serial_probe_usb_only=settings.discovery_serial_probe_usb_only,
+            serial_probe_timeout_sec=settings.discovery_serial_probe_timeout_sec,
             test_connections=settings.discovery_test_connections,
             query_idn=settings.discovery_query_idn,
             enable_history=settings.discovery_enable_history,
@@ -400,7 +402,14 @@ async def lifespan(app: FastAPI):
                         admin_user.is_superuser = True
 
                         # Update superuser flag in database
-                        from datetime import datetime
+                        # NOTE: do not import datetime here. It is already
+                        # imported at module scope, and a local import makes it
+                        # a local of lifespan(), which the nested
+                        # discovery_progress_callback() then closes over. That
+                        # callback runs on every discovery scan, and this
+                        # branch only runs when the default admin is created,
+                        # so the name is usually unbound -> "cannot access free
+                        # variable 'datetime'" and every scan fails.
                         from sqlite3 import connect
 
                         conn = connect(str(security_manager.db_path))
@@ -536,7 +545,6 @@ async def lifespan(app: FastAPI):
                 logger.info("Starting mDNS server broadcasting...")
                 mdns_service = LabLinkMDNSService(
                     port=settings.api_port,
-                    ws_port=settings.ws_port,
                     server_name=settings.server_name,
                     server_version=get_version(),
                 )

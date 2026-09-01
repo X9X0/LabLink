@@ -2,7 +2,7 @@
 # Multi-stage build for smaller image size
 
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -22,11 +22,11 @@ COPY server/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Server - Laboratory Equipment Control"
-LABEL version="1.3.0"
+LABEL version="2.0.0"
 
 WORKDIR /app
 

@@ -248,6 +248,23 @@ class DiscoveryConfig(BaseModel):
     cache_discovered_devices: bool = Field(True, description="Cache discovered devices")
     cache_ttl_sec: int = Field(300, ge=60, description="Cache TTL (seconds)")
 
+    # Serial probing for instruments VISA cannot enumerate
+    enable_serial_probe: bool = Field(
+        True,
+        description="Probe serial and USB-CDC ports for B&K instruments that "
+                    "VISA does not enumerate (USB-CDC) or that do not answer "
+                    "*IDN? (legacy fixed-width supplies)",
+    )
+    serial_probe_usb_only: bool = Field(
+        True,
+        description="Restrict serial probing to USB-attached ports. A host's "
+                    "built-in UARTs are usually empty and slow to sweep",
+    )
+    serial_probe_timeout_sec: float = Field(
+        0.6, ge=0.1, le=5.0,
+        description="Per-baud-rate wait for a reply while probing a port",
+    )
+
     # Device identification
     query_idn: bool = Field(True, description="Query *IDN? for device identification")
     parse_idn: bool = Field(

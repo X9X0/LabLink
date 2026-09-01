@@ -9,8 +9,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "${LABLINK_API_PORT:-8000}:8000"  # REST API
-      - "${LABLINK_WS_PORT:-8001}:8001"   # WebSocket
+      - "${LABLINK_API_PORT:-8000}:8000"  # REST API and /ws WebSocket
 
     volumes:
       # Persistent data
@@ -35,7 +34,6 @@ services:
       - LABLINK_HOST=0.0.0.0
       - LABLINK_SERVER_NAME=${LABLINK_SERVER_NAME:-LabLink Server}
       - LABLINK_API_PORT=8000
-      - LABLINK_WS_PORT=8001
       - LABLINK_DEBUG=${LABLINK_DEBUG:-false}
       - LABLINK_LOG_LEVEL=${LABLINK_LOG_LEVEL:-INFO}
 

@@ -60,7 +60,9 @@ class LabLinkClient:
         Args:
             host: Server hostname or IP address
             api_port: REST API port
-            ws_port: WebSocket port
+            ws_port: retained for backwards compatibility and ignored. The
+                /ws endpoint is a route on the API server, so the WebSocket
+                connection is built from api_port.
         """
         self.host = host
         self.api_port = api_port
@@ -425,6 +427,27 @@ class LabLinkClient:
         response = self._session.get(f"{self.api_base_url}/equipment/list")
         response.raise_for_status()
         return response.json()
+
+    def get_supported_models(
+        self, equipment_type: Optional[str] = None, supported_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """List the instrument models the server knows how to talk to.
+
+        Args:
+            equipment_type: Optional LabLink equipment type filter
+            supported_only: Omit families the server has no driver for
+
+        Returns:
+            List of model catalogue entries
+        """
+        params: Dict[str, Any] = {"supported_only": supported_only}
+        if equipment_type:
+            params["equipment_type"] = equipment_type
+        response = self._session.get(
+            f"{self.api_base_url}/equipment/models", params=params
+        )
+        response.raise_for_status()
+        return response.json().get("models", [])
 
     def get_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Get equipment details.

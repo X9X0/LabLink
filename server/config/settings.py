@@ -16,8 +16,14 @@ class Settings(BaseSettings):
     api_port: int = Field(
         default=8000, ge=1024, le=65535, description="API server port"
     )
-    ws_port: int = Field(
-        default=8001, ge=1024, le=65535, description="WebSocket server port"
+    # Retired in 2.0.0: /ws is a route on the API server, so there is no
+    # separate WebSocket port. Kept as an accepted-but-unused field because
+    # pydantic-settings forbids unknown keys, and an existing deployment whose
+    # .env still sets LABLINK_WS_PORT would otherwise fail to start.
+    ws_port: Optional[int] = Field(
+        default=None,
+        deprecated="Unused since 2.0.0; /ws is served on the API port.",
+        description="Deprecated and ignored; retained so stale .env files still load",
     )
     debug: bool = Field(default=False, description="Enable debug mode")
     server_name: str = Field(
@@ -583,6 +589,24 @@ class Settings(BaseSettings):
         default=True, description="Scan serial resources (enable for USB-to-serial devices like BK 1685B)"
     )
 
+    # Serial probing for instruments VISA cannot enumerate
+    discovery_enable_serial_probe: bool = Field(
+        default=True,
+        description="Probe serial ports for B&K instruments VISA cannot see: "
+                    "USB-CDC models (a UART bridge, never enumerated by VISA) "
+                    "and legacy fixed-width supplies (no *IDN? at all)",
+    )
+    discovery_serial_probe_usb_only: bool = Field(
+        default=True,
+        description="Restrict serial probing to USB-attached ports. Turn off "
+                    "for an RS-232 instrument on a real serial card, or where "
+                    "the container cannot read USB IDs from sysfs",
+    )
+    discovery_serial_probe_timeout_sec: float = Field(
+        default=0.6, ge=0.1, le=5.0,
+        description="Per-baud-rate wait for a reply while probing a port",
+    )
+
     # Connection testing
     discovery_test_connections: bool = Field(
         default=True, description="Test discovered devices"
@@ -628,13 +652,6 @@ class Settings(BaseSettings):
         path = Path(v)
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
-
-    @validator("api_port", "ws_port")
-    def validate_different_ports(cls, v, values):
-        """Ensure API and WebSocket ports are different."""
-        if "api_port" in values and v == values["api_port"]:
-            raise ValueError("WebSocket port must be different from API port")
-        return v
 
     def validate_all(self) -> list[str]:
         """Validate all settings and return warnings."""
