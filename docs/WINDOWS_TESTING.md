@@ -464,9 +464,29 @@ class, `test_hostile_values_do_not_execute`, uses `bash -c "<line>"` instead
 of a script *path* and passes cleanly, which is consistent with the theory --
 there is no path argument for the WSL launcher to mangle.
 
-This is a PATH-resolution gotcha specific to a Windows machine that has WSL
-installed, not something to fix in the test or the builder. Worth knowing
-before treating a `check.sh: No such file or directory` failure as a real
-regression: check `bash --version` first, and if it says
-`x86_64-pc-linux-gnu`, the fix is a shell/PATH change on that machine (or
-invoking Git Bash by its full path), not a code change here.
+The diagnosis is right, but the conclusion has been revised: **the tests
+were changed rather than the machine.**
+
+Passing a path was an incidental choice, not something either test needed.
+Both now feed the script to bash on **stdin** and read the result back on
+**stdout**, so no filesystem path crosses the boundary in either direction
+and it no longer matters which bash answers:
+
+- `test_hostile_values_stay_inside_their_quotes` returns the values
+  NUL-separated on stdout. NUL is the one byte a shell variable cannot
+  contain, so it is a safe separator for deliberately hostile values.
+- `test_hostile_values_do_not_execute` had a second, quieter problem. It
+  detected an injection by `touch`ing a marker file, which the WSL launcher
+  would create in *its* filesystem rather than the one Python inspects -- so
+  the assertion would have held whether or not the injection fired, passing
+  for the wrong reason on precisely the platform this branch exists to
+  support. It now has the injected command echo a marker to stdout.
+
+Both were re-verified by disabling the quote escaping in `_sq()`: each fails,
+and passes again once restored.
+
+The WSL detail is still worth knowing when debugging anything else that
+shells out: a bare `bash` can resolve to the WSL interop launcher even when
+`where bash` lists Git Bash first, and it strips backslashes from Windows
+paths given as arguments. `bash --version` reporting `x86_64-pc-linux-gnu`
+rather than `x86_64-pc-msys` is the tell.
