@@ -8,8 +8,8 @@
     "resistance": 10.0,
     "load_enabled": false
   },
-  "created_at": "2026-09-01 11:54:44.126454",
-  "modified_at": "2026-09-01 11:54:44.129776",
+  "created_at": "2026-08-31 15:17:16.352239",
+  "modified_at": "2026-08-31 15:17:16.356006",
   "tags": [
     "power_supply",
     "test"
