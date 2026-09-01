@@ -490,3 +490,16 @@ shells out: a bare `bash` can resolve to the WSL interop launcher even when
 `where bash` lists Git Bash first, and it strips backslashes from Windows
 paths given as arguments. `bash --version` reporting `x86_64-pc-linux-gnu`
 rather than `x86_64-pc-msys` is the tell.
+
+### Re-verified on the same Windows machine: the WSL fix holds
+
+Pulled `07519e7` and re-ran the full suite on the same Windows 11 / Python
+3.10.4 machine that produced the six failures above:
+
+```
+78 passed, 1 skipped, 2 warnings
+```
+
+The skip is `test_fsck_reports_a_clean_filesystem` -- still no `dosfstools`
+on this machine, exactly as expected. Every previously-failing test now
+passes, including both rewritten ones. No other regressions.
