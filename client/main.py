@@ -8,9 +8,9 @@ import logging
 import sys
 from pathlib import Path
 
-# Add client directory to path
-client_dir = Path(__file__).parent
-sys.path.insert(0, str(client_dir))
+# Add the repo root to path, so `client.*` resolves as a package when this
+# file is run directly (`python client\main.py`) rather than via `-m`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import qasync
 from PyQt6.QtCore import Qt
