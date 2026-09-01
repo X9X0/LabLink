@@ -39,6 +39,7 @@ class ImageBuildThread(QThread):
         pi_model: str = "5",
         wifi_ssid: str = "",
         wifi_password: str = "",
+        wifi_country: str = "US",
         admin_password: str = "",
         enable_ssh: bool = True,
         auto_expand: bool = True,
@@ -54,6 +55,7 @@ class ImageBuildThread(QThread):
             pi_model: Raspberry Pi model (3, 4, or 5)
             wifi_ssid: Wi-Fi network name (optional)
             wifi_password: Wi-Fi password (optional)
+            wifi_country: Two-letter regulatory domain for the Wi-Fi radio
             admin_password: Admin user password (optional)
             enable_ssh: Enable SSH on first boot
             auto_expand: Auto-expand filesystem on first boot
@@ -70,6 +72,7 @@ class ImageBuildThread(QThread):
         self.pi_model = pi_model
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
+        self.wifi_country = wifi_country
         self.admin_password = admin_password
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
@@ -138,6 +141,7 @@ class ImageBuildThread(QThread):
             admin_password=self.admin_password,
             wifi_ssid=self.wifi_ssid,
             wifi_password=self.wifi_password,
+            wifi_country=self.wifi_country,
             enable_ssh=self.enable_ssh,
             branch=self.branch,
         )
@@ -192,6 +196,8 @@ class ImageBuildThread(QThread):
                 env["WIFI_SSID"] = self.wifi_ssid
             if self.wifi_password:
                 env["WIFI_PASSWORD"] = self.wifi_password
+            if self.wifi_country:
+                env["WIFI_COUNTRY"] = self.wifi_country
             if self.admin_password:
                 env["LABLINK_ADMIN_PASSWORD"] = self.admin_password  # Fixed: was ADMIN_PASSWORD
 
@@ -239,6 +245,8 @@ export ORIGINAL_GID='{current_gid}'
                 script_wrapper += f"export WIFI_SSID={shlex.quote(self.wifi_ssid)}\n"
             if self.wifi_password:
                 script_wrapper += f"export WIFI_PASSWORD={shlex.quote(self.wifi_password)}\n"
+            if self.wifi_country:
+                script_wrapper += f"export WIFI_COUNTRY={shlex.quote(self.wifi_country)}\n"
             if self.admin_password:
                 script_wrapper += f"export LABLINK_ADMIN_PASSWORD={shlex.quote(self.admin_password)}\n"
 
@@ -553,6 +561,14 @@ class ConfigurationPage(QWizardPage):
         self.wifi_password_edit.setPlaceholderText("Wi-Fi password")
         wifi_layout.addRow("Wi-Fi Password:", self.wifi_password_edit)
 
+        # Raspberry Pi OS soft-blocks the radio until a regulatory domain is
+        # set, and the wrong domain can stop the Pi associating at all.
+        self.wifi_country_edit = QLineEdit()
+        self.wifi_country_edit.setText("US")
+        self.wifi_country_edit.setMaxLength(2)
+        self.wifi_country_edit.setPlaceholderText("Two-letter country code, e.g. US, GB, DE")
+        wifi_layout.addRow("Wi-Fi Country:", self.wifi_country_edit)
+
         wifi_group.setLayout(wifi_layout)
         layout.addWidget(wifi_group)
 
@@ -621,6 +637,7 @@ class ConfigurationPage(QWizardPage):
         self.registerField("output_path*", self.output_path_edit)
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
+        self.registerField("wifi_country", self.wifi_country_edit)
         self.registerField("admin_password", self.admin_password_edit)
         self.registerField("branch", self.branch_combo, "currentText")
         self.registerField("os_variant", self.os_variant_combo, "currentData")
@@ -751,6 +768,7 @@ class BuildProgressPage(QWizardPage):
         output_path = self.field("output_path")
         wifi_ssid = self.field("wifi_ssid") or ""
         wifi_password = self.field("wifi_password") or ""
+        wifi_country = (self.field("wifi_country") or "US").strip().upper() or "US"
         admin_password = self.field("admin_password") or ""
 
         # Get checkbox states from previous page
@@ -773,6 +791,7 @@ class BuildProgressPage(QWizardPage):
             pi_model=pi_model,
             wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
+            wifi_country=wifi_country,
             admin_password=admin_password,
             enable_ssh=enable_ssh,
             auto_expand=auto_expand,

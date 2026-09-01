@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import lzma
+import re
 import struct
 import sys
 import types
@@ -239,6 +240,37 @@ def _script_dir() -> Path:
     )
 
 
+# A git branch or tag, restricted to what is safe to paste into a URL inside a
+# double-quoted shell string. Deliberately narrower than git's own rules.
+_SAFE_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+
+
+def _no_control_chars(field_name: str, value: str) -> str:
+    """Reject newlines and NULs in a value destined for a line-based file.
+
+    A newline in an SSID would add arbitrary keys to the NetworkManager
+    connection file, and in userconf.txt would corrupt the account record.
+    Nothing legitimate needs one, and no Qt line edit can produce one, so
+    refuse rather than trying to make it work.
+    """
+    if any(c in value for c in ("\n", "\r", "\0")):
+        raise PiImageError(
+            f"{field_name} may not contain a line break or a null character."
+        )
+    return value
+
+
+def _sq(value: str) -> str:
+    """Escape a value for use *inside* single quotes in a shell script.
+
+    Every placeholder in firstrun.sh sits inside single quotes, and that script
+    runs as root on first boot. A Wi-Fi password containing an apostrophe would
+    otherwise end the quoted string early and have the remainder executed --
+    a command injection reachable from a text field in the wizard.
+    """
+    return value.replace("'", "'\\''")
+
+
 def _render(template: str, values: dict) -> str:
     """Substitute __PLACEHOLDER__ tokens, and normalise to Unix line endings.
 
@@ -338,14 +370,26 @@ def customize_image(img_path: str, config: ImageConfig,
     report(74, "Opening the image's boot partition...")
 
     scripts = _script_dir()
+
+    # The branch is interpolated into a URL inside a double-quoted string, where
+    # single-quote escaping does not help. Restrict it instead.
+    if not _SAFE_BRANCH.match(config.branch):
+        raise PiImageError(
+            f"Refusing to build with branch {config.branch!r}: only letters, "
+            "digits, dot, underscore, slash and hyphen are allowed."
+        )
+
     subs = {
-        "LABLINK_HOSTNAME": config.hostname,
-        "WIFI_SSID": config.wifi_ssid,
-        "WIFI_PASSWORD": config.wifi_password,
-        "WIFI_COUNTRY": config.wifi_country,
-        "ADMIN_USER": config.admin_user,
+        "LABLINK_HOSTNAME": _sq(_no_control_chars("Hostname", config.hostname)),
+        "WIFI_SSID": _sq(_no_control_chars("Wi-Fi SSID", config.wifi_ssid)),
+        "WIFI_PASSWORD": _sq(_no_control_chars("Wi-Fi password",
+                                               config.wifi_password)),
+        "WIFI_COUNTRY": _sq(_no_control_chars("Wi-Fi country",
+                                              config.wifi_country)),
+        "ADMIN_USER": _sq(_no_control_chars("Admin user", config.admin_user)),
         "LABLINK_BRANCH": config.branch,
     }
+    _no_control_chars("Admin password", config.admin_password)
 
     # pyfatfs can mount a filesystem at a byte offset inside a larger file,
     # so the partition needs no extraction and no loop device.
