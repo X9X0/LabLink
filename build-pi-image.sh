@@ -729,11 +729,36 @@ if [ -f .env.example ]; then
 
     # Set default admin password for web UI
     # Password must meet requirements: 8+ chars, uppercase letter
-    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-LabLink@2025}"
-    sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
-    sed -i "s/LABLINK_DEFAULT_ADMIN_EMAIL=.*/LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com/" .env
+    #
+    # This runs on the Pi, where the build-time environment does not exist, so
+    # the password is read from the file the build wrote into the image. It
+    # is deliberately not echoed: the journal is world-readable.
+    STAGED_PASSWORD_FILE=/etc/lablink-build-admin-password
+    if [ -r "$STAGED_PASSWORD_FILE" ]; then
+        WEB_ADMIN_PASSWORD=$(cat "$STAGED_PASSWORD_FILE")
+    else
+        WEB_ADMIN_PASSWORD=""
+    fi
+    if [ -z "$WEB_ADMIN_PASSWORD" ]; then
+        WEB_ADMIN_PASSWORD="LabLink@2025"
+        USED_DEFAULT_PASSWORD=yes
+    fi
 
-    echo "[LabLink] Environment configured with admin password: $WEB_ADMIN_PASSWORD"
+    # Rewrite the line rather than sed it, so no character in the password can
+    # be interpreted as a delimiter or backreference.
+    grep -v '^LABLINK_DEFAULT_ADMIN_PASSWORD=' .env > .env.tmp || true
+    printf 'LABLINK_DEFAULT_ADMIN_PASSWORD=%s\n' "$WEB_ADMIN_PASSWORD" >> .env.tmp
+    mv .env.tmp .env
+    sed -i "s|LABLINK_DEFAULT_ADMIN_EMAIL=.*|LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com|" .env
+
+    if [ -z "${USED_DEFAULT_PASSWORD:-}" ]; then
+        echo "[LabLink] Environment configured with the admin password set at build time"
+        # Consumed: do not leave the plaintext password on the filesystem.
+        rm -f "$STAGED_PASSWORD_FILE"
+    else
+        echo "[LabLink] WARNING: no build-time admin password; using the built-in default."
+        echo "[LabLink] Change it immediately: this default is public."
+    fi
 else
     echo "[LabLink] WARNING: .env.example not found"
 fi
@@ -1067,6 +1092,16 @@ FIRSTBOOT
     # Substitute the chosen branch into the generated script now.
     sed -i "s|__LABLINK_BRANCH__|${LABLINK_BRANCH}|g" \
         "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
+
+    # Pass the admin password through a file rather than the script body: the
+    # heredoc does not expand it, and a file keeps any password character safe
+    # from sed quoting. Root-only, and removed by first boot once consumed.
+    if [ -n "${LABLINK_ADMIN_PASSWORD:-}" ]; then
+        printf '%s' "$LABLINK_ADMIN_PASSWORD" \
+            > "$MOUNT_ROOT/etc/lablink-build-admin-password"
+        chmod 600 "$MOUNT_ROOT/etc/lablink-build-admin-password"
+        print_step "Admin password staged for first boot"
+    fi
 
     chmod +x "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
 

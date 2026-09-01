@@ -402,7 +402,14 @@ async def lifespan(app: FastAPI):
                         admin_user.is_superuser = True
 
                         # Update superuser flag in database
-                        from datetime import datetime
+                        # NOTE: do not import datetime here. It is already
+                        # imported at module scope, and a local import makes it
+                        # a local of lifespan(), which the nested
+                        # discovery_progress_callback() then closes over. That
+                        # callback runs on every discovery scan, and this
+                        # branch only runs when the default admin is created,
+                        # so the name is usually unbound -> "cannot access free
+                        # variable 'datetime'" and every scan fails.
                         from sqlite3 import connect
 
                         conn = connect(str(security_manager.db_path))
