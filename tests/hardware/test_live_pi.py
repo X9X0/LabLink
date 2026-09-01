@@ -80,6 +80,12 @@ ADMIN_PASSWORD = os.environ.get("LABLINK_ADMIN_PASSWORD", "")
 EXPECT_EQUIPMENT = [
     s.strip() for s in os.environ.get("LABLINK_EXPECT_EQUIPMENT", "").split(",") if s.strip()
 ]
+# A raw-serial instrument cannot be identified by discovery (it answers no
+# *IDN?), so the model and type must be supplied for the server to dispatch to
+# the right driver. e.g. LABLINK_EQUIPMENT_MODEL=1902B
+EQUIPMENT_MODEL = os.environ.get("LABLINK_EQUIPMENT_MODEL", "")
+EQUIPMENT_TYPE = os.environ.get("LABLINK_EQUIPMENT_TYPE", "power_supply")
+EQUIPMENT_RESOURCE = os.environ.get("LABLINK_EQUIPMENT_RESOURCE", "")
 
 _repo_version = (Path(__file__).resolve().parents[2] / "VERSION")
 EXPECT_VERSION = os.environ.get(
@@ -438,11 +444,41 @@ class TestEquipmentDiscovery:
             print(f"    {d.get('resource_name')}  {d.get('manufacturer')} {d.get('model')}")
 
     def test_expected_equipment_is_found(self, api, token):
+        """Assert the instrument is visible to discovery.
+
+        Instruments using a proprietary serial protocol (the BK 1902B and
+        1685B among them) do not answer *IDN?, so discovery reports them as
+        "Unknown Serial Device" and cannot name the model. For those, assert
+        the resource is present rather than the model string - the model is
+        supplied explicitly at connect time instead.
+        """
         if not EXPECT_EQUIPMENT:
             pytest.skip("set LABLINK_EXPECT_EQUIPMENT to assert on specific instruments")
         r = requests.post(f"{api}/api/equipment/discover", headers=_auth(token), timeout=90)
         assert r.status_code == 200
-        blob = json.dumps(r.json()).lower()
+        devices = r.json().get("devices", [])
+        blob = json.dumps(devices).lower()
+
+        if EQUIPMENT_RESOURCE:
+            assert EQUIPMENT_RESOURCE.lower() in blob, (
+                f"{EQUIPMENT_RESOURCE} not discovered. Check the connection and "
+                "that pyvisa can see it (pyvisa 1.16 is new in 2.0.0)."
+            )
+            return
+
+        if EQUIPMENT_MODEL and not any(w.lower() in blob for w in EXPECT_EQUIPMENT):
+            # Raw-serial instrument: discovery cannot name it, so require only
+            # that something was found for us to connect to.
+            assert devices, (
+                "no devices discovered at all. Check USB/serial connections and "
+                "that pyvisa can see them (pyvisa 1.16 is new in 2.0.0)."
+            )
+            print(
+                f"\n  note: {EQUIPMENT_MODEL} uses a proprietary serial protocol and "
+                f"cannot be identified by discovery; it appears as "
+                f"{devices[0].get('manufacturer')} at {devices[0].get('resource_name')}"
+            )
+            return
 
         missing = [want for want in EXPECT_EQUIPMENT if want.lower() not in blob]
         assert not missing, (
@@ -475,18 +511,30 @@ class TestEquipmentSession:
 
         r = requests.post(f"{api}/api/equipment/discover", headers=_auth(token), timeout=90)
         assert r.status_code == 200
-        wanted = EXPECT_EQUIPMENT[0].lower()
-        match = next(
-            (d for d in r.json().get("devices", []) if wanted in json.dumps(d).lower()), None
-        )
-        if match is None:
-            pytest.skip(f"{EXPECT_EQUIPMENT[0]} not discovered")
+        devices = r.json().get("devices", [])
+
+        if EQUIPMENT_RESOURCE:
+            resource = EQUIPMENT_RESOURCE
+        else:
+            wanted = EXPECT_EQUIPMENT[0].lower()
+            match = next((d for d in devices if wanted in json.dumps(d).lower()), None)
+            if match is None and len(devices) == 1:
+                # A raw-serial instrument reports as "Unknown Serial Device";
+                # with exactly one device and an explicit model, use it.
+                match = devices[0] if EQUIPMENT_MODEL else None
+            if match is None:
+                pytest.skip(
+                    f"{EXPECT_EQUIPMENT[0]} not discovered; set "
+                    "LABLINK_EQUIPMENT_RESOURCE to target it explicitly"
+                )
+            resource = match["resource_name"]
 
         body = {
-            "resource_string": match["resource_name"],
-            "equipment_type": match.get("equipment_type") or "power_supply",
-            "model": match.get("model") or "unknown",
+            "resource_string": resource,
+            "equipment_type": EQUIPMENT_TYPE,
+            "model": EQUIPMENT_MODEL or EXPECT_EQUIPMENT[0],
         }
+        print(f"\n  connecting: {body}")
         c = requests.post(
             f"{api}/api/equipment/connect", headers=_auth(token), json=body, timeout=60
         )

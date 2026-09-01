@@ -16,23 +16,47 @@ NC='\033[0m'
 
 # Configuration
 PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
-PI_OS_VERSION="${PI_OS_VERSION:-2024-03-15}"
 
-# Select appropriate image URL based on Pi model
+# Base Raspberry Pi OS image.
+#   PI_OS_VARIANT  lite (default) or full
+#   PI_OS_URL      set this to override the selection entirely
+#
+# "lite" has no desktop and is the right choice for a headless lab appliance:
+# LabLink runs in Docker and needs no GUI. Choose "full" only if you intend to
+# run the LabLink desktop client on the Pi itself (e.g. a bench unit with a
+# touchscreen).
+#
+# NOTE: this pin is deliberate, not automatic. Newer releases exist and are
+# based on Debian Trixie rather than Bookworm; moving to one changes the host
+# OS major version, so bump it consciously and re-test. Current options at the
+# time of writing: 2026-06-19 (dir) / 2026-06-18-raspios-trixie-* (file).
+PI_OS_VARIANT="${PI_OS_VARIANT:-lite}"
+PI_OS_DIR_DATE="${PI_OS_DIR_DATE:-2024-03-15}"
+PI_OS_FILE_DATE="${PI_OS_FILE_DATE:-2024-03-15}"
+PI_OS_CODENAME="${PI_OS_CODENAME:-bookworm}"
+
 case "$PI_MODEL" in
-    "3")
-        # Pi 3 uses 32-bit armhf image
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2024-03-15/2024-03-15-raspios-bookworm-armhf-lite.img.xz"
+    "3")  PI_OS_ARCH="armhf" ;;   # Pi 3 uses the 32-bit image
+    *)    PI_OS_ARCH="arm64" ;;   # Pi 4/5 use 64-bit
+esac
+
+case "$PI_OS_VARIANT" in
+    lite)
+        PI_OS_REPO="raspios_lite_${PI_OS_ARCH}"
+        PI_OS_SUFFIX="-lite"
         ;;
-    "4")
-        # Pi 4 can use 64-bit arm64 image
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+    full|desktop)
+        PI_OS_REPO="raspios_${PI_OS_ARCH}"
+        PI_OS_SUFFIX=""
         ;;
-    "5"|*)
-        # Pi 5 uses 64-bit arm64 image (default)
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+    *)
+        echo "ERROR: PI_OS_VARIANT must be 'lite' or 'full' (got: $PI_OS_VARIANT)" >&2
+        exit 1
         ;;
 esac
+
+# Allow a complete override; otherwise assemble from the parts above.
+PI_OS_URL="${PI_OS_URL:-https://downloads.raspberrypi.org/${PI_OS_REPO}/images/${PI_OS_REPO}-${PI_OS_DIR_DATE}/${PI_OS_FILE_DATE}-raspios-${PI_OS_CODENAME}-${PI_OS_ARCH}${PI_OS_SUFFIX}.img.xz}"
 
 # Use environment variable if set, otherwise use command-line arg, otherwise default with date
 OUTPUT_IMAGE="${OUTPUT_IMAGE:-${1:-lablink-pi-$(date +%Y%m%d).img}}"
