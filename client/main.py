@@ -160,7 +160,7 @@ def main():
 
     # Easter egg mode: Show branch selector before launching
     if args.easter_egg:
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox
         from client.utils.git_operations import get_git_branches, get_git_tags, get_current_git_branch, checkout_git_ref
 
         logger.info("Easter egg mode activated!")
@@ -279,6 +279,17 @@ def main():
                 if checkout_git_ref(selected_ref):
                     print(f"✅ Successfully checked out {selected_ref}\n")
                     logger.info(f"Successfully checked out {selected_ref}")
+                    # Say so on screen, not only on stdout: launched from a
+                    # shortcut or lablink-client.bat there is often no console
+                    # to read, which is how a failed checkout looks exactly
+                    # like a successful one.
+                    QMessageBox.information(
+                        None,
+                        "Switched branch",
+                        f"Now on {selected_ref}.\n\n"
+                        "LabLink will restart so the checked-out code is "
+                        "actually loaded.",
+                    )
                     # Restart, or the checkout has no effect on this run.
                     # MainWindow and everything it imports were loaded from the
                     # previous branch's files before main() started, and Python
@@ -289,12 +300,30 @@ def main():
                     _restart_client(drop_easter_egg=True)
                 else:
                     print(f"❌ Failed to checkout {selected_ref}\n")
-                    print(
-                        "   The client directory must be a git clone for this "
-                        "to work.\n"
-                        "   Run with --debug to see git's own error.\n"
-                    )
                     logger.error(f"Failed to checkout {selected_ref}")
+
+                    from client.utils.git_operations import (is_git_checkout,
+                                                             repo_dir)
+
+                    if not is_git_checkout():
+                        detail = (
+                            f"{repo_dir()} is not a git clone.\n\n"
+                            "Branch switching needs one. A ZIP download or a "
+                            "packaged install cannot switch branches; clone "
+                            "the repository instead."
+                        )
+                    else:
+                        detail = (
+                            "git refused the checkout. The usual cause is "
+                            "uncommitted local changes.\n\n"
+                            f"In {repo_dir()}, check `git status`, then commit "
+                            "or stash them and try again."
+                        )
+                    print(f"   {detail}\n")
+                    QMessageBox.warning(
+                        None, "Could not switch branch",
+                        f"Staying on the current branch.\n\n{detail}",
+                    )
 
     # Create and show main window
     window = MainWindow()

@@ -8,6 +8,32 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 
+def repo_dir() -> str:
+    """The LabLink checkout these git commands should operate on.
+
+    Every call here used to run in the process's current working directory,
+    which is only the checkout when the client happens to be launched from it.
+    Started from a desktop shortcut, a Start Menu entry, or as
+    ``python C:\\LabLink\\client\\main.py`` from a home directory, git either
+    saw an unrelated repository or none at all -- so the branch list came back
+    empty and checkouts failed, with nothing on screen to say why.
+
+    Derived from this file's own location, which is inside the checkout by
+    definition.
+    """
+    return str(Path(__file__).resolve().parents[2])
+
+
+def is_git_checkout() -> bool:
+    """Whether the client is running from a git clone at all.
+
+    A ZIP download or a packaged install has no .git, and every git-backed
+    feature is unavailable there. Worth reporting as its own condition rather
+    than as a string of failed commands.
+    """
+    return (Path(repo_dir()) / ".git").exists()
+
+
 def get_git_root() -> Optional[str]:
     """Get git repository root directory.
 
@@ -19,6 +45,7 @@ def get_git_root() -> Optional[str]:
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=True
         )
         return result.stdout.strip()
@@ -41,6 +68,7 @@ def get_git_tags() -> List[str]:
             ["git", "tag", "--sort=-version:refname"],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=True
         )
         tags = [tag.strip() for tag in result.stdout.split('\n') if tag.strip()]
@@ -75,6 +103,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                 ["git", "branch", "-a", "--sort=-committerdate"],
                 capture_output=True,
                 text=True,
+                cwd=repo_dir(),
                 check=True
             )
         else:
@@ -82,6 +111,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                 ["git", "branch", "-a"],
                 capture_output=True,
                 text=True,
+                cwd=repo_dir(),
                 check=True
             )
 
@@ -128,6 +158,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                         ["git", "log", "-1", "--since=3.months.ago", "--format=%ci", check_line],
                         capture_output=True,
                         text=True,
+                        cwd=repo_dir(),
                         check=False
                     )
                     # If no output, branch has no commits in last 3 months
@@ -162,6 +193,7 @@ def get_current_git_branch() -> Optional[str]:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=True
         )
         branch = result.stdout.strip()
@@ -190,6 +222,7 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "fetch", "--all", "--tags"],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=True
         )
 
@@ -199,6 +232,7 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "checkout", ref],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=True
         )
 
@@ -207,6 +241,7 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "symbolic-ref", "-q", "HEAD"],
             capture_output=True,
             text=True,
+            cwd=repo_dir(),
             check=False
         )
 
@@ -217,6 +252,7 @@ def checkout_git_ref(ref: str) -> bool:
                 ["git", "pull", "origin", ref],
                 capture_output=True,
                 text=True,
+                cwd=repo_dir(),
                 check=True
             )
 

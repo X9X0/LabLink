@@ -120,3 +120,132 @@ class TestRestartIsWiredUp:
 
         assert source.index("from client.ui.main_window import MainWindow") < \
             source.index("def main():")
+
+
+class TestGitOperationsUseTheCheckout:
+    """git must run in the LabLink checkout, not the current directory.
+
+    Launched from a desktop shortcut, a Start Menu entry, or as
+    `python C:\\LabLink\\client\\main.py` from a home directory, every git
+    command ran wherever the process happened to start. That silently
+    targeted an unrelated repository or none at all: the branch list came
+    back empty and checkouts failed, with nothing on screen to say why.
+    """
+
+    def test_repo_dir_is_the_checkout(self):
+        from pathlib import Path
+
+        from client.utils.git_operations import repo_dir
+
+        root = Path(repo_dir())
+        assert (root / "client").is_dir()
+        assert (root / "VERSION").exists()
+
+    def test_every_git_call_passes_cwd(self):
+        """A missed one reintroduces the bug for that command alone."""
+        import re
+        from pathlib import Path
+
+        import client.utils.git_operations as git_ops
+
+        source = Path(git_ops.__file__).read_text()
+        calls = re.findall(r"subprocess\.run\((?:[^()]|\([^()]*\))*\)", source, re.S)
+
+        assert calls, "no subprocess calls found - did the module change shape?"
+        without_cwd = [c for c in calls if "cwd=" not in c]
+        assert not without_cwd, f"git calls not pinned to the checkout: {without_cwd}"
+
+    def test_branches_are_found_from_an_unrelated_directory(self, tmp_path,
+                                                            monkeypatch):
+        """The actual regression, exercised the way the bug happened."""
+        from client.utils.git_operations import get_current_git_branch
+
+        monkeypatch.chdir(tmp_path)  # somewhere that is not a git repo
+
+        assert get_current_git_branch(), "no branch found outside the checkout"
+
+    def test_is_git_checkout_detects_the_clone(self):
+        from client.utils.git_operations import is_git_checkout
+
+        assert is_git_checkout() is True
+
+
+class TestVersionInStatusBar:
+    """The status bar must identify the client code that is running.
+
+    It previously showed the connection and the *server* version, and nothing
+    at all about the client -- so after switching branches there was no way to
+    tell which code was executing. That is precisely the question the branch
+    selector creates.
+    """
+
+    @pytest.fixture
+    def window(self):
+        app_mod = pytest.importorskip("PyQt6.QtWidgets")
+        app = app_mod.QApplication.instance() or app_mod.QApplication([])
+
+        from client.ui.main_window import MainWindow
+
+        win = MainWindow()
+        yield win, app
+        win.close()
+
+    def test_client_version_is_shown_immediately(self, window):
+        """Without waiting on git, which can be slow or absent."""
+        win, _ = window
+
+        assert "LabLink" in win.version_label.text()
+        assert win._client_version in win.version_label.text()
+
+    def test_version_is_the_client_not_the_server(self, window):
+        from pathlib import Path
+
+        win, _ = window
+        expected = (Path(__file__).parent.parent.parent / "VERSION").read_text().strip()
+
+        assert win._client_version == expected
+
+    def test_branch_is_appended_when_the_lookup_returns(self, window):
+        """The regression: this used to be posted with QTimer.singleShot from a
+        worker thread, where it never fired, so the indicator never appeared."""
+        win, app = window
+
+        win.branch_detected.emit("some-branch (abc1234)")
+        app.processEvents()
+
+        assert "some-branch (abc1234)" in win.version_label.text()
+        assert win._client_version in win.version_label.text()
+
+    def test_main_is_shown_too(self, window):
+        """It used to be hidden on main, leaving the common case blank."""
+        win, app = window
+
+        win.branch_detected.emit("main (abc1234)")
+        app.processEvents()
+
+        assert "main (abc1234)" in win.version_label.text()
+
+    def test_a_feature_branch_is_highlighted(self, window):
+        win, app = window
+
+        win.branch_detected.emit("main (abc1234)")
+        app.processEvents()
+        on_main = win.version_label.styleSheet()
+
+        win.branch_detected.emit("feature/x (abc1234)")
+        app.processEvents()
+        off_main = win.version_label.styleSheet()
+
+        assert on_main != off_main, "a non-main branch should stand out"
+        assert "bold" in off_main
+
+    def test_the_signal_is_connected_before_the_thread_starts(self):
+        """Connect after start and the emit can be missed entirely."""
+        from pathlib import Path
+
+        import client.ui.main_window as mw
+
+        source = Path(mw.__file__).read_text()
+        setup = source.split("def _setup_status_bar", 1)[1].split("def ", 1)[0]
+
+        assert setup.index("branch_detected.connect") < setup.index("threading.Thread")
