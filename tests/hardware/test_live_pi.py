@@ -154,9 +154,29 @@ def api():
     return BASE_URL
 
 
-@pytest.fixture(scope="session")
+def _login_or_skip(base_url):
+    """Fetch a fresh access token, or skip."""
+    if not ADMIN_PASSWORD:
+        pytest.skip("set LABLINK_ADMIN_PASSWORD")
+    r = requests.post(
+        f"{base_url}/api/security/login",
+        json={"username": ADMIN_USER, "password": ADMIN_PASSWORD},
+        timeout=20,
+    )
+    if r.status_code != 200:
+        pytest.skip(f"login failed ({r.status_code}): {r.text[:200]}")
+    return r.json()["access_token"]
+
+
+@pytest.fixture
 def token(api):
-    """A live access token, or skip."""
+    """A live access token, or skip.
+
+    Deliberately function-scoped: logout revokes *every* session for the user
+    (destroy_user_sessions), so a shared session-scoped token would be killed
+    by the revocation tests and later tests would fail with a misleading 403
+    depending purely on ordering.
+    """
     if not ADMIN_PASSWORD:
         pytest.skip("set LABLINK_ADMIN_PASSWORD")
     r = requests.post(
@@ -445,9 +465,13 @@ class TestEquipmentSession:
     """
 
     @pytest.fixture(scope="class")
-    def connected(self, api, token):
+    def connected(self, api):
         if not EXPECT_EQUIPMENT:
             pytest.skip("set LABLINK_EXPECT_EQUIPMENT to run instrument tests")
+
+        # Own token: logout in the auth tests revokes all sessions, and this
+        # fixture outlives a function-scoped one.
+        token = _login_or_skip(api)
 
         r = requests.post(f"{api}/api/equipment/discover", headers=_auth(token), timeout=90)
         assert r.status_code == 200
@@ -513,8 +537,15 @@ class TestEquipmentSession:
 
 
 class TestWebSocket:
+    """The /ws route is served by the FastAPI app on the API port.
+
+    docker-compose.yml maps 8001 and sets LABLINK_WS_PORT=8001, but nothing
+    binds 8001 inside the container - uvicorn runs with --port 8000 only. The
+    default here follows the API port for that reason.
+    """
+
     def test_ws_port_is_open(self, api):
-        ws_port = int(os.environ.get("LABLINK_WS_PORT", "8001"))
+        ws_port = int(os.environ.get("LABLINK_WS_PORT", str(API_PORT)))
         with socket.socket() as s:
             s.settimeout(10)
             if s.connect_ex((PI_HOST, ws_port)) != 0:
@@ -524,7 +555,7 @@ class TestWebSocket:
     async def test_authenticated_connect(self, token):
         """websockets 17 replaced the legacy client; auth is a token query param."""
         websockets = pytest.importorskip("websockets")
-        ws_port = int(os.environ.get("LABLINK_WS_PORT", "8001"))
+        ws_port = int(os.environ.get("LABLINK_WS_PORT", str(API_PORT)))
         url = f"ws://{PI_HOST}:{ws_port}/ws?token={token}"
         try:
             async with websockets.connect(url, open_timeout=15) as ws:
@@ -540,7 +571,7 @@ class TestWebSocket:
         connection fail and the test passes while proving nothing.
         """
         websockets = pytest.importorskip("websockets")
-        ws_port = int(os.environ.get("LABLINK_WS_PORT", "8001"))
+        ws_port = int(os.environ.get("LABLINK_WS_PORT", str(API_PORT)))
 
         with socket.socket() as probe:
             probe.settimeout(10)
