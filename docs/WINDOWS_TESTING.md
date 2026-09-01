@@ -49,8 +49,15 @@ Invoke-WebRequest -Uri "https://github.com/X9X0/LabLink/archive/refs/heads/feat/
 Expand-Archive lablink.zip -DestinationPath .
 cd LabLink-feat-native-pi-image-builder
 python -m pip install pyfatfs passlib
-python -m client.utils.pi_image_native -o lablink-test.img --hostname lablink-pi
+python client\utils\pi_image_native.py -o lablink-test.img --hostname lablink-pi
 ```
+
+Run the **file**, not `python -m client.utils.pi_image_native`. The `-m` form
+imports the `client.utils` package, whose `__init__.py` pulls in numpy and
+websockets, so it needs the full client dependency set rather than these two
+packages. Running the file directly skips the package import entirely. (The
+first Windows run used the `-m` form and worked only because numpy happened
+to be installed already; the instruction was wrong, not the code.)
 
 It prompts for the Pi account password. Add
 `--wifi-ssid "Network" --wifi-password "..." --wifi-country US` for Wi-Fi;
@@ -64,21 +71,157 @@ turns a smoke test into seconds.
 
 ## Option B: the wizard (needs Python 3.12+)
 
+Step by step in
+[Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
+below, which is the current procedure.
+
+Whichever route you take, run it **from the checkout**. The builder reads
+`scripts/pi/firstrun.sh` and `lablink-first-boot.sh` out of the tree; a
+packaged install has neither, and it raises a clear error rather than
+producing a broken image.
+
+## Testing the wizard on Windows (Python 3.12+)
+
+The CLI has been run on Windows and a Pi booted from its output. **The Qt
+wizard has not.** This is the procedure for that run.
+
+### 1. Install Python 3.12 alongside 3.10
+
+Do not replace 3.10 -- installing side by side is supported and safer. Get
+3.12 or newer from <https://www.python.org/downloads/> and tick **"Add Python
+to PATH"**. The `py` launcher then selects between them:
+
 ```powershell
-git clone -b feat/native-pi-image-builder https://github.com/X9X0/LabLink.git
-cd LabLink
+py -0p                 # lists every installed Python and its path
+py -3.12 --version     # must report 3.12.x or newer
+```
+
+### 2. Get the branch
+
+```powershell
+cd $env:USERPROFILE
+git clone -b feat/native-pi-image-builder https://github.com/X9X0/LabLink.git LabLink-wizard
+cd LabLink-wizard
+```
+
+No git? Use the ZIP from Option A above; just note the folder name differs.
+
+Pull first if the clone already exists -- the branch has moved since the CLI
+run, and the two fixes that run produced (1290bee, 0da195b) plus their
+regression tests are on it now.
+
+### 3. Create the environment
+
+```powershell
 py -3.12 -m venv client\venv
 client\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r client\requirements.txt
+```
+
+If `Activate.ps1` is blocked by execution policy, skip activation and use
+`client\venv\Scripts\python.exe` in place of `python` throughout.
+
+**This run finally exercises the `pkg_resources` shim.** Python 3.12's
+`ensurepip` stopped installing setuptools, so a fresh venv has pip and
+nothing else. `fs` (pyfatfs's dependency) declares setuptools as a runtime
+requirement, so pip installs the current one -- 84 at the time of writing --
+and setuptools removed `pkg_resources` in 81. `fs` cannot import without the
+shim in that environment.
+
+Confirmed on Linux in a fresh 3.12 venv: setuptools 84.0.0, `import
+pkg_resources` raises ModuleNotFoundError, `import fs.base` fails without the
+shim and succeeds with it, and a full build then completes. The first Windows
+run could not test this because that machine had setuptools 58.1.0, which
+still ships the module.
+
+Record the result either way:
+
+```powershell
+pip show setuptools | Select-String "^Version"
+python -c "import pkg_resources" ; echo "exit=$LASTEXITCODE"
+```
+
+An exit code of 1 means the shim is load-bearing for this run. An exit code
+of 0 means setuptools still provides it and the shim is *again* untested --
+worth saying so rather than assuming coverage.
+
+### 4. Launch
+
+```powershell
 python client\main.py
 ```
 
-Then **Tools -> Build Raspberry Pi Image...**
+Before touching the wizard, check the **status bar**. It should read
+`LabLink 2.0.0  📍 feat/native-pi-image-builder (<hash>)`, in green and bold
+because the branch is not main.
 
-Run it from the checkout. The builder reads `scripts/pi/firstrun.sh` and
-`lablink-first-boot.sh` from the tree; a packaged install has neither, and it
-raises a clear error rather than producing a broken image.
+This indicator is itself new and unverified on Windows. It was previously
+dead code everywhere: the git lookup ran on a worker thread and posted its
+result with `QTimer.singleShot`, which creates a timer owned by a thread with
+no event loop, so it never fired. It is a `pyqtSignal` now. If the branch
+never appears, that is a bug worth reporting, not a cosmetic detail -- it is
+the only on-screen answer to "which code is running".
+
+If it shows only `LabLink 2.0.0` with no branch, check that the folder is a
+git clone rather than a ZIP extract. A ZIP has no `.git` and the version
+still shows, correctly, on its own.
+
+### 5. Build an image
+
+**Tools -> Build Raspberry Pi Image...**
+
+| Field | Value |
+|---|---|
+| Pi Model | whatever the target board is (4 and 5 both use arm64) |
+| Hostname | something distinct, e.g. `lablink-wiz`, so it does not collide on the network |
+| Output path | anywhere with ~3 GB free |
+| Admin password | your choice; it becomes the Pi login |
+| Wi-Fi SSID / Password | leave blank for an ethernet Pi |
+| Wi-Fi Country | two-letter code; only read when an SSID is set |
+| LabLink Branch | `main` for a normal image, or this branch to test it end to end |
+| Base OS | Lite |
+
+The first two lines in the output pane must be:
+
+```
+Building with the native (pure Python) builder.
+No administrator privileges are required.
+```
+
+If instead you see **"This tool requires bash to be installed"**, the wizard
+took the shell path, which should be unreachable on Windows -- report it with
+the full output.
+
+**No UAC prompt should appear at any point.** The whole purpose of this
+change is that no elevation is required.
+
+### 6. What the wizard exercises that the CLI did not
+
+- The build runs on a `QThread`, with progress delivered to the GUI by
+  signals. Watch that the progress bar and output pane keep updating and the
+  window stays responsive rather than greying out.
+- Cancelling or closing mid-build -- worth trying once deliberately, on a run
+  you do not need.
+- The Wi-Fi country field, which the CLI run left at its default.
+- The output-path file dialog, and paths containing spaces
+  (`C:\Users\Your Name\...`) -- worth choosing one deliberately, since
+  quoting bugs hide there.
+
+### 7. Verify the image
+
+Same as the CLI: the independent FAT32 reader, described under "Verifying an
+image without a Pi" below. Then write it to a card and boot it.
+
+### What to report
+
+- `py -3.12 --version`, and `pip show pyfatfs passlib setuptools`
+- whether `import pkg_resources` succeeded or failed (step 3)
+- whether the status bar showed the branch (step 4)
+- the first two lines of the build output (step 5)
+- whether any UAC prompt appeared
+- total build time, and whether the UI stayed responsive
+- the full traceback if it fails
 
 ## Confirming you are on the right code
 
@@ -150,8 +293,13 @@ so keep the check independent.
 - The `pkg_resources` shim is still unexercised: the test machine had
   setuptools 58.1.0, which still provides the module. It needs a run against
   setuptools >= 81, where `fs` cannot import without it.
-- The Qt wizard has still not run on Windows -- only the CLI. That needs
-  Python 3.12+ on that machine.
+- The Qt wizard has still not run on Windows -- only the CLI. See
+  [Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
+  for the procedure; it also covers the shim gap above, because a fresh 3.12
+  venv has no setuptools at all.
+- The client restart after an in-app branch switch is unverified on Windows.
+  It takes a different path there -- `subprocess.Popen` then exit, rather than
+  `os.execv`, which detaches the console on Windows and loses output.
 
 ## Findings from the first Windows test (2026-09-01)
 
