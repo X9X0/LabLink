@@ -421,11 +421,11 @@ def customize_image(img_path: str, config: ImageConfig,
         _write_file(fs, "/cmdline.txt", cmdline.strip() + "\n")
 
         report(82, "Writing the first-run script...")
-        firstrun = _render((scripts / "firstrun.sh").read_text(), subs)
+        firstrun = _render((scripts / "firstrun.sh").read_text(encoding="utf-8"), subs)
         _write_file(fs, "/firstrun.sh", firstrun)
 
         report(86, "Writing the LabLink installer...")
-        firstboot = _render((scripts / "lablink-first-boot.sh").read_text(), subs)
+        firstboot = _render((scripts / "lablink-first-boot.sh").read_text(encoding="utf-8"), subs)
         _write_file(fs, "/lablink-first-boot.sh", firstboot)
 
         if config.admin_password:
