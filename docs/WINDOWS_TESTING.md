@@ -32,6 +32,7 @@ Report findings by appending a section to this file, as the previous runs did.
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
+| Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- the interactive part** | ❌ **not run -- this is the next task** |
 | Client restart after a branch switch, on Windows | ❌ not run |
 
@@ -652,3 +653,56 @@ crash, in the release tooling, on a Windows machine.
 
 Not fixed here: it is a separate sweep, unrelated to the image builder, and
 it deserves its own change rather than being smuggled into this branch.
+
+## The live-Pi acceptance suite, run against a builder-made Pi (2026-09-01)
+
+`tests/hardware/test_live_pi.py` exists for exactly this situation and had
+never been pointed at the Pi this branch produced. The Pi from the first-boot
+run above was still up, so it was:
+
+```
+25 passed, 4 skipped in 10.95s
+```
+
+The four skips are all `LABLINK_EXPECT_EQUIPMENT` not being set -- no
+instruments are attached to this Pi, so the instrument-session tests opt out
+by design. Nothing failed.
+
+What that covers, on a machine whose entire existence traces back to a
+FAT32 partition written by `pi_image_native.py` on Windows:
+
+- **Deployment** -- `/opt/lablink` present, version matches, the first-boot
+  service is recorded as having succeeded, Docker running, both containers up,
+  the container's Python version correct, and the scientific stack (numpy,
+  pandas, scipy, h5py) importing *inside* the container.
+- **SSH** -- host key algorithm supported, exec round-trip, SCP round-trip,
+  and the trust-on-first-use policy correctly *rejecting* an unknown host.
+- **API and the full auth lifecycle** -- login issues a token, a bad password
+  is refused, the token grants access, a garbage token does not, logout
+  actually revokes, and a refreshed token both works and stays revocable.
+- **WebSocket** -- port open, authenticated connect succeeds, an unauthenticated
+  one is rejected.
+- **Resource hygiene** -- file descriptors stable across repeated API calls.
+
+This is the end of the chain the branch set out to build: a Windows machine
+with no root, no bash, no loop device and no qemu wrote an image; that image
+booted; and the Pi it produced passes the project's own acceptance suite.
+
+### Incidentally, a direct check of b1a6a1c
+
+The suite reads its credentials through `_load_creds_file()`, the function
+that commit changed, and it runs at module scope -- so a decode failure there
+takes out collection, not just one test. The creds file used for this run
+deliberately contains an em-dash and a `═`, making it undecodable as cp1252.
+It loaded without complaint on Windows, which is the fix working rather than
+the fix being untested.
+
+Two notes for anyone repeating this:
+
+- `pytest-asyncio` is needed, or the three `TestWebSocket` async tests report
+  as failures with "async def functions are not natively supported" rather
+  than as an environment problem. It is not in `client/requirements.txt`,
+  since it is a test-only dependency.
+- The LabLink *web* password is not the SSH password. First-boot reads it
+  from `/etc/lablink-build-admin-password`, staged into the image from
+  `--password`, so for a builder-made Pi the two happen to coincide.
