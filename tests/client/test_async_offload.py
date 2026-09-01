@@ -120,7 +120,8 @@ class TestPanelsUseOffloading:
         import ast
 
         root = os.path.join(os.path.dirname(__file__), "../..")
-        tree = ast.parse(open(os.path.join(root, rel_path)).read())
+        with open(os.path.join(root, rel_path), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
 
         matches = [
             n
@@ -148,7 +149,10 @@ class TestPanelsUseOffloading:
         import ast
 
         root = os.path.join(os.path.dirname(__file__), "../..")
-        source = open(os.path.join(root, rel_path)).read()
+        # Explicit UTF-8: bare open() decodes with the locale's codec, which
+        # is cp1252 on Windows, and these UI modules are not pure ASCII.
+        with open(os.path.join(root, rel_path), encoding="utf-8") as fh:
+            source = fh.read()
         tree = ast.parse(source)
 
         for parent in ast.walk(tree):
