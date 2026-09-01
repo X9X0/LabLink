@@ -9,9 +9,10 @@ from typing import Dict, List, Optional
 from .history import ConnectionHistoryTracker
 from .mdns_scanner import MDNSScanner
 from .models import (ConnectionStatistics, ConnectionStatus, DeviceAlias,
-                     DiscoveredDevice, DiscoveryConfig, DiscoveryMethod,
-                     DiscoveryScanRequest, DiscoveryScanResult,
-                     DiscoveryStatus, LastKnownGood, SmartRecommendation)
+                     DeviceType, DiscoveredDevice, DiscoveryConfig,
+                     DiscoveryMethod, DiscoveryScanRequest,
+                     DiscoveryScanResult, DiscoveryStatus, LastKnownGood,
+                     SmartRecommendation)
 from .visa_scanner import VISAScanner
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,81 @@ class DiscoveryManager:
                 logger.error(f"Auto-discovery error: {e}")
                 await asyncio.sleep(60)  # Wait before retry
 
+    @staticmethod
+    def _merge_serial_probe_results(discovered: list, probed: list) -> int:
+        """Fold serial-probe results into the devices the scanners found.
+
+        A device found twice must appear once, so a probe result that lands on
+        a port another scanner already listed has to yield or merge. Which one
+        depends on whether that listing represents an actual identification.
+
+        For USB-TMC and TCPIP it does: VISA opened a session and read *IDN?.
+        For ASRL it does not. pyvisa enumerates a serial port straight from
+        the device node without opening it or exchanging a byte, so an ASRL
+        entry with no successful *IDN? behind it is a port listing wearing a
+        device's clothes — which is exactly why it reads "Unknown Serial
+        Device", type unknown, confidence 0.4.
+
+        Deferring to that would discard a real identification, from a real
+        exchange with the instrument, in favour of the fact that a file exists
+        in /dev. So an unidentified entry is enriched from the probe instead,
+        keeping its device_id and resource_name so history and aliases already
+        keyed on them stay put. An identified entry still wins outright.
+
+        Returns the number of devices the probe contributed, new or enriched.
+        """
+        by_key = {}
+        for device in discovered:
+            by_key[device.resource_name] = device
+            port = device.metadata.get("serial_port")
+            if port:
+                by_key.setdefault(port, device)
+
+        contributed = 0
+        for found in probed:
+            existing = by_key.get(found.resource_name) or by_key.get(
+                found.metadata.get("serial_port")
+            )
+
+            if existing is None:
+                # Nothing else saw this port. This is the USB-CDC case: VISA
+                # cannot enumerate those at all.
+                discovered.append(found)
+                contributed += 1
+                logger.info(
+                    f"Serial probe found {found.manufacturer} {found.model} "
+                    f"on {found.resource_name}, which VISA did not enumerate"
+                )
+                continue
+
+            if existing.device_type != DeviceType.UNKNOWN:
+                logger.debug(
+                    f"Keeping the identified entry for {existing.resource_name} "
+                    f"over the probe result"
+                )
+                continue
+
+            for field in ("manufacturer", "model", "serial_number",
+                          "firmware_version", "device_type", "status"):
+                value = getattr(found, field, None)
+                if value is not None:
+                    setattr(existing, field, value)
+            existing.confidence_score = max(
+                existing.confidence_score, found.confidence_score
+            )
+            existing.capabilities = list(dict.fromkeys(
+                existing.capabilities + found.capabilities
+            ))
+            existing.metadata.update(found.metadata)
+            contributed += 1
+            logger.info(
+                f"Serial probe identified {existing.resource_name} as "
+                f"{existing.manufacturer} {existing.model}, which the VISA "
+                f"listing could only report as an unknown serial device"
+            )
+
+        return contributed
+
     async def scan(
         self, request: Optional[DiscoveryScanRequest] = None
     ) -> DiscoveryScanResult:
@@ -232,23 +308,9 @@ class DiscoveryManager:
                         timeout=self.config.serial_probe_timeout_sec,
                         usb_only=self.config.serial_probe_usb_only,
                     )
-                    # A device VISA already found on the same port wins: its
-                    # identification came from a full session, not a probe.
-                    known_ports = {
-                        d.metadata.get("serial_port") for d in discovered
-                    } | {d.resource_name for d in discovered}
-                    serial_devices = [
-                        d for d in serial_devices
-                        if d.resource_name not in known_ports
-                        and d.metadata.get("serial_port") not in known_ports
-                    ]
-                    discovered.extend(serial_devices)
-                    result.usb_count = len(serial_devices)
-                    if serial_devices:
-                        logger.info(
-                            f"Serial probe found {len(serial_devices)} B&K "
-                            f"instrument(s) VISA did not enumerate"
-                        )
+                    result.usb_count = self._merge_serial_probe_results(
+                        discovered, serial_devices
+                    )
                 except Exception as e:
                     logger.error(f"Serial probe failed: {e}")
                     result.errors.append(f"Serial probe failed: {e}")
