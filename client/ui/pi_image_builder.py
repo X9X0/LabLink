@@ -5,9 +5,12 @@ This wizard creates custom Raspberry Pi images with LabLink pre-installed.
 
 import logging
 import os
+import platform
 import re
 import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -108,6 +111,27 @@ class ImageBuildThread(QThread):
             self.progress.emit(0, "Starting image build process...")
             logger.info("ImageBuildThread starting")
 
+            # Image building is Linux-only, and not incidentally so: the build
+            # loop-mounts a disk image (losetup), maps its partitions (kpartx),
+            # chroots into it under ARM emulation (qemu-user-static) and needs
+            # root. None of that exists on Windows or macOS, so fail here with
+            # something actionable rather than part-way through with a
+            # misleading error about bash.
+            if not sys.platform.startswith("linux"):
+                self.finished.emit(False, (
+                    f"Building a Raspberry Pi image is only supported on Linux "
+                    f"(this is {platform.system()}).\n\n"
+                    "The build loop-mounts a disk image, maps its partitions and "
+                    "chroots into it under ARM emulation, which needs losetup, "
+                    "kpartx, qemu-user-static and root privileges.\n\n"
+                    "Options:\n"
+                    "  - Run the build on a Linux machine, then copy the .img\n"
+                    "  - Use WSL2 with a distribution that has those tools\n"
+                    "  - Flash a prebuilt image from the LabLink releases page\n\n"
+                    "Everything else in the client works normally on this platform."
+                ))
+                return
+
             # Check if build script exists
             script_path = Path(__file__).parent.parent.parent / "build-pi-image.sh"
             logger.info(f"Looking for build script at: {script_path}")
@@ -151,12 +175,10 @@ class ImageBuildThread(QThread):
             logger.info(f"Launching bash with script: {script_path}")
             logger.info(f"Output path: {self.output_path}")
 
-            # Check if pkexec is available for GUI sudo
-            pkexec_available = subprocess.run(
-                ['which', 'pkexec'],
-                capture_output=True,
-                check=False
-            ).returncode == 0
+            # Check if pkexec is available for GUI sudo. shutil.which rather
+            # than the `which` command, which does not exist everywhere and
+            # raised FileNotFoundError before the platform guard above existed.
+            pkexec_available = shutil.which("pkexec") is not None
 
             # Build script wrapper that exports env vars
             # Get current user for ownership fixing after build
@@ -397,7 +419,12 @@ export ORIGINAL_GID='{current_gid}'
                 self.finished.emit(False, error_msg)
 
         except FileNotFoundError as e:
-            error_msg = f"Build script not found: {e}\n\nThis tool requires bash to be installed."
+            error_msg = (
+                f"A program the build needs was not found: {e}\n\n"
+                "The build requires bash, losetup, kpartx, qemu-user-static and "
+                "parted. On Debian or Ubuntu:\n"
+                "  sudo apt install wget xz-utils kpartx qemu-user-static parted"
+            )
             logger.error(error_msg)
             self.finished.emit(False, error_msg)
         except Exception as e:
@@ -417,6 +444,25 @@ class ConfigurationPage(QWizardPage):
         )
 
         layout = QVBoxLayout()
+
+        # Say up front if this machine cannot build an image, rather than
+        # letting the user fill in the whole wizard and fail at the last step.
+        if not sys.platform.startswith("linux"):
+            notice = QLabel(
+                f"<b>Image building is not available on {platform.system()}.</b><br><br>"
+                "The build loop-mounts a disk image and chroots into it under "
+                "ARM emulation, which needs Linux tools (losetup, kpartx, "
+                "qemu-user-static) and root.<br><br>"
+                "Run the build on a Linux machine or under WSL2, or flash a "
+                "prebuilt image from the LabLink releases page. The rest of the "
+                "client works normally here."
+            )
+            notice.setWordWrap(True)
+            notice.setStyleSheet(
+                "QLabel { background: palette(alternate-base); border: 1px solid "
+                "palette(mid); border-radius: 4px; padding: 10px; }"
+            )
+            layout.addWidget(notice)
 
         # Hardware settings
         hardware_group = QGroupBox("Hardware Configuration")
@@ -525,7 +571,7 @@ class ConfigurationPage(QWizardPage):
         output_layout = QHBoxLayout()
 
         # Set default path directly in constructor, same as hostname field
-        default_path = os.path.expanduser("~/lablink-pi.img")
+        default_path = os.path.join(os.path.expanduser("~"), "lablink-pi.img")
         self.output_path_edit = QLineEdit(default_path)
         self.output_path_edit.setPlaceholderText("Select where to save the image...")
         output_layout.addWidget(self.output_path_edit)
@@ -579,7 +625,7 @@ class ConfigurationPage(QWizardPage):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Raspberry Pi Image",
-            os.path.expanduser("~/lablink-pi.img"),
+            os.path.join(os.path.expanduser("~"), "lablink-pi.img"),
             "Disk Images (*.img)",
         )
 
