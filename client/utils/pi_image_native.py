@@ -480,3 +480,99 @@ def build_image(config: ImageConfig, progress: Optional[ProgressFn] = None,
 
     report(100, f"Image ready: {out}")
     return str(out)
+
+
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Optional[list] = None) -> int:
+    """Build an image without the GUI.
+
+    Useful for scripted and headless builds, and for testing this module on a
+    machine whose Python is too old for the desktop client -- the client needs
+    3.12+ because of numpy and PyQt6, but nothing here does.
+
+    Run from a LabLink checkout, since the scripts written into the image are
+    read from scripts/pi/.
+    """
+    import argparse
+    import getpass
+
+    parser = argparse.ArgumentParser(
+        prog="python -m client.utils.pi_image_native",
+        description="Build a customised Raspberry Pi image for LabLink. "
+                    "Needs no administrator privileges on any platform.",
+    )
+    parser.add_argument("-o", "--output", required=True,
+                        help="path to write the .img file to")
+    parser.add_argument("--hostname", default="lablink-pi")
+    parser.add_argument("--user", default="admin", help="account to create")
+    parser.add_argument("--password",
+                        help="password for that account; prompted for if omitted")
+    parser.add_argument("--wifi-ssid", default="",
+                        help="leave unset for an ethernet-only Pi")
+    parser.add_argument("--wifi-password", default="")
+    parser.add_argument("--wifi-country", default="US",
+                        help="two-letter regulatory domain (default: US)")
+    parser.add_argument("--branch", default="main",
+                        help="LabLink branch the Pi installs on first boot")
+    parser.add_argument("--pi-model", default="5", choices=["3", "4", "5"])
+    parser.add_argument("--os-variant", default="lite", choices=["lite", "full"])
+    parser.add_argument("--no-ssh", action="store_true", help="do not enable SSH")
+    parser.add_argument("--image", help="use this local .img instead of "
+                                        "downloading (it is modified in place)")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    password = args.password
+    if password is None:
+        password = getpass.getpass(f"Password for {args.user!r} on the Pi: ")
+
+    config = ImageConfig(
+        output_path=args.output,
+        base_image_url=base_image_url(args.pi_model, args.os_variant),
+        hostname=args.hostname,
+        admin_user=args.user,
+        admin_password=password,
+        wifi_ssid=args.wifi_ssid,
+        wifi_password=args.wifi_password,
+        wifi_country=args.wifi_country,
+        enable_ssh=not args.no_ssh,
+        branch=args.branch,
+    )
+
+    last = [-1]
+
+    def report(pct: int, message: str) -> None:
+        # One line per percent at most: this runs for minutes and the download
+        # would otherwise scroll a terminal off its scrollback.
+        if pct != last[0]:
+            last[0] = pct
+            print(f"[{pct:3d}%] {message}", flush=True)
+
+    try:
+        if args.image:
+            from shutil import copyfile
+
+            if args.image != args.output:
+                copyfile(args.image, args.output)
+            customize_image(args.output, config, report)
+        else:
+            build_image(config, report)
+    except PiImageError as exc:
+        print(f"\nerror: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
+
+    print(f"\nWrite it to a card with Raspberry Pi Imager, balenaEtcher or dd:\n"
+          f"  {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
