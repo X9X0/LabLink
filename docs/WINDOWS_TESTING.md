@@ -431,3 +431,42 @@ bash builder's inline copy did the same thing), not something the
 Windows-native-builder work introduced, and it resolves itself on the next
 real reboot. Left as-is rather than fixed, since it's outside the scope of
 this branch's purpose.
+
+## Findings from running the new regression suite on Windows (2026-09-01)
+
+`tests/client/test_pi_image_native.py` (added after the findings above,
+covering both bugs plus a lot more) was run on the same Windows 11 / Python
+3.10.4 machine: 72 passed, 1 skipped (`test_fsck_reports_a_clean_filesystem`
+-- no `dosfstools` on this machine, exactly as expected from the earlier
+section), 6 failed.
+
+All six failures were one parametrized test,
+`TestShellInjection::test_hostile_values_stay_inside_their_quotes`. Every one
+failed the same way:
+
+```
+/bin/bash: C:\Users\...\check.sh: No such file or directory
+```
+
+**Not a code bug.** This machine has WSL installed, and a bare `bash` on
+`PATH`, invoked the way `subprocess.run(["bash", str(harness)])` does,
+resolved to the WSL interop launcher rather than Git Bash's own
+`bash.exe` -- confirmed with `bash --version`, which reported
+`x86_64-pc-linux-gnu` (WSL) rather than the `x86_64-pc-msys` Git Bash
+reports, even though `where bash` lists Git's copy first. That launcher
+mangles a Windows-style absolute path passed as an argument -- it silently
+drops every backslash, so `C:\Users\...\check.sh` becomes
+`C:Users...check.sh`, which naturally does not exist.
+
+Confirmed by calling Git Bash's `bash.exe` directly by its full path with the
+identical script: exits 0, output correct. The sibling test in the same
+class, `test_hostile_values_do_not_execute`, uses `bash -c "<line>"` instead
+of a script *path* and passes cleanly, which is consistent with the theory --
+there is no path argument for the WSL launcher to mangle.
+
+This is a PATH-resolution gotcha specific to a Windows machine that has WSL
+installed, not something to fix in the test or the builder. Worth knowing
+before treating a `check.sh: No such file or directory` failure as a real
+regression: check `bash --version` first, and if it says
+`x86_64-pc-linux-gnu`, the fix is a shell/PATH change on that machine (or
+invoking Git Bash by its full path), not a code change here.
