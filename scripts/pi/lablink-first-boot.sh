@@ -221,9 +221,9 @@ if docker compose up -d; then
 
     # Wait for containers to be healthy
     echo "[LabLink] Waiting for services to be ready..."
-    local max_wait=60
-    local waited=0
-    local containers_up=false
+    max_wait=60
+    waited=0
+    containers_up=false
 
     while [ $waited -lt $max_wait ]; do
         if docker compose ps 2>/dev/null | grep -q "Up"; then
