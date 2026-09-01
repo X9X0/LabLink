@@ -863,6 +863,34 @@ pytest still collected 41 tests from elsewhere; with it present the module
 runs further, reaches a later `sys.exit(1)`, and takes the entire run with
 it.
 
+### The same files write to the repository on import
+
+`git status` after that run was not clean:
+
+```
+ M profiles/Electronic_Load_-_Battery_Test.json
+ M profiles/Oscilloscope_-_Debug_Quick.json
+ M profiles/Power_Supply_-_5V_Logic.json
+ ... 7 files, 14 insertions(+), 14 deletions(-)
+```
+
+Every change was a `created_at`/`modified_at` timestamp, rewritten to the
+moment the suite ran. The cause is the same script-style shape:
+`test_enhancements.py:92` calls `create_default_profiles()` at module scope,
+so *importing* the file -- which is all pytest does during collection --
+writes to the checked-in `profiles/` directory.
+
+Worth noting what the previous values were: `2026-08-31 15:17:16`. Those are
+not authored timestamps either, they are the moment somebody last ran this
+suite, committed without being noticed. The working tree here was restored
+with `git checkout -- profiles/`.
+
+Running a test suite should not dirty the working tree, and a reviewer
+should not have to tell a real profile change from a collection artefact.
+Both problems -- aborting the session, and writing to the repo -- go away by
+putting the script bodies behind `if __name__ == "__main__":`, which is what
+they were written to be run as.
+
 Excluding those five, `tests/unit/` is:
 
 ```
