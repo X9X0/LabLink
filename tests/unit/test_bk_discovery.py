@@ -250,6 +250,125 @@ class TestLegacyProbeFraming:
         assert device.device_type == DeviceType.POWER_SUPPLY
 
 
+class TestProbeResultMerging:
+    """What the client ends up showing, not just what the probe returned.
+
+    The probe answering correctly is not enough: its result still has to
+    survive being folded in beside whatever the other scanners produced.
+    """
+
+    @staticmethod
+    def _visa_asrl_listing():
+        """What VISA produces for a serial port it never opened.
+
+        pyvisa enumerates ASRL resources from the device node, without
+        exchanging a byte, so this carries no identification at all.
+        """
+        device = DiscoveredDevice(
+            device_id="asrl_dev_ttyusb0_instr",
+            resource_name="ASRL/dev/ttyUSB0::INSTR",
+            discovery_method=DiscoveryMethod.VISA,
+            manufacturer="Unknown",
+            model="Serial Device (ASRL)",
+            device_type=DeviceType.UNKNOWN,
+            confidence_score=0.4,
+        )
+        device.metadata["note"] = "Does not respond to *IDN?"
+        return device
+
+    @staticmethod
+    def _probed_1902b():
+        """What the probe returns for the bench 1902B: a real GMAX exchange."""
+        device = DiscoveredDevice(
+            device_id="bkserial__dev_ttyusb0",
+            resource_name="ASRL/dev/ttyUSB0::INSTR",
+            discovery_method=DiscoveryMethod.USB,
+            manufacturer="B&K Precision",
+            model="Legacy fixed-width supply",
+            device_type=DeviceType.POWER_SUPPLY,
+            confidence_score=0.6,
+        )
+        device.capabilities = ["RS-232", "USB-CDC"]
+        device.metadata.update({
+            "serial_port": "/dev/ttyUSB0", "protocol": "fixed",
+            "max_voltage": 60.5, "max_current": 16.0, "gmax": "605160",
+        })
+        return device
+
+    def _merge(self, discovered, probed):
+        from discovery.manager import DiscoveryManager
+        count = DiscoveryManager._merge_serial_probe_results(discovered, probed)
+        return count, discovered
+
+    def test_an_identification_beats_a_bare_port_listing(self):
+        """The regression: a real GMAX exchange lost to a file existing in /dev.
+
+        VISA listing the port made it "known", so the probe's identification
+        was dropped and the client showed "Unknown Serial Device" for a supply
+        that had just told us it was a 60.5 V / 16 A B&K.
+        """
+        count, devices = self._merge(
+            [self._visa_asrl_listing()], [self._probed_1902b()]
+        )
+
+        assert len(devices) == 1, "one instrument must not appear twice"
+        assert count == 1, "the probe's contribution went uncounted"
+
+        device = devices[0]
+        assert device.manufacturer == "B&K Precision"
+        assert device.device_type == DeviceType.POWER_SUPPLY
+        assert device.confidence_score == 0.6
+        assert device.metadata["max_voltage"] == 60.5
+
+    def test_the_merged_entry_keeps_its_original_identity(self):
+        """History and aliases are keyed on device_id; it must not move."""
+        _, devices = self._merge(
+            [self._visa_asrl_listing()], [self._probed_1902b()]
+        )
+        assert devices[0].device_id == "asrl_dev_ttyusb0_instr"
+        assert devices[0].resource_name == "ASRL/dev/ttyUSB0::INSTR"
+        # VISA's own metadata survives alongside the probe's.
+        assert "note" in devices[0].metadata
+        assert "gmax" in devices[0].metadata
+
+    def test_a_real_visa_identification_still_wins(self):
+        """The original rule holds where its premise does.
+
+        On USB-TMC and TCPIP, VISA genuinely opened a session and read *IDN?.
+        A probe must not overwrite that.
+        """
+        identified = DiscoveredDevice(
+            device_id="usb_9130b", resource_name="ASRL/dev/ttyUSB0::INSTR",
+            discovery_method=DiscoveryMethod.VISA,
+            manufacturer="B&K Precision", model="9130B",
+            device_type=DeviceType.POWER_SUPPLY, confidence_score=0.9,
+        )
+        count, devices = self._merge([identified], [self._probed_1902b()])
+
+        assert len(devices) == 1
+        assert count == 0, "the probe should have deferred"
+        assert devices[0].model == "9130B"
+        assert devices[0].confidence_score == 0.9
+
+    def test_a_port_visa_cannot_see_is_added_outright(self):
+        """The USB-CDC case: VISA enumerates none of them."""
+        count, devices = self._merge([], [self._probed_1902b()])
+        assert count == 1
+        assert len(devices) == 1
+        assert devices[0].device_type == DeviceType.POWER_SUPPLY
+
+    def test_matching_falls_back_to_the_serial_port(self):
+        """The two scanners need not spell the resource the same way."""
+        listing = self._visa_asrl_listing()
+        listing.resource_name = "ASRL3::INSTR"
+        listing.metadata["serial_port"] = "/dev/ttyUSB0"
+
+        count, devices = self._merge([listing], [self._probed_1902b()])
+        assert len(devices) == 1, "the same instrument was listed twice"
+        assert count == 1
+        assert devices[0].device_type == DeviceType.POWER_SUPPLY
+
+
 class TestSerialProbeIntegration:
     """The probe runs as part of a scan and merges with the other scanners."""
 
