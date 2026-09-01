@@ -7,7 +7,9 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +44,7 @@ class ImageBuildThread(QThread):
         auto_expand: bool = True,
         branch: str = "main",
         os_variant: str = "lite",
+        use_native_builder: Optional[bool] = None,
     ):
         """Initialize build thread.
 
@@ -56,6 +59,10 @@ class ImageBuildThread(QThread):
             auto_expand: Auto-expand filesystem on first boot
             branch: Git branch the image installs on first boot
             os_variant: Raspberry Pi OS base image, "lite" or "full"
+            use_native_builder: Force the pure-Python builder on or off. The
+                default picks it automatically: it is the only builder that
+                works off Linux, and it needs no root anywhere, so it is
+                preferred unless LABLINK_USE_SHELL_BUILDER is set.
         """
         super().__init__()
         self.output_path = output_path
@@ -68,6 +75,13 @@ class ImageBuildThread(QThread):
         self.auto_expand = auto_expand
         self.branch = branch
         self.os_variant = os_variant
+        if use_native_builder is None:
+            # The shell builder only exists as an escape hatch on Linux now.
+            use_native_builder = not (
+                sys.platform.startswith("linux")
+                and os.environ.get("LABLINK_USE_SHELL_BUILDER")
+            )
+        self.use_native_builder = use_native_builder
         self.recent_output = []  # Buffer for recent output lines
 
     def _parse_progress_only(self, line: str):
@@ -102,11 +116,57 @@ class ImageBuildThread(QThread):
             except (ValueError, IndexError):
                 pass
 
+    def _run_native(self) -> bool:
+        """Build the image in pure Python. Returns True if the build ran.
+
+        This needs no root, no loop device and no bash, so it is the only path
+        that works on Windows and macOS. It writes the boot partition directly
+        and lets Raspberry Pi OS's own first-run mechanism do the rest — the
+        same division of labour the shell builder uses, which already defers
+        the LabLink install to first boot.
+        """
+        from client.utils.pi_image_native import (ImageConfig, base_image_url,
+                                                  build_image)
+
+        self.output.emit("Building with the native (pure Python) builder.\n")
+        self.output.emit("No administrator privileges are required.\n\n")
+
+        config = ImageConfig(
+            output_path=self.output_path,
+            base_image_url=base_image_url(self.pi_model, self.os_variant),
+            hostname=self.hostname,
+            admin_password=self.admin_password,
+            wifi_ssid=self.wifi_ssid,
+            wifi_password=self.wifi_password,
+            enable_ssh=self.enable_ssh,
+            branch=self.branch,
+        )
+        self.output.emit(f"Base image: {config.base_image_url}\n")
+
+        def on_progress(pct: int, msg: str) -> None:
+            self.progress.emit(pct, msg)
+            self.output.emit(msg + "\n")
+
+        build_image(config, progress=on_progress)
+        return True
+
     def run(self):
         """Run image building process."""
         try:
             self.progress.emit(0, "Starting image build process...")
             logger.info("ImageBuildThread starting")
+
+            if self.use_native_builder:
+                try:
+                    self._run_native()
+                except Exception as exc:
+                    logger.exception("Native image build failed")
+                    self.finished.emit(False, f"Image build failed: {exc}")
+                else:
+                    self.finished.emit(
+                        True, f"Image built successfully: {self.output_path}"
+                    )
+                return
 
             # Check if build script exists
             script_path = Path(__file__).parent.parent.parent / "build-pi-image.sh"
@@ -151,12 +211,10 @@ class ImageBuildThread(QThread):
             logger.info(f"Launching bash with script: {script_path}")
             logger.info(f"Output path: {self.output_path}")
 
-            # Check if pkexec is available for GUI sudo
-            pkexec_available = subprocess.run(
-                ['which', 'pkexec'],
-                capture_output=True,
-                check=False
-            ).returncode == 0
+            # Check if pkexec is available for GUI sudo. shutil.which rather
+            # than the `which` command, which does not exist everywhere and
+            # raised FileNotFoundError instead of reporting it was missing.
+            pkexec_available = shutil.which("pkexec") is not None
 
             # Build script wrapper that exports env vars
             # Get current user for ownership fixing after build
@@ -541,9 +599,13 @@ class ConfigurationPage(QWizardPage):
 
         # Info label
         info_label = QLabel(
-            "ℹ️ The image will be based on Raspberry Pi OS Lite with LabLink pre-installed.\n"
-            "Build process may take 10-30 minutes depending on your internet connection.\n\n"
-            "⚠️ This tool requires root privileges. You will be prompted for your password."
+            "ℹ️ The image is based on Raspberry Pi OS, and installs LabLink the "
+            "first time the Pi boots.\n"
+            "Building takes 10-30 minutes, mostly downloading the base image.\n\n"
+            "✓ Works on Windows, macOS and Linux, and needs no administrator "
+            "privileges.\n"
+            "The Pi needs a network connection on its first boot to finish "
+            "installing."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet(
