@@ -11,7 +11,17 @@ env:
   PYTHON_VERSION_DEFAULT: '3.12'
   # Coverage baseline: 26% (established 2025-01-14)
   # Target: Increase by 1% per quarter to reach 30% by Q2 2025
-  MIN_COVERAGE_PERCENT: 26
+  # Lowered from 26 when import-time side effects were removed (#194). Two
+  # test modules used to execute a script body at import, running a good deal
+  # of server/ code during collection, and coverage counted it. That was never
+  # test coverage -- no assertion depended on any of it -- so the figure was
+  # overstating what the suite actually checks. 18% is the first honest
+  # measurement of tests/unit/ alone; this is set just below it.
+  #
+  # It should go back up by covering code with tests, not by reinstating the
+  # accounting. Running tests/client/ here too is the obvious next step: it
+  # holds real tests that CI has never executed.
+  MIN_COVERAGE_PERCENT: 17
   TARGET_COVERAGE_PERCENT: 80
 
 jobs:
