@@ -59,7 +59,9 @@ def _load_creds_file():
     f = Path(path).expanduser()
     if not f.exists():
         return
-    for line in f.read_text().splitlines():
+    # Explicit UTF-8: this file is hand-written and holds a password, so
+    # a non-ASCII character in it must not depend on the machine's locale.
+    for line in f.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
