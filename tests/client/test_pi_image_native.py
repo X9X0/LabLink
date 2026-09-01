@@ -853,17 +853,18 @@ class TestFirstBootScriptShell:
 
 
 class TestBlankPasswordIsAnnounced:
-    """No password means no account, which is easy to do by accident.
+    """No password at the *builder* level still means no account.
 
     customize_image writes userconf.txt only when a password is set, which is
-    right -- the alternative is a passwordless login. But on current Raspberry
-    Pi OS userconf.txt is what creates the account, so with SSH enabled the
-    result is a Pi answering on port 22 with nothing to log in as, recoverable
-    only by writing the card again. Found when a wizard run left the field
-    blank and produced exactly that.
+    right -- the alternative is a passwordless login -- and on current
+    Raspberry Pi OS userconf.txt is what creates the account. That behaviour
+    is deliberate and stays.
 
-    The builder's behaviour is correct and stays; what was missing is anyone
-    saying so before a 500 MB download and a 3 GB write.
+    What changed is the layer above. A wizard run left the field blank and
+    produced a Pi answering on port 22 with nothing to log in as; the entry
+    points now generate a password rather than passing the blank through, so
+    the lockout is unreachable from the UI or the CLI. The builder-level
+    behaviour below is what makes that generation load-bearing.
     """
 
     def test_the_image_really_has_no_account(self, blank_image, config):
@@ -877,25 +878,64 @@ class TestBlankPasswordIsAnnounced:
         assert "userconf.txt" not in names, "no account is created"
         assert "ssh" in names, "yet sshd is enabled - nothing to log in as"
 
-    def test_cli_warns_on_stderr(self, blank_image, capsys):
-        """Silence here is how someone ends up with an unreachable Pi."""
-        rc = main(["--image", blank_image, "-o", blank_image, "--password", ""])
+    def test_cli_generates_rather_than_shipping_the_lockout(
+            self, blank_image, tmp_path, capsys):
+        """A blank password on the CLI must still yield a usable login."""
+        from passlib.hash import sha512_crypt
 
-        err = capsys.readouterr().err
-        assert rc == 0, "a blank password is allowed, only announced"
-        assert "no account will be created" in err
-        assert "unreachable" in err
+        out = str(tmp_path / "out.img")
+        rc = main(["--image", blank_image, "-o", out, "--password", ""])
 
-    def test_cli_warning_reflects_the_ssh_setting(self, blank_image, capsys):
-        """Without SSH the consequence is different, so say a different thing."""
-        main(["--image", blank_image, "-o", blank_image, "--password", "",
-              "--no-ssh"])
+        assert rc == 0
+        printed = capsys.readouterr().out
+        assert "Generated password" in printed, "the user is never told it"
 
-        err = capsys.readouterr().err
-        assert "monitor and keyboard" in err
-        assert "unreachable" not in err
+        with Fat32Reader(out, PART_OFFSET) as fs:
+            names = {n.lower() for n in fs.list_root()}
+            user, _, hashed = fs.read_file(
+                "userconf.txt").decode().strip().partition(":")
+            staged = fs.read_file("lablink-admin-password").decode()
 
-    def test_no_warning_when_a_password_is_given(self, blank_image, capsys):
-        main(["--image", blank_image, "-o", blank_image, "--password", "pw"])
+        assert "userconf.txt" in names, "still no account"
+        assert user == "admin"
+        assert sha512_crypt.verify(staged, hashed)
+        assert staged in printed, "the printed password is not the one shipped"
 
-        assert "no account will be created" not in capsys.readouterr().err
+    def test_cli_marks_a_generated_password_for_the_console_banner(
+            self, blank_image, tmp_path):
+        out = str(tmp_path / "out.img")
+        main(["--image", blank_image, "-o", out, "--password", ""])
+
+        with Fat32Reader(out, PART_OFFSET) as fs:
+            assert "lablink-password-generated" in {
+                n.lower() for n in fs.list_root()
+            }
+
+    def test_generation_happens_even_without_ssh(self, blank_image, tmp_path):
+        """An account is still wanted on a Pi set up with a monitor."""
+        out = str(tmp_path / "out.img")
+        main(["--image", blank_image, "-o", out, "--password", "", "--no-ssh"])
+
+        with Fat32Reader(out, PART_OFFSET) as fs:
+            names = {n.lower() for n in fs.list_root()}
+
+        assert "userconf.txt" in names
+        assert "ssh" not in names, "--no-ssh must still be honoured"
+
+    def test_a_chosen_password_is_used_verbatim_and_not_printed(
+            self, blank_image, tmp_path, capsys):
+        """Generation must not touch a password the user actually supplied."""
+        from passlib.hash import sha512_crypt
+
+        out = str(tmp_path / "out.img")
+        main(["--image", blank_image, "-o", out, "--password", "Tr1cky$Pass!"])
+
+        printed = capsys.readouterr().out
+        assert "Generated password" not in printed
+        assert "Tr1cky$Pass!" not in printed, "a chosen password is not echoed"
+
+        with Fat32Reader(out, PART_OFFSET) as fs:
+            _, _, hashed = fs.read_file(
+                "userconf.txt").decode().strip().partition(":")
+
+        assert sha512_crypt.verify("Tr1cky$Pass!", hashed)

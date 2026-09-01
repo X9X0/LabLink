@@ -582,22 +582,6 @@ def main(argv: Optional[list] = None) -> int:
         print("Write it down; it is also shown on the Pi's console after first "
               "boot.\n")
 
-    if not password:
-        # No password means no userconf.txt, which on current Raspberry Pi OS
-        # means no account at all. With SSH enabled that is a Pi listening on
-        # port 22 that nobody can log in to, recoverable only by re-imaging.
-        print(
-            "warning: no password given, so no account will be created on the "
-            "Pi.\n"
-            + ("         SSH is enabled but there will be nothing to log in "
-               "as; the Pi\n         will be unreachable over the network.\n"
-               if not args.no_ssh else
-               "         You will need a monitor and keyboard to finish setup "
-               "on the Pi.\n")
-            + "         LabLink's own login will use its default password.",
-            file=sys.stderr,
-        )
-
     config = ImageConfig(
         output_path=args.output,
         base_image_url=base_image_url(args.pi_model, args.os_variant),
