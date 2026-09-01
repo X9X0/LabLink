@@ -709,3 +709,20 @@ Two notes for anyone repeating this:
 - The LabLink *web* password is not the SSH password. First-boot reads it
   from `/etc/lablink-build-admin-password`, staged into the image from
   `--password`, so for a builder-made Pi the two happen to coincide.
+- **`pip show paramiko` crashes on a legacy Windows console.** Not a LabLink
+  problem, but this document tells you to run `pip show` twice, so it is
+  worth knowing before the traceback alarms you. paramiko's metadata carries
+  a non-ASCII author name, and pip renders through `rich`, which writes to a
+  cp1252 console and dies with `UnicodeEncodeError: 'charmap' codec can't
+  encode character 'ć'`. The package is installed fine -- only the
+  display fails. `pip show setuptools`/`pyfatfs`/`passlib` are unaffected,
+  being pure ASCII. To check a version without the theatrics:
+
+  ```powershell
+  python -c "from importlib.metadata import version; print(version('paramiko'))"
+  ```
+
+Verified after the change: `pip install -r requirements-test.txt` into the
+3.12 venv brings in pytest 9.1.1, pytest-asyncio 1.4.0, paramiko 5.0.0 and
+the rest in one step, and both suites still pass on Windows -- 96 passed /
+1 skipped for `tests/client/`, 25 passed / 4 skipped against the live Pi.
