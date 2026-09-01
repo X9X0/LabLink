@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-09-01
+
+A deliberate compatibility break. It exists to move the entire dependency stack
+to current releases in one step, and it was validated end to end on real
+hardware — a Raspberry Pi 5 running a freshly built image with a B&K Precision
+1902B attached.
+
+**Upgrading from 1.x? Read [docs/BREAKING_CHANGES_2.0.md](docs/BREAKING_CHANGES_2.0.md) first.**
+
+### 💥 Breaking
+
+- **Python 3.12 is now the minimum** (was 3.11; `setup.py` still claimed 3.8).
+  Forced by numpy 2.5 and scipy 1.18, which both require it. The server is
+  unaffected in practice — it runs in Docker on `python:3.13-slim`. The desktop
+  client runs natively and does need 3.12+.
+- **Every user is logged out on upgrade.** Access tokens are now bound to a
+  server-side session, which is what makes logout and password change able to
+  revoke them. Tokens issued by 1.x carry no `session_id` and are refused.
+- **SSH deployment no longer accepts `ssh-rsa` (RSA/SHA-1) host keys.** paramiko
+  5.0.0 removes them, fixing PYSEC-2026-2858. A device offering only an
+  `ssh-rsa` host key can no longer be deployed to; regenerate its host keys with
+  `sudo ssh-keygen -A`. Current Raspberry Pi OS is unaffected.
+- **The WebSocket port is retired.** `/ws` has always been a route on the API
+  server; `LABLINK_WS_PORT` configured a port nothing ever bound. It is now
+  accepted and ignored so an existing `.env` does not break startup.
+- **Pi images are built on Debian Trixie** (13) instead of Bookworm (12).
+
+### ✨ Added
+
+- Live hardware acceptance suite (`tests/hardware/test_live_pi.py`) — 29 tests
+  covering deployment, SSH, the auth lifecycle, equipment discovery and
+  readings, WebSocket auth and file-descriptor stability. Skipped unless
+  configured, so CI is unaffected.
+- B&K Precision auto-detection: a model registry covering 30 families, generic
+  SCPI drivers, and a serial probe that finds instruments VISA cannot enumerate
+  (USB-CDC models, and legacy supplies that answer no `*IDN?`).
+- `scripts/diagnose_bk_discovery.py`, a layer-by-layer discovery diagnostic that
+  reports which stage dropped an instrument.
+- Pi images can be built from any git branch (`LABLINK_BRANCH`) and from either
+  Raspberry Pi OS Lite or Full (`PI_OS_VARIANT`), both exposed in the client's
+  image-builder wizard.
+- Persistent failed-login tracking, so account lockout survives a restart.
+- OAuth2 `state` is now verified and single-use, closing a login-CSRF hole.
+
+### 🐛 Fixed
+
+- **Device discovery returned zero devices on any established install.** A
+  function-local `datetime` import in `lifespan()` turned a nested discovery
+  callback's reference into an unbound closure, so every scan raised.
+- **MFA backup codes could never be verified.** Hashing kept the code as
+  generated while verification stripped the hyphen and upper-cased it, so the
+  two never matched and account recovery was impossible. Codes stored before
+  this release remain unusable and must be regenerated.
+- **Every backup failed.** `create_backup()` verified the backup before
+  registering it, so verification always raised "Backup not found" — and
+  verification is on by default. Backup IDs could also collide within the same
+  second, silently overwriting metadata.
+- **Pi images shipped a hardcoded application admin password.** The build-time
+  `LABLINK_ADMIN_PASSWORD` never reached the first-boot script, which fell back
+  to a built-in default and echoed it to the system journal.
+- **A file-descriptor leak in `DatabaseManager`** — 13 methods closed their
+  connection only on success. Measured at 200 leaked descriptors across 200
+  failing calls.
+- **Blocking SQLite calls stalled the event loop** across four subsystems.
+- **The GUI froze during live monitoring.** Timer-driven polling called the
+  synchronous HTTP client directly on the Qt thread.
+- **SSH host-key acceptance was unreachable on non-standard ports**, so a host
+  could never be trusted through the deploy wizard.
+- **`server/.env` was tracked in git and baked into the server image**, where it
+  overrode host configuration invisibly.
+- The firmware update endpoint returned 500; a bare ASRL port listing outranked
+  a real instrument identification; and the JWT secret was regenerated on every
+  restart when unset, invalidating all tokens.
+
+### 📝 Changed
+
+- Every dependency pinned to a current release: numpy 2.5.2, pandas 3.0.5,
+  scipy 1.18.1, paramiko 5.0.0, websockets 17.1, bcrypt 5.0.0, psutil 7.2.2,
+  PyQt6 6.11.0, pytest 9.1.1, pyvisa 1.16.2, FastAPI 0.141.1. `pip-audit`
+  reports no known vulnerabilities across the full stack.
+- Pi images are ~35% faster to burn: a flat 2GB of padding that first-boot
+  filesystem growth immediately superseded is now 256MB.
+- CI covers Python 3.12 and 3.13.
+- The test suite went from ~95 failures and a run that hung indefinitely to
+  **1127 passing**. Many tests had drifted out of sync with the code; others
+  silently skipped themselves for features that were implemented, which is how
+  several of the bugs above survived.
+
+### 🔒 Security
+
+- Access tokens are revocable; logout, password change and admin reset take
+  effect immediately rather than leaving a token valid for up to 7 days.
+- OAuth2 `state` verification, persistent lockout, and a JWT secret that
+  survives restarts.
+- `sudo` removed from the server runtime image; environment files can no longer
+  be baked into images.
+
+---
+
 ## [1.2.4] - 2025-12-09
 
 ### ✨ Added
