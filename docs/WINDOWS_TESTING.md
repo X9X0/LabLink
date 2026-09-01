@@ -139,6 +139,137 @@ so keep the check independent.
 
 ## Still open
 
-- **No image built by this code has been booted on a Pi.** `fsck` passes and
-  the files parse correctly, which is not the same thing.
-- The Windows path itself, per everything above.
+- ~~No image built by this code has been booted on a Pi.~~ Done -- see
+  [Findings from the first Windows test](#findings-from-the-first-windows-test-2026-09-01)
+  below. A CLI-built image booted, ran first-run setup end to end, and served
+  its web UI and API.
+- `fsck.vfat` itself was never run against a built image -- see that section
+  for why, and what stood in for it.
+
+## Findings from the first Windows test (2026-09-01)
+
+First real run of this branch on Windows, both the CLI builder and a boot on
+actual Pi hardware. Recorded here because both a build-time bug and a
+first-boot bug turned up, and neither was visible from Linux-only testing.
+
+### Environment
+
+- Windows 11, Python 3.10.4 (meets the CLI's 3.8+ floor; the Qt wizard was not
+  tested -- that needs 3.12+)
+- `pip show`: pyfatfs 1.1.0, passlib 1.7.4, setuptools 58.1.0
+- setuptools 58.1.0 still has `pkg_resources`, so the shim in
+  `_install_pkg_resources_shim()` was never exercised this round. It remains
+  untested against setuptools >= 81.
+- No `fsck.vfat`/`mtools` on native Windows, and WSL's Ubuntu had neither
+  installed with no passwordless `sudo` available to add them. Skipped rather
+  than prompt for a password; verification relied on the independent FAT32
+  reader only, described below.
+
+### Bug 1: `Path.read_text()` decoded with the wrong codec on Windows
+
+The first build attempt failed at 86%:
+
+```
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 9698:
+character maps to <undefined>
+```
+
+`scripts/pi/lablink-first-boot.sh` is UTF-8 and contains a box-drawing banner
+(`═` x14, U+2550) in its status output. `pi_image_native.py` read both
+`firstrun.sh` and `lablink-first-boot.sh` with plain `Path.read_text()`,
+which has no `encoding=` argument and so falls back to the process's locale
+encoding -- cp1252 on this machine, not UTF-8. Byte 0x90 is invalid cp1252.
+
+This is a Windows-only failure: the same call on Linux/macOS defaults to
+UTF-8 and never notices. It sat outside the four risks the top of this doc
+called out (setuptools, CRLF, big-file I/O, passlib) -- a fifth risk in the
+same "Windows reads text differently" family.
+
+The write side was checked too, since a similar bug there would corrupt the
+banner rather than crash: `fs.open()` in the `fs` library (pyfatfs's
+dependency) hardcodes `encoding=encoding or "utf-8"` regardless of locale, so
+writing back into the FAT filesystem was never at risk.
+
+**Fix**: added `encoding="utf-8"` to both `.read_text()` calls in
+`pi_image_native.py` (`customize_image`, around lines 424 and 428).
+Re-running the build against the already-decompressed image (via `--image`)
+confirmed the fix -- build completed, and the FAT32 reader confirmed both
+scripts round-tripped with Unix-only line endings and the banner intact.
+
+### Independent FAT32 reader check: passed
+
+Against the successfully-built image:
+
+- Expected files present: `firstrun.sh`, `lablink-first-boot.sh`,
+  `lablink-admin-password`, `userconf.txt`, `ssh`
+- `cmdline.txt` correctly patched (`systemd.run=/boot/firmware/firstrun.sh`,
+  no leftover or duplicate directives, no `init=`)
+- `userconf.txt` held a valid `$6$...` SHA-512 crypt hash from passlib
+- Hostname and Wi-Fi SSID substitutions landed correctly
+- Both scripts had Unix line endings only, no stray `\r`
+- The UTF-8 banner decoded cleanly after the fix
+
+### First real Pi boot: succeeded
+
+A Pi 5 was imaged from the CLI-built `.img` via a card writer (not this
+machine) and booted. Full chain worked on the first attempt:
+
+FAT32 write &rarr; Pi OS first boot &rarr; `firstrun.sh` &rarr;
+`lablink-first-boot.service` &rarr; apt upgrade &rarr; Docker install &rarr;
+LabLink container build (`fastapi`, `pandas`, `numpy`, `scipy`, `pyvisa`,
+...) &rarr; healthy running stack.
+
+Verified over SSH (`admin` / the password passed to `--password`) and from
+the host machine:
+
+- `http://<pi-ip>/` &rarr; `200`
+- `http://<pi-ip>:8000/health` &rarr; `{"status":"healthy","connected_devices":0}`
+
+`sshpass` was not available locally; the SSH checks used Python's
+`paramiko` instead (password auth, no interactive terminal needed).
+
+### Bug 2: broken container-health wait loop in `lablink-first-boot.sh`
+
+`lablink-first-boot.sh:224-226` used `local max_wait=60`, `local waited=0`
+and `local containers_up=false` at the top level of the script -- not inside
+a function. Confirmed with an isolated `bash -c` test that `local` outside a
+function fails ("local: can only be used in a function") *without*
+performing the assignment, leaving all three variables unset.
+
+That turns the bounded wait `while [ $waited -lt $max_wait ]` into
+`[ -lt ]` after empty-variable expansion, which `test` evaluates as a single
+non-empty string -- always true. The intended 60-second timeout became an
+unbounded busy loop.
+
+It didn't show up on this boot only by luck: `docker compose ps` already
+reported "Up" on the very first check, so the loop's `break` fired on
+iteration one, before the bug's failure mode (an infinite spin with no
+timeout, no diagnostic dump) could matter. A slower container start --
+weaker network, more services, a Pi 3 -- would have hung
+`lablink-first-boot.service` indefinitely instead of falling through to the
+existing timeout/diagnostic branch.
+
+This file is new to this branch in its entirety (extracted so the bash and
+native builders share one copy), so the bug is in scope here even though it
+has nothing to do with Windows specifically.
+
+**Fix**: dropped `local` from those three assignments -- they're script-level
+globals, not function-local, so the keyword was never valid.
+
+### Noted, not fixed: `lablink.service` shows inactive right after first boot
+
+Immediately after first-boot setup, `systemctl status lablink.service`
+reports `inactive (dead)` even though the containers are up and healthy.
+`lablink-first-boot.sh` starts them directly with `docker compose up -d`
+rather than through `systemctl start lablink.service`, so the unit's
+`RemainAfterExit=yes` state is never set until systemd itself runs
+`ExecStart` -- which only happens on the *next* reboot, since the unit is
+merely `enable`d here, not started. `lablink-status`'s "LabLink service: Not
+active" line is misleading in this narrow first-boot window even though
+LabLink itself is fine.
+
+This is pre-existing behaviour carried into the new shared script (the old
+bash builder's inline copy did the same thing), not something the
+Windows-native-builder work introduced, and it resolves itself on the next
+real reboot. Left as-is rather than fixed, since it's outside the scope of
+this branch's purpose.
