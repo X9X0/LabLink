@@ -24,7 +24,7 @@ def log_performance(func: Callable) -> Callable:
 
     @functools.wraps(func)
     async def async_wrapper(*args, **kwargs):
-        start_time = time.time()
+        start_time = time.perf_counter()
         start_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
 
         try:
@@ -36,7 +36,7 @@ def log_performance(func: Callable) -> Callable:
             error = str(e)
             raise
         finally:
-            end_time = time.time()
+            end_time = time.perf_counter()
             end_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
 
             duration_ms = (end_time - start_time) * 1000
@@ -59,7 +59,7 @@ def log_performance(func: Callable) -> Callable:
 
     @functools.wraps(func)
     def sync_wrapper(*args, **kwargs):
-        start_time = time.time()
+        start_time = time.perf_counter()
         start_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
 
         try:
@@ -71,7 +71,7 @@ def log_performance(func: Callable) -> Callable:
             error = str(e)
             raise
         finally:
-            end_time = time.time()
+            end_time = time.perf_counter()
             end_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
 
             duration_ms = (end_time - start_time) * 1000

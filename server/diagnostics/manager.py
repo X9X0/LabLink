@@ -179,11 +179,11 @@ class DiagnosticsManager:
             return ConnectionDiagnostics(equipment_id=equipment_id, is_connected=False)
 
         # Measure response time
-        start = time.time()
+        start = time.perf_counter()
         try:
             # Simple query to test connection
             await equipment.query("*IDN?")
-            response_time_ms = (time.time() - start) * 1000
+            response_time_ms = (time.perf_counter() - start) * 1000
             is_connected = True
         except Exception as e:
             response_time_ms = None
@@ -283,9 +283,9 @@ class DiagnosticsManager:
         test_commands = ["*IDN?", "*OPC?", "*STB?"]
         for cmd in test_commands:
             try:
-                start = time.time()
+                start = time.perf_counter()
                 await equipment.query(cmd)
-                latency = (time.time() - start) * 1000
+                latency = (time.perf_counter() - start) * 1000
                 command_latencies[cmd] = latency
             except Exception as e:
                 logger.debug(f"Benchmark command {cmd} failed: {e}")
@@ -378,9 +378,9 @@ class DiagnosticsManager:
         started_at = datetime.now()
 
         try:
-            start = time.time()
+            start = time.perf_counter()
             result_value = await test_func()
-            duration = time.time() - start
+            duration = time.perf_counter() - start
 
             return DiagnosticResult(
                 test_id=f"test_{name.lower().replace(' ', '_')}",
@@ -719,9 +719,9 @@ class DiagnosticsManager:
             )
 
         try:
-            start_time = time.time()
+            start_time = time.perf_counter()
             result = await equipment.run_self_test()
-            duration = time.time() - start_time
+            duration = time.perf_counter() - start_time
 
             if result is None:
                 return DiagnosticResult(
