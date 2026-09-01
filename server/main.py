@@ -51,7 +51,6 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     logger.info(f"API Port: {settings.api_port}")
-    logger.info(f"WebSocket Port: {settings.ws_port}")
     logger.info(f"Log Level: {settings.log_level}")
     logger.info(
         f"Auto-reconnect: {'enabled' if settings.enable_auto_reconnect else 'disabled'}"
@@ -536,7 +535,6 @@ async def lifespan(app: FastAPI):
                 logger.info("Starting mDNS server broadcasting...")
                 mdns_service = LabLinkMDNSService(
                     port=settings.api_port,
-                    ws_port=settings.ws_port,
                     server_name=settings.server_name,
                     server_version=get_version(),
                 )

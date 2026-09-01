@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     api_port: int = Field(
         default=8000, ge=1024, le=65535, description="API server port"
     )
-    ws_port: int = Field(
-        default=8001, ge=1024, le=65535, description="WebSocket server port"
-    )
     debug: bool = Field(default=False, description="Enable debug mode")
     server_name: str = Field(
         default="LabLink Server", description="Server instance name"
@@ -628,13 +625,6 @@ class Settings(BaseSettings):
         path = Path(v)
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
-
-    @validator("api_port", "ws_port")
-    def validate_different_ports(cls, v, values):
-        """Ensure API and WebSocket ports are different."""
-        if "api_port" in values and v == values["api_port"]:
-            raise ValueError("WebSocket port must be different from API port")
-        return v
 
     def validate_all(self) -> list[str]:
         """Validate all settings and return warnings."""

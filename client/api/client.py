@@ -60,7 +60,9 @@ class LabLinkClient:
         Args:
             host: Server hostname or IP address
             api_port: REST API port
-            ws_port: WebSocket port
+            ws_port: retained for backwards compatibility and ignored. The
+                /ws endpoint is a route on the API server, so the WebSocket
+                connection is built from api_port.
         """
         self.host = host
         self.api_port = api_port

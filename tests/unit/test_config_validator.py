@@ -62,10 +62,13 @@ class TestConfigValidator:
         assert len(validator.errors) == 0
 
     @patch('server.config.validator.settings')
-    def test_port_conflict_error(self, mock_settings):
-        """Test error when API and WebSocket ports are the same."""
+    def test_single_api_port_is_valid(self, mock_settings):
+        """There is no second port to conflict with.
+
+        /ws is a route on the API server, so the old "API and WebSocket ports
+        must differ" error was removed along with the phantom ws_port.
+        """
         mock_settings.api_port = 8000
-        mock_settings.ws_port = 8000  # Same as API port
         mock_settings.host = "127.0.0.1"
         mock_settings.data_dir = "/tmp/data"
         mock_settings.log_dir = "/tmp/logs"
@@ -88,15 +91,13 @@ class TestConfigValidator:
         validator = ConfigValidator()
         is_valid = validator.validate()
 
-        assert is_valid is False
-        assert len(validator.errors) > 0
-        assert any("port" in error.lower() for error in validator.errors)
+        assert is_valid is True
+        assert not [e for e in validator.errors if "port" in e.lower()]
 
     @patch('server.config.validator.settings')
     def test_privileged_port_warning(self, mock_settings):
         """Test warning when using privileged ports (<1024)."""
         mock_settings.api_port = 80
-        mock_settings.ws_port = 443
         mock_settings.host = "127.0.0.1"
         mock_settings.data_dir = "/tmp/data"
         mock_settings.log_dir = "/tmp/logs"
@@ -119,7 +120,7 @@ class TestConfigValidator:
         validator = ConfigValidator()
         validator.validate()
 
-        assert len(validator.warnings) >= 2  # At least warnings for both ports
+        assert validator.warnings
         assert any("root" in warning.lower() or "privileges" in warning.lower()
                   for warning in validator.warnings)
 
@@ -626,9 +627,12 @@ class TestConfigValidator:
     @patch('builtins.print')
     @patch('server.config.validator.settings')
     def test_print_results_with_errors(self, mock_settings, mock_print):
-        """Test print_results method with errors."""
+        """Test print_results method with errors.
+
+        Uses an invalid log level as the error source; this previously relied
+        on the API/WebSocket port conflict, which no longer exists.
+        """
         mock_settings.api_port = 8000
-        mock_settings.ws_port = 8000  # Conflict
         mock_settings.host = "127.0.0.1"
         mock_settings.data_dir = "/tmp/data"
         mock_settings.log_dir = "/tmp/logs"
@@ -639,7 +643,7 @@ class TestConfigValidator:
         mock_settings.command_timeout_ms = 1000
         mock_settings.enable_auto_reconnect = False
         mock_settings.enable_health_monitoring = False
-        mock_settings.log_level = "INFO"
+        mock_settings.log_level = "NOT_A_LEVEL"
         mock_settings.log_to_file = True
         mock_settings.log_rotation_size_mb = 10
         mock_settings.log_retention_days = 30
