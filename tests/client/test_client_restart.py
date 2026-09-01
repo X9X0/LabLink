@@ -89,7 +89,7 @@ class TestRestartIsWiredUp:
         from pathlib import Path
         import client.main as m
 
-        return Path(m.__file__).read_text()
+        return Path(m.__file__).read_text(encoding="utf-8")
 
     def test_easter_egg_checkout_restarts(self):
         source = self._source()
@@ -148,7 +148,7 @@ class TestGitOperationsUseTheCheckout:
 
         import client.utils.git_operations as git_ops
 
-        source = Path(git_ops.__file__).read_text()
+        source = Path(git_ops.__file__).read_text(encoding="utf-8")
         calls = re.findall(r"subprocess\.run\((?:[^()]|\([^()]*\))*\)", source, re.S)
 
         assert calls, "no subprocess calls found - did the module change shape?"
@@ -213,7 +213,7 @@ class TestVersionInStatusBar:
         from pathlib import Path
 
         win, _ = window
-        expected = (Path(__file__).parent.parent.parent / "VERSION").read_text().strip()
+        expected = (Path(__file__).parent.parent.parent / "VERSION").read_text(encoding="utf-8").strip()
 
         assert win._client_version == expected
 
@@ -257,7 +257,7 @@ class TestVersionInStatusBar:
 
         import client.ui.main_window as mw
 
-        source = Path(mw.__file__).read_text()
+        source = Path(mw.__file__).read_text(encoding="utf-8")
         setup = source.split("def _setup_status_bar", 1)[1].split("def ", 1)[0]
 
         assert setup.index("branch_detected.connect") < setup.index("threading.Thread")
