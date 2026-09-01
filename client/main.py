@@ -8,9 +8,23 @@ import logging
 import sys
 from pathlib import Path
 
-# Add the repo root to path, so `client.*` resolves as a package when this
-# file is run directly (`python client\main.py`) rather than via `-m`.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Both roots, because the tree is imported both ways and neither invocation
+# supplies both on its own.
+#
+#   client.ui.*  needs the repo root      -- absent when run as a file, since
+#                                            Python adds only the script's own
+#                                            directory
+#   ui.*, utils.*  need client/           -- absent under `-m client.main`,
+#                                            where sys.path[0] is the cwd
+#
+# Getting this wrong breaks only one of the two invocations, and only on the
+# lazily-imported paths, so it survives a smoke test: `from ui.sd_card_writer
+# import SDCardWriter` in pi_image_builder.py is reached by opening the SD
+# writer, not by starting the client.
+_CLIENT_DIR = Path(__file__).resolve().parent
+for _root in (_CLIENT_DIR.parent, _CLIENT_DIR):
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import qasync
 from PyQt6.QtCore import Qt

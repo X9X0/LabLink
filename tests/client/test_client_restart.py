@@ -82,6 +82,64 @@ class TestRestartClient:
                 _restart_client()
 
 
+class TestBothInvocationsCanImportEverything:
+    """`python client/main.py` and `python -m client.main` must both work.
+
+    The tree is imported two ways -- `client.ui.*` in most places, but bare
+    `ui.*` and `utils.*` in a few (pi_image_builder reaches the SD writer with
+    `from ui.sd_card_writer import SDCardWriter`, and api/client.py imports
+    `utils.websocket_manager`). Neither invocation puts both roots on sys.path
+    by itself: running the file adds only client/, and `-m` adds only the cwd.
+
+    main.py adds both. Getting it wrong breaks one invocation on the *lazily*
+    imported paths only, so the client still starts and the damage shows up
+    later, when someone opens a dialog.
+    """
+
+    BARE_IMPORTS = ["ui.sd_card_writer", "utils.websocket_manager"]
+    PACKAGE_IMPORTS = ["client.ui.main_window", "client.ui.theme"]
+
+    def _run(self, extra_paths, module):
+        import subprocess
+        import sys as _sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        code = (
+            "import sys\n"
+            + "".join(f"sys.path.insert(0, r'{p}')\n" for p in extra_paths)
+            + f"import {module}\n"
+            "print('OK')\n"
+        )
+        return subprocess.run([_sys.executable, "-c", code], cwd=str(root),
+                              capture_output=True, text=True)
+
+    @pytest.mark.parametrize("module", BARE_IMPORTS + PACKAGE_IMPORTS)
+    def test_importable_with_the_paths_main_sets_up(self, module):
+        """main.py puts both roots on sys.path, so every form resolves."""
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        result = self._run([str(root), str(root / "client")], module)
+
+        assert "OK" in result.stdout, (
+            f"{module} does not import with both roots on sys.path:\n"
+            f"{result.stderr}"
+        )
+
+    def test_main_adds_both_roots(self):
+        """The guard: main.py must not go back to adding only one."""
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[2]
+                  / "client" / "main.py").read_text(encoding="utf-8")
+
+        assert "_CLIENT_DIR.parent, _CLIENT_DIR" in source, (
+            "main.py no longer adds both the repo root and client/ to sys.path; "
+            "one of the two invocations will break on a lazily-imported module"
+        )
+
+
 class TestRestartIsWiredUp:
     """The helper is useless if nothing calls it."""
 
