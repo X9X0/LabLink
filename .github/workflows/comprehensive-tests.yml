@@ -51,7 +51,8 @@ jobs:
             libxcb-xinerama0 \
             libxcb-xfixes0 \
             x11-utils \
-            xvfb
+            xvfb \
+            dosfstools
 
       - name: Install dependencies
         run: |
@@ -71,7 +72,10 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           # Use xvfb-run for GUI tests (headless X server)
-          xvfb-run -a pytest tests/unit/ \
+          # tests/client/ covers the desktop client: the Pi image builder
+          # and the SSH known-hosts handling. It was not run here at all, so
+          # those suites were dead weight in CI.
+          xvfb-run -a pytest tests/unit/ tests/client/ \
             -v \
             --cov=server \
             --cov=client \

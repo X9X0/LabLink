@@ -25,3 +25,10 @@ mypy>=2.3.1
 # Optional: For better test output
 pytest-sugar>=1.1.1
 pytest-html>=4.2.0
+
+# Raspberry Pi image builder (tests/client/test_pi_image_native.py).
+# Without these the image-builder tests importorskip themselves and pass
+# vacuously, which is worse than not having them.
+pyfatfs>=1.1.0
+passlib>=1.7.4
+paramiko>=4.0.0
