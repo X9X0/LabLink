@@ -565,6 +565,13 @@ def main(argv: Optional[list] = None) -> int:
     except PiImageError as exc:
         print(f"\nerror: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        # A missing --image, an unwritable output path, a full disk, or a
+        # failed download: urllib's errors subclass OSError too. All of these
+        # are the user's environment rather than a bug, and a traceback makes
+        # a working tool look broken.
+        print(f"\nerror: {exc}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

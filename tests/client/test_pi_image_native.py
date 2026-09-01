@@ -33,6 +33,7 @@ from client.utils.pi_image_native import (  # noqa: E402
     customize_image,
     find_fat_partition,
     hash_password_for_userconf,
+    main,
 )
 from tests.client.fat_reader import Fat32Reader  # noqa: E402
 
@@ -509,6 +510,64 @@ class TestFilesystemConsistency:
         assert result.returncode == 0, (
             f"fsck reported problems:\n{result.stdout}\n{result.stderr}"
         )
+
+
+class TestCommandLine:
+    """Exit codes and error output, which scripts depend on.
+
+    A CLI that reports success on refusal is worse than one that fails: the
+    caller carries on with an image that was never built.
+    """
+
+    def test_success_returns_zero(self, blank_image, tmp_path):
+        out = tmp_path / "out.img"
+
+        assert main(["--image", blank_image, "-o", str(out),
+                     "--password", "pw"]) == 0
+        assert out.exists()
+
+    def test_rejected_branch_returns_one(self, blank_image, tmp_path, capsys):
+        rc = main(["--image", blank_image, "-o", str(tmp_path / "out.img"),
+                   "--password", "pw", "--branch", 'main"; id; echo "'])
+
+        assert rc == 1
+        assert "Refusing to build with branch" in capsys.readouterr().err
+
+    def test_rejected_input_returns_one(self, blank_image, tmp_path, capsys):
+        rc = main(["--image", blank_image, "-o", str(tmp_path / "out.img"),
+                   "--password", "pw", "--hostname", "bad\nname"])
+
+        assert rc == 1
+        assert "line break" in capsys.readouterr().err
+
+    def test_missing_source_image_reports_cleanly(self, tmp_path, capsys):
+        """An absent file is the user's environment, not a bug: no traceback."""
+        rc = main(["--image", str(tmp_path / "nope.img"),
+                   "-o", str(tmp_path / "out.img"), "--password", "pw"])
+
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Traceback" not in err
+        assert err.strip().startswith("error:")
+
+    def test_unwritable_output_reports_cleanly(self, blank_image, tmp_path, capsys):
+        rc = main(["--image", blank_image,
+                   "-o", str(tmp_path / "no-such-dir" / "x" / "out.img"),
+                   "--password", "pw"])
+
+        assert rc == 1
+        assert "Traceback" not in capsys.readouterr().err
+
+    def test_a_truncated_download_is_not_parsed_as_a_disk(self, tmp_path, capsys):
+        """The 404-page-saved-as-an-image case, reported as an error not a crash."""
+        bad = tmp_path / "bad.img"
+        bad.write_bytes(b"<html>404</html>" + b"\0" * 600)
+
+        rc = main(["--image", str(bad), "-o", str(tmp_path / "out.img"),
+                   "--password", "pw"])
+
+        assert rc == 1
+        assert "MBR boot signature" in capsys.readouterr().err
 
 
 class TestPkgResourcesShim:
