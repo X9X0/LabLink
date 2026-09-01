@@ -39,7 +39,8 @@ Report findings by appending a section to this file, as the previous runs did.
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
 | Writing the card from the wizard | ❌ failed -- fell back to Raspberry Pi Imager; details pending |
-| Booting a wizard-built image | ⏳ in progress -- SSH unusable (blank password, see below), API check pending |
+| Booting a wizard-built image | ⚠️ booted and sshd came up, but LabLink never started and it cannot be diagnosed -- blank password, no account; see below |
+| Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
 
 Full detail in [Still open](#still-open). Three bugs have already come out of
@@ -1055,3 +1056,64 @@ default application password.
 A consequence for testing: the SSH half of
 `tests/hardware/test_live_pi.py` cannot run against this image at all. The
 API and auth halves still can.
+
+### How it was fixed, and a note for whoever wrote 58d9de8
+
+Two fixes for this landed within minutes of each other, in the same three
+files: 58d9de8 added a warning, and 22501c8 generates a password instead.
+That was not a race anyone lost -- 58d9de8 could not have known, because the
+decision came from the repository owner in the meantime: **generate, rather
+than warn.**
+
+So a blank field now produces a strong unique password rather than either a
+lockout or a known default. It is grouped in fours from an alphabet with no
+`0`/`O` or `1`/`l`/`I`, since it gets read off a banner and typed by hand,
+and it is guaranteed an upper-case letter and a digit for the LabLink
+account rules. The wizard prints it above the build output before the card
+is written; the CLI prints it after the prompt.
+
+The Pi publishes it too, on the console login banner, because nobody typed
+it and the only other copy is on the machine that built the image. That is
+gated on a marker file written *only* for generated passwords -- a password
+the user chose is theirs and is never displayed -- and `firstrun.sh` reads
+the plaintext from the staged file rather than echoing it, because the
+journal is world-readable. A timer restores the stock `/etc/issue` once the
+password has been changed, so the notice does not sit on the login screen
+forever.
+
+**58d9de8's warning was removed rather than reworded**, and it is worth
+being explicit about why, so it does not come back. With a password always
+present, every claim it made became false: an account *is* created, the Pi
+is *not* unreachable, and LabLink's login uses the generated password rather
+than its default. There is no longer a bad outcome to warn about.
+
+What was kept from it is `test_the_image_really_has_no_account`. That pins
+`customize_image`'s own behaviour, which is unchanged and deliberately so --
+and it is precisely what makes generating at the layer above load-bearing
+rather than decorative. Its two CLI tests asserted the warning text and were
+replaced by tests of the new behaviour: that the CLI generates, prints the
+password it actually shipped, marks the image for the console banner,
+honours `--no-ssh`, and leaves a chosen password verbatim and unprinted.
+
+`tests/client/`: 130 collected before this, **144 collected, 143 passed,
+1 skipped** after.
+
+### The Pi from that image did not finish setting up
+
+Recorded because it is unresolved rather than because it is understood.
+
+The blank-password Pi booted and sshd came up -- port 22 answers -- but
+after roughly 25 minutes ports 80 and 8000 were still closed and
+`/health` never responded. The CLI-built image reached a healthy stack in
+about eight.
+
+The cause is not established. One candidate, unconfirmed: with no
+`userconf.txt`, Raspberry Pi OS runs its own interactive account-creation
+prompt on tty1, which can hold up a boot that `lablink-first-boot.service`
+is queued behind. Checking would need a monitor on the Pi.
+
+Which is the sharper point: **the failure cannot be diagnosed remotely,
+because there is no account to log in as.** An unreachable Pi is not only
+inconvenient, it is undebuggable, and that is the strongest argument for
+the image never being built that way in the first place. Under the fix
+above this state is no longer reachable from either entry point.
