@@ -144,7 +144,14 @@ so keep the check independent.
   below. A CLI-built image booted, ran first-run setup end to end, and served
   its web UI and API.
 - `fsck.vfat` itself was never run against a built image -- see that section
-  for why, and what stood in for it.
+  for why, and what stood in for it. It runs in CI on Linux against a
+  synthetic image, so the check is not absent overall, only from the
+  Windows-built one.
+- The `pkg_resources` shim is still unexercised: the test machine had
+  setuptools 58.1.0, which still provides the module. It needs a run against
+  setuptools >= 81, where `fs` cannot import without it.
+- The Qt wizard has still not run on Windows -- only the CLI. That needs
+  Python 3.12+ on that machine.
 
 ## Findings from the first Windows test (2026-09-01)
 
@@ -195,6 +202,8 @@ writing back into the FAT filesystem was never at risk.
 Re-running the build against the already-decompressed image (via `--image`)
 confirmed the fix -- build completed, and the FAT32 reader confirmed both
 scripts round-tripped with Unix-only line endings and the banner intact.
+Shipped as 1290bee; regression tests in `TestWindowsTextHandling`, which
+reproduce the failure on Linux under a forced ASCII locale.
 
 ### Independent FAT32 reader check: passed
 
@@ -254,7 +263,8 @@ native builders share one copy), so the bug is in scope here even though it
 has nothing to do with Windows specifically.
 
 **Fix**: dropped `local` from those three assignments -- they're script-level
-globals, not function-local, so the keyword was never valid.
+globals, not function-local, so the keyword was never valid. Shipped as
+0da195b; regression tests in `TestFirstBootScriptShell`.
 
 ### Noted, not fixed: `lablink.service` shows inactive right after first boot
 
