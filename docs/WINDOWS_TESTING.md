@@ -12,7 +12,10 @@ that would have blocked step 4 are all done. What is left is the interactive
 part nobody has automated: **Tools -> Build Raspberry Pi Image...**, filling
 in the fields, watching the progress bar and status bar, per
 [Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
-steps 4 through 7.
+steps 4 through 7 -- for which there is now a
+step-by-step script in
+[Human-in-the-loop script for the wizard run](#human-in-the-loop-script-for-the-wizard-run),
+written to be handed straight to whoever is sitting at the machine.
 
 That is not a formality. It is the only route that reaches:
 
@@ -258,6 +261,53 @@ image without a Pi" below. Then write it to a card and boot it.
 - whether any UAC prompt appeared
 - total build time, and whether the UI stayed responsive
 - the full traceback if it fails
+
+## Human-in-the-loop script for the wizard run
+
+Everything automatable has been automated. What is left needs a person at the
+machine, because it is a GUI. This is that script -- short on purpose, so it
+actually gets followed.
+
+**Before starting**, the agent on that machine should have the environment
+ready (steps 1-3 above) and confirm to the human:
+
+- the 3.12 venv exists and `pip install -r client\requirements.txt` succeeded
+- `pip install -r requirements-test.txt` has been run too
+- roughly 3 GB of free disk, and a network connection for the ~500 MB download
+
+Then hand over the following. Each step has one thing to look at; write down
+what you actually saw, including "as described", since that is the result.
+
+| # | Do this | Look for | Saw? |
+|---|---|---|---|
+| 1 | `python client\main.py` | Window opens. **Status bar** bottom-left reads `LabLink 2.0.0  📍 feat/native-pi-image-builder (<hash>)` in green | |
+| 2 | Menu: **Tools → Build Raspberry Pi Image...** | Wizard opens on its first page | |
+| 3 | Pi Model: your board. Hostname: `lablink-wiz`. Output: **a path with a space in it**, e.g. `C:\Users\<you>\My Images\wiz.img` | The file dialog accepts it | |
+| 4 | Admin password: anything. Wi-Fi: leave blank. Country: leave `US`. Branch: `main`. OS: Lite | Fields accept input; no validation complaints | |
+| 5 | Click through to the build page and start it | **No UAC / "Do you want to allow this app to make changes" prompt at any point** | |
+| 6 | Watch the first lines in the output pane | `Building with the native (pure Python) builder.` then `No administrator privileges are required.` | |
+| 7 | While it downloads (a few minutes) | Progress bar moves; the window still responds to dragging and clicking -- not "(Not Responding)" | |
+| 8 | Let it finish | Ends around 100% with a success message naming the .img path | |
+| 9 | Check the output file | The `.img` exists and is roughly 2.8 GB | |
+
+**Stop and report immediately if:**
+
+- a UAC prompt appears -- the whole point of this change is that none should
+- the output says `This tool requires bash to be installed` -- that means old
+  code is running, not this branch
+- the window greys out and stays unresponsive for more than a few seconds
+- the status bar in step 1 shows no branch at all
+
+**Optional but valuable**, on a run you do not need: click Cancel or close the
+window mid-build, and note whether it stops cleanly or hangs. Nothing has ever
+tested that path.
+
+**To report:** the "Saw?" column filled in, the first two lines from step 6
+verbatim, total elapsed time, and whether the window stayed responsive. If it
+failed, the whole output pane rather than a summary of it.
+
+Then write the image to a card and boot it -- a Pi from a wizard-built image
+closes the last gap, since only CLI-built images have booted so far.
 
 ## Confirming you are on the right code
 
