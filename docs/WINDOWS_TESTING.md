@@ -29,6 +29,7 @@ Report findings by appending a section to this file, as the previous runs did.
 |---|---|
 | CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
 | Regression suite on Windows | ✅ full `tests/client/`: 130 collected, 129 passed, 1 skipped (no dosfstools) |
+| `tests/unit/` on Windows | ⚠️ 609 collected, 597 passed, 4 failed (all one clock bug), 3 errors (no pyserial); 5 files must be `--ignore`d or the run aborts |
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
@@ -830,3 +831,84 @@ character would hit the same failure in front of a user rather than in a test
 run. Left alone here for the same reason as the `read_text()` sweep: it is
 unrelated to the image builder and deserves its own change, not a quiet
 ride-along on this branch.
+
+## Bug 6: `tests/unit/` on Windows, and a 15.6 ms clock (2026-09-01)
+
+00fe94d's fix works: `tests/unit/demo_test.py` and `test_settings.py` give
+**23 collected, 22 passed, 1 skipped** on Windows. Running the rest of that
+directory, per the collected-count discipline, turned up two things.
+
+### `tests/unit/` cannot be run as a directory at all
+
+```
+=========================== no tests ran in 12.88s ============================
+INTERNALERROR>   File "tests\unit\test_enhancements.py", line 133, in <module>
+INTERNALERROR>     sys.exit(1)
+INTERNALERROR> SystemExit: 1
+```
+
+Seven files under `tests/` are script-style -- written to be run as
+`python test_x.py`, with a top-level `try: import ... except: print(...);
+sys.exit(1)`. Under pytest that `sys.exit` runs at **import** time, and
+`SystemExit` during collection is an `INTERNALERROR` that aborts the whole
+session. Not one file's worth of tests: all of them, with `no tests ran`.
+
+They are `test_enhancements.py`, `test_new_drivers.py`,
+`test_safety_system.py`, `test_settings_root.py`, `test_setup.py`, plus
+`tests/gui/test_equipment_panels.py` and `test_visualization.py`.
+
+This is not Windows-specific, and it gets *worse* with dependencies
+installed rather than better: with `pyvisa` absent the module died early and
+pytest still collected 41 tests from elsewhere; with it present the module
+runs further, reaches a later `sys.exit(1)`, and takes the entire run with
+it.
+
+Excluding those five, `tests/unit/` is:
+
+```
+609 collected -- 597 passed, 5 skipped, 4 failed, 3 errors
+```
+
+The 3 errors are a missing `pyserial`; `tests/unit/` also needs
+`server/requirements.txt` (`pyvisa`, `scipy`, `psutil`) on top of the client
+and test ones. Installing those three into the 3.12 venv did not disturb it
+-- numpy 2.5.2, pandas 3.0.5 and PyQt6 6.11.0 were unchanged, and
+`tests/client/` stayed at 129 passed / 1 skipped.
+
+### The 4 failures are one bug: Windows' wall clock
+
+Measured on this machine:
+
+| clock | resolution | instant ops measuring exactly `0.0` |
+|---|---|---|
+| `time.time()` | **0.015625 s** | **999 / 1000** |
+| `time.perf_counter()` | 0.0000001 s | 400 / 1000 |
+
+15.625 ms is the classic Windows timer tick. On Linux `time.time()` resolves
+to about a nanosecond, which is why none of this is visible there.
+
+**`test_diagnostics.py::test_check_connection_success`** asserts
+`response_time_ms > 0`, and gets `0.0`. `server/diagnostics/manager.py:186`
+measures with `(time.time() - start) * 1000`; a mocked call finishes inside
+one tick, so the subtraction is exactly zero.
+
+**`test_advanced_analysis.py::TestParameterTrending`** (3 failures) ends in
+`numpy.linalg.LinAlgError: SVD did not converge in Linear Least Squares`.
+The test adds five trend points in a tight loop with no delay.
+`server/waveform/advanced_analysis.py:1255` fits a line against
+`(timestamp - start_time).total_seconds()`, and five timestamps taken inside
+one 15.6 ms tick are *identical* -- confirmed directly, five rapid
+`time.time()` calls yield one distinct value here. An all-zero x-vector is
+degenerate, and the fit collapses.
+
+The fix in both places is `time.perf_counter()`, which is monotonic and
+high-resolution everywhere. It is also simply the right API for a duration:
+`time.time()` can step backwards under an NTP correction and produce a
+negative elapsed time on any platform.
+
+**Not fixed here.** This is server diagnostics and waveform analysis, with no
+connection to the image builder, and folding it into this branch is exactly
+the ride-along that has been declined twice already. Recording it with the
+measurement so whoever picks it up does not have to rediscover the cause --
+and noting it ranks above the deferred `open()`/`read_text()` items, because
+those are latent whereas this is four tests failing today.
