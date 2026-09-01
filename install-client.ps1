@@ -12,7 +12,8 @@
 $LablinkDir = "$env:USERPROFILE\LabLink"
 $CreateDesktopShortcut = $true
 $CreateStartMenuShortcut = $true
-$PythonMinVersion = [Version]"3.8.0"
+# LabLink 2.0 requires Python 3.12+: numpy 2.5 and scipy 1.18 both drop 3.11.
+$PythonMinVersion = [Version]"3.12.0"
 
 # Color output functions
 function Write-Step {
@@ -61,10 +62,10 @@ function Get-PythonVersion {
 }
 
 function Install-Python {
-    Write-Step "Python not found or version too old. Installing Python 3.11..."
+    Write-Step "Python not found or older than 3.12. Installing Python 3.12..."
 
-    $pythonInstallerUrl = "https://www.python.org/ftp/python/3.11.7/python-3.11.7-amd64.exe"
-    $installerPath = "$env:TEMP\python-installer.exe"
+    $pythonInstallerUrl = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
+    $installerPath = "$env:TEMP\python-3.12-installer.exe"
 
     Write-Step "Downloading Python installer..."
     Invoke-WebRequest -Uri $pythonInstallerUrl -OutFile $installerPath
