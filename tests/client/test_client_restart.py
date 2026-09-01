@@ -155,14 +155,26 @@ class TestGitOperationsUseTheCheckout:
         without_cwd = [c for c in calls if "cwd=" not in c]
         assert not without_cwd, f"git calls not pinned to the checkout: {without_cwd}"
 
-    def test_branches_are_found_from_an_unrelated_directory(self, tmp_path,
-                                                            monkeypatch):
-        """The actual regression, exercised the way the bug happened."""
-        from client.utils.git_operations import get_current_git_branch
+    def test_git_resolves_the_checkout_from_an_unrelated_directory(
+            self, tmp_path, monkeypatch):
+        """The actual regression, exercised the way the bug happened.
+
+        Deliberately not asserting on the current branch: CI checks out a
+        detached HEAD, so `git branch --show-current` is legitimately empty
+        there and the test would fail for a reason unrelated to the bug.
+        The repository root answers the real question -- which repository did
+        git operate on -- and is well defined whether or not a branch is
+        checked out.
+        """
+        from pathlib import Path
+
+        from client.utils.git_operations import get_git_root, repo_dir
 
         monkeypatch.chdir(tmp_path)  # somewhere that is not a git repo
 
-        assert get_current_git_branch(), "no branch found outside the checkout"
+        root = get_git_root()
+        assert root, "git found no repository outside the checkout"
+        assert Path(root).resolve() == Path(repo_dir()).resolve()
 
     def test_is_git_checkout_detects_the_clone(self):
         from client.utils.git_operations import is_git_checkout
