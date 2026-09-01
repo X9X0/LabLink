@@ -42,6 +42,9 @@ MOUNT_ROOT="$WORK_DIR/root"
 
 # LabLink configuration
 LABLINK_VERSION="${LABLINK_VERSION:-latest}"
+# Git branch the image installs on first boot. Defaults to main; set this to
+# build a test image from a feature branch before it is merged.
+LABLINK_BRANCH="${LABLINK_BRANCH:-main}"
 LABLINK_HOSTNAME="${LABLINK_HOSTNAME:-lablink}"
 ENABLE_SSH="${ENABLE_SSH:-yes}"
 WIFI_SSID="${WIFI_SSID:-}"
@@ -671,7 +674,7 @@ echo "[LabLink] Downloading LabLink..."
 mkdir -p /opt/lablink
 cd /opt/lablink
 
-if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz; then
+if curl -fL "https://github.com/X9X0/LabLink/archive/refs/heads/__LABLINK_BRANCH__.tar.gz" -o lablink.tar.gz; then
     echo "[LabLink] Download successful, extracting..."
     tar -xzf lablink.tar.gz --strip-components=1
     rm lablink.tar.gz
@@ -1025,6 +1028,11 @@ echo "[LabLink] Setup marked as complete"
 systemctl disable lablink-first-boot.service
 
 FIRSTBOOT
+
+    # The heredoc above is quoted, so nothing inside it expanded at build time.
+    # Substitute the chosen branch into the generated script now.
+    sed -i "s|__LABLINK_BRANCH__|${LABLINK_BRANCH}|g" \
+        "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
 
     chmod +x "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
 
