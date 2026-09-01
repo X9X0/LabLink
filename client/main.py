@@ -2,6 +2,7 @@
 """LabLink GUI Client - Main entry point."""
 
 import argparse
+import os
 import asyncio
 import logging
 import sys
@@ -32,6 +33,40 @@ def setup_logging(debug=False):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler("lablink_client.log")],
     )
+
+
+def _restart_client(drop_easter_egg=False):
+    """Restart this client so newly checked-out code is actually loaded.
+
+    Python caches imported modules in sys.modules. MainWindow and everything
+    it pulls in -- including the Raspberry Pi image builder -- are imported at
+    the top of this file, before main() runs. Anything that rewrites those
+    files afterwards, whether the easter-egg branch selector or a client
+    self-update, changes nothing at all for the running process: it keeps
+    executing the code it loaded at startup while reporting success.
+
+    Args:
+        drop_easter_egg: strip --easter-egg from the restarted command, so the
+            branch dialog does not reappear on every launch.
+
+    This does not return: the process is replaced, or exits.
+    """
+    argv = list(sys.argv)
+    if drop_easter_egg:
+        argv = [a for a in argv if a != "--easter-egg"]
+
+    print("🔄 Restarting to load the updated code...\n")
+    sys.stdout.flush()
+
+    if os.name == "nt":
+        # os.execv on Windows detaches the child from the console in a way
+        # that loses its output, so spawn a replacement and exit instead.
+        import subprocess
+
+        subprocess.Popen([sys.executable] + argv)
+        sys.exit(0)
+
+    os.execv(sys.executable, [sys.executable] + argv)
 
 
 def main():
@@ -78,6 +113,11 @@ def main():
         if perform_client_update(ref):
             print(f"✅ Client successfully updated to {ref}")
             clear_update_flag()
+            # Same trap as the easter-egg checkout: the files on disk are now
+            # the new version, but this process is still running the old one.
+            # The flag is cleared first, so the restart cannot loop.
+            print(f"\n{'='*60}\n")
+            _restart_client()
         else:
             print(f"❌ Failed to update client to {ref}")
             print("The application will continue with the current version.")
@@ -239,8 +279,21 @@ def main():
                 if checkout_git_ref(selected_ref):
                     print(f"✅ Successfully checked out {selected_ref}\n")
                     logger.info(f"Successfully checked out {selected_ref}")
+                    # Restart, or the checkout has no effect on this run.
+                    # MainWindow and everything it imports were loaded from the
+                    # previous branch's files before main() started, and Python
+                    # caches modules in sys.modules -- changing the files on
+                    # disk afterwards changes nothing until the process
+                    # restarts. Without this the client silently keeps running
+                    # the old code while reporting a successful checkout.
+                    _restart_client(drop_easter_egg=True)
                 else:
                     print(f"❌ Failed to checkout {selected_ref}\n")
+                    print(
+                        "   The client directory must be a git clone for this "
+                        "to work.\n"
+                        "   Run with --debug to see git's own error.\n"
+                    )
                     logger.error(f"Failed to checkout {selected_ref}")
 
     # Create and show main window
