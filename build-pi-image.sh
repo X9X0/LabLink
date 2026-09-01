@@ -26,14 +26,24 @@ PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
 # run the LabLink desktop client on the Pi itself (e.g. a bench unit with a
 # touchscreen).
 #
-# NOTE: this pin is deliberate, not automatic. Newer releases exist and are
-# based on Debian Trixie rather than Bookworm; moving to one changes the host
-# OS major version, so bump it consciously and re-test. Current options at the
-# time of writing: 2026-06-19 (dir) / 2026-06-18-raspios-trixie-* (file).
+# Pinned deliberately, not tracked automatically: a base image bump changes
+# the host OS under every deployment, so it should be a conscious change that
+# gets built and booted before shipping.
+#
+# 2.0.0 moves to Debian Trixie (13) from Bookworm (12). Verified before the
+# switch: Docker publishes trixie packages for arm64, Raspberry Pi OS ships
+# trixie for both arm64 and armhf (so Pi 3 is still covered), and this script
+# installs no packages of its own and never touches raspi-config or
+# config.txt, so there is little Bookworm-specific surface to break. Wi-Fi is
+# configured through both wpa_supplicant.conf and a NetworkManager connection
+# file, and Trixie uses NetworkManager.
+#
+# To pin back to the previous Bookworm base:
+#   PI_OS_DIR_DATE=2024-03-15 PI_OS_FILE_DATE=2024-03-15 PI_OS_CODENAME=bookworm
 PI_OS_VARIANT="${PI_OS_VARIANT:-lite}"
-PI_OS_DIR_DATE="${PI_OS_DIR_DATE:-2024-03-15}"
-PI_OS_FILE_DATE="${PI_OS_FILE_DATE:-2024-03-15}"
-PI_OS_CODENAME="${PI_OS_CODENAME:-bookworm}"
+PI_OS_DIR_DATE="${PI_OS_DIR_DATE:-2026-06-19}"
+PI_OS_FILE_DATE="${PI_OS_FILE_DATE:-2026-06-18}"
+PI_OS_CODENAME="${PI_OS_CODENAME:-trixie}"
 
 case "$PI_MODEL" in
     "3")  PI_OS_ARCH="armhf" ;;   # Pi 3 uses the 32-bit image

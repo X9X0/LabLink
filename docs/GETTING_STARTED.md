@@ -15,7 +15,8 @@ LabLink is a modular client-server application for remote control and data acqui
 ### Server (Raspberry Pi)
 
 - Raspberry Pi 4 or 5
-- Raspberry Pi OS Lite (64-bit recommended)
+- Raspberry Pi OS Lite, Trixie/Debian 13 (64-bit recommended).
+  Images built by `build-pi-image.sh` use this by default.
 - Python 3.12 or higher
 - USB/Serial/Ethernet connections to lab equipment
 
