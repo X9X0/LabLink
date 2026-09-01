@@ -4,16 +4,18 @@ Branch: `feat/native-pi-image-builder` (PR #190)
 
 ## ▶ Next task
 
-**Run the Qt wizard on Windows under Python 3.12+.** Procedure:
-[Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312).
+**Click through the Qt wizard on Windows.** The environment is now prepped
+(see [Findings from preparing the Windows wizard
+environment](#findings-from-preparing-the-windows-wizard-environment-2026-09-01)
+below) -- Python 3.12.10, the full client dependency set, and a launch bug
+that would have blocked step 4 are all done. What is left is the interactive
+part nobody has automated: **Tools -> Build Raspberry Pi Image...**, filling
+in the fields, watching the progress bar and status bar, per
+[Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
+steps 4 through 7.
 
-It is not a repeat of the CLI run. It is the only route that reaches three
-things nothing has touched yet:
+That is not a formality. It is the only route that reaches:
 
-- **the `pkg_resources` shim** -- a fresh 3.12 venv has no setuptools at all,
-  so pip installs the current one (84) and `fs` cannot import without the
-  shim. The machine used so far had setuptools 58.1.0, which still provides
-  the module, so the shim has never actually run.
 - **the Qt layer** -- the build on a `QThread`, progress signals reaching the
   GUI, the window staying responsive, cancelling mid-build.
 - **the status bar branch indicator**, which was dead code until this branch
@@ -28,13 +30,14 @@ Report findings by appending a section to this file, as the previous runs did.
 | CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
 | Regression suite on Windows | ✅ 78 passed, 1 skipped (no dosfstools) |
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
-| **Qt wizard on Windows** | ❌ **not run -- this is the next task** |
-| `pkg_resources` shim | ❌ never exercised anywhere |
+| Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
+| `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
+| **Qt wizard on Windows -- the interactive part** | ❌ **not run -- this is the next task** |
 | Client restart after a branch switch, on Windows | ❌ not run |
 
-Full detail in [Still open](#still-open). Two bugs have already come out of
-Windows testing (1290bee, 0da195b), so treat "it worked" as worth recording
-in as much detail as a failure.
+Full detail in [Still open](#still-open). Three bugs have already come out of
+Windows testing (1290bee, 0da195b, and one below), so treat "it worked" as
+worth recording in as much detail as a failure.
 
 ## What changed and why it needs Windows testing
 
@@ -535,3 +538,117 @@ Pulled `07519e7` and re-ran the full suite on the same Windows 11 / Python
 The skip is `test_fsck_reports_a_clean_filesystem` -- still no `dosfstools`
 on this machine, exactly as expected. Every previously-failing test now
 passes, including both rewritten ones. No other regressions.
+
+## Findings from preparing the Windows wizard environment (2026-09-01)
+
+Steps 1--3 of the wizard procedure, plus a headless launch check. The
+interactive part (steps 4--7: clicking through the wizard itself) is
+deliberately **not** covered here -- it needs a human at the machine. What
+follows is everything that could be verified without one, including a bug
+that would have stopped the wizard run at step 4.
+
+### Environment
+
+Python 3.12 was already installed alongside 3.10, so nothing was installed
+system-wide:
+
+```
+-V:3.12 *  C:\Users\...\AppData\Local\Programs\Python\Python312\python.exe  (3.12.10)
+-V:3.10     C:\Program Files\Python310\python.exe                            (3.10.4)
+```
+
+The existing `client/venv` was a stale **3.10.0** venv (`pyvenv.cfg` says so),
+which cannot run the client at all -- numpy 2.5, pandas 3.0 and PyQt6 6.11 all
+require 3.12+. It is gitignored and disposable, so it was removed and rebuilt
+with `py -3.12`. `pip install -r client\requirements.txt` then succeeded with
+no build steps: every dependency resolved to a `cp312` wheel, PyQt6 6.11.0
+included.
+
+### The `pkg_resources` shim is real, and it works -- confirmed on Windows
+
+This is the gap the previous two runs could not close, and it closed exactly
+as predicted:
+
+```
+pip show setuptools          ->  Version: 84.0.0
+python -c "import pkg_resources"  ->  ModuleNotFoundError    (exit=1)
+```
+
+A fresh 3.12 venv ships no setuptools at all (`ensurepip` stopped including
+it); `fs` declares it as a runtime dependency, so pip pulled in 84.0.0, and
+84 no longer has `pkg_resources`. Then, directly:
+
+```
+python -c "import fs.base"
+  -> ModuleNotFoundError: No module named 'pkg_resources'
+     (raised from fs/__init__.py line 4: __import__("pkg_resources").declare_namespace)
+
+python -c "...; _install_pkg_resources_shim(); import fs.base; print('OK')"
+  -> OK
+```
+
+So `_install_pkg_resources_shim()` is now **load-bearing rather than
+theoretical**, and it does its job on Windows. The failure it prevents is not
+subtle -- without it the image builder cannot import its FAT library at all.
+
+### Bug 3: `python client\main.py` could not start, at all
+
+Step 4 of the wizard procedure says to run `python client\main.py`. That
+command fails immediately, on any platform, in a checkout without the repo
+root already on `sys.path`:
+
+```
+File "client\main.py", line 20, in <module>
+    from client.ui.main_window import MainWindow
+ModuleNotFoundError: No module named 'client'
+```
+
+The imports on lines 20--21 are absolute (`client.ui...`), which needs the
+**repo root** on `sys.path`. What line 13 actually added was
+`Path(__file__).parent` -- the `client/` directory itself, which makes
+`ui`/`utils` importable as top-level names but never creates a package called
+`client`. Running a file directly puts only that file's own directory on
+`sys.path`, not its parent, so nothing else supplied the missing entry.
+
+`python -m client.main` worked throughout, because the `-m` form resolves the
+package from the current directory -- which is why this survived: anyone
+launching it that way, or from an IDE that sets the working directory as the
+source root, would never see it.
+
+**Fix**: line 13 now inserts `Path(__file__).resolve().parent.parent`, the
+repo root. Verified both ways afterwards -- `python client\main.py` and
+`python -m client.main` each start cleanly and log
+`Starting LabLink GUI Client v2.0.0`, with the Qt event loop live.
+
+Note the shape of this one: the wizard procedure has been in this document
+since ffd650e and its very first command could not have worked. Worth
+remembering when a step "should obviously be fine".
+
+### Bug 4: the same UTF-8 read bug as 1290bee, in the client test suite
+
+`tests/client/test_client_restart.py` reads Python source back to assert on
+its shape, and did it with a bare `Path(...).read_text()` -- the identical
+mistake [Bug 1](#bug-1-pathread_text-decoded-with-the-wrong-codec-on-windows)
+fixed in the builder. Four tests died on Windows before asserting anything:
+
+```
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x9d in position 4351
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x8d in position 12738
+```
+
+`client/main.py` and `client/ui/main_window.py` both contain non-cp1252 UTF-8,
+so the tests could only ever pass on a UTF-8 locale. **Fix**: all four
+`read_text()` calls in that file now pass `encoding="utf-8"`. Suite goes from
+**14 passed / 4 failed** to **18 passed**.
+
+### Still worth doing: the rest of the codebase has the same pattern
+
+A grep for `.read_text()` with no `encoding=` finds roughly twenty more
+across `client/`, `server/`, `scripts/` and `lablink.py`. Most read `VERSION`
+or `requirements.txt` and are ASCII in practice, but
+`scripts/bump_version.py` reads `README.md`, `CHANGELOG.md` and the
+`Dockerfile`, any of which can carry an em-dash or a curly quote -- the same
+crash, in the release tooling, on a Windows machine.
+
+Not fixed here: it is a separate sweep, unrelated to the image builder, and
+it deserves its own change rather than being smuggled into this branch.
