@@ -37,7 +37,9 @@ Report findings by appending a section to this file, as the previous runs did.
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
-| **Qt wizard on Windows -- the interactive part** | ❌ **not run -- this is the next task** |
+| **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
+| Writing the card from the wizard | ❌ failed -- fell back to Raspberry Pi Imager; details pending |
+| Booting a wizard-built image | ⏳ in progress -- SSH unusable (blank password, see below), API check pending |
 | Client restart after a branch switch, on Windows | ❌ not run |
 
 Full detail in [Still open](#still-open). Three bugs have already come out of
@@ -990,3 +992,66 @@ the ride-along that has been declined twice already. Recording it with the
 measurement so whoever picks it up does not have to rediscover the cause --
 and noting it ranks above the deferred `open()`/`read_text()` items, because
 those are latent whereas this is four tests failing today.
+
+## The wizard run happened (2026-09-01)
+
+A human ran the script from 0ab1706 on the same Windows machine. **The wizard
+built an image.** That is the headline the branch existed for, and it is now
+done rather than pending.
+
+The output was `C:\Users\<user>\lablink pi.img`, 2,977,955,840 bytes
+(2,908,160 KB) -- byte-for-byte the same size as the CLI-built image. Read
+back with the independent FAT32 parser:
+
+| file | present |
+|---|---|
+| `firstrun.sh` | yes |
+| `lablink-first-boot.sh` | yes |
+| `ssh` | yes |
+| `cmdline.txt`, correctly patched | yes |
+
+`cmdline.txt` carries `systemd.run=/boot/firmware/firstrun.sh`,
+`systemd.run_success_action=reboot` and `systemd.unit=kernel-command-line.target`,
+with the original `root=`/`rootfstype=`/`rootwait`/`resize` arguments intact and
+no `init=`. Note the output path contains a space, which the wizard handled
+without complaint -- that was chosen deliberately, since no CLI run had used one.
+
+### The two things that did not go to plan
+
+**1. Writing the card from the wizard failed.** The human fell back to
+Raspberry Pi Imager, which wrote the same file successfully, so the image is
+not at fault. Details of that failure are still to be captured; nothing has
+ever exercised that path, so it is worth a section of its own once they are.
+
+**2. Blank passwords produce a Pi with no login account.** The password
+fields were left empty. That is honoured exactly as designed --
+`customize_image` writes `userconf.txt` and `lablink-admin-password` only
+`if config.admin_password`, and `test_no_password_writes_no_credentials`
+exists specifically to keep it that way ("must not create an empty-password
+login"). Confirmed against the built image: both files are **absent**, while
+the `ssh` flag file is **present**.
+
+On current Pi OS, `userconf.txt` is what creates the account. So the result
+is a Pi with **sshd enabled and no user to log in as** -- port 22 answers,
+every credential fails, and it is not a password anyone can guess or reset
+without re-imaging. Verified in practice: the previous image's password was
+rejected, which incidentally also proved the card really did hold the new
+wizard-built image rather than the old one.
+
+`firstrun.sh` degrades gracefully rather than breaking -- it logs
+`WARNING: admin does not exist; leaving userconf.txt`, skips the group and
+sudoers setup, and still installs `lablink-first-boot.service` -- so the Pi
+does complete setup and bring LabLink up. The application password falls back
+to `LabLink@2025`, the default `lablink-first-boot.sh` uses when nothing was
+staged.
+
+**The builder is right; the wizard is what needs the guard.** Refusing to
+create a passwordless login is correct. Letting someone reach the end of a
+wizard, wait through a 500 MB download and a ~3 GB write, and receive an
+unreachable Pi -- without a word -- is not. The field should either be
+required, or warn plainly that leaving it blank means no SSH access and a
+default application password.
+
+A consequence for testing: the SSH half of
+`tests/hardware/test_live_pi.py` cannot run against this image at all. The
+API and auth halves still can.
