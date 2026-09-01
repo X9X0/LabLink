@@ -21,6 +21,7 @@ import asyncio
 import glob
 import logging
 import sys
+import time
 from typing import Dict, List, Optional
 
 from equipment.bk_registry import (MANUFACTURER, PROTOCOL_FIXED,
@@ -76,6 +77,26 @@ def find_serial_ports(usb_only: bool = True) -> List[str]:
     return [port.device for port in ports]
 
 
+def _clear_pending_command(handle) -> None:
+    """Terminate any partial command the instrument is still holding.
+
+    The fixed-width supplies parse on CR. A probe that ends in anything else
+    leaves them waiting mid-command, and the next thing written is read as a
+    continuation of it rather than as a new command. A bare CR closes the
+    fragment as an empty command, which they discard; on a SCPI instrument it
+    is an empty program message, equally harmless. Whatever either replies is
+    then dropped along with our own receive buffer.
+    """
+    try:
+        handle.write(b"\r")
+        handle.flush()
+        # Long enough for a 9600-baud reply to land before we discard it.
+        time.sleep(0.05)
+        handle.reset_input_buffer()
+    except Exception as e:
+        logger.debug(f"Could not clear a pending command: {e}")
+
+
 def _probe_port_blocking(port: str, bauds, timeout: float) -> Optional[Dict]:
     """Ask one port who it is, trying each baud rate in turn.
 
@@ -101,8 +122,9 @@ def _probe_port_blocking(port: str, bauds, timeout: float) -> Optional[Dict]:
             return None  # The port itself is unusable; other rates won't help
 
         try:
-            # A model may leave a banner or a stale reply in the buffer.
-            handle.reset_input_buffer()
+            # Close out anything the instrument is holding from a previous
+            # attempt at the wrong baud, then drop whatever it says about it.
+            _clear_pending_command(handle)
 
             # 1. SCPI. Answers from every model except the fixed-width line.
             handle.write(b"*IDN?\n")
@@ -112,12 +134,19 @@ def _probe_port_blocking(port: str, bauds, timeout: float) -> Optional[Dict]:
                 return {"port": port, "baudrate": baud, "idn": reply,
                         "protocol": "scpi"}
 
+            # The fixed-width models terminate on CR and treat LF as an
+            # ordinary character, so one of them is now holding "*IDN?\n" as
+            # an unterminated command. reset_input_buffer() clears our end of
+            # the link, not theirs. Without an explicit CR the GMAX below
+            # arrives appended to that fragment, the instrument rejects the
+            # pair, and the port looks dead at every baud rate.
+            _clear_pending_command(handle)
+
             # 2. Legacy fixed-width. GMAX returns VVVCCC then OK, both CR
             #    terminated, and is read-only.
-            handle.reset_input_buffer()
             handle.write(b"GMAX\r")
             handle.flush()
-            raw = handle.read_until(b"OK\r").decode("ascii", "replace").strip()
+            raw = handle.read_until(b"OK\r").decode("ascii", "replace")
             digits = raw.replace("OK", "").strip()
             if len(digits) >= 6 and digits[:6].isdigit():
                 return {"port": port, "baudrate": baud, "gmax": digits[:6],

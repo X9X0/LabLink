@@ -148,6 +148,108 @@ class TestSerialProbe:
         assert _probe_port_blocking("/dev/does-not-exist", (9600,), 0.1) is None
 
 
+class FakeFixedWidthInstrument:
+    """A stand-in for a 1902B on a CP2102, framed the way the real one is.
+
+    Faithful in the one respect that matters: it parses on CR and treats LF as
+    an ordinary character, so anything written without a terminating CR is
+    held as an unterminated command and the next write is read as a
+    continuation of it.
+    """
+
+    def __init__(self, gmax=b"605160"):
+        self.gmax = gmax
+        self._command = b""       # what the instrument has accumulated
+        self._out = b""           # what it has queued for us to read
+        self.closed = False
+
+    # -- the pyserial surface the probe uses --------------------------------
+    def write(self, data: bytes) -> int:
+        for byte in data:
+            char = bytes([byte])
+            if char == b"\r":
+                self._execute(self._command)
+                self._command = b""
+            else:
+                self._command += char
+        return len(data)
+
+    def flush(self):
+        pass
+
+    def reset_input_buffer(self):
+        # Clears our end of the link only — never the instrument's command
+        # buffer, which is exactly the trap this test exists for.
+        self._out = b""
+
+    def read_until(self, expected: bytes) -> bytes:
+        index = self._out.find(expected)
+        if index == -1:
+            out, self._out = self._out, b""   # a real port would time out here
+            return out
+        end = index + len(expected)
+        out, self._out = self._out[:end], self._out[end:]
+        return out
+
+    def close(self):
+        self.closed = True
+
+    def _execute(self, command: bytes) -> None:
+        if command == b"GMAX":
+            self._out += self.gmax + b"\r" + b"OK\r"
+        elif command == b"":
+            pass          # an empty command is discarded silently
+        # Anything else — including "*IDN?\nGMAX" — is rejected in silence.
+
+
+@pytest.fixture
+def fake_instrument(monkeypatch):
+    """Patch pyserial so the probe opens the fake instrument instead."""
+    import serial
+
+    instrument = FakeFixedWidthInstrument()
+    monkeypatch.setattr(serial, "Serial", lambda **kwargs: instrument)
+    return instrument
+
+
+class TestLegacyProbeFraming:
+    """A fixed-width supply must survive the SCPI attempt that precedes it."""
+
+    def test_gmax_is_heard_after_a_failed_idn_probe(self, fake_instrument):
+        """The regression: *IDN? leaves a fragment that swallows GMAX.
+
+        *IDN?\n has no CR, so the instrument holds it mid-command. Unless the
+        probe closes that fragment out, GMAX arrives appended to it, the
+        instrument rejects the pair, and the port reads as dead at every baud
+        rate — which is exactly what a real 1902B did.
+        """
+        result = _probe_port_blocking("/dev/ttyUSB0", (9600,), 0.1)
+
+        assert result is not None, "the probe went deaf after its SCPI attempt"
+        assert result["protocol"] == "fixed"
+        assert result["gmax"] == "605160"
+
+    def test_the_fragment_is_actually_cleared_not_just_tolerated(
+        self, fake_instrument
+    ):
+        """Assert the mechanism, so a future rewrite cannot regress it quietly."""
+        _probe_port_blocking("/dev/ttyUSB0", (9600,), 0.1)
+        assert fake_instrument._command == b"", (
+            "the instrument was left holding an unterminated command"
+        )
+
+    def test_gmax_becomes_a_device_with_the_units_real_limits(
+        self, fake_instrument
+    ):
+        result = _probe_port_blocking("/dev/ttyUSB0", (9600,), 0.1)
+        device = _device_from_probe(result)
+        # 605160 is a live 1902B: 60.5 V and 16.0 A of headroom over its
+        # 60 V / 15 A rating.
+        assert device.metadata["max_voltage"] == 60.5
+        assert device.metadata["max_current"] == 16.0
+        assert device.device_type == DeviceType.POWER_SUPPLY
+
+
 class TestSerialProbeIntegration:
     """The probe runs as part of a scan and merges with the other scanners."""
 
