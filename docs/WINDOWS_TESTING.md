@@ -2,8 +2,39 @@
 
 Branch: `feat/native-pi-image-builder` (PR #190)
 
-Everything here is verified on Linux and **unverified on Windows**, which is
-the entire point of the change. This is the handoff for whoever runs it there.
+## ▶ Next task
+
+**Run the Qt wizard on Windows under Python 3.12+.** Procedure:
+[Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312).
+
+It is not a repeat of the CLI run. It is the only route that reaches three
+things nothing has touched yet:
+
+- **the `pkg_resources` shim** -- a fresh 3.12 venv has no setuptools at all,
+  so pip installs the current one (84) and `fs` cannot import without the
+  shim. The machine used so far had setuptools 58.1.0, which still provides
+  the module, so the shim has never actually run.
+- **the Qt layer** -- the build on a `QThread`, progress signals reaching the
+  GUI, the window staying responsive, cancelling mid-build.
+- **the status bar branch indicator**, which was dead code until this branch
+  and has never been seen working on Windows.
+
+Report findings by appending a section to this file, as the previous runs did.
+
+## Status
+
+| | State |
+|---|---|
+| CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
+| Regression suite on Windows | ✅ 78 passed, 1 skipped (no dosfstools) |
+| CI on Linux (3.12 + 3.13) | ✅ 15/15 |
+| **Qt wizard on Windows** | ❌ **not run -- this is the next task** |
+| `pkg_resources` shim | ❌ never exercised anywhere |
+| Client restart after a branch switch, on Windows | ❌ not run |
+
+Full detail in [Still open](#still-open). Two bugs have already come out of
+Windows testing (1290bee, 0da195b), so treat "it worked" as worth recording
+in as much detail as a failure.
 
 ## What changed and why it needs Windows testing
 
@@ -293,9 +324,10 @@ so keep the check independent.
 - The `pkg_resources` shim is still unexercised: the test machine had
   setuptools 58.1.0, which still provides the module. It needs a run against
   setuptools >= 81, where `fs` cannot import without it.
-- The Qt wizard has still not run on Windows -- only the CLI. See
+- **The Qt wizard has still not run on Windows** -- only the CLI. This is the
+  current next task; see
   [Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
-  for the procedure; it also covers the shim gap above, because a fresh 3.12
+  for the procedure. It also covers the shim gap above, because a fresh 3.12
   venv has no setuptools at all.
 - The client restart after an in-app branch switch is unverified on Windows.
   It takes a different path there -- `subprocess.Popen` then exit, rather than
