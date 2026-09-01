@@ -580,6 +580,24 @@ class Settings(BaseSettings):
         default=True, description="Scan serial resources (enable for USB-to-serial devices like BK 1685B)"
     )
 
+    # Serial probing for instruments VISA cannot enumerate
+    discovery_enable_serial_probe: bool = Field(
+        default=True,
+        description="Probe serial ports for B&K instruments VISA cannot see: "
+                    "USB-CDC models (a UART bridge, never enumerated by VISA) "
+                    "and legacy fixed-width supplies (no *IDN? at all)",
+    )
+    discovery_serial_probe_usb_only: bool = Field(
+        default=True,
+        description="Restrict serial probing to USB-attached ports. Turn off "
+                    "for an RS-232 instrument on a real serial card, or where "
+                    "the container cannot read USB IDs from sysfs",
+    )
+    discovery_serial_probe_timeout_sec: float = Field(
+        default=0.6, ge=0.1, le=5.0,
+        description="Per-baud-rate wait for a reply while probing a port",
+    )
+
     # Connection testing
     discovery_test_connections: bool = Field(
         default=True, description="Test discovered devices"
