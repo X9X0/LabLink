@@ -284,9 +284,40 @@ that is *on* the branch.
 ## What to report back
 
 - `python --version`
-- `pip show pyfatfs passlib setuptools`
+- `pip show pyfatfs passlib setuptools` (see the `pip show paramiko` note
+  above if it throws a UnicodeEncodeError)
 - the full traceback if it fails
 - whether the produced `.img` boots a Pi
+- **the collected total, not just the passed count** -- see below
+
+## Expected test counts
+
+Report what pytest *collected*, because a suite that quietly collects less
+than it should looks identical to one that passes:
+
+| Suite | Expected |
+|---|---|
+| `tests/client/` | **130 collected** |
+| `tests/client/test_pi_image_native.py` | 79 |
+| `tests/client/test_client_restart.py` | 18 |
+| `tests/client/test_async_offload.py` | 20 |
+| `tests/client/test_ssh_known_hosts.py` | 13 |
+| `tests/hardware/test_live_pi.py` | 29 |
+
+`pytest tests/client/ --collect-only -q` prints the total on its own.
+
+Two files opt out rather than fail when a dependency is missing, so their
+tests vanish from the run instead of erroring:
+
+- `test_ssh_known_hosts.py` needs **paramiko** (`pytest.importorskip`) -- it
+  covers the known_hosts/TOFU handling under paramiko 5, including the
+  bracketed `[host]:port` form.
+- `test_async_offload.py` imports `client.api.client`, so it needs the client
+  dependency set.
+
+`pip install -r requirements-test.txt` alongside `client\requirements.txt`
+covers both. A run reporting **97** rather than 130 is those two files
+missing, which is worth fixing before reading anything into the result.
 
 ## Verifying an image without a Pi
 
