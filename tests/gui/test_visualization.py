@@ -22,7 +22,11 @@ except ImportError as e:
     print("\nRequired packages:")
     print("  pip install PyQt6 pyqtgraph numpy")
     PYQT_AVAILABLE = False
-    sys.exit(1)
+    # Only exit when run as a script. Under pytest this executes at import
+    # time, and a SystemExit during collection is an INTERNALERROR that
+    # aborts the entire session -- every test in the run, not just this file.
+    if __name__ == "__main__":
+        sys.exit(1)
 
 
 class VisualizationDemo(QMainWindow):

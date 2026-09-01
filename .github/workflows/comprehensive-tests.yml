@@ -64,6 +64,18 @@ jobs:
           # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
           pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
 
+      - name: Collection must not modify tracked files
+        run: |
+          # Importing a test module runs anything at its top level. That used
+          # to rewrite profiles/*.json on every collection, so the timestamps
+          # got committed by accident. Catch it here rather than in review.
+          pytest tests/ --collect-only -q > /dev/null
+          if ! git diff --quiet; then
+            echo "Collecting tests modified tracked files:"
+            git diff --stat
+            exit 1
+          fi
+
       - name: Run unit tests with coverage
         env:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
