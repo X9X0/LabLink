@@ -685,6 +685,36 @@ class ConfigurationPage(QWizardPage):
             )
             return False
 
+        # An empty admin password produces a Pi nobody can log in to.
+        # customize_image writes userconf.txt only when a password is set --
+        # correctly, since the alternative is a passwordless login -- and on
+        # current Raspberry Pi OS userconf.txt is what creates the account.
+        # With SSH enabled that yields a Pi answering on port 22 with no
+        # account to answer for, which cannot be recovered without re-imaging.
+        # Reaching that after a 500 MB download and a 3 GB write, unwarned,
+        # is the part that is wrong.
+        if not self.admin_password_edit.text():
+            enable_ssh = self.enable_ssh_check.isChecked()
+            detail = (
+                "No account will be created on the Pi.\n\n"
+                + ("SSH will be enabled but there will be nothing to log in "
+                   "as, so the Pi will be unreachable over the network and "
+                   "can only be recovered by writing the card again.\n\n"
+                   if enable_ssh else
+                   "You will need a monitor and keyboard to finish setup on "
+                   "the Pi itself.\n\n")
+                + "LabLink's own login will use its default password.\n\n"
+                  "Set a password instead?"
+            )
+            reply = QMessageBox.warning(
+                self, "No admin password", detail,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.admin_password_edit.setFocus()
+                return False
+
         # Check if Wi-Fi SSID and password are both provided or both empty
         wifi_ssid = self.wifi_ssid_edit.text().strip()
         wifi_password = self.wifi_password_edit.text().strip()

@@ -774,3 +774,52 @@ class TestFirstBootScriptShell:
             "unset operands no longer make this test true -- re-check the "
             "reasoning behind this guard"
         )
+
+
+class TestBlankPasswordIsAnnounced:
+    """No password means no account, which is easy to do by accident.
+
+    customize_image writes userconf.txt only when a password is set, which is
+    right -- the alternative is a passwordless login. But on current Raspberry
+    Pi OS userconf.txt is what creates the account, so with SSH enabled the
+    result is a Pi answering on port 22 with nothing to log in as, recoverable
+    only by writing the card again. Found when a wizard run left the field
+    blank and produced exactly that.
+
+    The builder's behaviour is correct and stays; what was missing is anyone
+    saying so before a 500 MB download and a 3 GB write.
+    """
+
+    def test_the_image_really_has_no_account(self, blank_image, config):
+        """The premise: this is what a blank password produces."""
+        config.admin_password = ""
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            names = {n.lower() for n in fs.list_root()}
+
+        assert "userconf.txt" not in names, "no account is created"
+        assert "ssh" in names, "yet sshd is enabled - nothing to log in as"
+
+    def test_cli_warns_on_stderr(self, blank_image, capsys):
+        """Silence here is how someone ends up with an unreachable Pi."""
+        rc = main(["--image", blank_image, "-o", blank_image, "--password", ""])
+
+        err = capsys.readouterr().err
+        assert rc == 0, "a blank password is allowed, only announced"
+        assert "no account will be created" in err
+        assert "unreachable" in err
+
+    def test_cli_warning_reflects_the_ssh_setting(self, blank_image, capsys):
+        """Without SSH the consequence is different, so say a different thing."""
+        main(["--image", blank_image, "-o", blank_image, "--password", "",
+              "--no-ssh"])
+
+        err = capsys.readouterr().err
+        assert "monitor and keyboard" in err
+        assert "unreachable" not in err
+
+    def test_no_warning_when_a_password_is_given(self, blank_image, capsys):
+        main(["--image", blank_image, "-o", blank_image, "--password", "pw"])
+
+        assert "no account will be created" not in capsys.readouterr().err
