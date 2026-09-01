@@ -702,7 +702,10 @@ Two notes for anyone repeating this:
 - `pytest-asyncio` is needed, or the three `TestWebSocket` async tests report
   as failures with "async def functions are not natively supported" rather
   than as an environment problem. It is not in `client/requirements.txt`,
-  since it is a test-only dependency.
+  since it is a test-only dependency -- it is declared in
+  `requirements-test.txt`, along with `paramiko`, which this suite also needs.
+  `pip install -r requirements-test.txt` covers both, and is the right way to
+  run any of the test suites rather than installing packages one at a time.
 - The LabLink *web* password is not the SSH password. First-boot reads it
   from `/etc/lablink-build-admin-password`, staged into the image from
   `--password`, so for a builder-made Pi the two happen to coincide.
