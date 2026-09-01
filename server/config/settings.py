@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     api_port: int = Field(
         default=8000, ge=1024, le=65535, description="API server port"
     )
+    # Retired in 2.0.0: /ws is a route on the API server, so there is no
+    # separate WebSocket port. Kept as an accepted-but-unused field because
+    # pydantic-settings forbids unknown keys, and an existing deployment whose
+    # .env still sets LABLINK_WS_PORT would otherwise fail to start.
+    ws_port: Optional[int] = Field(
+        default=None,
+        deprecated="Unused since 2.0.0; /ws is served on the API port.",
+        description="Deprecated and ignored; retained so stale .env files still load",
+    )
     debug: bool = Field(default=False, description="Enable debug mode")
     server_name: str = Field(
         default="LabLink Server", description="Server instance name"
