@@ -28,7 +28,7 @@ Report findings by appending a section to this file, as the previous runs did.
 | | State |
 |---|---|
 | CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
-| Regression suite on Windows | ✅ 78 passed, 1 skipped (no dosfstools) |
+| Regression suite on Windows | ✅ full `tests/client/`: 130 collected, 129 passed, 1 skipped (no dosfstools) |
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
@@ -757,3 +757,76 @@ Verified after the change: `pip install -r requirements-test.txt` into the
 3.12 venv brings in pytest 9.1.1, pytest-asyncio 1.4.0, paramiko 5.0.0 and
 the rest in one step, and both suites still pass on Windows -- 96 passed /
 1 skipped for `tests/client/`, 25 passed / 4 skipped against the live Pi.
+
+## Bug 5, found by counting the tests (2026-09-01)
+
+1e39c8e was right to check the arithmetic, and the correction was worth
+making twice over.
+
+First, plainly: the "96 passed / 1 skipped for `tests/client/`" above was
+sloppy reporting on my part. That run named two files explicitly rather than
+the directory, so it was never a `tests/client/` result at all. The number
+was true; the label was not.
+
+Second, running the directory properly did not simply add the missing tests.
+It failed:
+
+```
+4 failed, 125 passed, 1 skipped   (130 collected)
+```
+
+All four in `test_async_offload.py`, all identical:
+
+```
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x8f in position 17187
+```
+
+**The same cp1252 bug as 1290bee, ddd674b and b1a6a1c -- a fifth time.** The
+reason it survived three separate audits is that it is not spelled
+`read_text()`:
+
+```python
+source = open(os.path.join(root, rel_path)).read()
+```
+
+A bare `open()` takes the locale's codec exactly as `read_text()` does, and
+`client/ui/equipment_panel.py` is not pure ASCII. Every sweep so far searched
+for `.read_text()`, so this form was structurally invisible to all of them.
+There were two such calls in that file; the second reads only ASCII-clean
+paths today and was failing silently in waiting.
+
+**Fix**: both now use `open(..., encoding="utf-8")`. The directory goes to
+**129 passed, 1 skipped, 130 collected** -- fully green.
+
+### What running the directory bought
+
+`test_ssh_known_hosts.py` (13 tests) had never executed on Windows. It guards
+on paramiko with `importorskip`, and paramiko only arrived here with
+`requirements-test.txt`. It now runs and passes, including the part 1e39c8e
+called out: the bracketed `[host]:port` known-hosts form, which is invisible
+on the default port and wrong on any other. `test_async_offload.py` (20)
+likewise.
+
+Both had been opting out silently, which is the point worth keeping: a suite
+that collects less than it should is indistinguishable, in the summary line,
+from one that passes. Reporting the **collected** count alongside the passed
+count is what makes the difference visible, and is why this bug surfaced at
+all.
+
+### Still open: the same pattern in product code
+
+The bare-`open()` sweep that found this also turns up unencoded reads and
+writes in the client itself, which are not test-only:
+
+- `client/utils/server_manager.py` -- reads and writes the server config JSON
+- `client/utils/settings.py` -- settings export/import
+- `client/ui/theme.py` -- the theme settings file
+- `client/ui/diagnostics_panel.py` -- writes a diagnostics report (the *write*
+  side, so `UnicodeEncodeError`)
+- `client/ui/ssh_deploy_wizard.py` -- known_hosts, ASCII by construction
+
+A server name, a saved setting or a diagnostics line containing a non-ASCII
+character would hit the same failure in front of a user rather than in a test
+run. Left alone here for the same reason as the `read_text()` sweep: it is
+unrelated to the image builder and deserves its own change, not a quiet
+ride-along on this branch.
