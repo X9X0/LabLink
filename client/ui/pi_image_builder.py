@@ -41,6 +41,7 @@ class ImageBuildThread(QThread):
         wifi_password: str = "",
         wifi_country: str = "US",
         admin_password: str = "",
+        password_generated: bool = False,
         enable_ssh: bool = True,
         auto_expand: bool = True,
         branch: str = "main",
@@ -74,6 +75,7 @@ class ImageBuildThread(QThread):
         self.wifi_password = wifi_password
         self.wifi_country = wifi_country
         self.admin_password = admin_password
+        self.password_generated = password_generated
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
         self.branch = branch
@@ -139,6 +141,7 @@ class ImageBuildThread(QThread):
             base_image_url=base_image_url(self.pi_model, self.os_variant),
             hostname=self.hostname,
             admin_password=self.admin_password,
+            password_generated=self.password_generated,
             wifi_ssid=self.wifi_ssid,
             wifi_password=self.wifi_password,
             wifi_country=self.wifi_country,
@@ -541,7 +544,7 @@ class ConfigurationPage(QWizardPage):
         self.admin_password_edit = QLineEdit()
         self.admin_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.admin_password_edit.setPlaceholderText(
-            "Leave empty to use default: lablink"
+            "Leave empty to generate a strong one (shown before you write the card)"
         )
         basic_layout.addRow("Admin Password:", self.admin_password_edit)
 
@@ -801,6 +804,18 @@ class BuildProgressPage(QWizardPage):
         wifi_country = (self.field("wifi_country") or "US").strip().upper() or "US"
         admin_password = self.field("admin_password") or ""
 
+        # A blank field used to mean "no account at all": customize_image only
+        # writes userconf.txt when a password is set, so the image booted with
+        # sshd enabled and nothing to log in as. The placeholder promised a
+        # default of "lablink" that nothing implemented. Generate one instead
+        # -- unique per image, and shown below before the card is written.
+        generated_password = ""
+        if not admin_password:
+            from client.utils.pi_image_native import generate_admin_password
+
+            admin_password = generate_admin_password()
+            generated_password = admin_password
+
         # Get checkbox states from previous page
         config_page = self.wizard().page(0)
         enable_ssh = config_page.enable_ssh_check.isChecked()
@@ -814,6 +829,21 @@ class BuildProgressPage(QWizardPage):
         self.progress_bar.setValue(0)
         self.output_text.clear()
 
+        # Before anything scrolls past: a generated password is the only copy
+        # the user will see until the Pi's own first-boot banner, and they
+        # need it to log in at all.
+        if generated_password:
+            self.output_text.insertPlainText(
+                "=" * 66 + "\n"
+                "  No password was entered, so one was generated for this image:\n"
+                "\n"
+                f"      user: admin      password: {generated_password}\n"
+                "\n"
+                "  Write it down now. It is also shown on the Pi's console after\n"
+                "  first boot, and can be changed there with `passwd`.\n"
+                + "=" * 66 + "\n\n"
+            )
+
         # Create build thread
         self.build_thread = ImageBuildThread(
             output_path=output_path,
@@ -823,6 +853,7 @@ class BuildProgressPage(QWizardPage):
             wifi_password=wifi_password,
             wifi_country=wifi_country,
             admin_password=admin_password,
+            password_generated=bool(generated_password),
             enable_ssh=enable_ssh,
             auto_expand=auto_expand,
             branch=branch,

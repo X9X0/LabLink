@@ -118,10 +118,77 @@ fi
 # --- staged admin password for the application -----------------------------
 # Written root-only and consumed (then deleted) by lablink-first-boot.sh.
 if [ -f "$BOOT_DIR/lablink-admin-password" ]; then
+    # The console banner below needs the plaintext, and this file is about to
+    # move out of reach, so read it first. Never echoed: the journal is
+    # world-readable, which is the whole reason it is staged in a file.
+    STAGED_PLAINTEXT=$(cat "$BOOT_DIR/lablink-admin-password" 2>/dev/null)
     install -m 600 "$BOOT_DIR/lablink-admin-password" /etc/lablink-build-admin-password
     rm -f "$BOOT_DIR/lablink-admin-password"
     echo "[LabLink] admin password staged for the application"
 fi
+
+# --- console banner for a generated password -------------------------------
+# When the builder generated the password, nobody has typed it and the only
+# other copy was on the screen of the machine that built the image. Put it on
+# the console login prompt so a monitor on the Pi is enough to recover it.
+# Absent for a user-chosen password: that one is theirs, and printing it would
+# be a disclosure they never asked for.
+if [ -f "$BOOT_DIR/lablink-password-generated" ] && [ -n "$STAGED_PLAINTEXT" ]; then
+    cp /etc/issue /etc/issue.lablink-orig 2>/dev/null
+    cat >> /etc/issue <<ISSUEEOF
+
+========================================================
+ LabLink: this image was built with a generated password
+   user: $ADMIN_USER   password: $STAGED_PLAINTEXT
+ Change it with:  passwd
+ This notice disappears once you do.
+========================================================
+ISSUEEOF
+    # Remove the notice as soon as the password is no longer the generated
+    # one, so it does not sit on the login screen forever.
+    cat > /usr/local/bin/lablink-clear-password-notice <<'CLEAREOF'
+#!/bin/bash
+# Restores the stock /etc/issue once the generated password has been changed.
+STAMP=/var/lib/lablink-generated-password-changed
+[ -f "$STAMP" ] && exit 0
+user="$(sed -n 's/^ *user: \([^ ]*\).*/\1/p' /etc/issue | head -n1)"
+[ -z "$user" ] && exit 0
+current="$(getent shadow "$user" | cut -d: -f3)"
+[ -z "$current" ] && exit 0
+if [ ! -f /var/lib/lablink-password-epoch ]; then
+    echo "$current" > /var/lib/lablink-password-epoch
+    exit 0
+fi
+if [ "$current" != "$(cat /var/lib/lablink-password-epoch)" ]; then
+    [ -f /etc/issue.lablink-orig ] && cp /etc/issue.lablink-orig /etc/issue
+    touch "$STAMP"
+fi
+CLEAREOF
+    chmod 755 /usr/local/bin/lablink-clear-password-notice
+    cat > /etc/systemd/system/lablink-clear-password-notice.timer <<'TIMEREOF'
+[Unit]
+Description=Clear the LabLink generated-password notice once it is changed
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+TIMEREOF
+    cat > /etc/systemd/system/lablink-clear-password-notice.service <<'SVCEOF'
+[Unit]
+Description=Clear the LabLink generated-password notice once it is changed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lablink-clear-password-notice
+SVCEOF
+    systemctl enable lablink-clear-password-notice.timer >/dev/null 2>&1
+    rm -f "$BOOT_DIR/lablink-password-generated"
+    echo "[LabLink] generated password published on the console login banner"
+fi
+unset STAGED_PLAINTEXT
 
 # --- install the network-dependent stage -----------------------------------
 if [ -f "$BOOT_DIR/lablink-first-boot.sh" ]; then

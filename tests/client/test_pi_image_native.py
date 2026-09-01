@@ -33,6 +33,7 @@ from client.utils.pi_image_native import (  # noqa: E402
     base_image_url,
     customize_image,
     find_fat_partition,
+    generate_admin_password,
     hash_password_for_userconf,
     main,
 )
@@ -138,6 +139,81 @@ class TestPartitionTable:
 
         with pytest.raises(PiImageError, match="MBR boot signature"):
             find_fat_partition(str(bad))
+
+
+class TestGeneratedPassword:
+    """A blank password field used to produce an image with no account.
+
+    customize_image writes userconf.txt only when a password is set, and
+    userconf.txt is what creates the user on current Pi OS -- so a blank
+    field gave a Pi with sshd enabled and nothing to log in as. The wizard
+    made that worse by promising "Leave empty to use default: lablink",
+    which nothing implemented. It generates one now.
+    """
+
+    def test_is_long_enough_to_be_worth_generating(self):
+        assert len(generate_admin_password()) >= 16
+
+    def test_every_password_is_different(self):
+        assert len({generate_admin_password() for _ in range(50)}) == 50
+
+    def test_satisfies_the_web_account_rules(self):
+        """The LabLink account wants 8+ characters with an upper-case letter."""
+        for _ in range(50):
+            pw = generate_admin_password()
+            assert len(pw) >= 8
+            assert any(c.isupper() for c in pw)
+            assert any(c.isdigit() for c in pw)
+
+    def test_has_no_look_alike_characters(self):
+        """It gets read off a console banner and typed by hand."""
+        for _ in range(50):
+            assert not (set(generate_admin_password()) & set("0O1lI"))
+
+    def test_contains_no_colon(self):
+        """userconf.txt is colon-delimited."""
+        for _ in range(50):
+            assert ":" not in generate_admin_password()
+
+    def test_survives_the_hashing_round_trip(self):
+        from passlib.hash import sha512_crypt
+
+        pw = generate_admin_password()
+        assert sha512_crypt.verify(pw, hash_password_for_userconf(pw))
+
+    def test_a_generated_password_creates_a_real_account(self, blank_image, config):
+        """The point of the change: an image that can actually be logged into."""
+        from passlib.hash import sha512_crypt
+
+        config.admin_password = generate_admin_password()
+        config.password_generated = True
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            names = {n.lower() for n in fs.list_root()}
+            user, _, hashed = fs.read_file("userconf.txt").decode().strip().partition(":")
+
+        assert "userconf.txt" in names, "no account would be created"
+        assert user == config.admin_user
+        assert sha512_crypt.verify(config.admin_password, hashed)
+
+    def test_generated_flag_marks_the_image_for_the_console_banner(
+            self, blank_image, config):
+        config.password_generated = True
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            assert "lablink-password-generated" in {n.lower() for n in fs.list_root()}
+
+    def test_a_chosen_password_is_never_published(self, blank_image, config):
+        """A password the user typed is theirs; the Pi must not display it."""
+        config.password_generated = False
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            assert "lablink-password-generated" not in {
+                n.lower() for n in fs.list_root()
+            }
 
 
 class TestPasswordHashing:

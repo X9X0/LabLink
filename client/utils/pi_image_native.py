@@ -103,6 +103,10 @@ class ImageConfig:
     wifi_country: str = "US"
     enable_ssh: bool = True
     branch: str = "main"
+    # True when admin_password was generated rather than chosen. The Pi shows
+    # a generated password on its console after first boot, since nobody typed
+    # it; a password the user chose is theirs and is never displayed.
+    password_generated: bool = False
     extra_files: dict = field(default_factory=dict)
 
 
@@ -146,6 +150,34 @@ def find_fat_partition(img_path: str) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------
+
+# Deliberately excludes 0/O and 1/l/I. This password is read off a screen or a
+# console banner and typed by hand, and a character nobody can identify is a
+# support problem rather than a security feature.
+_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def generate_admin_password(groups: int = 4, group_size: int = 4) -> str:
+    """Return a random password, grouped for legibility.
+
+    Used when no password is given, so that a blank field produces an image
+    with a *strong unique* login rather than either a known default or -- as
+    it did before -- no account at all.
+
+    Guarantees an upper-case letter and a digit, which the LabLink web account
+    requires, and draws from an alphabet with no look-alike characters so it
+    survives being copied off a first-boot banner by hand.
+    """
+    import secrets
+
+    while True:
+        parts = [
+            "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(group_size))
+            for _ in range(groups)
+        ]
+        candidate = "-".join(parts)
+        if any(c.isupper() for c in candidate) and any(c.isdigit() for c in candidate):
+            return candidate
 
 
 def hash_password_for_userconf(password: str) -> str:
@@ -438,6 +470,13 @@ def customize_image(img_path: str, config: ImageConfig,
             hashed = hash_password_for_userconf(config.admin_password)
             _write_file(fs, "/userconf.txt", f"{config.admin_user}:{hashed}\n")
 
+            if config.password_generated:
+                # Tells firstrun.sh to put the credentials on the console
+                # login banner. Only for a generated password: one the user
+                # chose is theirs, and displaying it would be a disclosure
+                # they never asked for.
+                _write_file(fs, "/lablink-password-generated", "")
+
         if config.enable_ssh:
             report(92, "Enabling SSH...")
             _write_file(fs, "/ssh", "")
@@ -529,7 +568,19 @@ def main(argv: Optional[list] = None) -> int:
 
     password = args.password
     if password is None:
-        password = getpass.getpass(f"Password for {args.user!r} on the Pi: ")
+        password = getpass.getpass(
+            f"Password for {args.user!r} on the Pi (blank to generate one): "
+        )
+
+    # An empty password used to mean no account at all: userconf.txt is only
+    # written when one is set, so the image booted with sshd enabled and
+    # nothing to log in as. Generate one instead, and say so.
+    password_generated = not password
+    if password_generated:
+        password = generate_admin_password()
+        print(f"\nGenerated password for {args.user!r}: {password}")
+        print("Write it down; it is also shown on the Pi's console after first "
+              "boot.\n")
 
     if not password:
         # No password means no userconf.txt, which on current Raspberry Pi OS
@@ -553,6 +604,7 @@ def main(argv: Optional[list] = None) -> int:
         hostname=args.hostname,
         admin_user=args.user,
         admin_password=password,
+        password_generated=password_generated,
         wifi_ssid=args.wifi_ssid,
         wifi_password=args.wifi_password,
         wifi_country=args.wifi_country,
