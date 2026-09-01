@@ -102,6 +102,29 @@ USB_HARDWARE_DB = {
         max_voltage=150.0,
         max_current=30.0,
     ),
+    # B&K Precision USBTMC devices.
+    # 0x3121 is the VID B&K ships on its Siglent-OEM instruments; this pair
+    # comes from the pyvisa example in the 2194 programming manual itself.
+    # The PID identifies the platform rather than the SKU, so the device type
+    # is right but the model is confirmed by *IDN? afterwards.
+    ("3121", "2100"): USBDeviceInfo(
+        vid="3121",
+        pid="2100",
+        manufacturer="B&K Precision",
+        model="2194",
+        device_type=DeviceType.OSCILLOSCOPE,
+        description="Digital storage oscilloscope, 2194 / 2190 platform",
+    ),
+    # RFP3000 series USB RF power sensor. Its resources end in ::SNSR rather
+    # than ::INSTR, so VISA lists it differently from every other instrument.
+    ("1bfe", "5500"): USBDeviceInfo(
+        vid="1bfe",
+        pid="5500",
+        manufacturer="B&K Precision",
+        model="RFP3000",
+        device_type=DeviceType.UNKNOWN,
+        description="USB RF power sensor (RFP3000 series)",
+    ),
     # Rigol Oscilloscopes
     ("1ab1", "04ce"): USBDeviceInfo(
         vid="1ab1",

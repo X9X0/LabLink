@@ -220,6 +220,39 @@ class DiscoveryManager:
                 else:
                     logger.debug("mDNS scanning not available (zeroconf not installed)")
 
+            # Serial / USB-CDC probe. VISA cannot enumerate a USB-CDC
+            # instrument at all, and the legacy fixed-width supplies do not
+            # answer *IDN?, so neither shows up in the scans above.
+            if self.config.enable_serial_probe:
+                try:
+                    from .bk_serial_probe import probe_serial_ports
+
+                    logger.debug("Probing serial ports for B&K instruments...")
+                    serial_devices = await probe_serial_ports(
+                        timeout=self.config.serial_probe_timeout_sec,
+                        usb_only=self.config.serial_probe_usb_only,
+                    )
+                    # A device VISA already found on the same port wins: its
+                    # identification came from a full session, not a probe.
+                    known_ports = {
+                        d.metadata.get("serial_port") for d in discovered
+                    } | {d.resource_name for d in discovered}
+                    serial_devices = [
+                        d for d in serial_devices
+                        if d.resource_name not in known_ports
+                        and d.metadata.get("serial_port") not in known_ports
+                    ]
+                    discovered.extend(serial_devices)
+                    result.usb_count = len(serial_devices)
+                    if serial_devices:
+                        logger.info(
+                            f"Serial probe found {len(serial_devices)} B&K "
+                            f"instrument(s) VISA did not enumerate"
+                        )
+                except Exception as e:
+                    logger.error(f"Serial probe failed: {e}")
+                    result.errors.append(f"Serial probe failed: {e}")
+
             # Merge discovered devices with existing cache
             new_count, updated_count = self._update_device_cache(discovered)
 

@@ -116,18 +116,7 @@ class ConnectDeviceDialog(QDialog):
         model_layout.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)  # Allow custom model names
-        self.model_combo.addItems([
-            "BK Precision 1685B",
-            "BK Precision 9130B",
-            "BK Precision 9205B",
-            "BK Precision 9206B",
-            "BK Precision 1902B",
-            "Rigol DS1054Z",
-            "Rigol MSO2072A",
-            "Rigol DS1102D",
-            "Rigol DL3021A",
-            "Generic",
-        ])
+        self.model_combo.addItems(self._model_choices())
         model_layout.addWidget(self.model_combo)
         layout.addLayout(model_layout)
 
@@ -148,6 +137,55 @@ class ConnectDeviceDialog(QDialog):
         button_layout.addWidget(cancel_btn)
 
         layout.addLayout(button_layout)
+
+    #: Offered when the server cannot be reached for its catalogue.
+    _FALLBACK_MODELS = [
+        "BK Precision 1685B",
+        "BK Precision 1902B",
+        "BK Precision 9130B",
+        "BK Precision 9205B",
+        "BK Precision 9206B",
+        "Rigol DS1054Z",
+        "Rigol MSO2072A",
+        "Rigol DS1102D",
+        "Rigol DL3021A",
+        "Generic",
+    ]
+
+    def _model_choices(self) -> List[str]:
+        """Build the model list, preferring the server's own catalogue.
+
+        The server knows every B&K family it has a driver for — thirty-odd,
+        against the five this dialog used to hard-code — so ask it rather than
+        keeping a second list here that drifts out of date.
+        """
+        try:
+            models = self.client.get_supported_models(supported_only=True)
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch the model catalogue from the server: {e}. "
+                f"Falling back to the built-in list."
+            )
+            return list(self._FALLBACK_MODELS)
+
+        if not models:
+            return list(self._FALLBACK_MODELS)
+
+        choices = []
+        for entry in models:
+            manufacturer = entry.get("manufacturer", "")
+            # List every documented SKU, so an operator can pick the exact
+            # model. On the fixed-width supplies that choice is not cosmetic:
+            # it decides the current scaling and the SOUT polarity.
+            for sku in entry.get("skus") or [entry["key"]]:
+                choices.append(f"{manufacturer} {sku}".strip())
+
+        # Rigol and anything hand-entered still need a home.
+        for extra in self._FALLBACK_MODELS:
+            if extra.startswith("Rigol") or extra == "Generic":
+                choices.append(extra)
+
+        return sorted(dict.fromkeys(choices))
 
     def _on_device_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
         """Handle device selection - auto-populate equipment type and model."""
