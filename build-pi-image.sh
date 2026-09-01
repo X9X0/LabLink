@@ -40,6 +40,23 @@ PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
 #
 # To pin back to the previous Bookworm base:
 #   PI_OS_DIR_DATE=2024-03-15 PI_OS_FILE_DATE=2024-03-15 PI_OS_CODENAME=bookworm
+# Extra space added to the image before writing it.
+#
+# Raspberry Pi OS grows the root filesystem to fill the card on first boot, so
+# this space is written to the SD card and then immediately superseded - it
+# costs burn time and buys nothing. Measured on a 2.0.0 Trixie build: the base
+# rootfs already had ~280 MB free, and the build itself writes only kilobytes
+# (first-boot script, systemd unit, wifi config), while the finished image was
+# 4.77 GB of which 2 GB was this padding.
+#
+# The exception is AUTO_EXPAND=no: without the first-boot growth the image has
+# to carry room for Docker and the LabLink containers itself.
+if [ "${AUTO_EXPAND:-yes}" = "no" ]; then
+    PI_IMAGE_EXPAND_MB="${PI_IMAGE_EXPAND_MB:-2048}"
+else
+    PI_IMAGE_EXPAND_MB="${PI_IMAGE_EXPAND_MB:-256}"
+fi
+
 PI_OS_VARIANT="${PI_OS_VARIANT:-lite}"
 PI_OS_DIR_DATE="${PI_OS_DIR_DATE:-2026-06-19}"
 PI_OS_FILE_DATE="${PI_OS_FILE_DATE:-2026-06-18}"
@@ -1380,7 +1397,7 @@ main() {
     BASE_IMAGE=$(download_pi_os)
 
     # Expand image for LabLink
-    expand_image "$BASE_IMAGE" 2048  # Add 2GB
+    expand_image "$BASE_IMAGE" "$PI_IMAGE_EXPAND_MB"
 
     # Mount image
     mount_image "$BASE_IMAGE"

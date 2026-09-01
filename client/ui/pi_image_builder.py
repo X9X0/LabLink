@@ -508,6 +508,13 @@ class ConfigurationPage(QWizardPage):
 
         self.auto_expand_check = QCheckBox("Auto-expand filesystem on first boot")
         self.auto_expand_check.setChecked(True)
+        self.auto_expand_check.setToolTip(
+            "Raspberry Pi OS grows the root filesystem to fill the card on "
+            "first boot, so the image itself stays small and burns faster.\n\n"
+            "Untick only if that growth is not wanted: the image is then "
+            "padded by 2GB so there is room for Docker and the containers, "
+            "which makes it correspondingly slower to write."
+        )
         options_layout.addWidget(self.auto_expand_check)
 
         options_group.setLayout(options_layout)
