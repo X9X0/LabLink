@@ -14,6 +14,7 @@ would still pass.
 import os
 import shutil
 import struct
+import re
 import subprocess
 import sys
 
@@ -35,6 +36,8 @@ from client.utils.pi_image_native import (  # noqa: E402
     hash_password_for_userconf,
     main,
 )
+from pathlib import Path  # noqa: E402
+
 from tests.client.fat_reader import Fat32Reader  # noqa: E402
 
 PART_OFFSET = 1024 * 1024  # 1 MiB, as on a real Pi image
@@ -586,3 +589,168 @@ class TestPkgResourcesShim:
             assert sys.modules["pkg_resources"] is sentinel
         finally:
             del sys.modules["pkg_resources"]
+
+
+class TestWindowsTextHandling:
+    """Reading the shipped scripts must not depend on the machine's locale.
+
+    Found on the first real Windows run: Path.read_text() has no default
+    encoding and falls back to the locale's, which is cp1252 on a typical
+    Windows install. lablink-first-boot.sh is UTF-8 and contains a
+    box-drawing banner, so the build died at 86% with
+
+        UnicodeDecodeError: 'charmap' codec can't decode byte 0x90
+
+    Invisible on Linux and macOS, where the same call happens to default to
+    UTF-8. Reproduced here by forcing an ASCII locale, with Python's C-locale
+    coercion and UTF-8 mode both disabled -- otherwise the interpreter
+    silently upgrades the locale and hides the bug.
+    """
+
+    SCRIPTS = ["scripts/pi/firstrun.sh", "scripts/pi/lablink-first-boot.sh"]
+
+    @pytest.fixture
+    def ascii_locale_env(self):
+        env = dict(os.environ)
+        env.update(LC_ALL="C", LANG="C",
+                   PYTHONCOERCECLOCALE="0", PYTHONUTF8="0")
+        return env
+
+    def test_the_locale_override_actually_reproduces_the_bug(self, ascii_locale_env):
+        """Guard the guard: if Python stops honouring this, the test below
+        would pass for the wrong reason and prove nothing."""
+        script = (
+            "from pathlib import Path\n"
+            "import sys\n"
+            "try:\n"
+            "    Path(sys.argv[1]).read_text()\n"
+            "    print('DECODED')\n"
+            "except UnicodeDecodeError:\n"
+            "    print('FAILED')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script, "scripts/pi/lablink-first-boot.sh"],
+            capture_output=True, text=True, env=ascii_locale_env,
+            cwd=os.path.join(os.path.dirname(__file__), "../.."),
+        )
+
+        assert result.stdout.strip() == "FAILED", (
+            "an unencoded read no longer fails under an ASCII locale, so this "
+            "suite can no longer detect the Windows bug"
+        )
+
+    @pytest.mark.parametrize("script", SCRIPTS)
+    def test_scripts_are_read_as_utf8_whatever_the_locale(self, script,
+                                                          ascii_locale_env):
+        """The fix, exercised the way the bug happened."""
+        code = (
+            "import sys\n"
+            "sys.path.insert(0, '.')\n"
+            "from client.utils.pi_image_native import _script_dir\n"
+            "from pathlib import Path\n"
+            "name = Path(sys.argv[1]).name\n"
+            "text = (_script_dir() / name).read_text(encoding='utf-8')\n"
+            "print(len(text))\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code, script],
+            capture_output=True, text=True, env=ascii_locale_env,
+            cwd=os.path.join(os.path.dirname(__file__), "../.."),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert int(result.stdout.strip()) > 0
+
+    def test_customize_image_survives_an_ascii_locale(self, blank_image, config,
+                                                      ascii_locale_env):
+        """End to end: the whole build under the locale that broke it."""
+        code = (
+            "import sys\n"
+            "sys.path.insert(0, '.')\n"
+            "from client.utils.pi_image_native import ImageConfig, customize_image\n"
+            "cfg = ImageConfig(output_path=sys.argv[1], base_image_url='unused',\n"
+            "                  hostname='loc-test', admin_user='admin',\n"
+            "                  admin_password='pw', branch='main')\n"
+            "customize_image(sys.argv[1], cfg)\n"
+            "print('OK')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code, blank_image],
+            capture_output=True, text=True, env=ascii_locale_env,
+            cwd=os.path.join(os.path.dirname(__file__), "../.."),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "OK" in result.stdout
+
+    def test_the_banner_survives_into_the_image(self, blank_image, config):
+        """A wrong codec that did not crash would mangle these instead."""
+        customize_image(blank_image, config)
+
+        with Fat32Reader(blank_image, PART_OFFSET) as fs:
+            written = fs.read_file("lablink-first-boot.sh").decode("utf-8")
+
+        source = (Path(__file__).parent.parent.parent
+                  / "scripts/pi/lablink-first-boot.sh").read_text(encoding="utf-8")
+        for char in "═║╔╗╚╝✓✗⚠":
+            if char in source:
+                assert char in written, f"{char!r} did not survive the build"
+
+
+class TestFirstBootScriptShell:
+    """`local` is only valid inside a function, and fails silently otherwise."""
+
+    @pytest.fixture
+    def script_text(self):
+        return (Path(__file__).parent.parent.parent
+                / "scripts/pi/lablink-first-boot.sh").read_text(encoding="utf-8")
+
+    def test_no_local_outside_a_function(self, script_text):
+        """Found on the first Pi boot.
+
+        Three top-level `local` assignments meant max_wait, waited and
+        containers_up were never set, so the bounded wait `[ $waited -lt
+        $max_wait ]` expanded to `[ -lt ]` -- one non-empty string, which test
+        calls true. The 60-second timeout was an unbounded spin. It only
+        survived that boot because the containers were already up on the first
+        check, so the loop broke before the bug mattered.
+        """
+        in_function = False
+        offenders = []
+
+        for number, line in enumerate(script_text.splitlines(), 1):
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{?", line):
+                in_function = True
+            elif line.startswith("}"):
+                in_function = False
+            elif re.match(r"^\s*local\s", line) and not in_function:
+                offenders.append(f"{number}: {line.strip()}")
+
+        assert not offenders, (
+            "`local` outside a function fails and assigns nothing:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_bash_still_rejects_local_outside_a_function(self):
+        """The premise. If bash ever allowed it, the test above is pointless."""
+        result = subprocess.run(["bash", "-c", 'local x=5; echo "[$x]"'],
+                                capture_output=True, text=True)
+
+        # The script's exit status is echo's, not local's -- which is exactly
+        # why this fails silently in a script with no `set -e`. What matters
+        # is that bash rejected it and assigned nothing.
+        assert "can only be used in a function" in result.stderr
+        assert "[]" in result.stdout, "bash assigned the value after all"
+
+    def test_the_wait_loop_is_actually_bounded(self, script_text):
+        """The consequence, rather than the syntax that caused it."""
+        assert "max_wait=60" in script_text
+        assert "while [ $waited -lt $max_wait ]" in script_text
+
+        result = subprocess.run(
+            ["bash", "-c", 'w=""; m=""; if [ $w -lt $m ]; then echo LOOPS; fi'],
+            capture_output=True, text=True)
+        assert "LOOPS" in result.stdout, (
+            "unset operands no longer make this test true -- re-check the "
+            "reasoning behind this guard"
+        )
