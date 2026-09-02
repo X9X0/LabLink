@@ -38,7 +38,7 @@ Report findings by appending a section to this file, as the previous runs did.
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
-| Writing the card from the wizard | ❌ not implemented on Windows -- `_write_windows()` is a stub; use Raspberry Pi Imager. Message corrected, it blamed admin privileges |
+| Writing the card from the wizard | ⚠️ implemented (4cf3104) but **never run against a real card** -- see below |
 | Booting a wizard-built image | ⚠️ booted and sshd came up, but LabLink never started and it cannot be diagnosed -- blank password, no account; see below |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1046,9 +1046,65 @@ Worth keeping the two separate when reading this document: **the image
 builder needs no privileges on any platform, and that is the point of this
 branch.** Putting a finished image onto a card is a different operation that
 does require elevation on Windows no matter who writes it -- Raspberry Pi
-Imager triggers UAC too. A UAC prompt from a future card writer would not
+Imager triggers UAC too. A UAC prompt from the card writer does not
 contradict the "no administrator privileges" claim the builder makes; a UAC
 prompt during a *build* still would.
+
+### The card writer was then implemented, and the enumeration was the danger
+
+Implementing `_write_windows()` (4cf3104) meant first fixing how the target
+disk is chosen, because the existing enumeration was worse than missing:
+
+```python
+f"\\\\.\\PhysicalDrive{ord(letter) - ord('A')}"   # D: -> PhysicalDrive3
+```
+
+Drive letters do not map to disk numbers. On the machine that produced the
+log above, `C:` computes to `PhysicalDrive2` and the only disk is `0`. **The
+stub was the only thing preventing that line from writing a 2.8 GB image
+over an arbitrary disk.** A working writer bolted onto it would have been
+genuinely destructive, and no test would have caught it, because the wrong
+path was never opened.
+
+Disks now come from `Get-Disk`, which reports the real number alongside
+`IsSystem`, `IsBoot` and the bus type. The device path is derived from the
+number and cannot be influenced by a drive letter; there is a test asserting
+that a disk with letters `D:`, `Z:` and none at all yields the same path.
+
+**The card is identified by appearance, not selection.** The dialog snapshots
+the disks, asks the user to insert the card -- or remove and reinsert it if
+it is already in -- and takes whichever one shows up. Picking from a list is
+where this goes wrong: the entries look alike and a misclick costs somebody a
+drive. It also sidesteps a real trap, that many USB card readers report
+themselves as `Fixed hard disk media`, so filtering on removability both
+misses real cards and cannot be trusted on its own. Appearing is a better
+signal than self-description. Two disks appearing at once is reported as
+ambiguous rather than resolved by guessing.
+
+A manual chooser sits behind a button, for a reader that stays enumerated
+with the card in it. It marks non-removable disks, confirms twice before
+accepting one, and cannot select the system disk at all.
+
+| rule | can the override reach it? |
+|---|---|
+| System or boot disk | **no, never** |
+| Not removable media | yes |
+| Image larger than the card | no |
+| Disk reporting no size | no |
+
+Verified through the helper's own CLI: `--disk 0 --override` against the
+system disk is refused.
+
+The write locks *and dismounts* the disk's volumes and holds them for the
+duration. Skipping that leaves Windows caching a filesystem being overwritten
+underneath it, and the card comes out looking written and quietly corrupt.
+Then sector-aligned writes, a flush, and a read-back SHA-256 comparison.
+
+**Not yet run against a real card.** There is no way to test raw device
+writing without a raw device to lose, so the 36 new tests cover every
+decision about *which* disk is written and none of the writing itself.
+`tests/client/`: 149 -> **185 collected, 184 passed, 1 skipped**. Whoever
+tries it first should use a card they do not mind losing.
 
 **2. Blank passwords produce a Pi with no login account.** The password
 fields were left empty. That is honoured exactly as designed --
