@@ -253,6 +253,46 @@ class TestLabLinkPasswordRules:
         for _ in range(50):
             assert check_lablink_password(generate_admin_password()) is None
 
+    def test_the_server_validator_agrees(self):
+        """Run the real validator, rather than reading its source.
+
+        The phrase check below catches a rule that changes wording or
+        numbers. It cannot catch one that is *added*: a new requirement --
+        a symbol, say -- leaves all four phrases in place, so the check
+        passes while the wizard goes on accepting what the server refuses.
+        That is the exact failure this class exists for, so ask the
+        validator itself.
+        """
+        pytest.importorskip("pydantic")
+        server_dir = str(Path(__file__).resolve().parents[2] / "server")
+        if server_dir not in sys.path:
+            sys.path.insert(0, server_dir)
+        try:
+            from server.security.models import UserCreate
+        except Exception as exc:  # pragma: no cover - server deps absent
+            pytest.skip(f"server models unavailable: {exc}")
+
+        candidates = [
+            "password", "Passw0rd", "short1A", "ABCDEFG1", "Abcdefgh",
+            "abcdefg1", "Ab1", "aB3defgh", "Tr1cky$Pass!", "P" * 40 + "1a",
+        ] + [generate_admin_password() for _ in range(20)]
+
+        for pw in candidates:
+            try:
+                UserCreate(username="u", email="a@b.co", password=pw)
+                server_accepts = True
+            except Exception:
+                server_accepts = False
+
+            we_accept = check_lablink_password(pw) is None
+            assert we_accept == server_accepts, (
+                f"disagreement on {pw!r}: the wizard "
+                f"{'accepts' if we_accept else 'rejects'} it, the server "
+                f"{'accepts' if server_accepts else 'rejects'} it. "
+                "check_lablink_password has drifted from "
+                "server/security/models.py."
+            )
+
     def test_rules_match_the_server(self):
         """Pinned to the real validator, so the two cannot drift apart.
 
