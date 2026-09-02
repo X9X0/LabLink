@@ -55,9 +55,9 @@ non-event.
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
 | Writing the card from the wizard | ✅ **worked on real hardware** -- card written from the wizard, booted a Pi |
 | Booting a wizard-built image | ✅ **full GUI chain done** -- build → card write → boot → LabLink healthy |
-| Live-Pi suite against the GUI chain | ✅ **29 collected, 25 passed, 4 skipped, 0 failed** -- 26th now passes too, see equipment note |
-| Instrument discovery on a builder-made Pi | ✅ a B&K Precision supply on a CP210x bridge is discovered through the container |
-| Instrument *session* (connect/read) | ⏸ needs the exact B&K model number to dispatch a driver |
+| Live-Pi suite against the GUI chain | ✅ **29 collected, 29 passed, 0 skipped, 0 failed** |
+| Instrument discovery on a builder-made Pi | ✅ a B&K-protocol supply on a CP210x bridge, discovered through the container |
+| Instrument session (connect, read, poll) | ✅ real readings, including under 10x polling, against a live supply |
 | Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1373,11 +1373,64 @@ one the server refuses cleanly --
 connect → 500 {"detail":"Unsupported equipment model: B&K Precision"}
 ```
 
--- which is the right behaviour and worth having seen. `server/equipment/`
-knows 1685B, 1687B, 1688B, 1696/B, 1697/B, 1698/B, 1820B-1823B, 1900B,
-1901B, 1902B, 2190D/E, 2194 and 2510B. The session tests are read-only by
-design -- connect, query status and readings, disconnect, nothing that sets
-an output -- so running them is safe once the model is known.
+-- which is the right behaviour and worth having seen.
+
+### Identifying the model by probing, and why it half works
+
+The obvious question is whether the instrument can be identified rather than
+asked about. It can be narrowed, but not named, and the distinction is the
+protocol's own fault. Read-only queries, straight down the serial line:
+
+```
+GMAX -> b'605160\rOK\r'      rated 60.5 V / 16.0 A
+GETS -> b'120020\rOK\r'      setpoints 12.0 V / 2.0 A
+GETD -> b'001100000\rOK\r'   0.11 V, 0.0 A
+GOUT -> b'1\rOK\r'           output off (this dialect inverts: "0" is on)
+```
+
+There is no identifier to read -- `bk_serial_probe.py` says so directly: *"the
+protocol carries no model number"*. And the rated limits do not settle it
+either: **60.5 V / 16.0 A matches nothing in the registry**, while the
+1900B family is 16 V / 60 A, the same digits transposed. This is most likely
+a third-party supply speaking the same protocol.
+
+What *can* be established is the dialect, which is what the driver actually
+needs. Connecting under each candidate and reading back -- all read-only --
+separates them cleanly:
+
+| model | `current_set` from the raw `GETS 120020` |
+|---|---|
+| 1902B / 1687B / 1696 | **2.0 A** -- one decimal |
+| 1685B | **0.2 A** -- two decimals, wrong by 10x |
+| 9103 | rejected: `Invalid GETS response` |
+
+The one-decimal reading is corroborated by `GMAX`: at two decimals the same
+digits would make it a 1.6 A supply, which no 60 V unit is. `GOUT` returning
+`1` for an output that is visibly off confirms the inverted polarity too,
+which rules out the 9103/9104 dialect independently.
+
+So `1902B` is the correct *driver* for this instrument even though the
+instrument is probably not a 1902B -- and the registry's warning is exactly
+right: *"getting this wrong commands a tenfold different current"*. Picking
+by guesswork had a one-in-three chance of being wrong by 10x.
+
+### The session tests ran against a live supply
+
+The output was on during the run -- 11.98 V against a 12.0 V setpoint --
+so `test_readings_are_returned` and `test_repeated_readings_are_stable`
+exercised the raw `GETD`/`GETS`/`GOUT` path against an energised instrument
+under ten consecutive polls. That is the case the comment calls "the
+timing-sensitive path that mocks cannot reproduce", and it is much stronger
+evidence than polling a supply sitting at zero.
+
+**Nothing here energises anything.** The session tests connect, query and
+disconnect; `connect` sends only `GMAX`. The output being live was the
+operator's doing, and the instrument was verified afterwards, by raw serial
+rather than through LabLink, to be back at `GOUT 1` / 0.11 V -- byte for byte
+what it read before any of this started.
+
+**29 of 29, nothing skipped**, on a Pi whose image was built and written
+entirely through the Windows GUI.
 
 **That is the chain complete**: an image built in the wizard on Windows,
 written to a card by the wizard, booted on a Pi, installing itself and
