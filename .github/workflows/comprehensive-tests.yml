@@ -351,10 +351,25 @@ jobs:
 
       - name: Security audit with pip-audit
         run: |
-          # Allow specific known vulnerabilities
-          # - pip 24.0 (GHSA-4xh5-x5gv-qwph): Dev/CI only, trusted sources
-          # - ecdsa 0.19.1 (GHSA-wj6h-64fc-37mp): Orphaned dependency, not used
-          pip-audit --desc --ignore-vuln GHSA-4xh5-x5gv-qwph --ignore-vuln GHSA-wj6h-64fc-37mp || {
+          # Audit the requirements LabLink declares, not the environment.
+          #
+          # Auditing the environment audits the scanners too: `safety` depends
+          # on nltk, so PYSEC-2026-3740 -- a vulnerability in a tool we install
+          # to look for vulnerabilities, in a package LabLink never imports and
+          # does not ship -- failed the build with no patched version to move
+          # to. A supply-chain gate should cover what we ship.
+          #
+          # This also widens coverage: client/requirements.txt was never
+          # audited, because the job installs only shared and server.
+          #
+          # The previous --ignore-vuln entries covered pip itself and an
+          # orphaned ecdsa, both environment artefacts that a requirements
+          # audit does not see. If either ever appears in a requirements file,
+          # failing is the right answer.
+          pip-audit --desc \
+            -r shared/requirements.txt \
+            -r server/requirements.txt \
+            -r client/requirements.txt || {
             echo "❌ CRITICAL: Security vulnerabilities found in dependencies"
             echo "Review docs/security/phase3_security_audit.md for details"
             exit 1
