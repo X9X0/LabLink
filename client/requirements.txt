@@ -38,3 +38,10 @@ python-dateutil==2.9.0.post0
 
 # Credential storage
 keyring==25.7.0
+
+# Raspberry Pi image builder: writes the image's FAT boot partition directly,
+# so building works on Windows and macOS with no root and no loop device.
+# passlib supplies the SHA-512 crypt hash for userconf.txt, since Python 3.13
+# removed the crypt module.
+pyfatfs==1.1.0
+passlib==1.7.4

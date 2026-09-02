@@ -25,3 +25,17 @@ mypy>=2.3.1
 # Optional: For better test output
 pytest-sugar>=1.1.1
 pytest-html>=4.2.0
+
+# Raspberry Pi image builder (tests/client/test_pi_image_native.py).
+# Without these the image-builder tests importorskip themselves and pass
+# vacuously, which is worse than not having them.
+pyfatfs>=1.1.0
+passlib>=1.7.4
+paramiko>=4.0.0
+
+# Same reason: test_the_server_validator_agrees loads
+# server/security/models.py to check the wizard's password rules against the
+# server's own validator. Without email-validator the module will not import,
+# the test skips, and the wizard is free to drift from the server unnoticed --
+# which is the one thing that test exists to catch.
+pydantic[email]>=2.0

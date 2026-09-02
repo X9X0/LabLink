@@ -48,6 +48,51 @@ def save_theme_setting(theme: ThemeMode) -> None:
         print(f"Failed to save theme setting: {e}")
 
 
+def dialog_palette(theme: ThemeMode = None) -> dict:
+    """Colours for widgets that set their own stylesheet.
+
+    A stylesheet set on a widget overrides the application one, so any dialog
+    that hardcodes ``background-color: white`` stays white in dark mode --
+    while its text colour still comes from the dark application sheet. White
+    panel, pale grey text, and nothing readable on it. That was the reported
+    symptom, and the cause is spread across several dialogs rather than being
+    in the dark stylesheet at all.
+
+    The fix is not to delete those stylesheets, which carry deliberate layout
+    and light-mode styling, but to feed them colours that follow the theme.
+    Format a stylesheet with ``**dialog_palette()``.
+
+    ``auto`` resolves to the light values, matching ``_get_auto_stylesheet``.
+    """
+    if theme is None:
+        theme = get_theme_setting()
+
+    if theme == "dark":
+        return {
+            "window_bg": "#2b2b2b",
+            "panel_bg": "#353535",
+            "panel_border": "#4a4a4a",
+            "text": "#e0e0e0",
+            "muted_text": "#a0a0a0",
+            "info_bg": "#3a3a3a",
+            "field_bg": "#3c3c3c",
+            "warn_bg": "#4a3f1f",
+            "warn_text": "#ffd479",
+        }
+
+    return {
+        "window_bg": "#ecf0f1",
+        "panel_bg": "white",
+        "panel_border": "#bdc3c7",
+        "text": "#2c3e50",
+        "muted_text": "#666666",
+        "info_bg": "#f0f0f0",
+        "field_bg": "white",
+        "warn_bg": "#fff3cd",
+        "warn_text": "#856404",
+    }
+
+
 def get_app_stylesheet(theme: ThemeMode = "light") -> str:
     """
     Get the application stylesheet for the specified theme.

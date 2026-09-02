@@ -2,14 +2,29 @@
 """LabLink GUI Client - Main entry point."""
 
 import argparse
+import os
 import asyncio
 import logging
 import sys
 from pathlib import Path
 
-# Add client directory to path
-client_dir = Path(__file__).parent
-sys.path.insert(0, str(client_dir))
+# Both roots, because the tree is imported both ways and neither invocation
+# supplies both on its own.
+#
+#   client.ui.*  needs the repo root      -- absent when run as a file, since
+#                                            Python adds only the script's own
+#                                            directory
+#   ui.*, utils.*  need client/           -- absent under `-m client.main`,
+#                                            where sys.path[0] is the cwd
+#
+# Getting this wrong breaks only one of the two invocations, and only on the
+# lazily-imported paths, so it survives a smoke test: `from ui.sd_card_writer
+# import SDCardWriter` in pi_image_builder.py is reached by opening the SD
+# writer, not by starting the client.
+_CLIENT_DIR = Path(__file__).resolve().parent
+for _root in (_CLIENT_DIR.parent, _CLIENT_DIR):
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import qasync
 from PyQt6.QtCore import Qt
@@ -32,6 +47,40 @@ def setup_logging(debug=False):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler("lablink_client.log")],
     )
+
+
+def _restart_client(drop_easter_egg=False):
+    """Restart this client so newly checked-out code is actually loaded.
+
+    Python caches imported modules in sys.modules. MainWindow and everything
+    it pulls in -- including the Raspberry Pi image builder -- are imported at
+    the top of this file, before main() runs. Anything that rewrites those
+    files afterwards, whether the easter-egg branch selector or a client
+    self-update, changes nothing at all for the running process: it keeps
+    executing the code it loaded at startup while reporting success.
+
+    Args:
+        drop_easter_egg: strip --easter-egg from the restarted command, so the
+            branch dialog does not reappear on every launch.
+
+    This does not return: the process is replaced, or exits.
+    """
+    argv = list(sys.argv)
+    if drop_easter_egg:
+        argv = [a for a in argv if a != "--easter-egg"]
+
+    print("🔄 Restarting to load the updated code...\n")
+    sys.stdout.flush()
+
+    if os.name == "nt":
+        # os.execv on Windows detaches the child from the console in a way
+        # that loses its output, so spawn a replacement and exit instead.
+        import subprocess
+
+        subprocess.Popen([sys.executable] + argv)
+        sys.exit(0)
+
+    os.execv(sys.executable, [sys.executable] + argv)
 
 
 def main():
@@ -78,6 +127,11 @@ def main():
         if perform_client_update(ref):
             print(f"✅ Client successfully updated to {ref}")
             clear_update_flag()
+            # Same trap as the easter-egg checkout: the files on disk are now
+            # the new version, but this process is still running the old one.
+            # The flag is cleared first, so the restart cannot loop.
+            print(f"\n{'='*60}\n")
+            _restart_client()
         else:
             print(f"❌ Failed to update client to {ref}")
             print("The application will continue with the current version.")
@@ -120,7 +174,7 @@ def main():
 
     # Easter egg mode: Show branch selector before launching
     if args.easter_egg:
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox
         from client.utils.git_operations import get_git_branches, get_git_tags, get_current_git_branch, checkout_git_ref
 
         logger.info("Easter egg mode activated!")
@@ -239,9 +293,51 @@ def main():
                 if checkout_git_ref(selected_ref):
                     print(f"✅ Successfully checked out {selected_ref}\n")
                     logger.info(f"Successfully checked out {selected_ref}")
+                    # Say so on screen, not only on stdout: launched from a
+                    # shortcut or lablink-client.bat there is often no console
+                    # to read, which is how a failed checkout looks exactly
+                    # like a successful one.
+                    QMessageBox.information(
+                        None,
+                        "Switched branch",
+                        f"Now on {selected_ref}.\n\n"
+                        "LabLink will restart so the checked-out code is "
+                        "actually loaded.",
+                    )
+                    # Restart, or the checkout has no effect on this run.
+                    # MainWindow and everything it imports were loaded from the
+                    # previous branch's files before main() started, and Python
+                    # caches modules in sys.modules -- changing the files on
+                    # disk afterwards changes nothing until the process
+                    # restarts. Without this the client silently keeps running
+                    # the old code while reporting a successful checkout.
+                    _restart_client(drop_easter_egg=True)
                 else:
                     print(f"❌ Failed to checkout {selected_ref}\n")
                     logger.error(f"Failed to checkout {selected_ref}")
+
+                    from client.utils.git_operations import (is_git_checkout,
+                                                             repo_dir)
+
+                    if not is_git_checkout():
+                        detail = (
+                            f"{repo_dir()} is not a git clone.\n\n"
+                            "Branch switching needs one. A ZIP download or a "
+                            "packaged install cannot switch branches; clone "
+                            "the repository instead."
+                        )
+                    else:
+                        detail = (
+                            "git refused the checkout. The usual cause is "
+                            "uncommitted local changes.\n\n"
+                            f"In {repo_dir()}, check `git status`, then commit "
+                            "or stash them and try again."
+                        )
+                    print(f"   {detail}\n")
+                    QMessageBox.warning(
+                        None, "Could not switch branch",
+                        f"Staying on the current branch.\n\n{detail}",
+                    )
 
     # Create and show main window
     window = MainWindow()

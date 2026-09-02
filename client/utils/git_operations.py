@@ -5,7 +5,35 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
+from client.utils.proc import no_window_kwargs
+
 logger = logging.getLogger(__name__)
+
+
+def repo_dir() -> str:
+    """The LabLink checkout these git commands should operate on.
+
+    Every call here used to run in the process's current working directory,
+    which is only the checkout when the client happens to be launched from it.
+    Started from a desktop shortcut, a Start Menu entry, or as
+    ``python C:\\LabLink\\client\\main.py`` from a home directory, git either
+    saw an unrelated repository or none at all -- so the branch list came back
+    empty and checkouts failed, with nothing on screen to say why.
+
+    Derived from this file's own location, which is inside the checkout by
+    definition.
+    """
+    return str(Path(__file__).resolve().parents[2])
+
+
+def is_git_checkout() -> bool:
+    """Whether the client is running from a git clone at all.
+
+    A ZIP download or a packaged install has no .git, and every git-backed
+    feature is unavailable there. Worth reporting as its own condition rather
+    than as a string of failed commands.
+    """
+    return (Path(repo_dir()) / ".git").exists()
 
 
 def get_git_root() -> Optional[str]:
@@ -19,7 +47,9 @@ def get_git_root() -> Optional[str]:
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -41,7 +71,9 @@ def get_git_tags() -> List[str]:
             ["git", "tag", "--sort=-version:refname"],
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         tags = [tag.strip() for tag in result.stdout.split('\n') if tag.strip()]
         logger.info(f"Found {len(tags)} git tags")
@@ -75,14 +107,18 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                 ["git", "branch", "-a", "--sort=-committerdate"],
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
         else:
             result = subprocess.run(
                 ["git", "branch", "-a"],
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
 
         branches = []
@@ -128,7 +164,9 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                         ["git", "log", "-1", "--since=3.months.ago", "--format=%ci", check_line],
                         capture_output=True,
                         text=True,
-                        check=False
+                        cwd=repo_dir(),
+                        check=False,
+                        **no_window_kwargs()
                     )
                     # If no output, branch has no commits in last 3 months
                     if not commit_check.stdout.strip():
@@ -162,7 +200,9 @@ def get_current_git_branch() -> Optional[str]:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         branch = result.stdout.strip()
         return branch if branch else None
@@ -190,7 +230,9 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "fetch", "--all", "--tags"],
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
 
         # Then checkout the ref
@@ -199,7 +241,9 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "checkout", ref],
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
 
         # Check if it's a branch (not a tag) by checking if we're on a branch after checkout
@@ -207,7 +251,9 @@ def checkout_git_ref(ref: str) -> bool:
             ["git", "symbolic-ref", "-q", "HEAD"],
             capture_output=True,
             text=True,
-            check=False
+            cwd=repo_dir(),
+            check=False,
+            **no_window_kwargs()
         )
 
         # If it's a branch (exit code 0), pull latest changes
@@ -217,7 +263,9 @@ def checkout_git_ref(ref: str) -> bool:
                 ["git", "pull", "origin", ref],
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
 
         logger.info(f"Successfully checked out {ref}")

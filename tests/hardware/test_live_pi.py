@@ -59,7 +59,9 @@ def _load_creds_file():
     f = Path(path).expanduser()
     if not f.exists():
         return
-    for line in f.read_text().splitlines():
+    # Explicit UTF-8: this file is hand-written and holds a password, so
+    # a non-ASCII character in it must not depend on the machine's locale.
+    for line in f.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -111,6 +113,29 @@ def _auth(token):
 # ---------------------------------------------------------------------------
 
 
+def _fingerprint(key) -> str:
+    """A key fingerprint in OpenSSH's format, for comparing against ssh output.
+
+    Not a base64 prefix: the first characters of any RSA key encode the
+    algorithm name and exponent, so two unrelated keys print identically and
+    the comparison says nothing.
+    """
+    import base64
+    import hashlib
+
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
+
+
+def _known_hosts_entry_name(host: str, port: int) -> str:
+    """What ssh-keygen -R needs, which is not always the bare hostname.
+
+    OpenSSH brackets the host and appends the port for anything other than 22,
+    so `ssh-keygen -R pi.local` silently removes nothing on a custom port.
+    """
+    return host if port == 22 else f"[{host}]:{port}"
+
+
 @pytest.fixture(scope="session")
 def ssh():
     """An SSH connection to the Pi, or skip."""
@@ -134,6 +159,24 @@ def ssh():
 
     try:
         client.connect(PI_HOST, **kwargs)
+    except paramiko.ssh_exception.BadHostKeyException as e:
+        # Fail rather than skip. The host is there and answering; we are
+        # refusing it, which is a different thing from an unmet precondition
+        # and needs to read that way. Reimaging at an address that has been
+        # used before is the ordinary cause -- a new image means a new host
+        # key -- and it silenced twelve tests on a second-bench run, where
+        # they were counted as "not configured" rather than "refused".
+        known = _known_hosts_entry_name(PI_HOST, SSH_PORT)
+        pytest.fail(
+            f"{PI_HOST} presented a host key that does not match known_hosts.\n\n"
+            f"  expected {_fingerprint(e.expected_key)}\n"
+            f"  got      {_fingerprint(e.key)}\n\n"
+            "If this Pi was just reimaged that is expected -- a new image has a "
+            "new key -- and the stale entry needs removing:\n\n"
+            f"    ssh-keygen -R {known}\n\n"
+            "If it was not reimaged, do not clear it: something else is "
+            "answering on that address."
+        )
     except Exception as e:
         pytest.skip(f"cannot SSH to {PI_HOST}:{SSH_PORT} - {type(e).__name__}: {e}")
 

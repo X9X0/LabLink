@@ -40,6 +40,12 @@ class MainWindow(QMainWindow):
 
     # Signals
     connection_changed = pyqtSignal(bool)  # True if connected, False if disconnected
+    # Emitted from the git-lookup worker thread. A signal rather than a
+    # QTimer: singleShot called off the GUI thread creates a timer owned by
+    # that thread, which has no event loop, so it never fires and dies with
+    # the thread. That is why the branch indicator never appeared. Signals
+    # cross threads properly, delivered on the receiver's thread.
+    branch_detected = pyqtSignal(str)
 
     def __init__(self):
         """Initialize main window."""
@@ -214,12 +220,36 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def _read_client_version(self) -> str:
+        """Version of the client that is actually running."""
+        from pathlib import Path
+
+        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        try:
+            return version_file.read_text().strip()
+        except OSError:
+            return "unknown"
+
+    def _version_text(self) -> str:
+        return f"LabLink {self._client_version}"
+
     def _setup_status_bar(self):
         """Set up status bar."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
+        # Which client code is running. The status bar previously showed the
+        # connection and the *server* version, so there was nothing anywhere
+        # in the UI identifying the client itself -- and after the branch
+        # selector checks out a different ref, that is the thing you need to
+        # see. The branch is appended once the git lookup returns.
+        self._client_version = self._read_client_version()
+        self.version_label = QLabel(self._version_text())
+        self.version_label.setStyleSheet("color: gray;")
+        self.status_bar.addWidget(self.version_label)
+
         # Git branch indicator populated asynchronously to avoid blocking startup
+        self.branch_detected.connect(self._show_branch_label)
         import threading
         threading.Thread(target=self._fetch_git_branch_async, daemon=True).start()
 
@@ -252,12 +282,15 @@ class MainWindow(QMainWindow):
             client_dir = Path(__file__).parent.parent.parent
 
             # Get branch name
+            from client.utils.proc import no_window_kwargs
+
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
                 cwd=client_dir,
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=1,
+                **no_window_kwargs()
             )
 
             if branch_result.returncode == 0:
@@ -269,7 +302,8 @@ class MainWindow(QMainWindow):
                     cwd=client_dir,
                     capture_output=True,
                     text=True,
-                    timeout=1
+                    timeout=1,
+                    **no_window_kwargs()
                 )
 
                 if hash_result.returncode == 0:
@@ -283,17 +317,29 @@ class MainWindow(QMainWindow):
         return None
 
     def _fetch_git_branch_async(self):
-        """Fetch git branch info in background and update the status bar label."""
-        from PyQt6.QtCore import QTimer
+        """Fetch git branch info in the background; emit it for the GUI thread."""
         branch_info = self._get_git_branch()
-        if branch_info and not branch_info.startswith("main"):
-            QTimer.singleShot(0, lambda: self._show_branch_label(branch_info))
+        if branch_info:
+            self.branch_detected.emit(branch_info)
 
     def _show_branch_label(self, branch_info: str):
-        """Add the git branch indicator to the status bar (must run on main thread)."""
-        self.branch_label = QLabel(f"📍 {branch_info}")
-        self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-        self.status_bar.addWidget(self.branch_label)
+        """Append the branch and commit to the version label (main thread only).
+
+        Shown for every branch including main. It used to be hidden on main,
+        which meant the status bar said nothing at all about what was running
+        in the common case -- and after the client checks out a different ref,
+        "which code is this?" is exactly the question being asked.
+        """
+        on_main = branch_info.startswith("main")
+        self.version_label.setText(f"{self._version_text()}  📍 {branch_info}")
+        self.version_label.setStyleSheet(
+            "color: gray;" if on_main else "color: #27ae60; font-weight: bold;"
+        )
+        self.version_label.setToolTip(
+            f"LabLink client {self._client_version}\n"
+            f"Running from branch {branch_info}\n\n"
+            "This is the code executing now, not the server's version."
+        )
 
     # ==================== Connection Management ====================
 

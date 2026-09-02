@@ -57,6 +57,40 @@ def _save_host_key(
             f.write(key_line)
 
 
+def _forget_host_key(
+    hostname: str, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+) -> bool:
+    """Drop every stored key for a host. Returns True if anything was removed.
+
+    Needed when a Pi is reimaged: the address is the same and the key is not,
+    and _save_host_key deliberately will not append a second entry for a name
+    it already has. Without this the old key stays and every later connection
+    is refused.
+    """
+    if not os.path.exists(known_hosts_path):
+        return False
+
+    name = _known_hosts_name(hostname, port)
+    with open(known_hosts_path, "r") as fh:
+        lines = fh.readlines()
+
+    kept = [ln for ln in lines if ln.split(" ", 1)[0] != name]
+    if len(kept) == len(lines):
+        return False
+
+    with open(known_hosts_path, "w") as fh:
+        fh.writelines(kept)
+    return True
+
+
+def _replace_host_key(
+    hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+):
+    """Trust a new key for a host that already has a different one stored."""
+    _forget_host_key(hostname, known_hosts_path, port)
+    _save_host_key(hostname, key, known_hosts_path, port)
+
+
 try:
     import paramiko
 
@@ -1278,6 +1312,58 @@ class ConnectionPage(QWizardPage):
                 else:
                     self.test_result_label.setText("✅ Connection successful!")
 
+            except paramiko.ssh_exception.BadHostKeyException as e:
+                # A *changed* key, which paramiko raises before consulting the
+                # missing-host-key policy -- so the accept dialog above never
+                # fires and a reimaged Pi is otherwise a dead end. Reimaging
+                # is the ordinary cause and the user should be able to say so,
+                # but interception looks identical from here, so both
+                # fingerprints are shown and the default is No.
+                from PyQt6.QtWidgets import QMessageBox
+
+                reply = QMessageBox.warning(
+                    self,
+                    "Host key has changed",
+                    f"The host key for <b>{host}</b> is not the one previously "
+                    "trusted.\n\n"
+                    f"Previously trusted: {_host_key_fingerprint(e.expected_key)}\n"
+                    f"Now offered:        {_host_key_fingerprint(e.key)}\n\n"
+                    "If you have just reimaged this Pi, this is expected: a new "
+                    "image has a new key.\n\n"
+                    "If you have not, do not accept. Something else may be "
+                    "answering on this address.\n\n"
+                    "Replace the stored key?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.test_result_label.setText(
+                        "❌ Connection aborted — changed host key rejected"
+                    )
+                    return
+
+                _replace_host_key(resolved_host, e.key, port=port)
+                if host != resolved_host:
+                    _replace_host_key(host, e.key, port=port)
+                try:
+                    ssh3 = paramiko.SSHClient()
+                    _load_known_hosts(ssh3)
+                    ssh3.set_missing_host_key_policy(paramiko.RejectPolicy())
+                    if self.password_radio.isChecked():
+                        ssh3.connect(resolved_host, port=port, username=username,
+                                     password=self.password_edit.text(), timeout=10)
+                    else:
+                        ssh3.connect(resolved_host, port=port, username=username,
+                                     key_filename=str(Path(self.key_edit.text()).expanduser()),
+                                     timeout=10)
+                    ssh3.close()
+                    self.test_result_label.setText(
+                        "✅ New host key accepted and connection successful!"
+                    )
+                except Exception as e3:
+                    self.test_result_label.setText(
+                        f"❌ Connection failed after key replacement: {e3}"
+                    )
             except paramiko.ssh_exception.SSHException as e:
                 msg = str(e)
                 if "Unknown host key" in msg:
