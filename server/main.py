@@ -35,9 +35,52 @@ setup_logging()
 logger = get_logger(__name__)
 
 
+def _assert_single_import_path() -> None:
+    """Fail loudly if this package is loaded under two names.
+
+    When both /app and /app/server are on sys.path, the same file imports as
+    `equipment.locks` and `server.equipment.locks`, and Python builds two
+    module objects -- each with its own module-level singletons. Nothing
+    raises. The lifespan then configures one set while every request uses the
+    other, and the symptom is a lock reaper that never reaps, a state
+    directory that is never set, and an emergency stop one import away from
+    being checked on the wrong object.
+
+    That went unnoticed for months because it produces no error, no log line
+    and no failing test. So check for it, and refuse to start rather than run
+    in a shape nobody can debug from the outside.
+    """
+    import sys
+
+    loaded = set(sys.modules)
+    duplicates = sorted(
+        name for name in loaded
+        if not name.startswith("server.")
+        and f"server.{name}" in loaded
+        and name.split(".")[0] in {
+            "acquisition", "alarm", "analysis", "api", "backup", "config",
+            "database", "diagnostics", "discovery", "equipment", "firmware",
+            "logging_config", "performance", "scheduler", "security", "system",
+            "waveform", "web", "websocket",
+        }
+    )
+    if duplicates:
+        raise RuntimeError(
+            "The server package is loaded under two names, so its "
+            "module-level singletons are duplicated and startup would "
+            "configure objects no request will use.\n\n"
+            f"  duplicated: {', '.join(duplicates)}\n\n"
+            "Both the repo root and server/ are on sys.path. Start the server "
+            "as `python -m uvicorn server.main:app` from the repo root, and "
+            "import everything as server.* -- see issue #197."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    _assert_single_import_path()
+
     from server.system import get_version
 
     logger.info("=" * 70)
@@ -758,7 +801,10 @@ if __name__ == "__main__":
         logger.info("🐛 DEBUG MODE ENABLED via command-line flag")
 
     uvicorn.run(
-        "main:app",
+        # Must match the container's target: the module is server.main, and
+        # naming it "main:app" here would re-import this file under a second
+        # name, which is the defect this branch removes.
+        "server.main:app",
         host=settings.host,
         port=settings.api_port,
         reload=settings.debug,
