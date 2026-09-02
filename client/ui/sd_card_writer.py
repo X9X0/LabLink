@@ -304,20 +304,32 @@ sync
             return False
 
     def _write_windows(self) -> bool:
-        """Write image on Windows."""
-        # For Windows, we need special handling
-        # This requires Win32DiskImager or similar tool, or using pywin32
-        # For now, provide instructions to user
+        """Report that writing the card is not implemented on Windows.
 
-        self.progress.emit(50, "Windows write not yet implemented")
+        Writing a raw device here would mean opening \\\\.\\PhysicalDriveN,
+        locking and dismounting its volumes, and writing sector-aligned --
+        which does need elevation, but that is not why this returns. It
+        returns because the code was never written.
+
+        The distinction matters to whoever reads the message: it used to say
+        only that administrator privileges were required, which sends people
+        off to run the client elevated, and doing so changes nothing.
+
+        Note this is not the image *builder*, which needs no privileges on any
+        platform and is the point of that work. This is the separate step of
+        putting a finished image onto a card.
+        """
+        self.progress.emit(50, "Windows write not implemented")
         self.finished.emit(
             False,
-            "Windows SD card writing requires administrator privileges.\n\n"
-            "Please use one of these tools:\n"
+            "Writing the card is not implemented on Windows yet.\n\n"
+            "Running LabLink as administrator will not help -- the code for "
+            "it does not exist. Write the image with one of these instead:\n"
             "- Raspberry Pi Imager (recommended)\n"
             "- balenaEtcher\n"
             "- Win32 Disk Imager\n\n"
-            f"Image file: {self.image_path}",
+            "The image itself is finished and ready to write:\n"
+            f"{self.image_path}",
         )
         return False
 

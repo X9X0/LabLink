@@ -38,7 +38,7 @@ Report findings by appending a section to this file, as the previous runs did.
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
-| Writing the card from the wizard | ❌ failed -- fell back to Raspberry Pi Imager; details pending |
+| Writing the card from the wizard | ❌ not implemented on Windows -- `_write_windows()` is a stub; use Raspberry Pi Imager. Message corrected, it blamed admin privileges |
 | Booting a wizard-built image | ⚠️ booted and sshd came up, but LabLink never started and it cannot be diagnosed -- blank password, no account; see below |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1019,10 +1019,36 @@ without complaint -- that was chosen deliberately, since no CLI run had used one
 
 ### The two things that did not go to plan
 
-**1. Writing the card from the wizard failed.** The human fell back to
-Raspberry Pi Imager, which wrote the same file successfully, so the image is
-not at fault. Details of that failure are still to be captured; nothing has
-ever exercised that path, so it is worth a section of its own once they are.
+**1. Writing the card from the wizard failed** -- because that code does not
+exist. From the run's own log:
+
+```
+ui.sd_card_writer - INFO - [15%] Starting write operation...
+ui.sd_card_writer - INFO - [50%] Windows write not yet implemented
+ui.sd_card_writer - INFO - Result: FAILED
+ui.sd_card_writer - INFO - Windows SD card writing requires administrator
+                           privileges.
+```
+
+`_write_windows()` in `client/ui/sd_card_writer.py` was a stub: it emitted
+progress to 50%, then reported failure. Not a regression and nothing to do
+with this branch -- the SD writer has never worked on Windows.
+
+The message was the actual problem. It said only that administrator
+privileges were required, which is true of raw device writing in general and
+completely beside the point here: the code was never written, so running the
+client elevated would have changed nothing. It sends people to fix something
+that is not broken. It now says the feature is not implemented, says plainly
+that running as administrator will not help, and points at Raspberry Pi
+Imager -- which is what the human used, successfully, on the same file.
+
+Worth keeping the two separate when reading this document: **the image
+builder needs no privileges on any platform, and that is the point of this
+branch.** Putting a finished image onto a card is a different operation that
+does require elevation on Windows no matter who writes it -- Raspberry Pi
+Imager triggers UAC too. A UAC prompt from a future card writer would not
+contradict the "no administrator privileges" claim the builder makes; a UAC
+prompt during a *build* still would.
 
 **2. Blank passwords produce a Pi with no login account.** The password
 fields were left empty. That is honoured exactly as designed --
