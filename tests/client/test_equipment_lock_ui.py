@@ -268,3 +268,106 @@ class TestSelectingEquipmentDoesNotSteal:
 
         assert "get_lock_status" in selection
         assert "holds_lock" in selection
+
+
+class TestControlPanelWiring:
+    """The strip and the controls must track the lock without being asked.
+
+    A lock counts down, and somebody else can take it or let it expire while
+    you are working. If the panel only refreshes on selection, the controls
+    grey out with no explanation — which is the thing this feature exists to
+    prevent.
+    """
+
+    @pytest.fixture
+    def panel(self, app):
+        from client.ui.control_panel import ControlPanel
+
+        client = MagicMock()
+        client.holds_lock.side_effect = lambda st: st.get("session_id") == "mine"
+        panel = ControlPanel(client=client)
+        equipment = MagicMock()
+        equipment.equipment_id = "ps_1"
+        equipment.name = "B&K 1902B"
+        panel.selected_equipment = equipment
+        yield panel, client
+        panel.lock_timer.stop()
+        panel.readings_timer.stop()
+
+    def test_holding_the_lock_enables_the_controls(self, panel):
+        p, _ = panel
+        p._apply_lock_status(status(session_id="mine", username="me"))
+
+        assert p.voltage_dial.isEnabled()
+        assert p.output_button.isEnabled()
+        assert "You have control" in p.lock_status_widget.text_label.text()
+
+    def test_someone_else_holding_it_disables_them(self, panel):
+        p, _ = panel
+        p._apply_lock_status(status())
+
+        assert not p.voltage_dial.isEnabled()
+        assert not p.output_button.isEnabled()
+        assert "alice" in p.lock_status_widget.text_label.text()
+
+    def test_losing_control_is_announced(self, panel):
+        """Controls greying out silently is the failure worth avoiding."""
+        p, _ = panel
+        messages = []
+        p.status_message.connect(messages.append)
+
+        p._apply_lock_status(status(session_id="mine", username="me"))
+        p._apply_lock_status(status())          # alice takes it
+
+        assert messages, "losing the lock must say so"
+        assert "alice" in messages[-1]
+
+    def test_no_announcement_when_you_never_had_it(self, panel):
+        p, _ = panel
+        messages = []
+        p.status_message.connect(messages.append)
+
+        p._apply_lock_status(status())
+        p._apply_lock_status(status())
+
+        assert not messages
+
+    def test_deselection_clears_the_strip(self, panel):
+        p, _ = panel
+        p._apply_lock_status(status())
+
+        p._apply_lock_status(None)
+
+        assert "No equipment selected" in p.lock_status_widget.text_label.text()
+        assert not p.manage_lock_button.isEnabled()
+
+    def test_lock_polling_runs_with_acquisition(self, panel):
+        p, _ = panel
+        p._start_data_acquisition()
+
+        assert p.lock_timer.isActive()
+        assert p.lock_timer.interval() == 5000, (
+            "polled slower than readings on purpose: a server query, not a "
+            "serial one"
+        )
+
+        p._stop_data_acquisition()
+        assert not p.lock_timer.isActive()
+
+    def test_polling_happens_off_the_gui_thread(self):
+        """A blocking HTTP call on a timer is how the SD dialog froze.
+
+        The readings path already solved this with asyncSlot + call_blocking;
+        the lock poll has to use it too, or it reintroduces the same fault at
+        a slower interval.
+        """
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[2]
+                  / "client" / "ui" / "control_panel.py").read_text(encoding="utf-8")
+        poll = source.split("async def _poll_lock_status", 1)[1].split("def ", 1)[0]
+
+        assert "call_blocking" in poll
+        assert "_lock_poll_in_flight" in poll, "a slow server must not queue ticks"
+        before = source.split("async def _poll_lock_status", 1)[0]
+        assert before.rstrip().endswith("@qasync.asyncSlot()")

@@ -534,6 +534,13 @@ class MainWindow(QMainWindow):
         # Set client for all panels
         self.equipment_panel.set_client(self.client)
         self.control_panel.set_client(self.client)
+        # Losing a lock mid-session greys out the controls; say why.
+        try:
+            self.control_panel.status_message.connect(
+                lambda text: self.status_bar.showMessage(text, 10000)
+            )
+        except (TypeError, RuntimeError):  # already connected
+            pass
         self.acquisition_panel.set_client(self.client)
         self.alarm_panel.set_client(self.client)
         self.scheduler_panel.set_client(self.client)
