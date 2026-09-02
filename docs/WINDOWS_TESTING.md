@@ -53,7 +53,8 @@ non-event.
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
-| Writing the card from the wizard | ✅ **worked on real hardware** -- card written from the wizard, booted a Pi |
+| Writing the card from the wizard | ✅ **two cards, two readers** -- both written from the wizard, both booted |
+| SCPI / USB-TMC instrument path | ✅ B&K 9205B, self-identifying, session tests pass |
 | Booting a wizard-built image | ✅ **full GUI chain done** -- build → card write → boot → LabLink healthy |
 | Live-Pi suite against the GUI chain | ✅ **29 collected, 29 passed, 0 skipped, 0 failed** |
 | Instrument discovery on a builder-made Pi | ✅ a B&K-protocol supply on a CP210x bridge, discovered through the container |
@@ -1431,6 +1432,79 @@ what it read before any of this started.
 
 **29 of 29, nothing skipped**, on a Pi whose image was built and written
 entirely through the Windows GUI.
+
+## Second bench: a second reader, and a self-identifying instrument (2026-09-02)
+
+The first run proved the chain works once. This one was chosen to test what
+was still a sample of one, and it moved three things off that number.
+
+**The wizard's card writer wrote this card too, on a different reader**, and
+the Pi booted from it. That was the highest-value unknown: the
+insertion-detection flow had only ever been exercised against a single
+reader, and a different one could plausibly enumerate differently or stay
+enumerated across removal. It did not. Confirmed genuinely reimaged rather
+than rebooted: the SSH host key changed from `956d1746…` to `476c1144…`.
+
+Ethernet this time, so the Wi-Fi fields were untouched, and the password was
+typed rather than generated -- so the generated-password console banner
+*still* has only unit tests behind it.
+
+### Two instruments, and only one of them needs guessing
+
+```
+POST /api/equipment/discover  ->  2 devices
+
+  USB0::11975::37376::800886011797210043::0::INSTR
+      B&K Precision 9205B      scpi       confidence 0.95
+  ASRL/dev/ttyUSB0::INSTR
+      B&K Precision "Legacy fixed-width supply"   fixed   confidence 0.6
+```
+
+The **9205B identifies itself**: USB `2ec7:9200` resolves through
+`usb_hardware_db.py`, it answers `*IDN?` over USB-TMC, it carries a real
+serial number, and it has a dedicated `BK9205B` SCPI driver. No dialect
+derivation, no 10x scaling risk -- the opposite of the first bench's problem,
+and a different code path from the raw fixed-width one. The session tests ran
+against it: `voltage_set 12.0, current_set 20.0, voltage_actual 0.026,
+output_enabled false`.
+
+The legacy supply on this bench reports `gmax 605680` -- 60.5 V / **68.0 A**
+-- against the first bench's `605160`, 60.5 V / 16.0 A. Same voltage field,
+different current. So it is either a different unit or an unreliable read,
+and it is exactly why `LABLINK_EQUIPMENT_MODEL=1902B` was **not** carried
+over from the other bench. A model derived for one instrument is not evidence
+about another.
+
+### Reimaging at the same address blocks the SSH tests, correctly
+
+Worth knowing before it wastes somebody's afternoon. The first run of the
+suite here gave:
+
+```
+17 passed, 12 skipped
+  SKIPPED: cannot SSH to 192.168.91.191:22 - BadHostKeyException:
+  Host key for server '192.168.91.191' does not match
+```
+
+The Pi was reimaged at the address a previous Pi had used, so `known_hosts`
+still held the old key. Every SSH-dependent test skipped. **That is the right
+behaviour** -- silently accepting a changed host key is what trust-on-first-use
+exists to prevent -- but twelve skips read as "not configured" rather than
+"refused", which is the same vacuous-pass shape as the equipment skips
+earlier in this document.
+
+Clearing the stale entry (`ssh-keygen -R 192.168.91.191`) and rerunning gives
+**29 collected, 29 passed, 0 skipped**. Do that after any reimage that reuses
+an address, and check the fingerprint actually changed for the reason you
+think it did before removing anything.
+
+### Also worth noting
+
+Both Pis are called `lablink-pi`, the default. They are on different subnets
+today, so nothing collides, but `lablink-pi.local` cannot distinguish them
+and would resolve to whichever answered first. A distinct hostname per build
+costs nothing at image time and is unrecoverable afterwards without
+re-imaging.
 
 **That is the chain complete**: an image built in the wizard on Windows,
 written to a card by the wizard, booted on a Pi, installing itself and
