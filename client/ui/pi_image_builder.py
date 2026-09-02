@@ -920,49 +920,70 @@ class PiImageBuilderWizard(QWizard):
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
         self.resize(700, 600)
 
-        # Apply visual styling
+        # Apply visual styling.
+        #
+        # These colours follow the theme rather than being fixed. A stylesheet
+        # set on a widget overrides the application one, so the hardcoded
+        # white here used to survive into dark mode and collide with the dark
+        # sheet's pale text -- white panels, grey text, unreadable.
+        from client.ui.theme import dialog_palette
+
+        _c = dialog_palette()
         self.setStyleSheet("""
-            QWizard {
-                background-color: #ecf0f1;
-            }
-            QWizardPage {
-                background-color: #ecf0f1;
-            }
-            QGroupBox {
-                border: 2px solid #bdc3c7;
+            QWizard {{
+                background-color: {window_bg};
+            }}
+            QWizardPage {{
+                background-color: {window_bg};
+                color: {text};
+            }}
+            QGroupBox {{
+                border: 2px solid {panel_border};
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
-                background-color: white;
+                background-color: {panel_bg};
+                color: {text};
                 font-weight: bold;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 15px;
                 padding: 5px 10px;
-                background-color: white;
-            }
-            QPushButton {
+                background-color: {panel_bg};
+                color: {text};
+            }}
+            QLabel {{
+                color: {text};
+            }}
+            QLineEdit, QComboBox, QTextEdit {{
+                background-color: {field_bg};
+                color: {text};
+                border: 1px solid {panel_border};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton {{
                 background-color: #3498db;
                 color: white;
                 border: 2px solid #2471a3;
                 border-radius: 6px;
                 padding: 8px 15px;
                 min-height: 30px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #2e86c1;
                 border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: #2471a3;
-            }
-            QPushButton:disabled {
+            }}
+            QPushButton:disabled {{
                 background-color: #95a5a6;
                 border: 2px solid #7f8c8d;
                 color: #ecf0f1;
-            }
-        """)
+            }}
+        """.format(**_c))
 
         # Add pages
         self.config_page = ConfigurationPage()

@@ -120,10 +120,12 @@ def list_disks() -> List[Disk]:
     if not sys.platform.startswith("win"):
         raise SDWriteError("This module only runs on Windows.")
 
+    from client.utils.proc import no_window_kwargs
+
     try:
         completed = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", _PS_LIST_DISKS],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, **no_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise SDWriteError(f"Could not list disks: {exc}") from exc
@@ -165,14 +167,21 @@ def snapshot_disk_numbers() -> set:
     return {d.number for d in list_disks()}
 
 
-def newly_appeared(before: set) -> List[Disk]:
+def newly_appeared(before: set, disks: Optional[List[Disk]] = None) -> List[Disk]:
     """Disks present now that were not in ``before``.
 
     This is how the card is identified: the user is asked to insert it (or
     remove and reinsert it), and whatever turns up is the target. It needs no
     guess about which reader reports itself how.
+
+    ``disks`` lets a caller pass a list it already has. Enumerating costs
+    roughly three seconds -- PowerShell start-up, mostly -- so a GUI wants to
+    do it on a worker thread and hand the result in here rather than have this
+    function block whatever thread it was called on.
     """
-    return [d for d in list_disks() if d.number not in before]
+    if disks is None:
+        disks = list_disks()
+    return [d for d in disks if d.number not in before]
 
 
 def check_target(disk: Disk, image_size: int, override: bool = False) -> None:

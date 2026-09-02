@@ -282,12 +282,15 @@ class MainWindow(QMainWindow):
             client_dir = Path(__file__).parent.parent.parent
 
             # Get branch name
+            from client.utils.proc import no_window_kwargs
+
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
                 cwd=client_dir,
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=1,
+                **no_window_kwargs()
             )
 
             if branch_result.returncode == 0:
@@ -299,7 +302,8 @@ class MainWindow(QMainWindow):
                     cwd=client_dir,
                     capture_output=True,
                     text=True,
-                    timeout=1
+                    timeout=1,
+                    **no_window_kwargs()
                 )
 
                 if hash_result.returncode == 0:

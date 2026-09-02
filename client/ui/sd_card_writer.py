@@ -26,6 +26,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class _DiskScanThread(QThread):
+    """Enumerate disks off the GUI thread.
+
+    ``list_disks`` starts PowerShell, which measured at about three seconds on
+    the machine this was written for. Called from a QTimer that would run on
+    the GUI thread, and freeze it -- at the exact moment the user inserts the
+    card and is watching for a response.
+    """
+
+    result = pyqtSignal(object)  # list[Disk], or None if the scan failed
+
+    def run(self):
+        try:
+            from client.utils.sd_write_win import list_disks
+
+            self.result.emit(list_disks())
+        except Exception:  # a failed scan is a retry, not a crash
+            logger.debug("Disk scan failed", exc_info=True)
+            self.result.emit(None)
+
+
 class DetectCardDialog(QDialog):
     """Identify the card by watching one appear.
 
@@ -110,28 +131,86 @@ class DetectCardDialog(QDialog):
         self.setLayout(layout)
 
     def _start_watching(self):
-        from client.utils.sd_write_win import SDWriteError, snapshot_disk_numbers
+        """Take the baseline on a worker, so the dialog opens immediately."""
+        self._mask = self._drive_letter_mask()
+        self._ticks = 0
+        self._scan = None
+        self._baseline = None  # not established yet
 
-        try:
-            self._baseline = snapshot_disk_numbers()
-        except SDWriteError as exc:
-            self.status.setText(f"<b>Could not list disks:</b> {exc}")
-            self._baseline = set()
+        self.status.setText("<i>Looking at the drives already attached...</i>")
+
+        self._baseline_scan = _DiskScanThread(self)
+        self._baseline_scan.result.connect(self._on_baseline)
+        self._baseline_scan.start()
+
+    def _on_baseline(self, disks):
+        if disks is None:
+            self.status.setText(
+                "<b>Could not list disks.</b> Use "
+                "<i>Choose manually</i>, or close and try again."
+            )
             return
+
+        self._baseline = {d.number for d in disks}
+        self.status.setText(
+            f"<i>Watching. {len(disks)} drive(s) already attached -- "
+            "insert the card now.</i>"
+        )
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._poll)
         self.timer.start(self.POLL_MS)
 
-    def _poll(self):
-        from client.utils.sd_write_win import SDWriteError, newly_appeared
+    def _drive_letter_mask(self) -> int:
+        """A cheap fingerprint of what is mounted, for skipping the real scan.
 
-        if self._manual:
-            return
+        Enumerating disks means starting PowerShell, which costs a good part
+        of a second. Doing that once a second is heavy on its own and was
+        visibly janky besides. GetLogicalDrives is a single call into
+        kernel32, so it can be polled freely, and inserting a card almost
+        always changes it -- the boot partition is FAT and gets a letter.
+
+        It is only a trigger, not the answer: a full scan still runs on a
+        slower beat, so a card that somehow claims no drive letter is found a
+        few seconds later rather than never.
+        """
         try:
-            found = newly_appeared(self._baseline)
-        except SDWriteError:
+            import ctypes
+
+            return int(ctypes.windll.kernel32.GetLogicalDrives())
+        except Exception:
+            return -1  # unavailable, so always take the slow path
+
+    def _poll(self):
+        """Decide whether a scan is worth starting. Never scans inline."""
+        if self._manual or self._scan is not None or self._baseline is None:
             return
+
+        self._ticks = getattr(self, "_ticks", 0) + 1
+        mask = self._drive_letter_mask()
+        changed = mask != getattr(self, "_mask", mask)
+        self._mask = mask
+
+        # Full scan when something mounted or unmounted, and every few ticks
+        # regardless as a backstop.
+        if not changed and mask != -1 and self._ticks % 4:
+            return
+
+        self._scan = _DiskScanThread(self)
+        self._scan.result.connect(self._on_scan)
+        self._scan.finished.connect(self._scan_done)
+        self._scan.start()
+
+    def _scan_done(self):
+        self._scan = None
+
+    def _on_scan(self, disks):
+        from client.utils.sd_write_win import newly_appeared
+
+        if disks is None or self._manual:
+            return
+
+        found = newly_appeared(self._baseline, disks)
 
         if not found:
             return
@@ -962,45 +1041,62 @@ class SDCardWriter(QDialog):
         self.setWindowTitle("SD Card Writer")
         self.resize(700, 600)
 
-        # Apply visual styling
+        # Apply visual styling. Colours come from the theme: a stylesheet set
+        # on a widget overrides the application one, so hardcoded white here
+        # survived into dark mode and met the dark sheet's pale text.
+        from client.ui.theme import dialog_palette
+
+        _c = dialog_palette()
         self.setStyleSheet("""
-            QDialog {
-                background-color: #ecf0f1;
-            }
-            QGroupBox {
-                border: 2px solid #bdc3c7;
+            QDialog {{
+                background-color: {window_bg};
+                color: {text};
+            }}
+            QGroupBox {{
+                border: 2px solid {panel_border};
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
-                background-color: white;
+                background-color: {panel_bg};
+                color: {text};
                 font-weight: bold;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 15px;
                 padding: 5px 10px;
-                background-color: white;
-            }
-            QPushButton {
+                background-color: {panel_bg};
+                color: {text};
+            }}
+            QLabel {{
+                color: {text};
+            }}
+            QListWidget, QComboBox, QTextEdit, QLineEdit {{
+                background-color: {field_bg};
+                color: {text};
+                border: 1px solid {panel_border};
+                border-radius: 4px;
+            }}
+            QPushButton {{
                 background-color: #3498db;
                 color: white;
                 border: 2px solid #2471a3;
                 border-radius: 6px;
                 padding: 8px 15px;
                 min-height: 30px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #2e86c1;
                 border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: #2471a3;
-            }
-            QPushButton:disabled {
+            }}
+            QPushButton:disabled {{
                 background-color: #95a5a6;
                 border: 2px solid #7f8c8d;
-            }
-        """)
+            }}
+        """.format(**_c))
 
         self._setup_ui()
 

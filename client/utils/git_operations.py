@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
+from client.utils.proc import no_window_kwargs
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,7 +48,8 @@ def get_git_root() -> Optional[str]:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -69,7 +72,8 @@ def get_git_tags() -> List[str]:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
         tags = [tag.strip() for tag in result.stdout.split('\n') if tag.strip()]
         logger.info(f"Found {len(tags)} git tags")
@@ -104,7 +108,8 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                 capture_output=True,
                 text=True,
                 cwd=repo_dir(),
-                check=True
+                check=True,
+                **no_window_kwargs()
             )
         else:
             result = subprocess.run(
@@ -112,7 +117,8 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                 capture_output=True,
                 text=True,
                 cwd=repo_dir(),
-                check=True
+                check=True,
+                **no_window_kwargs()
             )
 
         branches = []
@@ -159,7 +165,8 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                         capture_output=True,
                         text=True,
                         cwd=repo_dir(),
-                        check=False
+                        check=False,
+                        **no_window_kwargs()
                     )
                     # If no output, branch has no commits in last 3 months
                     if not commit_check.stdout.strip():
@@ -194,7 +201,8 @@ def get_current_git_branch() -> Optional[str]:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
         branch = result.stdout.strip()
         return branch if branch else None
@@ -223,7 +231,8 @@ def checkout_git_ref(ref: str) -> bool:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
 
         # Then checkout the ref
@@ -233,7 +242,8 @@ def checkout_git_ref(ref: str) -> bool:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
 
         # Check if it's a branch (not a tag) by checking if we're on a branch after checkout
@@ -242,7 +252,8 @@ def checkout_git_ref(ref: str) -> bool:
             capture_output=True,
             text=True,
             cwd=repo_dir(),
-            check=False
+            check=False,
+            **no_window_kwargs()
         )
 
         # If it's a branch (exit code 0), pull latest changes
@@ -253,7 +264,8 @@ def checkout_git_ref(ref: str) -> bool:
                 capture_output=True,
                 text=True,
                 cwd=repo_dir(),
-                check=True
+                check=True,
+                **no_window_kwargs()
             )
 
         logger.info(f"Successfully checked out {ref}")
