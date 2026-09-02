@@ -4,27 +4,42 @@ Branch: `feat/native-pi-image-builder` (PR #190)
 
 ## ▶ Next task
 
-**Click through the Qt wizard on Windows.** The environment is now prepped
-(see [Findings from preparing the Windows wizard
-environment](#findings-from-preparing-the-windows-wizard-environment-2026-09-01)
-below) -- Python 3.12.10, the full client dependency set, and a launch bug
-that would have blocked step 4 are all done. What is left is the interactive
-part nobody has automated: **Tools -> Build Raspberry Pi Image...**, filling
-in the fields, watching the progress bar and status bar, per
-[Testing the wizard on Windows](#testing-the-wizard-on-windows-python-312)
-steps 4 through 7 -- for which there is now a
-step-by-step script in
-[Human-in-the-loop script for the wizard run](#human-in-the-loop-script-for-the-wizard-run),
-written to be handed straight to whoever is sitting at the machine.
+**End-to-end through the GUI: build an image, write the card, boot the Pi.**
+Every stage has now been done in isolation; none has been done as one chain,
+and the card write in particular has never succeeded from the wizard.
 
-That is not a formality. It is the only route that reaches:
+1. `git pull`, then launch the client from the 3.12 venv.
+2. Confirm the status bar reads `feat/native-pi-image-builder` **before doing
+   anything else**. If it does not, old code is running and the run proves
+   nothing.
+3. **Tools → Build Raspberry Pi Image...**, and build one.
+4. Write the card with the new writer — this is the step that has never
+   worked from the wizard.
+5. Boot the Pi from that card.
 
-- **the Qt layer** -- the build on a `QThread`, progress signals reaching the
-  GUI, the window staying responsive, cancelling mid-build.
-- **the status bar branch indicator**, which was dead code until this branch
-  and has never been seen working on Windows.
+What to watch, and record either way:
 
-Report findings by appending a section to this file, as the previous runs did.
+- **The generated password**, if the field is left blank. It must be visible
+  *before* the card is written; it exists nowhere else. If it is easy to miss
+  on screen, that is a finding.
+- **A UAC prompt at the card write, and only there.** The raw write needs
+  elevation and cannot self-elevate. Building an image still must not prompt.
+- **Whether the insert-the-card flow reads clearly** to someone who has not
+  read the code. Two disks appearing at once should be reported as ambiguous
+  rather than resolved by picking one — worth provoking with a spare USB
+  stick if there is one.
+- **On boot**: the console banner carrying the generated password, and that
+  it disappears after `passwd`. Then `tests/hardware/test_live_pi.py` against
+  it — 25+ passed from a wizard-built, wizard-written card is the end of the
+  chain.
+
+**Writing the card is the only destructive step in this document.** If the
+insertion detection is at all unclear about which disk it chose, stop and
+report rather than confirming through it.
+
+Append findings here as before. Record it in the same detail if it all works:
+"it worked" from a path nothing has ever exercised is a result, not a
+non-event.
 
 ## Status
 
