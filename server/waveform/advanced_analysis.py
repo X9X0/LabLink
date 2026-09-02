@@ -1254,16 +1254,30 @@ class AdvancedWaveformAnalyzer:
             times = np.array(
                 [(p.timestamp - trend.start_time).total_seconds() for p in trend.data_points]
             )
-            slope, _ = np.polyfit(times, values, 1)
-            trend.drift_rate = float(slope)
+            time_span = float(times[-1] - times[0])
 
-            # Determine trend direction
-            if abs(slope) < trend.std_dev / (times[-1] - times[0]):
+            # Points captured faster than the clock can resolve share a
+            # timestamp, which leaves the x-vector constant. np.polyfit then
+            # fails with "SVD did not converge in Linear Least Squares", and
+            # the direction test below divides by zero. Windows' wall clock
+            # ticks at about 15.6 ms, so ordinary sample rates reach this.
+            #
+            # A drift rate over zero elapsed time is undefined rather than
+            # wrong, so report no drift instead of raising.
+            if time_span <= 0:
+                trend.drift_rate = 0.0
                 trend.trend_direction = "stable"
-            elif slope > 0:
-                trend.trend_direction = "up"
             else:
-                trend.trend_direction = "down"
+                slope, _ = np.polyfit(times, values, 1)
+                trend.drift_rate = float(slope)
+
+                # Determine trend direction
+                if abs(slope) < trend.std_dev / time_span:
+                    trend.trend_direction = "stable"
+                elif slope > 0:
+                    trend.trend_direction = "up"
+                else:
+                    trend.trend_direction = "down"
 
         trend.last_update = datetime.now()
 

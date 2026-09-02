@@ -11,7 +11,17 @@ env:
   PYTHON_VERSION_DEFAULT: '3.12'
   # Coverage baseline: 26% (established 2025-01-14)
   # Target: Increase by 1% per quarter to reach 30% by Q2 2025
-  MIN_COVERAGE_PERCENT: 26
+  # Lowered from 26 when import-time side effects were removed (#194). Two
+  # test modules used to execute a script body at import, running a good deal
+  # of server/ code during collection, and coverage counted it. That was never
+  # test coverage -- no assertion depended on any of it -- so the figure was
+  # overstating what the suite actually checks. 18% is the first honest
+  # measurement of tests/unit/ alone; this is set just below it.
+  #
+  # It should go back up by covering code with tests, not by reinstating the
+  # accounting. Running tests/client/ here too is the obvious next step: it
+  # holds real tests that CI has never executed.
+  MIN_COVERAGE_PERCENT: 17
   TARGET_COVERAGE_PERCENT: 80
 
 jobs:
@@ -63,6 +73,18 @@ jobs:
           pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
           # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
           pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
+
+      - name: Collection must not modify tracked files
+        run: |
+          # Importing a test module runs anything at its top level. That used
+          # to rewrite profiles/*.json on every collection, so the timestamps
+          # got committed by accident. Catch it here rather than in review.
+          pytest tests/ --collect-only -q > /dev/null
+          if ! git diff --quiet; then
+            echo "Collecting tests modified tracked files:"
+            git diff --stat
+            exit 1
+          fi
 
       - name: Run unit tests with coverage
         env:
@@ -329,10 +351,25 @@ jobs:
 
       - name: Security audit with pip-audit
         run: |
-          # Allow specific known vulnerabilities
-          # - pip 24.0 (GHSA-4xh5-x5gv-qwph): Dev/CI only, trusted sources
-          # - ecdsa 0.19.1 (GHSA-wj6h-64fc-37mp): Orphaned dependency, not used
-          pip-audit --desc --ignore-vuln GHSA-4xh5-x5gv-qwph --ignore-vuln GHSA-wj6h-64fc-37mp || {
+          # Audit the requirements LabLink declares, not the environment.
+          #
+          # Auditing the environment audits the scanners too: `safety` depends
+          # on nltk, so PYSEC-2026-3740 -- a vulnerability in a tool we install
+          # to look for vulnerabilities, in a package LabLink never imports and
+          # does not ship -- failed the build with no patched version to move
+          # to. A supply-chain gate should cover what we ship.
+          #
+          # This also widens coverage: client/requirements.txt was never
+          # audited, because the job installs only shared and server.
+          #
+          # The previous --ignore-vuln entries covered pip itself and an
+          # orphaned ecdsa, both environment artefacts that a requirements
+          # audit does not see. If either ever appears in a requirements file,
+          # failing is the right answer.
+          pip-audit --desc \
+            -r shared/requirements.txt \
+            -r server/requirements.txt \
+            -r client/requirements.txt || {
             echo "❌ CRITICAL: Security vulnerabilities found in dependencies"
             echo "Review docs/security/phase3_security_audit.md for details"
             exit 1

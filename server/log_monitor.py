@@ -270,7 +270,7 @@ class LogMonitor:
 
         print(f"\nPress Ctrl+C to stop\n{Colors.GRAY}{'─' * 80}{Colors.RESET}\n")
 
-        last_stats_time = time.time()
+        last_stats_time = time.perf_counter()
 
         try:
             while True:
@@ -306,7 +306,7 @@ class LogMonitor:
 
                 # Show periodic stats
                 if show_stats_interval > 0:
-                    current_time = time.time()
+                    current_time = time.perf_counter()
                     if current_time - last_stats_time >= show_stats_interval:
                         self.display_stats()
                         last_stats_time = current_time
