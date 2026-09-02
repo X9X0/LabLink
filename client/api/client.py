@@ -660,11 +660,40 @@ class LabLinkClient:
             "timeout_seconds": timeout_seconds,
             "queue_if_busy": False,
         }
+        # Name the holder. The server falls back to the authenticated user, but
+        # sending it means a lock is attributable even on a server without
+        # authentication enabled.
+        username = (self.user_data or {}).get("username") if self.user_data else None
+        if username:
+            payload["username"] = username
         response = self._session.post(
             f"{self.api_base_url}/locks/acquire", json=payload
         )
         response.raise_for_status()
         return response.json()
+
+    def get_lock_status(self, equipment_id: str) -> Dict[str, Any]:
+        """Who holds the lock on this equipment, and until when.
+
+        Returns a dict with `locked`, and when locked also `username`,
+        `client_ip`, `acquired_at`, `time_remaining`, `timeout_seconds` and
+        `session_id`.
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/locks/status/{equipment_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_all_locks(self) -> Dict[str, Any]:
+        """Every lock currently held, keyed by equipment id."""
+        response = self._session.get(f"{self.api_base_url}/locks/all")
+        response.raise_for_status()
+        return response.json()
+
+    def holds_lock(self, status: Dict[str, Any]) -> bool:
+        """Whether a lock status describes a lock held by this client."""
+        return bool(status.get("locked")) and status.get("session_id") == self.session_id
 
     def release_lock(self, equipment_id: str, force: bool = False) -> Dict[str, Any]:
         """Release a lock on equipment.

@@ -33,6 +33,11 @@ class AcquireLockRequest(BaseModel):
     queue_if_busy: bool = Field(
         default=False, description="Add to queue if equipment is locked"
     )
+    username: Optional[str] = Field(
+        default=None,
+        description="Who is taking the lock. Falls back to the authenticated "
+                    "user; supply it when calling without authentication.",
+    )
 
 
 class ReleaseLockRequest(BaseModel):
@@ -108,8 +113,32 @@ class AllLocksResponse(BaseModel):
 # ============================================================================
 
 
+def _identify(http_request: Optional[Request]) -> tuple:
+    """Who is asking, and from where.
+
+    Recorded on the lock so that somebody looking at a locked instrument can
+    tell whether to wait, go and find a colleague, or override. A session id
+    answers none of those questions.
+
+    Both are best-effort: locks are usable without authentication, and an
+    unknown holder is still better than no holder at all.
+    """
+    username = None
+    client_ip = None
+    if http_request is not None:
+        try:
+            from server.security.rbac import get_client_ip
+
+            client_ip = get_client_ip(http_request)
+        except Exception:  # pragma: no cover - IP is informational
+            client_ip = None
+        user = getattr(http_request.state, "user", None)
+        username = getattr(user, "username", None) if user else None
+    return username, client_ip
+
+
 @router.post("/acquire", summary="Acquire equipment lock")
-async def acquire_lock(request: AcquireLockRequest):
+async def acquire_lock(request: AcquireLockRequest, http_request: Request = None):
     """
     Acquire a lock on equipment.
 
@@ -117,14 +146,23 @@ async def acquire_lock(request: AcquireLockRequest):
     - **OBSERVER** mode: Read-only, doesn't block other observers
     - Set `queue_if_busy=True` to join queue when equipment is locked
     - Lock auto-releases after `timeout_seconds` of inactivity (0 = never)
+
+    The holder's username and IP are recorded, and reported by
+    `/status/{equipment_id}` and `/all`, so a locked instrument can be traced
+    to a person rather than a session id.
     """
     try:
+        username, client_ip = _identify(http_request)
+        if request.username:
+            username = request.username
         result = await lock_manager.acquire_lock(
             equipment_id=request.equipment_id,
             session_id=request.session_id,
             lock_mode=request.lock_mode,
             timeout_seconds=request.timeout_seconds,
             queue_if_busy=request.queue_if_busy,
+            username=username,
+            client_ip=client_ip,
         )
 
         # Update session activity

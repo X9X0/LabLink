@@ -220,6 +220,20 @@ class ControlPanel(QWidget):
         self.equipment_info_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         layout.addWidget(self.equipment_info_label)
 
+        # Who holds this instrument. Always on screen, because "why will it not
+        # let me set anything" is otherwise unanswerable from the interface.
+        from client.ui.equipment_lock_dialog import LockStatusWidget
+
+        lock_row = QHBoxLayout()
+        self.lock_status_widget = LockStatusWidget()
+        lock_row.addWidget(self.lock_status_widget)
+        lock_row.addStretch()
+        self.manage_lock_button = QPushButton("Manage lock…")
+        self.manage_lock_button.clicked.connect(self._show_lock_dialog)
+        self.manage_lock_button.setEnabled(False)
+        lock_row.addWidget(self.manage_lock_button)
+        layout.addLayout(lock_row)
+
         # Control section
         control_group = self._create_control_section()
         layout.addWidget(control_group)
@@ -484,6 +498,60 @@ class ControlPanel(QWidget):
 
         return widget
 
+    def _set_controls_enabled(self, enabled: bool):
+        """Enable or disable the controls that send commands.
+
+        Readings stay live either way: not holding the lock means you cannot
+        change the instrument, not that you cannot watch it.
+        """
+        for name in ("voltage_dial", "voltage_spinbox", "current_dial",
+                     "current_spinbox", "output_button"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.setEnabled(enabled)
+
+    def _refresh_lock_status(self):
+        """Re-read the lock and update the strip."""
+        if not (self.client and self.selected_equipment):
+            self.lock_status_widget.update_status(None)
+            self.manage_lock_button.setEnabled(False)
+            return
+        try:
+            status = self.client.get_lock_status(
+                self.selected_equipment.equipment_id
+            )
+        except Exception as exc:
+            logger.error(f"Could not read lock status: {exc}")
+            return
+        self.lock_status_widget.update_status(
+            status, is_mine=self.client.holds_lock(status)
+        )
+        self.manage_lock_button.setEnabled(True)
+
+    def _show_lock_dialog(self):
+        """Open the take/release/override dialog for the selected equipment."""
+        if not (self.client and self.selected_equipment):
+            return
+        from client.ui.equipment_lock_dialog import EquipmentLockDialog
+
+        dialog = EquipmentLockDialog(
+            self.client,
+            self.selected_equipment.equipment_id,
+            getattr(self.selected_equipment, "name", ""),
+            self,
+        )
+        dialog.exec()
+
+        # The dialog may have taken or given up control.
+        self._refresh_lock_status()
+        try:
+            status = self.client.get_lock_status(
+                self.selected_equipment.equipment_id
+            )
+            self._set_controls_enabled(self.client.holds_lock(status))
+        except Exception:
+            pass
+
     def _on_equipment_selected(self):
         """Handle equipment selection."""
         selected_items = self.equipment_list_widget.selectedItems()
@@ -517,36 +585,40 @@ class ControlPanel(QWidget):
                     f"{equipment.name} - {equipment.manufacturer} {equipment.model}"
                 )
 
-                # Acquire exclusive lock for control
+                # Take the lock for control, without taking it from anyone.
+                #
+                # This used to force-release whatever it found first and then
+                # acquire, so selecting equipment silently stole control from
+                # whoever had it -- which made the lock meaningless in the GUI
+                # and unattributable when it mattered. Overriding is now a
+                # deliberate act in the lock dialog, with the holder named.
                 if self.client:
                     try:
-                        # First, try to force-release any existing lock (clears stale locks from previous sessions)
-                        # This will silently fail if there's no lock - that's OK
-                        try:
-                            self.client.release_lock(equipment_id, force=True)
-                            logger.info(f"Force-released any existing lock on {equipment_id}")
-                        except Exception as e:
-                            logger.debug(f"Could not force-release lock (may not exist): {e}")
-                            pass  # Ignore errors - lock might not exist
-
-                        # Now try to acquire the lock
-                        self.client.acquire_lock(equipment_id, lock_mode="exclusive")
-                        logger.info(f"Acquired exclusive lock on {equipment_id}")
+                        status = self.client.get_lock_status(equipment_id)
                     except Exception as e:
-                        logger.error(f"Error acquiring lock: {e}")
-                        # Show user-friendly error if lock acquisition failed
-                        if "409" in str(e) or "Conflict" in str(e):
-                            from PyQt6.QtWidgets import QMessageBox
-                            QMessageBox.warning(
-                                self,
-                                "Equipment Locked",
-                                f"Cannot control {equipment.name} - it is locked by another session.\n\n"
-                                "This can happen if:\n"
-                                "• Another client is using this equipment\n"
-                                "• A previous session didn't release the lock\n\n"
-                                "You can view readings, but cannot send control commands.",
+                        logger.error(f"Could not read lock status: {e}")
+                        status = {}
+
+                    if status.get("locked") and not self.client.holds_lock(status):
+                        from client.ui.equipment_lock_dialog import describe_holder
+
+                        holder = describe_holder(status)
+                        logger.info(
+                            f"{equipment_id} is locked by {holder}; read-only"
+                        )
+                        self._set_controls_enabled(False)
+                    else:
+                        try:
+                            self.client.acquire_lock(
+                                equipment_id, lock_mode="exclusive"
                             )
-                        # Continue anyway - allow read-only access
+                            logger.info(f"Acquired exclusive lock on {equipment_id}")
+                            self._set_controls_enabled(True)
+                        except Exception as e:
+                            logger.error(f"Error acquiring lock: {e}")
+                            self._set_controls_enabled(False)
+
+                    self._refresh_lock_status()
 
                 # Get equipment status to configure controls based on capabilities
                 try:
