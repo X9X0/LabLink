@@ -53,8 +53,10 @@ non-event.
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
 | Live-Pi acceptance suite against a builder-made Pi | ✅ 25 passed, 4 skipped (no instruments attached) |
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
-| Writing the card from the wizard | ⚠️ implemented (4cf3104) but **never run against a real card** -- see below |
-| Booting a wizard-built image | ⚠️ booted and sshd came up, but LabLink never started and it cannot be diagnosed -- blank password, no account; see below |
+| Writing the card from the wizard | ✅ **worked on real hardware** -- card written from the wizard, booted a Pi |
+| Booting a wizard-built image | ✅ **full GUI chain done** -- build → card write → boot → LabLink healthy |
+| Live-Pi suite against the GUI chain | ⚠️ 29 collected, 17 passed, 3 failed, 9 skipped -- all auth, see "weak password" below |
+| Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
 
@@ -1214,3 +1216,75 @@ because there is no account to log in as.** An unreachable Pi is not only
 inconvenient, it is undebuggable, and that is the strongest argument for
 the image never being built that way in the first place. Under the fix
 above this state is no longer reachable from either entry point.
+
+## The whole chain, through the GUI, on hardware (2026-09-01)
+
+**Build → write the card → boot, entirely from the wizard, all of it
+working.** This is what the branch set out to make possible and it had never
+been done end to end. The card write in particular had never succeeded once.
+
+The Pi came up at 10.10.0.51 and every link was verified rather than assumed:
+
+- SSH as `admin` with the password typed into the wizard -- so `userconf.txt`
+  was written and Raspberry Pi OS created the account from it
+- hostname `lablink-pi`, the value entered in the wizard
+- Debian 13 trixie, the intended base image
+- `up 1 minute` at first contact -- `firstrun.sh` had run and rebooted, as
+  designed
+- `lablink-first-boot.service` **Finished** after apt upgrade, Docker install
+  and a container build (pip install alone took 94.7 s)
+- `http://10.10.0.51:8000/health` → `{"status":"healthy","connected_devices":0}`
+- `http://10.10.0.51/` → `200`
+
+For the record: **the password was typed, not left blank**, so the generated
+password and its console banner were not exercised on this run. That path
+still has only unit tests behind it.
+
+### The live-Pi suite, and what it caught
+
+```
+29 collected -- 17 passed, 3 failed, 9 skipped
+```
+
+Deployment, SSH, the API and WebSocket checks passed. Every failure and every
+non-instrument skip is one thing: **the LabLink admin account does not
+exist.**
+
+The password used was `password`. The Pi's own account took it happily --
+that is why SSH works -- and it reached `/opt/lablink/.env` correctly as
+`LABLINK_DEFAULT_ADMIN_PASSWORD`. Then, in the server's container log:
+
+```
+ERROR - main - Failed to create default admin user: 1 validation error for
+UserCreate
+password
+  Value error, Password must contain at least one uppercase letter
+  [type=value_error, input_value='password', input_type=str]
+```
+
+So the web UI came up with **no account able to log in**, and the only
+evidence is a line in a Docker log on the Pi. `server/security/models.py`
+requires 8 characters with an upper-case letter, a lower-case letter and a
+digit; nothing checked that where the password was entered.
+
+This is the blank-password bug in another costume: the wizard accepts input
+that yields a half-working Pi and says nothing until much later, somewhere
+much less visible.
+
+**Fixed** by checking against LabLink's own rules at the point of entry, in
+both the wizard and the CLI, naming the specific rule that failed rather than
+saying "invalid". A test pins the rule strings to
+`server/security/models.py`, so if the server's policy moves and this copy
+does not, the suite fails and says which file to fix.
+
+Two notes on the run itself:
+
+- Running the suite against a rejected password locked the account:
+  `Account temporarily locked. Try again in 1799 seconds`. That is the
+  server's brute-force protection behaving correctly, but it is worth knowing
+  before repeating the exercise -- a bad password costs half an hour.
+- `LabLink@2025` is the fallback in `lablink-first-boot.sh`, used **only when
+  no password is staged**. This run staged one, so that branch never ran and
+  the default does not apply to this Pi.
+
+`tests/client/`: 187 → **198 collected, 197 passed, 1 skipped**.

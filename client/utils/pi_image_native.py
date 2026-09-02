@@ -180,6 +180,35 @@ def generate_admin_password(groups: int = 4, group_size: int = 4) -> str:
             return candidate
 
 
+# Mirrors UserCreate.password_strength in server/security/models.py. Kept in
+# step with it deliberately: the Pi account and the LabLink account are set
+# from the same value, and only the second one has rules.
+def check_lablink_password(password: str) -> Optional[str]:
+    """Return why LabLink would reject this password, or None if it is fine.
+
+    The Pi's own account accepts anything, so a weak password installs happily
+    and SSH works -- and then the LabLink server refuses to create its admin
+    user from the same value, leaving the web UI running with no account to
+    log in to. That failure lands in a container log on the Pi, hours after
+    the wizard was dismissed.
+
+    Found exactly that way: a wizard run used "password", SSH worked, and the
+    server logged
+
+        Failed to create default admin user: 1 validation error for UserCreate
+        password: Value error, Password must contain at least one uppercase letter
+    """
+    if len(password) < 8:
+        return "at least 8 characters"
+    if not any(c.isupper() for c in password):
+        return "an upper-case letter"
+    if not any(c.islower() for c in password):
+        return "a lower-case letter"
+    if not any(c.isdigit() for c in password):
+        return "a digit"
+    return None
+
+
 def hash_password_for_userconf(password: str) -> str:
     """SHA-512 crypt hash, the format ``userconf.txt`` expects.
 
@@ -581,6 +610,19 @@ def main(argv: Optional[list] = None) -> int:
         print(f"\nGenerated password for {args.user!r}: {password}")
         print("Write it down; it is also shown on the Pi's console after first "
               "boot.\n")
+    else:
+        problem = check_lablink_password(password)
+        if problem:
+            print(
+                f"error: that password needs {problem}.\n"
+                "        The Pi's own account would accept it, but LabLink's "
+                "server rejects it\n"
+                "        and starts with no admin account at all -- a web UI "
+                "nobody can log in to.\n"
+                "        Leave it blank to have one generated.",
+                file=sys.stderr,
+            )
+            return 1
 
     config = ImageConfig(
         output_path=args.output,

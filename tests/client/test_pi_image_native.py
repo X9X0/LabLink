@@ -32,6 +32,7 @@ from client.utils.pi_image_native import (  # noqa: E402
     _render,
     base_image_url,
     customize_image,
+    check_lablink_password,
     find_fat_partition,
     generate_admin_password,
     hash_password_for_userconf,
@@ -214,6 +215,64 @@ class TestGeneratedPassword:
             assert "lablink-password-generated" not in {
                 n.lower() for n in fs.list_root()
             }
+
+
+class TestLabLinkPasswordRules:
+    """A password the Pi accepts can still leave LabLink with no admin user.
+
+    Found on a wizard-built, wizard-written Pi: the password was "password",
+    SSH worked, and the server logged
+
+        Failed to create default admin user: 1 validation error for UserCreate
+        password: Value error, Password must contain at least one uppercase
+        letter
+
+    so the web UI came up with no account able to log in, discoverable only by
+    reading a container log on the Pi.
+    """
+
+    def test_the_password_that_caused_this(self):
+        assert check_lablink_password("password") == "an upper-case letter"
+
+    @pytest.mark.parametrize("pw,want", [
+        ("Ab1", "at least 8 characters"),
+        ("abcdefg1", "an upper-case letter"),
+        ("ABCDEFG1", "a lower-case letter"),
+        ("Abcdefgh", "a digit"),
+    ])
+    def test_each_rule_is_reported_specifically(self, pw, want):
+        """Telling someone "invalid" and nothing else wastes their time."""
+        assert check_lablink_password(pw) == want
+
+    @pytest.mark.parametrize("pw", ["Passw0rd", "Tr1cky$Pass!", "aB3defgh"])
+    def test_acceptable_passwords_pass(self, pw):
+        assert check_lablink_password(pw) is None
+
+    def test_generated_passwords_always_satisfy_the_rules(self):
+        """Otherwise a blank field would trade one broken Pi for another."""
+        for _ in range(50):
+            assert check_lablink_password(generate_admin_password()) is None
+
+    def test_rules_match_the_server(self):
+        """Pinned to the real validator, so the two cannot drift apart.
+
+        If the server's policy changes, this fails and points at the copy in
+        pi_image_native rather than letting the wizard quietly accept
+        something the Pi will refuse months later.
+        """
+        server = (Path(__file__).resolve().parents[2]
+                  / "server" / "security" / "models.py").read_text(encoding="utf-8")
+
+        for phrase in (
+            "Password must be at least 8 characters",
+            "Password must contain at least one uppercase letter",
+            "Password must contain at least one lowercase letter",
+            "Password must contain at least one digit",
+        ):
+            assert phrase in server, (
+                f"server policy no longer says {phrase!r}; "
+                "check_lablink_password needs updating to match"
+            )
 
 
 class TestPasswordHashing:
@@ -622,19 +681,19 @@ class TestCommandLine:
         out = tmp_path / "out.img"
 
         assert main(["--image", blank_image, "-o", str(out),
-                     "--password", "pw"]) == 0
+                     "--password", "Passw0rd"]) == 0
         assert out.exists()
 
     def test_rejected_branch_returns_one(self, blank_image, tmp_path, capsys):
         rc = main(["--image", blank_image, "-o", str(tmp_path / "out.img"),
-                   "--password", "pw", "--branch", 'main"; id; echo "'])
+                   "--password", "Passw0rd", "--branch", 'main"; id; echo "'])
 
         assert rc == 1
         assert "Refusing to build with branch" in capsys.readouterr().err
 
     def test_rejected_input_returns_one(self, blank_image, tmp_path, capsys):
         rc = main(["--image", blank_image, "-o", str(tmp_path / "out.img"),
-                   "--password", "pw", "--hostname", "bad\nname"])
+                   "--password", "Passw0rd", "--hostname", "bad\nname"])
 
         assert rc == 1
         assert "line break" in capsys.readouterr().err
@@ -642,7 +701,7 @@ class TestCommandLine:
     def test_missing_source_image_reports_cleanly(self, tmp_path, capsys):
         """An absent file is the user's environment, not a bug: no traceback."""
         rc = main(["--image", str(tmp_path / "nope.img"),
-                   "-o", str(tmp_path / "out.img"), "--password", "pw"])
+                   "-o", str(tmp_path / "out.img"), "--password", "Passw0rd"])
 
         err = capsys.readouterr().err
         assert rc == 1
@@ -652,7 +711,7 @@ class TestCommandLine:
     def test_unwritable_output_reports_cleanly(self, blank_image, tmp_path, capsys):
         rc = main(["--image", blank_image,
                    "-o", str(tmp_path / "no-such-dir" / "x" / "out.img"),
-                   "--password", "pw"])
+                   "--password", "Passw0rd"])
 
         assert rc == 1
         assert "Traceback" not in capsys.readouterr().err
@@ -663,7 +722,7 @@ class TestCommandLine:
         bad.write_bytes(b"<html>404</html>" + b"\0" * 600)
 
         rc = main(["--image", str(bad), "-o", str(tmp_path / "out.img"),
-                   "--password", "pw"])
+                   "--password", "Passw0rd"])
 
         assert rc == 1
         assert "MBR boot signature" in capsys.readouterr().err
@@ -910,6 +969,17 @@ class TestBlankPasswordIsAnnounced:
             assert "lablink-password-generated" in {
                 n.lower() for n in fs.list_root()
             }
+
+    def test_cli_refuses_a_password_lablink_would_reject(
+            self, blank_image, tmp_path, capsys):
+        """The Pi would take it; LabLink would not, and then has no admin."""
+        out = str(tmp_path / "out.img")
+        rc = main(["--image", blank_image, "-o", out, "--password", "password"])
+
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "upper-case letter" in err
+        assert not os.path.exists(out), "an unusable image was written anyway"
 
     def test_generation_happens_even_without_ssh(self, blank_image, tmp_path):
         """An account is still wanted on a Pi set up with a monitor."""

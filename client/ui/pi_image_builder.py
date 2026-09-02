@@ -693,6 +693,30 @@ class ConfigurationPage(QWizardPage):
         # shown above the build output and on the Pi's own console banner, so
         # there is no longer a bad outcome to warn about and nothing to
         # interrupt the user for.
+        #
+        # A password that is *set* still needs checking, though, and against
+        # LabLink's rules rather than the Pi's. The Pi account takes anything;
+        # the LabLink server does not, and when it refuses, it starts with no
+        # admin user and the web UI cannot be logged in to at all. That is
+        # only visible in a container log on the Pi.
+        typed_password = self.admin_password_edit.text()
+        if typed_password:
+            from client.utils.pi_image_native import check_lablink_password
+
+            problem = check_lablink_password(typed_password)
+            if problem:
+                QMessageBox.warning(
+                    self, "Password too weak for LabLink",
+                    f"The password needs {problem}.\n\n"
+                    "The Pi's own login would accept it, but LabLink's server "
+                    "rejects it and then starts with no admin account -- the "
+                    "web interface comes up with nobody able to log in.\n\n"
+                    "Rules: at least 8 characters, with an upper-case letter, "
+                    "a lower-case letter and a digit.\n\n"
+                    "Leave the field blank to have a strong one generated.",
+                )
+                self.admin_password_edit.setFocus()
+                return False
 
         # Check if Wi-Fi SSID and password are both provided or both empty
         wifi_ssid = self.wifi_ssid_edit.text().strip()
