@@ -256,7 +256,15 @@ class TestVersionInStatusBar:
 
         from client.ui.main_window import MainWindow
 
-        win = MainWindow()
+        # Silence the background git lookup for the duration. It runs on a
+        # worker thread started in __init__ and emits the *real* branch, which
+        # lands during a later processEvents() and overwrites whatever the test
+        # just set. That made these tests depend on which branch the checkout
+        # happened to be on: they passed on a feature branch, where the real
+        # branch is styled like the test's own non-main value, and failed the
+        # moment they ran on main.
+        with patch.object(MainWindow, "_get_git_branch", return_value=None):
+            win = MainWindow()
         yield win, app
         win.close()
 
