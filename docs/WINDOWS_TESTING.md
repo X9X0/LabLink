@@ -55,7 +55,9 @@ non-event.
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
 | Writing the card from the wizard | ✅ **worked on real hardware** -- card written from the wizard, booted a Pi |
 | Booting a wizard-built image | ✅ **full GUI chain done** -- build → card write → boot → LabLink healthy |
-| Live-Pi suite against the GUI chain | ✅ **29 collected, 25 passed, 4 skipped (no instruments), 0 failed** |
+| Live-Pi suite against the GUI chain | ✅ **29 collected, 25 passed, 4 skipped, 0 failed** -- 26th now passes too, see equipment note |
+| Instrument discovery on a builder-made Pi | ✅ a B&K Precision supply on a CP210x bridge is discovered through the container |
+| Instrument *session* (connect/read) | ⏸ needs the exact B&K model number to dispatch a driver |
 | Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1330,10 +1332,52 @@ With the account created, against the same wizard-built, wizard-written Pi:
 29 collected -- 25 passed, 4 skipped, 0 failed
 ```
 
-The four skips are `LABLINK_EXPECT_EQUIPMENT` being unset; no instruments are
-attached. Deployment, SSH including the TOFU reject path and SCP, the full
-auth lifecycle through revocation, WebSocket auth and descriptor hygiene all
-pass.
+Deployment, SSH including the TOFU reject path and SCP, the full auth
+lifecycle through revocation, WebSocket auth and descriptor hygiene all pass.
+
+The four skips were `LABLINK_EXPECT_EQUIPMENT` being unset. **That was
+recorded here as "no instruments attached", and that was wrong** -- there is
+a B&K Precision supply on this Pi. Correcting it, because it turned four
+skips from "nothing to test" into "a capability nobody has checked".
+
+### Instruments are attached, and discovery finds them
+
+```
+lsusb:  Silicon Labs CP210x UART Bridge   →   /dev/ttyUSB0
+```
+
+Passed through to the container correctly, and LabLink's own discovery, run
+against the wizard-built Pi:
+
+```
+POST /api/equipment/discover  →  200
+  ASRL/dev/ttyUSB0::INSTR   B&K Precision   "Legacy fixed-width supply"
+                            device_type: power_supply
+```
+
+So the serial path works end to end on an image built and written entirely
+through the Windows GUI: udev, the container device passthrough, pyvisa 1.16
+and the discovery layer. With `LABLINK_EXPECT_EQUIPMENT` and
+`LABLINK_EQUIPMENT_RESOURCE` set, `test_expected_equipment_is_found` passes
+rather than skipping -- **26 of 29 now, not 25**.
+
+`/health` reporting `connected_devices: 0` is not a contradiction: that
+counts open sessions, not discovered devices.
+
+The remaining three need `LABLINK_EQUIPMENT_MODEL`. Discovery gets as far as
+"Legacy fixed-width supply" because these instruments do not answer `*IDN?`,
+so the driver is chosen from a model supplied at connect time. Given a wrong
+one the server refuses cleanly --
+
+```
+connect → 500 {"detail":"Unsupported equipment model: B&K Precision"}
+```
+
+-- which is the right behaviour and worth having seen. `server/equipment/`
+knows 1685B, 1687B, 1688B, 1696/B, 1697/B, 1698/B, 1820B-1823B, 1900B,
+1901B, 1902B, 2190D/E, 2194 and 2510B. The session tests are read-only by
+design -- connect, query status and readings, disconnect, nothing that sets
+an output -- so running them is safe once the model is known.
 
 **That is the chain complete**: an image built in the wizard on Windows,
 written to a card by the wizard, booted on a Pi, installing itself and
