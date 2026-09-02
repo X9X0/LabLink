@@ -175,7 +175,7 @@ class BaseEquipment(ABC):
             raise RuntimeError("Equipment not connected")
 
         import time
-        start_time = time.time()
+        start_time = time.perf_counter()
         success = False
         error_msg = None
 
@@ -189,7 +189,7 @@ class BaseEquipment(ABC):
             raise
         finally:
             # Record command statistics for diagnostics
-            response_time_ms = (time.time() - start_time) * 1000
+            response_time_ms = (time.perf_counter() - start_time) * 1000
             try:
                 from diagnostics import diagnostics_manager
                 if hasattr(self, 'cached_info') and self.cached_info:
@@ -213,7 +213,7 @@ class BaseEquipment(ABC):
             raise RuntimeError("Equipment not connected")
 
         import time
-        start_time = time.time()
+        start_time = time.perf_counter()
         success = False
         error_msg = None
         response = ""
@@ -229,7 +229,7 @@ class BaseEquipment(ABC):
             raise
         finally:
             # Record command statistics for diagnostics
-            response_time_ms = (time.time() - start_time) * 1000
+            response_time_ms = (time.perf_counter() - start_time) * 1000
             try:
                 from diagnostics import diagnostics_manager
                 if hasattr(self, 'cached_info') and self.cached_info:

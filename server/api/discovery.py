@@ -535,12 +535,12 @@ async def scan_raspberry_pis(
         from discovery import pi_discovery
         import time
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         # Run discovery
         discovered_pis = await pi_discovery.discover_network(network=network, timeout=timeout)
 
-        scan_time = time.time() - start_time
+        scan_time = time.perf_counter() - start_time
         lablink_count = sum(1 for pi in discovered_pis if pi.is_lablink)
 
         return {
