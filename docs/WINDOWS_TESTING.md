@@ -1614,14 +1614,59 @@ Two possibilities are also eliminated by reading the code:
   `last_activity + timeout_seconds` against `datetime.now()`. A lock showing
   `time_remaining` of 0.0 is therefore expired by `is_expired()` too, so they
   cannot be disagreeing.
-- There is one `LockManager` -- `lock_manager = LockManager()` at module
+- ~~There is one `LockManager` -- `lock_manager = LockManager()` at module
   scope in `locks.py` -- and `server/api/locks.py` uses that same object. So
   it is not the reaper walking a different dictionary from the one the API
-  reports, which would otherwise have explained both this and
-  `/api/locks/cleanup` returning success while removing nothing.
+  reports.~~ **Wrong, and wrong in an instructive way -- see below.**
 
 What is left is that **the loop body never executes**: the task object exists
-and its coroutine never runs a pass. That is a task-scheduling problem rather
-than an exception-handling one -- `asyncio.create_task` on a loop that is not
-the one subsequently served, or similar -- and it is a different place to look
-than a swallowed exception.
+and its coroutine never runs a pass.
+
+### Root cause: `locks.py` is loaded twice, under two names
+
+It *is* the reaper walking a different dictionary. I checked whether the file
+declares one `LockManager` -- it does -- and concluded there was one object.
+That is source identity, and the question was runtime identity. The module
+gets imported under two names:
+
+```
+server/main.py:112      from equipment.locks import lock_manager
+server/api/locks.py:9   from server.equipment.locks import ...
+```
+
+The container runs `python main.py` with the working directory inside
+`server/`, so **both resolve**, and Python builds two distinct module objects,
+each executing `lock_manager = LockManager()`. Confirmed inside the running
+deployment rather than in a reproduction:
+
+```
+module names loaded : ['equipment.locks', 'server.equipment.locks']
+distinct modules    : 2
+SAME OBJECT         : False
+bare._locks is pkg._locks: False
+```
+
+The lifespan starts the cleanup task on one instance; every acquire, release
+and status query goes through the other, whose `_locks` is empty and always
+will be. Which is exactly what the log counters described -- started once,
+never cancelled, never raised, never reaped -- because an iteration over an
+empty dictionary does all of that.
+
+**It is broader than the locks.** Every module-level singleton duplicates the
+same way: `equipment_manager`, `session_manager`, `emergency_stop_manager`,
+`state_manager`, `profile_manager`. Everything the lifespan configures at
+startup -- health monitoring, the state directory, default profiles, mock
+equipment -- is applied to objects no request ever touches. Locks are simply
+the one with a visible symptom.
+
+The API side is internally consistent today, so this is not an emergency-stop
+bypass: `api/equipment.py` also uses `server.equipment.manager`, and a driver
+reached through it resolves its relative `from .safety import
+emergency_stop_manager` to `server.equipment.safety`, matching `api/safety.py`.
+It is one import statement away from not being consistent, which is not where
+anyone wants an interlock sitting.
+
+Not fixed here. `main.py` uses bare imports *because* of how the container
+launches it, so changing them without changing the launch breaks startup. It
+needs its own change and a boot on hardware rather than a sweep. Written up
+on #197.
