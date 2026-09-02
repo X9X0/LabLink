@@ -22,7 +22,9 @@ paramiko = pytest.importorskip("paramiko")
 
 from client.ui.ssh_deploy_wizard import (  # noqa: E402
     _LabLinkHostKeyPolicy,
+    _forget_host_key,
     _known_hosts_name,
+    _replace_host_key,
     _save_host_key,
 )
 
@@ -123,3 +125,104 @@ class TestTofuPolicyLookup:
         policy = _LabLinkHostKeyPolicy()
 
         assert policy.get_unknown_key("never-seen.local") is None
+
+
+class TestForgetAndReplaceHostKey:
+    """A reimaged Pi keeps its address and gets a new key.
+
+    _save_host_key deliberately refuses to append a second entry for a name it
+    already holds, so on its own it cannot re-trust a host: the stale key stays
+    and every later connection is refused. Reported from a bench where
+    reimaging silenced twelve tests.
+    """
+
+    def test_forget_removes_the_entry(self, tmp_path, host_key):
+        kh = tmp_path / "known_hosts"
+        _save_host_key("pi.local", host_key, str(kh), port=22)
+
+        assert _forget_host_key("pi.local", str(kh), port=22) is True
+        assert kh.read_text().strip() == ""
+
+    def test_forget_reports_when_there_was_nothing(self, tmp_path):
+        kh = tmp_path / "known_hosts"
+        kh.write_text("")
+
+        assert _forget_host_key("pi.local", str(kh), port=22) is False
+
+    def test_forget_leaves_other_hosts_alone(self, tmp_path, host_key):
+        kh = tmp_path / "known_hosts"
+        _save_host_key("pi.local", host_key, str(kh), port=22)
+        _save_host_key("other.local", host_key, str(kh), port=22)
+
+        _forget_host_key("pi.local", str(kh), port=22)
+
+        remaining = kh.read_text().split()
+        assert "other.local" in remaining
+        assert "pi.local" not in remaining
+
+    def test_forget_honours_the_bracketed_port_form(self, tmp_path, host_key):
+        """Otherwise it removes nothing on a non-standard port."""
+        kh = tmp_path / "known_hosts"
+        _save_host_key("pi.local", host_key, str(kh), port=2222)
+
+        assert _forget_host_key("pi.local", str(kh), port=2222) is True
+        assert kh.read_text().strip() == ""
+
+    def test_replace_swaps_the_key(self, tmp_path, host_key):
+        """The reimage case: same host, different key, one entry afterwards."""
+        new_key = paramiko.RSAKey.generate(2048)
+        kh = tmp_path / "known_hosts"
+        _save_host_key("pi.local", host_key, str(kh), port=22)
+
+        _replace_host_key("pi.local", new_key, str(kh), port=22)
+
+        lines = kh.read_text().strip().splitlines()
+        assert len(lines) == 1, "a replaced key must not leave the old one behind"
+        assert lines[0].split()[2] == new_key.get_base64()
+
+    def test_replaced_key_is_loadable_by_paramiko(self, tmp_path, host_key):
+        new_key = paramiko.RSAKey.generate(2048)
+        kh = tmp_path / "known_hosts"
+        _save_host_key("pi.local", host_key, str(kh), port=22)
+        _replace_host_key("pi.local", new_key, str(kh), port=22)
+
+        client = paramiko.SSHClient()
+        client.load_host_keys(str(kh))
+        stored = client.get_host_keys().lookup("pi.local")
+
+        assert stored is not None
+        assert stored[new_key.get_name()] == new_key
+
+
+class TestChangedKeyHandlerOrdering:
+    """BadHostKeyException subclasses SSHException, so order decides.
+
+    Placed after the SSHException handler it can never run, and a reimaged Pi
+    falls through to a generic "SSH error" with no way to accept the new key.
+    That is how this was first written.
+    """
+
+    def test_specific_handler_precedes_the_general_one(self):
+        import re
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[2]
+                  / "client" / "ui" / "ssh_deploy_wizard.py").read_text(encoding="utf-8")
+
+        bad = [m.start() for m in re.finditer(
+            r"except paramiko\.ssh_exception\.BadHostKeyException", source)]
+        general = [m.start() for m in re.finditer(
+            r"except paramiko\.ssh_exception\.SSHException", source)]
+
+        assert bad, "the changed-host-key handler has gone"
+        for position in bad:
+            later = [g for g in general if g > position]
+            assert later, (
+                "BadHostKeyException is handled after every SSHException "
+                "handler, so it can never fire -- it is a subclass"
+            )
+
+    def test_it_really_is_a_subclass(self):
+        """The premise. If paramiko ever changes this, the test above is moot."""
+        assert issubclass(paramiko.ssh_exception.BadHostKeyException,
+                          paramiko.ssh_exception.SSHException)
