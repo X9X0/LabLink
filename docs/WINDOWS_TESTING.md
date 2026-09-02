@@ -59,6 +59,7 @@ non-event.
 | Live-Pi suite against the GUI chain | ✅ **29 collected, 29 passed, 0 skipped, 0 failed** |
 | Instrument discovery on a builder-made Pi | ✅ a B&K-protocol supply on a CP210x bridge, discovered through the container |
 | Instrument session (connect, read, poll) | ✅ real readings, including under 10x polling, against a live supply |
+| "Read-only" instrument tests | ⚠️ **read-only in commands, not in effect** -- `disconnect` de-energises a live output (#198) |
 | Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1425,10 +1426,42 @@ timing-sensitive path that mocks cannot reproduce", and it is much stronger
 evidence than polling a supply sitting at zero.
 
 **Nothing here energises anything.** The session tests connect, query and
-disconnect; `connect` sends only `GMAX`. The output being live was the
-operator's doing, and the instrument was verified afterwards, by raw serial
-rather than through LabLink, to be back at `GOUT 1` / 0.11 V -- byte for byte
-what it read before any of this started.
+disconnect; `connect` sends only `GMAX`. The instrument was verified
+afterwards, by raw serial rather than through LabLink, to be back at
+`GOUT 1` / 0.11 V -- byte for byte what it read before any of this started.
+
+> **Correction (2026-09-02): the suite de-energised it, not the operator.**
+>
+> The sentence above is true and was incomplete, and I asked the wrong
+> question about it -- I wondered who had switched the output *on* and never
+> accounted for who switched it *off*, then attributed that to the operator.
+> A controlled test on 10.10.0.51, run with the user's consent and nothing
+> attached to the output terminals, settles it:
+>
+> ```
+> initial                    out=False  Vact= 0.11
+> after enabling             out=True   Vact=11.98
+> --- disconnect (closes the serial port) ---
+> after disconnect/reconnect out=False  Vact= 4.1   (capacitance discharging)
+> ```
+>
+> The 11.98 V is the same figure recorded here, from the same setpoint, which
+> ties the two observations together.
+>
+> `disconnect()` in `server/equipment/base.py` calls only
+> `instrument.close()`, and there is no `SOUT` anywhere in the equipment
+> layer -- so it is the serial port closing that does it, almost certainly
+> DTR/RTS dropping and the supply treating that as a reset.
+>
+> So **`tests/hardware/test_live_pi.py` is read-only in the commands it sends
+> and not in its effect.** Its own docstring says "Nothing sets an output, a
+> voltage or a current, so a run cannot leave an instrument energised". The
+> first half is accurate; the conclusion is the wrong way round. Running the
+> acceptance suite against a bench mid-experiment switches the output off.
+>
+> Filed as #198. Recorded here rather than quietly amended, for the same
+> reason as the "no instruments attached" correction earlier -- except that
+> one was an accuracy problem and this one has a safety edge.
 
 **29 of 29, nothing skipped**, on a Pi whose image was built and written
 entirely through the Windows GUI.
@@ -1558,3 +1591,37 @@ only unit tests behind it.** Both hardware builds used a typed password, so
 nothing has yet seen the console banner on a real Pi. And the on-to-off
 transition of the first bench's supply output remains unexplained rather than
 resolved.
+
+### A note toward #197, from that Pi's container logs
+
+Narrowing rather than a fix; the diagnosis was that the lock cleanup task
+"is being created and then not reaping -- most likely raising every pass into
+a caught-and-logged handler". The logs on 10.10.0.51 rule that out:
+
+| log line | occurrences |
+|---|---|
+| `Lock cleanup task started` | **1** |
+| `Lock cleanup task stopped` | 0 |
+| `Error in lock cleanup loop` | **0** |
+| `Lock expired for equipment` | **0** |
+
+So the task is created, never cancelled, and never raises -- and never reaps
+anything either, while the API reports locks sitting at `time_remaining 0.0`.
+
+Two possibilities are also eliminated by reading the code:
+
+- `is_expired()` and `time_remaining()` compute from the same expression,
+  `last_activity + timeout_seconds` against `datetime.now()`. A lock showing
+  `time_remaining` of 0.0 is therefore expired by `is_expired()` too, so they
+  cannot be disagreeing.
+- There is one `LockManager` -- `lock_manager = LockManager()` at module
+  scope in `locks.py` -- and `server/api/locks.py` uses that same object. So
+  it is not the reaper walking a different dictionary from the one the API
+  reports, which would otherwise have explained both this and
+  `/api/locks/cleanup` returning success while removing nothing.
+
+What is left is that **the loop body never executes**: the task object exists
+and its coroutine never runs a pass. That is a task-scheduling problem rather
+than an exception-handling one -- `asyncio.create_task` on a loop that is not
+the one subsequently served, or similar -- and it is a different place to look
+than a swallowed exception.
