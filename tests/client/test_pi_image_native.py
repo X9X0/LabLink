@@ -264,12 +264,24 @@ class TestLabLinkPasswordRules:
         validator itself.
         """
         pytest.importorskip("pydantic")
-        server_dir = str(Path(__file__).resolve().parents[2] / "server")
-        if server_dir not in sys.path:
-            sys.path.insert(0, server_dir)
+
+        # Load models.py by path rather than importing the package.
+        # server/security/__init__.py pulls in .auth, .manager and .oauth2,
+        # which drag in jwt, starlette and the rest of the web stack, none of
+        # which a client venv has -- so the plain import skipped here, and a
+        # skipped drift test is exactly the vacuous pass this class exists to
+        # prevent. models.py itself needs only pydantic.
+        import importlib.util
+
+        models_path = (Path(__file__).resolve().parents[2]
+                       / "server" / "security" / "models.py")
+        spec = importlib.util.spec_from_file_location(
+            "lablink_server_security_models", models_path)
+        module = importlib.util.module_from_spec(spec)
         try:
-            from server.security.models import UserCreate
-        except Exception as exc:  # pragma: no cover - server deps absent
+            spec.loader.exec_module(module)
+            UserCreate = module.UserCreate
+        except Exception as exc:  # pragma: no cover - pydantic[email] absent
             pytest.skip(f"server models unavailable: {exc}")
 
         candidates = [
