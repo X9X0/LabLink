@@ -47,7 +47,7 @@ non-event.
 |---|---|
 | CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
 | Regression suite on Windows | ✅ full `tests/client/`: 130 collected, 129 passed, 1 skipped (no dosfstools) |
-| `tests/unit/` on Windows | ⚠️ 609 collected, 597 passed, 4 failed (all one clock bug), 3 errors (no pyserial); 5 files must be `--ignore`d or the run aborts |
+| `tests/unit/` on Windows | ✅ **764 collected, 758 passed, 6 skipped, 0 failed** -- runs as a directory, no `--ignore` needed (fixed in 25dbf21) |
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
@@ -1510,3 +1510,51 @@ re-imaging.
 written to a card by the wizard, booted on a Pi, installing itself and
 passing the project's own acceptance suite. No part of it had been done
 through the GUI before today, and the card write had never worked at all.
+
+## Verifying the fixes those findings produced (2026-09-02)
+
+25dbf21, fd8a7aa and bb73902 landed against the problems recorded above.
+Re-run on the same Windows machine that found them:
+
+**`tests/unit/` runs as a directory now.** It used to abort outright --
+`no tests ran`, an `INTERNALERROR` from a module-scope `sys.exit(1)` during
+collection -- and needed five `--ignore` flags to get a number at all.
+
+```
+764 collected -- 758 passed, 6 skipped, 0 failed, 0 errors
+```
+
+No `--ignore` flags. The four failures that were all one bug -- durations
+measured with `time.time()`, which resolves to 15.625 ms on Windows -- are
+gone with the move to monotonic clocks. And `git status` is **clean
+afterwards**: collecting the directory no longer rewrites the checked-in
+`profiles/*.json`, because the script bodies no longer execute on import.
+
+Three errors remained, for `No module named 'serial'`. Not a bug -- the same
+undeclared-dependency shape as `email-validator` earlier, and the same
+consequence: `TestLegacyProbeFraming` silently does not run, and those cases
+are the only coverage of how the legacy fixed-width family is recognised when
+there is no `*IDN?` to fall back on. `pyserial` added to
+`requirements-test.txt` for the reason the file already lists the others.
+
+**The host-key handling is better than what I did by hand.** Faced with the
+twelve skips, I cleared the offending key and moved on. bb73902 makes it
+*fail*, with a message that separates the two cases -- "if this Pi was just
+reimaged that is expected", against "if it was not reimaged, do not clear it:
+something else is". That is the right instinct and the opposite of mine:
+clearing a changed host key should require justifying it, not be the reflex.
+fd8a7aa adds the supported way to accept the new key.
+
+Everything still green together, after the merge from main:
+
+| suite | result |
+|---|---|
+| `tests/client/` | 207 collected, 206 passed, 1 skipped |
+| `tests/unit/` | 764 collected, 758 passed, 6 skipped |
+| `tests/hardware/test_live_pi.py` | 29 collected, **29 passed** |
+
+Unchanged and still worth stating plainly: **the generated-password path has
+only unit tests behind it.** Both hardware builds used a typed password, so
+nothing has yet seen the console banner on a real Pi. And the on-to-off
+transition of the first bench's supply output remains unexplained rather than
+resolved.
