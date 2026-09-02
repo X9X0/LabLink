@@ -55,7 +55,7 @@ non-event.
 | **Qt wizard on Windows -- building an image** | ✅ **done -- built `lablink pi.img`, 2,908,160 KB, structurally correct** |
 | Writing the card from the wizard | ✅ **worked on real hardware** -- card written from the wizard, booted a Pi |
 | Booting a wizard-built image | ✅ **full GUI chain done** -- build → card write → boot → LabLink healthy |
-| Live-Pi suite against the GUI chain | ⚠️ 29 collected, 17 passed, 3 failed, 9 skipped -- all auth, see "weak password" below |
+| Live-Pi suite against the GUI chain | ✅ **29 collected, 25 passed, 4 skipped (no instruments), 0 failed** |
 | Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1288,3 +1288,54 @@ Two notes on the run itself:
   the default does not apply to this Pi.
 
 `tests/client/`: 187 → **198 collected, 197 passed, 1 skipped**.
+
+### Recovering the Pi, and a second bug found doing it
+
+The Pi was repaired in place rather than re-imaged, which turned up another
+problem worth knowing about.
+
+Recovery is three steps: put a compliant password in
+`/opt/lablink/.env`, clear the `login_attempts` rows, restart. The server
+re-checks on every startup -- "Default admin user already exists", or else it
+creates one -- so a valid password is picked up without re-imaging.
+
+**`lablink-restart` does not apply an `.env` change.** It runs
+`docker compose restart`, which restarts the existing containers with the
+environment they already have. The password was updated in `.env`, the
+restart reported success, and the container still had the old value:
+
+```
+$ sudo docker exec lablink-server printenv LABLINK_DEFAULT_ADMIN_PASSWORD
+password
+```
+
+with the same validation error in the log as before. `docker compose up -d`
+recreates the container and does pick it up:
+
+```
+User created: admin (ID: PyFdjP6KmjWiK9Ph9wXP4g)
+⚠️  DEFAULT ADMIN CREATED - Username: admin
+```
+
+Anyone editing configuration and running `lablink-restart` will see it appear
+to work and change nothing. `lablink-restart` should use `up -d`, or say that
+it does not reload configuration. Not fixed here -- it is on the Pi side and
+unrelated to the image builder -- but it costs a confusing half hour.
+
+### Then the whole suite passed
+
+With the account created, against the same wizard-built, wizard-written Pi:
+
+```
+29 collected -- 25 passed, 4 skipped, 0 failed
+```
+
+The four skips are `LABLINK_EXPECT_EQUIPMENT` being unset; no instruments are
+attached. Deployment, SSH including the TOFU reject path and SCP, the full
+auth lifecycle through revocation, WebSocket auth and descriptor hygiene all
+pass.
+
+**That is the chain complete**: an image built in the wizard on Windows,
+written to a card by the wizard, booted on a Pi, installing itself and
+passing the project's own acceptance suite. No part of it had been done
+through the GUI before today, and the card write had never worked at all.
