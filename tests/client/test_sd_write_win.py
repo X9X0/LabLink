@@ -150,6 +150,42 @@ class TestAppearanceDetection:
 
         assert newly_appeared({0, 5}) == []
 
+    def test_reinserting_an_already_present_card_is_detected(self):
+        """The documented path, and the one that was broken.
+
+        The card is usually already in the reader when the dialog opens, so it
+        is in the baseline. Removing it and putting it back returns the same
+        disk number, which a plain "not in baseline" test filters out as not
+        new -- so the instruction on screen ("remove it and insert it again")
+        could never succeed.
+
+        The dialog now drops a departed disk from the baseline. This models
+        that: the set is pruned to what is present on each scan, and only then
+        compared.
+        """
+        baseline = {0, 2}  # disk 2 is the card, already inserted
+
+        # Scan 1: card pulled. It is gone, so it leaves the baseline.
+        present = {0}
+        departed = baseline - present
+        assert departed == {2}
+        baseline &= present
+        assert baseline == {0}
+
+        # Scan 2: card back, same disk number as before.
+        disks = [disk(number=0, bus="NVMe"), disk(number=2)]
+        found = newly_appeared(baseline, disks)
+
+        assert [d.number for d in found] == [2], (
+            "reinserting a card that was present at open must be detected"
+        )
+
+    def test_a_card_present_at_open_is_not_detected_until_it_moves(self):
+        """The baseline still means something: no spontaneous detection."""
+        disks = [disk(number=0, bus="NVMe"), disk(number=2)]
+
+        assert newly_appeared({0, 2}, disks) == []
+
     def test_detection_does_not_care_what_the_reader_claims_to_be(
             self, monkeypatch):
         """Many card readers report as fixed disks; appearing is the signal."""

@@ -210,6 +210,24 @@ class DetectCardDialog(QDialog):
         if disks is None or self._manual:
             return
 
+        present = {d.number for d in disks}
+
+        # A disk that has gone away stops being part of the baseline, so
+        # putting it back counts as an appearance.
+        #
+        # Without this the documented path does not work at all: the card is
+        # usually already inserted, so it is in the baseline from the start,
+        # and reinserting it hands back the same disk number, which is then
+        # filtered out as "not new". The instruction on screen says to remove
+        # and reinsert, and that was the one case that could never fire.
+        departed = self._baseline - present
+        if departed:
+            self._baseline &= present
+            self.status.setText(
+                "<i>Card removed. Now insert it again.</i>"
+            )
+            return  # nothing can be new on the same scan that saw it leave
+
         found = newly_appeared(self._baseline, disks)
 
         if not found:
