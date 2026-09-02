@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from discovery.bk_serial_probe import (_device_from_probe, _probe_port_blocking,
+from server.discovery.bk_serial_probe import (_device_from_probe, _probe_port_blocking,
                                        find_serial_ports)
-from discovery.models import (ConnectionStatus, DeviceType, DiscoveredDevice,
+from server.discovery.models import (ConnectionStatus, DeviceType, DiscoveredDevice,
                               DiscoveryConfig, DiscoveryMethod)
-from discovery.visa_scanner import VISAScanner
+from server.discovery.visa_scanner import VISAScanner
 
 
 @pytest.fixture
@@ -296,7 +296,7 @@ class TestProbeResultMerging:
         return device
 
     def _merge(self, discovered, probed):
-        from discovery.manager import DiscoveryManager
+        from server.discovery.manager import DiscoveryManager
         count = DiscoveryManager._merge_serial_probe_results(discovered, probed)
         return count, discovered
 
@@ -374,7 +374,7 @@ class TestSerialProbeIntegration:
 
     @pytest.mark.asyncio
     async def test_scan_runs_the_probe_and_survives_no_ports(self):
-        from discovery.manager import DiscoveryManager
+        from server.discovery.manager import DiscoveryManager
 
         config = DiscoveryConfig(
             enable_visa_scan=False, enable_mdns=False,
@@ -386,7 +386,7 @@ class TestSerialProbeIntegration:
 
     @pytest.mark.asyncio
     async def test_probe_can_be_turned_off(self):
-        from discovery.manager import DiscoveryManager
+        from server.discovery.manager import DiscoveryManager
 
         config = DiscoveryConfig(
             enable_visa_scan=False, enable_mdns=False,

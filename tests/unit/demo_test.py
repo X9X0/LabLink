@@ -6,9 +6,6 @@ import json
 from pathlib import Path
 
 # Add server directory to path
-sys.path.insert(0, str(Path(__file__).parent / "server"))
-
-
 def test_api_structure():
     """Test that API files are structured correctly."""
     print("=== Testing API Structure ===\n")

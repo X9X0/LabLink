@@ -154,7 +154,7 @@ class NotificationManager:
             return
 
         try:
-            from websocket_server import stream_manager
+            from server.websocket_server import stream_manager
 
             message = {
                 "type": "alarm",

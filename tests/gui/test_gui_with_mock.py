@@ -58,7 +58,7 @@ class GUIMockEquipmentTest:
         try:
             # Import after Qt app is created
             from ui.main_window import MainWindow
-            from api.client import LabLinkClient
+            from server.api.client import LabLinkClient
 
             # Test 1: Create main window
             logger.info("\nTest 1: Creating main window...")

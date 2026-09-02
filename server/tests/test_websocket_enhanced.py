@@ -21,13 +21,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from websocket.enhanced_features import (BackpressureConfig,
+from server.websocket.enhanced_features import (BackpressureConfig,
                                          BackpressureHandler, CompressionType,
                                          MessageCompressor, MessagePriority,
                                          PriorityQueue, RateLimiter,
                                          RecordingFormat, StreamRecorder,
                                          StreamRecordingConfig)
-from websocket.enhanced_manager import EnhancedStreamManager
+from server.websocket.enhanced_manager import EnhancedStreamManager
 
 
 class TestStreamRecorder:

@@ -4,8 +4,8 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from database import get_database_manager
-from database.models import CommandStatus, QueryResult, SessionStatus
+from server.database import get_database_manager
+from server.database.models import CommandStatus, QueryResult, SessionStatus
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 

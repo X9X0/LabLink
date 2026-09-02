@@ -18,9 +18,7 @@ from datetime import datetime
 import tempfile
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from discovery.models import (
+from server.discovery.models import (
     DiscoveredDevice,
     DeviceType,
     DiscoveryMethod,
@@ -28,7 +26,7 @@ from discovery.models import (
     SmartRecommendation,
     DeviceAlias
 )
-from discovery.manager import DiscoveryManager
+from server.discovery.manager import DiscoveryManager
 
 
 class TestDiscoveryManagerInit:
@@ -37,7 +35,7 @@ class TestDiscoveryManagerInit:
     def test_discovery_manager_creation(self):
         """Test creating DiscoveryManager instance."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             manager = DiscoveryManager(config)
             assert manager is not None
@@ -52,7 +50,7 @@ class TestVISAScanning:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -100,7 +98,7 @@ class TestMDNSDiscovery:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -137,7 +135,7 @@ class TestDeviceIdentification:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -184,7 +182,7 @@ class TestConnectionHistory:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -247,7 +245,7 @@ class TestSmartRecommendations:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -300,7 +298,7 @@ class TestDeviceAliases:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -358,7 +356,7 @@ class TestDiscoveryCache:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:
@@ -400,7 +398,7 @@ class TestAutoDiscovery:
     def discovery_manager(self):
         """Create DiscoveryManager for testing."""
         try:
-            from discovery.models import DiscoveryConfig
+            from server.discovery.models import DiscoveryConfig
             config = DiscoveryConfig()
             return DiscoveryManager(config)
         except Exception:

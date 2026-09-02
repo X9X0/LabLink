@@ -17,10 +17,6 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../server"))
-
-
 @pytest.fixture
 def mock_instrument():
     """A mock pyvisa instrument session.

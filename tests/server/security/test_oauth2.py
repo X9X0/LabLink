@@ -16,10 +16,8 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from security.models import OAuth2Provider, OAuth2Config
-from security.oauth2 import (
+from server.security.models import OAuth2Provider, OAuth2Config
+from server.security.oauth2 import (
     OAUTH2_DEFAULTS,
     OAuth2Manager
 )

@@ -16,9 +16,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from scheduler.models import (
+from server.scheduler.models import (
     ScheduleType,
     JobStatus,
     TriggerType,
@@ -27,7 +25,7 @@ from scheduler.models import (
     JobHistory,
     ScheduleStatistics
 )
-from scheduler.manager import SchedulerManager
+from server.scheduler.manager import SchedulerManager
 
 
 class TestSchedulerManagerInit:

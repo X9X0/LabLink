@@ -19,16 +19,14 @@ import tempfile
 import sqlite3
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from database.models import (
+from server.database.models import (
     CommandRecord,
     MeasurementRecord,
     EquipmentUsageRecord,
     DataSessionRecord,
     QueryResult
 )
-from database.manager import DatabaseManager
+from server.database.manager import DatabaseManager
 
 
 class TestDatabaseManagerInit:

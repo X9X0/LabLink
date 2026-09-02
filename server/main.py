@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 shared_path = Path(__file__).parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-from api import (acquisition_router, alarms_router, analysis_router,
+from server.api import (acquisition_router, alarms_router, analysis_router,
                  backup_router, calibration_enhanced_router,
                  calibration_router, data_router, database_router,
                  diagnostics_router, discovery_router, equipment_router,
@@ -23,12 +23,12 @@ from api import (acquisition_router, alarms_router, analysis_router,
                  profiles_router, safety_router, scheduler_router,
                  security_router, state_router, system_router,
                  testing_router, waveform_router)
-from config.settings import settings
-from config.validator import validate_config
-from logging_config import LoggingMiddleware, get_logger, setup_logging
-from system import get_version
-from web.routes import register_web_routes
-from websocket_server import handle_websocket
+from server.config.settings import settings
+from server.config.validator import validate_config
+from server.logging_config import LoggingMiddleware, get_logger, setup_logging
+from server.system import get_version
+from server.web.routes import register_web_routes
+from server.websocket_server import handle_websocket
 
 # Setup advanced logging system
 setup_logging()
@@ -38,7 +38,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    from system import get_version
+    from server.system import get_version
 
     logger.info("=" * 70)
     logger.info(f"LabLink Server v{get_version()} - {settings.server_name}")
@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize equipment manager
-    from equipment.manager import equipment_manager
+    from server.equipment.manager import equipment_manager
 
     logger.info("Initializing equipment manager...")
     await equipment_manager.initialize()
@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
     # Auto-register mock equipment if enabled
     if settings.enable_mock_equipment:
         logger.info("Mock equipment enabled - registering mock devices...")
-        from equipment.mock_helper import MockEquipmentHelper
+        from server.equipment.mock_helper import MockEquipmentHelper
 
         try:
             equipment_ids = await MockEquipmentHelper.register_default_mock_equipment(
@@ -99,22 +99,22 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to register mock equipment: {e}")
 
     # Start health monitoring
-    from equipment.error_handler import health_monitor
+    from server.equipment.error_handler import health_monitor
 
     await health_monitor.start(equipment_manager)
 
     # Create default profiles
-    from equipment.profiles import create_default_profiles
+    from server.equipment.profiles import create_default_profiles
 
     create_default_profiles()
 
     # Start lock cleanup task
-    from equipment.locks import lock_manager
+    from server.equipment.locks import lock_manager
 
     await lock_manager.start_cleanup_task()
 
     # Initialize state manager
-    from equipment.state import state_manager
+    from server.equipment.state import state_manager
 
     state_dir = settings.state_dir if hasattr(settings, "state_dir") else "./states"
     state_manager.set_state_directory(state_dir)
@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
         state_manager.load_states_from_disk()
 
     # Initialize acquisition manager
-    from acquisition import acquisition_manager
+    from server.acquisition import acquisition_manager
 
     acq_export_dir = (
         settings.acquisition_export_dir
@@ -136,7 +136,7 @@ async def lifespan(app: FastAPI):
     acquisition_manager.set_export_directory(acq_export_dir)
 
     # Start scheduler with persistence (v0.14.0)
-    from scheduler import initialize_scheduler_manager
+    from server.scheduler import initialize_scheduler_manager
 
     logger.info("Initializing scheduler with persistence...")
     sched_db_path = (
@@ -149,7 +149,7 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduler started with SQLite persistence")
 
     # Initialize equipment-alarm integrator
-    from alarm import alarm_manager, initialize_integrator
+    from server.alarm import alarm_manager, initialize_integrator
 
     logger.info("Initializing equipment-alarm integrator...")
     integrator = initialize_integrator(equipment_manager, alarm_manager)
@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI):
     logger.info("Equipment-alarm monitoring started")
 
     # Wire alarm manager to WebSocket stream manager for real-time notifications
-    from websocket_server import stream_manager
+    from server.websocket_server import stream_manager
     alarm_manager.set_stream_manager(stream_manager)
     logger.info("Alarm manager connected to WebSocket for real-time notifications")
 
@@ -166,7 +166,7 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduler manager connected to WebSocket for real-time notifications")
 
     # Initialize calibration manager (v0.12.0)
-    from equipment.calibration import initialize_calibration_manager
+    from server.equipment.calibration import initialize_calibration_manager
 
     logger.info("Initializing calibration manager...")
     cal_storage_path = (
@@ -178,14 +178,14 @@ async def lifespan(app: FastAPI):
     logger.info("Calibration manager initialized")
 
     # Initialize error code database (v0.12.0)
-    from equipment.error_codes import initialize_error_code_db
+    from server.equipment.error_codes import initialize_error_code_db
 
     logger.info("Initializing error code database...")
     error_db = initialize_error_code_db()
     logger.info("Error code database initialized")
 
     # Initialize performance monitor (v0.13.0)
-    from performance import initialize_performance_monitor
+    from server.performance import initialize_performance_monitor
 
     logger.info("Initializing performance monitoring system...")
     perf_db_path = (
@@ -198,8 +198,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize waveform manager (v0.16.0)
     if settings.enable_waveform_analysis:
-        from api.waveform import init_waveform_api
-        from waveform.manager import WaveformManager
+        from server.api.waveform import init_waveform_api
+        from server.waveform.manager import WaveformManager
 
         logger.info("Initializing waveform capture & analysis system...")
         waveform_manager = WaveformManager(equipment_manager)
@@ -209,7 +209,7 @@ async def lifespan(app: FastAPI):
         )
 
     # Initialize database manager (v0.18.0)
-    from database import initialize_database_manager
+    from server.database import initialize_database_manager
 
     logger.info("Initializing database integration...")
     db_path = (
@@ -223,7 +223,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize enhanced calibration manager (v0.19.0)
-    from equipment.calibration_enhanced import \
+    from server.equipment.calibration_enhanced import \
         initialize_enhanced_calibration_manager
 
     logger.info("Initializing enhanced calibration system...")
@@ -238,7 +238,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize test executor (v0.20.0)
-    from testing import initialize_test_executor
+    from server.testing import initialize_test_executor
 
     logger.info("Initializing automated test sequences...")
     test_executor = initialize_test_executor(equipment_manager, db_manager)
@@ -247,7 +247,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize backup manager (v0.21.0)
-    from backup import BackupConfig, CompressionType, initialize_backup_manager
+    from server.backup import BackupConfig, CompressionType, initialize_backup_manager
 
     logger.info("Initializing backup & restore system...")
     backup_config = BackupConfig(
@@ -275,7 +275,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize discovery manager (v0.22.0)
     if settings.enable_discovery:
-        from discovery import DiscoveryConfig, initialize_discovery_manager
+        from server.discovery import DiscoveryConfig, initialize_discovery_manager
 
         logger.info("Initializing equipment discovery system...")
         discovery_config = DiscoveryConfig(
@@ -326,7 +326,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize security system (v0.23.0)
     if settings.enable_advanced_security:
-        from security import (AuthConfig, generate_secure_secret_key,
+        from server.security import (AuthConfig, generate_secure_secret_key,
                               init_security_manager)
 
         logger.info("Initializing advanced security system...")
@@ -372,7 +372,7 @@ async def lifespan(app: FastAPI):
 
         # Create default admin user if enabled
         if settings.create_default_admin:
-            from security import UserCreate
+            from server.security import UserCreate
 
             if not settings.default_admin_password:
                 logger.error(
@@ -440,7 +440,7 @@ async def lifespan(app: FastAPI):
 
         # Initialize OAuth2 providers if enabled (v0.25.0)
         if settings.enable_oauth2:
-            from security import (OAUTH2_DEFAULTS, OAuth2Config,
+            from server.security import (OAUTH2_DEFAULTS, OAuth2Config,
                                   OAuth2Provider, init_oauth2_manager)
 
             logger.info("Initializing OAuth2 authentication providers...")
@@ -522,7 +522,7 @@ async def lifespan(app: FastAPI):
         logger.info("Advanced security disabled")
 
     # Initialize update manager (v0.28.0)
-    from system import update_manager
+    from server.system import update_manager
 
     logger.info("Initializing update manager...")
     await update_manager.initialize()
@@ -538,7 +538,7 @@ async def lifespan(app: FastAPI):
 
     if settings.enable_mdns_discovery and not running_in_docker:
         from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
-        from system import get_version
+        from server.system import get_version
 
         if ZEROCONF_AVAILABLE:
             try:
@@ -581,7 +581,7 @@ async def lifespan(app: FastAPI):
         mdns_service.stop()
 
     # Stop equipment-alarm integrator
-    from alarm import get_integrator
+    from server.alarm import get_integrator
 
     integrator = get_integrator()
     if integrator:
@@ -589,19 +589,19 @@ async def lifespan(app: FastAPI):
         logger.info("Equipment-alarm monitoring stopped")
 
     # Stop scheduler
-    from scheduler import scheduler_manager
+    from server.scheduler import scheduler_manager
 
     await scheduler_manager.shutdown()
 
     # Stop update manager scheduled checks
-    from system import update_manager
+    from server.system import update_manager
 
     if update_manager.scheduled_check_task and not update_manager.scheduled_check_task.done():
         await update_manager.stop_scheduled_checks()
         logger.info("Update manager scheduled checks stopped")
 
     # Stop backup auto-backup task
-    from backup import get_backup_manager
+    from server.backup import get_backup_manager
 
     backup_manager = get_backup_manager()
     await backup_manager.stop_auto_backup()
@@ -609,19 +609,19 @@ async def lifespan(app: FastAPI):
 
     # Stop discovery auto-discovery task
     if settings.enable_discovery:
-        from discovery import get_discovery_manager
+        from server.discovery import get_discovery_manager
 
         discovery_manager = get_discovery_manager()
         await discovery_manager.stop_auto_discovery()
         logger.info("Discovery auto-discovery task stopped")
 
     # Stop lock cleanup task
-    from equipment.locks import lock_manager
+    from server.equipment.locks import lock_manager
 
     await lock_manager.stop_cleanup_task()
 
     # Stop health monitoring
-    from equipment.error_handler import health_monitor
+    from server.equipment.error_handler import health_monitor
 
     await health_monitor.stop()
 
@@ -698,7 +698,7 @@ async def api_root():
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    from equipment.manager import equipment_manager
+    from server.equipment.manager import equipment_manager
 
     return {
         "status": "healthy",
@@ -715,8 +715,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     """
     if settings.enable_advanced_security:
         try:
-            from security import get_security_manager
-            from security.auth import decode_token
+            from server.security import get_security_manager
+            from server.security.auth import decode_token
 
             security_manager = get_security_manager()
             if security_manager:
