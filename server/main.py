@@ -580,7 +580,7 @@ async def lifespan(app: FastAPI):
     running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', '').lower() in ('1', 'true', 'yes')
 
     if settings.enable_mdns_discovery and not running_in_docker:
-        from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
+        from server.utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
         from server.system import get_version
 
         if ZEROCONF_AVAILABLE:

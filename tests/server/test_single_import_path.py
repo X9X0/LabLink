@@ -24,32 +24,69 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-LOCAL_PACKAGES = {
-    "acquisition", "alarm", "analysis", "api", "backup", "config", "database",
-    "diagnostics", "discovery", "equipment", "firmware", "logging_config",
-    "performance", "scheduler", "security", "system", "waveform", "web",
-    "websocket",
-}
+
+def _server_subpackages() -> set:
+    """Every directory under server/ that a bare import could name.
+
+    Derived rather than listed. The hand-written version omitted `utils`, and
+    `server/main.py` kept importing `utils.mdns` bare through the whole #197
+    sweep -- invisible to this file, and skipped on the Pi because the import
+    sits behind `not running_in_docker`. It crashed the native launch instead.
+
+    No `__init__.py` requirement: `server/utils/` has none and imports anyway
+    as a namespace package, which is precisely how it went unnoticed.
+    """
+    return {
+        entry.name
+        for entry in (REPO / "server").iterdir()
+        if entry.is_dir()
+        and not entry.name.startswith((".", "__"))
+        and any(entry.glob("*.py"))
+    }
+
+
+def _client_subpackages() -> set:
+    """The same, for client/ -- to know which names are ambiguous."""
+    return {
+        entry.name
+        for entry in (REPO / "client").iterdir()
+        if entry.is_dir()
+        and not entry.name.startswith((".", "__"))
+        and entry.name != "venv"
+        and any(entry.glob("*.py"))
+    }
+
+
+LOCAL_PACKAGES = _server_subpackages()
+
+# `api` and `utils` name a package in both trees, and `tests` names the suite
+# itself as well as server/tests. Inside tests/, a bare `utils.data_buffer` is
+# the client's, imported by client tests that put client/ on sys.path -- so the
+# name alone cannot decide the spelling there. Server code has no such excuse,
+# which is why only the tests/ scan narrows.
+AMBIGUOUS_IN_TESTS = (LOCAL_PACKAGES & _client_subpackages()) | {"tests"}
+TEST_TREE_PACKAGES = LOCAL_PACKAGES - AMBIGUOUS_IN_TESTS
 
 
 class TestNoBareIntraServerImports:
     """Every import of the server's own modules must be spelled server.*."""
 
-    def _offenders(self, root: Path, pattern: str):
+    def _offenders(self, root: Path, packages=None):
+        packages = LOCAL_PACKAGES if packages is None else packages
         found = []
         for path in sorted(root.rglob("*.py")):
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 stripped = line.strip()
                 if not stripped.startswith(("from ", "import ")):
                     continue
-                for package in LOCAL_PACKAGES:
+                for package in packages:
                     if stripped.startswith((f"from {package}.", f"from {package} ",
                                             f"import {package}.")):
                         found.append(f"{path.relative_to(REPO)}:{number}: {stripped}")
         return found
 
     def test_server_imports_itself_by_one_name(self):
-        offenders = self._offenders(REPO / "server", "")
+        offenders = self._offenders(REPO / "server")
 
         assert not offenders, (
             "bare intra-server imports create a second module path:\n  "
@@ -58,7 +95,7 @@ class TestNoBareIntraServerImports:
 
     def test_tests_import_the_server_by_one_name(self):
         """A test importing bare re-creates the duplication inside the suite."""
-        offenders = self._offenders(REPO / "tests", "")
+        offenders = self._offenders(REPO / "tests", TEST_TREE_PACKAGES)
 
         assert not offenders, (
             "tests importing the server bare load a second copy of it:\n  "
@@ -79,8 +116,10 @@ class TestNoBareIntraServerImports:
         # positive the rewrite itself hit.
         extensions = ("py", "json", "yml", "yaml", "txt", "sh", "md", "db",
                       "log", "cfg", "ini", "csv", "html")
+        # Narrowed like the import scan above: "utils.websocket_manager" in a
+        # client test names the client's module, not the server's.
         pattern = re.compile(
-            r"""['"](""" + "|".join(sorted(LOCAL_PACKAGES)) + r""")"""
+            r"""['"](""" + "|".join(sorted(TEST_TREE_PACKAGES)) + r""")"""
             r"""((?:\.[A-Za-z_]\w*)+)['"]"""
         )
         offenders = []
