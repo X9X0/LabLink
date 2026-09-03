@@ -66,7 +66,14 @@ class CreateSessionRequest(BaseModel):
 
 
 class LockStatusResponse(BaseModel):
-    """Lock status information."""
+    """Lock status information.
+
+    The attribution and expiry fields are declared here or they do not reach
+    the caller: `lock_manager.get_lock_status()` returns them, and a response
+    model silently drops whatever it does not name. That is how a lock could
+    record who took it and still be rendered as "an unidentified session" --
+    the recording worked, the wire contract lost it.
+    """
 
     equipment_id: str
     locked: bool
@@ -74,7 +81,12 @@ class LockStatusResponse(BaseModel):
     session_id: Optional[str] = None
     lock_id: Optional[str] = None
     acquired_at: Optional[str] = None
+    last_activity: Optional[str] = None
     time_remaining: Optional[float] = None
+    timeout_seconds: Optional[int] = None
+    expired: Optional[bool] = None
+    username: Optional[str] = None
+    client_ip: Optional[str] = None
     observer_count: Optional[int] = None
     observer_sessions: Optional[List[str]] = None
     queue_length: int = 0
