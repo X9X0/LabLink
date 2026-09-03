@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from performance import (MetricType, PerformanceMetric, performance_analyzer,
+from server.performance import (MetricType, PerformanceMetric, performance_analyzer,
                          performance_monitor)
 from pydantic import BaseModel
 

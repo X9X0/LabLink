@@ -17,7 +17,7 @@ import numpy as np
 from scipy import signal, stats
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
-from waveform.advanced_models import (
+from server.waveform.advanced_models import (
     ComparisonResult,
     CrossCorrelationData,
     EyeDiagramConfig,

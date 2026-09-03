@@ -99,7 +99,7 @@ class AcquisitionDemoWindow(QMainWindow):
                     "Connection Failed",
                     "Could not connect to LabLink server at localhost:8000\n\n"
                     "Make sure the server is running:\n"
-                    "  cd server && python3 main.py\n\n"
+                    "  python3 -m server.main\n\n"
                     "Demo will run in offline mode (limited functionality)"
                 )
 
@@ -182,7 +182,7 @@ def main():
 ║  QUICK START:                                                  ║
 ║                                                                ║
 ║  1. Ensure LabLink server is running:                         ║
-║       cd server && python3 main.py                            ║
+║       python3 -m server.main                                  ║
 ║                                                                ║
 ║  2. In "Data Acquisition" tab:                                 ║
 ║     a. Select equipment from dropdown                         ║

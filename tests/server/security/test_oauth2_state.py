@@ -11,10 +11,7 @@ import sys
 from datetime import datetime, timedelta
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../server"))
-
-from security.oauth2 import OAuth2Manager
+from server.security.oauth2 import OAuth2Manager
 
 
 @pytest.fixture

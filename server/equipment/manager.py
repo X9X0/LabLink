@@ -66,7 +66,7 @@ class EquipmentManager:
         """
         try:
             # Use discovery manager for comprehensive discovery with filtering
-            from discovery import get_discovery_manager
+            from server.discovery import get_discovery_manager
 
             discovery_manager = get_discovery_manager()
             result = await discovery_manager.scan()
@@ -84,7 +84,7 @@ class EquipmentManager:
                 return []
 
             try:
-                from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
+                from server.discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
                 import uuid
 
                 resources = self.resource_manager.list_resources()
@@ -152,7 +152,7 @@ class EquipmentManager:
                 self.equipment[equipment_id] = equipment
 
                 # Record connection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_connection(equipment_id)
 
                 logger.info(
@@ -291,7 +291,7 @@ class EquipmentManager:
                 equipment = self.equipment[equipment_id]
 
                 # Safe state on disconnect - disable outputs
-                from config.settings import settings
+                from server.config.settings import settings
 
                 if settings.safe_state_on_disconnect:
                     try:
@@ -318,7 +318,7 @@ class EquipmentManager:
                 del self.equipment[equipment_id]
 
                 # Record disconnection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_disconnection(equipment_id)
 
                 logger.info(f"Disconnected device {equipment_id}")

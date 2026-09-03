@@ -9,14 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from equipment.bk_power_supply import (DIALECT_1685B, DIALECT_PRESET_INDEXED,
+from server.equipment.bk_power_supply import (DIALECT_1685B, DIALECT_PRESET_INDEXED,
                                        DIALECT_STANDARD, BK1685B, BK1687B,
                                        BK1696, BK1902B, BK9103, BK9104,
                                        BK9130B, BK9206B, BKPowerSupplyBase,
                                        dialect_for)
-from equipment.bk_scpi import (BK9130Series, BKSCPIElectronicLoad,
+from server.equipment.bk_scpi import (BK9130Series, BKSCPIElectronicLoad,
                                BKSCPIMultimeter, BKSCPIPowerSupply)
-from equipment.manager import EquipmentManager
+from server.equipment.manager import EquipmentManager
 from shared.models.equipment import EquipmentType
 
 
@@ -178,7 +178,7 @@ class TestDriverDispatch:
         ) is None
 
     def test_rigol_dispatch_still_works(self, manager):
-        from equipment.rigol_scope import RigolDS1104
+        from server.equipment.rigol_scope import RigolDS1104
 
         instance = manager._create_equipment_instance(
             "USB::INSTR", EquipmentType.OSCILLOSCOPE, "DS1104Z"
@@ -187,7 +187,7 @@ class TestDriverDispatch:
 
     def test_hand_written_drivers_are_registered_for_real_families(self):
         """A typo'd key here would silently fall through to the generic driver."""
-        from equipment.bk_registry import resolve_model
+        from server.equipment.bk_registry import resolve_model
 
         for sku in EquipmentManager._BK_SPECIFIC_DRIVERS:
             assert resolve_model(sku) is not None, sku

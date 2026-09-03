@@ -12,7 +12,7 @@ from shared.models.equipment import (
 
 def _discovered(device_id, resource_name, model):
     """Build a DiscoveredDevice the way equipment_manager.discover_devices does."""
-    from discovery.models import DiscoveredDevice, DiscoveryMethod
+    from server.discovery.models import DiscoveredDevice, DiscoveryMethod
 
     return DiscoveredDevice(
         device_id=device_id,
@@ -36,7 +36,7 @@ class TestEquipmentDiscovery:
         mock_equipment_manager.discover_devices.return_value = expected_devices
 
         # Patch the manager in the equipment module
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/discover")
 
@@ -56,7 +56,7 @@ class TestEquipmentDiscovery:
         # Arrange
         mock_equipment_manager.discover_devices.return_value = []
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/discover")
 
@@ -70,7 +70,7 @@ class TestEquipmentDiscovery:
         # Arrange
         mock_equipment_manager.discover_devices.side_effect = Exception("VISA backend not available")
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/discover")
 
@@ -88,7 +88,7 @@ class TestEquipmentConnection:
         # Arrange
         mock_equipment_manager.connect_device.return_value = "test_scope_001"
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/connect", json=sample_equipment_data)
 
@@ -109,7 +109,7 @@ class TestEquipmentConnection:
         }
         mock_equipment_manager.connect_device.side_effect = Exception("Invalid resource string")
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/connect", json=invalid_data)
 
@@ -122,7 +122,7 @@ class TestEquipmentConnection:
         # Arrange
         mock_equipment_manager.connect_device.side_effect = Exception("Device already connected")
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/connect", json=sample_equipment_data)
 
@@ -136,9 +136,9 @@ class TestEquipmentConnection:
         equipment_id = "test_scope_001"
         session_id = "session_123"
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
-             patch("api.equipment.lock_manager", mock_lock_manager), \
-             patch("api.equipment.settings") as mock_settings:
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager), \
+             patch("server.api.equipment.lock_manager", mock_lock_manager), \
+             patch("server.api.equipment.settings") as mock_settings:
 
             mock_settings.enable_equipment_locks = True
 
@@ -163,7 +163,7 @@ class TestEquipmentConnection:
         # Arrange
         mock_equipment_manager.disconnect_device.side_effect = Exception("Device not found")
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post("/api/equipment/disconnect/nonexistent_device")
 
@@ -181,7 +181,7 @@ class TestEquipmentList:
         # Arrange
         mock_equipment_manager.get_connected_devices.return_value = []
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.get("/api/equipment/list")
 
@@ -212,7 +212,7 @@ class TestEquipmentList:
         ]
         mock_equipment_manager.get_connected_devices.return_value = mock_devices
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.get("/api/equipment/list")
 
@@ -230,7 +230,7 @@ class TestEquipmentList:
         # Arrange
         mock_equipment_manager.get_connected_devices.side_effect = Exception("Internal error")
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.get("/api/equipment/list")
 
@@ -248,7 +248,7 @@ class TestEquipmentInfo:
         equipment_id = "test_scope_001"
         mock_equipment_manager.get_device.return_value = mock_equipment
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Note: This endpoint might not exist yet, but we're designing the test for it
             # If the endpoint doesn't exist, this test will fail and remind us to implement it
             response = client.get(f"/api/equipment/{equipment_id}/info")
@@ -261,7 +261,7 @@ class TestEquipmentInfo:
         # Arrange
         mock_equipment_manager.get_device.return_value = None
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.get("/api/equipment/nonexistent/info")
 
@@ -293,8 +293,8 @@ class TestEquipmentControl:
 
         mock_equipment_manager.get_equipment.return_value = mock_equipment
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
-             patch("api.equipment.lock_manager", mock_lock_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager), \
+             patch("server.api.equipment.lock_manager", mock_lock_manager):
             # Act - testing command endpoint
             response = client.post(
                 f"/api/equipment/{equipment_id}/command",
@@ -314,7 +314,7 @@ class TestEquipmentControl:
             "action": "reset",
         }
 
-        with patch("api.equipment.equipment_manager", mock_equipment_manager):
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager):
             # Act
             response = client.post(
                 "/api/equipment/nonexistent/command",
@@ -332,7 +332,7 @@ class TestEquipmentWorkflow:
 
     def test_discover_connect_disconnect_workflow(self, client, mock_equipment_manager, mock_lock_manager):
         """Test complete workflow: discover -> connect -> disconnect."""
-        with patch("api.equipment.equipment_manager", mock_equipment_manager), \
+        with patch("server.api.equipment.equipment_manager", mock_equipment_manager), \
              patch("server.api.equipment.lock_manager", mock_lock_manager):
 
             # Step 1: Discover devices

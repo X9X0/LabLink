@@ -12,20 +12,18 @@ from datetime import datetime
 
 # Add server to path
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../server'))
-
-from security.auth import hash_password, verify_password, AuthConfig
-from security.models import User, Role, RoleType, Permission, PermissionAction, ResourceType
-from security.mfa import (
+from server.security.auth import hash_password, verify_password, AuthConfig
+from server.security.models import User, Role, RoleType, Permission, PermissionAction, ResourceType
+from server.security.mfa import (
     generate_totp_secret, generate_provisioning_uri, generate_qr_code,
     generate_backup_codes, hash_backup_code
 )
-from database.manager import DatabaseManager
-from database.models import CommandRecord, MeasurementRecord
-from backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
-from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod, DiscoveryConfig
-from discovery.manager import DiscoveryManager
-from scheduler.models import ScheduleConfig, ScheduleType, TriggerType
+from server.database.manager import DatabaseManager
+from server.database.models import CommandRecord, MeasurementRecord
+from server.backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
+from server.discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod, DiscoveryConfig
+from server.discovery.manager import DiscoveryManager
+from server.scheduler.models import ScheduleConfig, ScheduleType, TriggerType
 
 
 class TestSecurityIntegration:

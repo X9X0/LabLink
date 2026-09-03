@@ -191,7 +191,7 @@ class BaseEquipment(ABC):
             # Record command statistics for diagnostics
             response_time_ms = (time.perf_counter() - start_time) * 1000
             try:
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 if hasattr(self, 'cached_info') and self.cached_info:
                     diagnostics_manager.record_command(
                         equipment_id=self.cached_info.id,
@@ -231,7 +231,7 @@ class BaseEquipment(ABC):
             # Record command statistics for diagnostics
             response_time_ms = (time.perf_counter() - start_time) * 1000
             try:
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 if hasattr(self, 'cached_info') and self.cached_info:
                     diagnostics_manager.record_command(
                         equipment_id=self.cached_info.id,

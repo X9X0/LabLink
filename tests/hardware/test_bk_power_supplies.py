@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import sys
 sys.path.append("..")
-from equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.bk_power_supply import BK9205B, BK1685B
 
 
 class TestBK9205B:

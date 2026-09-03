@@ -336,7 +336,7 @@ class TestDiagnosticsManager:
     @pytest.mark.asyncio
     async def test_check_equipment_health_not_found(self, diagnostics_manager):
         """Test health check for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             health = await diagnostics_manager.check_equipment_health("nonexistent")
@@ -351,7 +351,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test successful equipment health check."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             health = await diagnostics_manager.check_equipment_health("test_scope_001")
 
             assert health.equipment_id == "test_scope_001"
@@ -368,7 +368,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test connection diagnostics for connected equipment."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             # Record some connection stats
             diagnostics_manager.record_connection("test_scope_001")
 
@@ -389,7 +389,7 @@ class TestDiagnosticsManager:
         """Test connection diagnostics when equipment fails to respond."""
         mock_equipment.query.side_effect = Exception("Connection timeout")
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             conn_diag = await diagnostics_manager._check_connection("test_scope_001")
 
             assert conn_diag.is_connected is False
@@ -398,7 +398,7 @@ class TestDiagnosticsManager:
     @pytest.mark.asyncio
     async def test_check_connection_not_found(self, diagnostics_manager):
         """Test connection diagnostics for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             conn_diag = await diagnostics_manager._check_connection("nonexistent")
@@ -457,7 +457,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test performance benchmark execution."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             benchmark = await diagnostics_manager._run_performance_benchmark("test_scope_001")
 
             assert benchmark is not None
@@ -472,7 +472,7 @@ class TestDiagnosticsManager:
     @pytest.mark.asyncio
     async def test_run_performance_benchmark_not_found(self, diagnostics_manager):
         """Test performance benchmark for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             benchmark = await diagnostics_manager._run_performance_benchmark("nonexistent")
@@ -486,7 +486,7 @@ class TestDiagnosticsManager:
         """Test performance benchmark when commands fail."""
         mock_equipment.query.side_effect = Exception("Command failed")
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             benchmark = await diagnostics_manager._run_performance_benchmark("test_scope_001")
 
             assert benchmark is not None
@@ -498,7 +498,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test functionality checks."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             results = await diagnostics_manager._check_functionality("test_scope_001")
 
             assert len(results) == 3  # IDN, OPC, Error query
@@ -512,7 +512,7 @@ class TestDiagnosticsManager:
     @pytest.mark.asyncio
     async def test_check_functionality_not_found(self, diagnostics_manager):
         """Test functionality checks for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             results = await diagnostics_manager._check_functionality("nonexistent")
@@ -742,7 +742,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test diagnostic report generation."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             report = await diagnostics_manager.generate_diagnostic_report(
                 equipment_ids=["test_scope_001"],
                 categories=[DiagnosticCategory.CONNECTION, DiagnosticCategory.PERFORMANCE],
@@ -761,7 +761,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test diagnostic report generation for all equipment."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             report = await diagnostics_manager.generate_diagnostic_report()
 
             assert isinstance(report, DiagnosticReport)
@@ -773,7 +773,7 @@ class TestDiagnosticsManager:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test system-wide diagnostics."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             # Generate some health data first
             await diagnostics_manager.check_equipment_health("test_scope_001")
 
@@ -949,7 +949,7 @@ class TestEnhancedDiagnostics:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test temperature check success."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             temp = await diagnostics_manager.check_temperature("test_scope_001")
 
             assert temp == 35.5
@@ -958,7 +958,7 @@ class TestEnhancedDiagnostics:
     @pytest.mark.asyncio
     async def test_check_temperature_not_found(self, diagnostics_manager):
         """Test temperature check for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             temp = await diagnostics_manager.check_temperature("nonexistent")
@@ -972,7 +972,7 @@ class TestEnhancedDiagnostics:
         """Test temperature check when not supported."""
         mock_equipment.get_temperature.return_value = None
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             temp = await diagnostics_manager.check_temperature("test_scope_001")
 
             assert temp is None
@@ -984,7 +984,7 @@ class TestEnhancedDiagnostics:
         """Test temperature check with error."""
         mock_equipment.get_temperature.side_effect = Exception("Sensor error")
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             temp = await diagnostics_manager.check_temperature("test_scope_001")
 
             assert temp is None
@@ -994,8 +994,8 @@ class TestEnhancedDiagnostics:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test error code check when no errors."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
-            with patch("equipment.error_codes.get_error_code_db") as mock_db:
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
+            with patch("server.equipment.error_codes.get_error_code_db") as mock_db:
                 error_info = await diagnostics_manager.check_error_codes("test_scope_001")
 
                 assert error_info["has_error"] is False
@@ -1009,8 +1009,8 @@ class TestEnhancedDiagnostics:
         mock_equipment.get_error_code.return_value = -100
         mock_equipment.get_error_message.return_value = "Command error"
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
-            with patch("equipment.error_codes.get_error_code_db") as mock_db:
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
+            with patch("server.equipment.error_codes.get_error_code_db") as mock_db:
                 mock_db.return_value.get_troubleshooting_info.return_value = {
                     "severity": "error",
                     "category": "communication",
@@ -1025,7 +1025,7 @@ class TestEnhancedDiagnostics:
     @pytest.mark.asyncio
     async def test_check_error_codes_not_found(self, diagnostics_manager):
         """Test error code check for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             error_info = await diagnostics_manager.check_error_codes("nonexistent")
@@ -1038,7 +1038,7 @@ class TestEnhancedDiagnostics:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test self-test execution that passes."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             result = await diagnostics_manager.run_self_test("test_scope_001")
 
             assert isinstance(result, DiagnosticResult)
@@ -1054,7 +1054,7 @@ class TestEnhancedDiagnostics:
         """Test self-test execution that fails."""
         mock_equipment.run_self_test.return_value = {"passed": False, "details": "Hardware error"}
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             result = await diagnostics_manager.run_self_test("test_scope_001")
 
             assert result.status == DiagnosticStatus.FAIL
@@ -1067,7 +1067,7 @@ class TestEnhancedDiagnostics:
         """Test self-test when not supported."""
         mock_equipment.run_self_test.return_value = None
 
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             result = await diagnostics_manager.run_self_test("test_scope_001")
 
             assert result.status == DiagnosticStatus.UNKNOWN
@@ -1076,7 +1076,7 @@ class TestEnhancedDiagnostics:
     @pytest.mark.asyncio
     async def test_run_self_test_not_found(self, diagnostics_manager):
         """Test self-test for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             result = await diagnostics_manager.run_self_test("nonexistent")
@@ -1089,7 +1089,7 @@ class TestEnhancedDiagnostics:
         self, diagnostics_manager, mock_calibration_manager
     ):
         """Test calibration status check for current calibration."""
-        with patch("equipment.calibration.get_calibration_manager", return_value=mock_calibration_manager):
+        with patch("server.equipment.calibration.get_calibration_manager", return_value=mock_calibration_manager):
             cal_status = await diagnostics_manager.check_calibration_status("test_scope_001")
 
             assert cal_status["status"] == "current"
@@ -1099,7 +1099,7 @@ class TestEnhancedDiagnostics:
     @pytest.mark.asyncio
     async def test_check_calibration_status_no_manager(self, diagnostics_manager):
         """Test calibration status check when manager not initialized."""
-        with patch("equipment.calibration.get_calibration_manager", return_value=None):
+        with patch("server.equipment.calibration.get_calibration_manager", return_value=None):
             cal_status = await diagnostics_manager.check_calibration_status("test_scope_001")
 
             assert "error" in cal_status
@@ -1110,9 +1110,9 @@ class TestEnhancedDiagnostics:
         self, diagnostics_manager, mock_equipment, mock_equipment_manager, mock_calibration_manager
     ):
         """Test comprehensive equipment diagnostics."""
-        with patch("equipment.manager.equipment_manager", mock_equipment_manager):
-            with patch("equipment.calibration.get_calibration_manager", return_value=mock_calibration_manager):
-                with patch("equipment.error_codes.get_error_code_db") as mock_db:
+        with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
+            with patch("server.equipment.calibration.get_calibration_manager", return_value=mock_calibration_manager):
+                with patch("server.equipment.error_codes.get_error_code_db") as mock_db:
                     diagnostics = await diagnostics_manager.get_equipment_diagnostics("test_scope_001")
 
                     assert diagnostics["equipment_id"] == "test_scope_001"
@@ -1125,7 +1125,7 @@ class TestEnhancedDiagnostics:
     @pytest.mark.asyncio
     async def test_get_equipment_diagnostics_not_found(self, diagnostics_manager):
         """Test comprehensive diagnostics for non-existent equipment."""
-        with patch("equipment.manager.equipment_manager") as mock_manager:
+        with patch("server.equipment.manager.equipment_manager") as mock_manager:
             mock_manager.get_equipment.return_value = None
 
             diagnostics = await diagnostics_manager.get_equipment_diagnostics("nonexistent")

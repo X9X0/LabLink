@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
-from logging_config import get_logger
+from server.logging_config import get_logger
 
 from .models import OAuth2Config, OAuth2Provider, User
 

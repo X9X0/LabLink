@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from equipment.calibration_enhanced import (CalibrationCertificate,
+from server.equipment.calibration_enhanced import (CalibrationCertificate,
                                             CalibrationCorrection,
                                             CalibrationProcedure,
                                             ProcedureExecution,

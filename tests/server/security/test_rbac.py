@@ -14,9 +14,7 @@ import sys
 import os
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from security.models import (
+from server.security.models import (
     Permission,
     PermissionAction,
     ResourceType,

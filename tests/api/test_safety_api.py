@@ -24,8 +24,8 @@ class TestEmergencyStop:
         mock_psu.set_output = AsyncMock()
         mock_equipment_manager.equipment = {"test_psu_001": mock_psu}
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.post("/api/safety/emergency-stop/activate")
@@ -68,8 +68,8 @@ class TestEmergencyStop:
             "test_load_001": mock_load,
         }
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.post("/api/safety/emergency-stop/activate")
@@ -95,8 +95,8 @@ class TestEmergencyStop:
 
         mock_equipment_manager.equipment = {"test_psu_001": mock_psu}
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.post("/api/safety/emergency-stop/activate")
@@ -114,8 +114,8 @@ class TestEmergencyStop:
         # Arrange
         mock_equipment_manager.equipment = {}
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.post("/api/safety/emergency-stop/activate")
@@ -139,7 +139,7 @@ class TestEmergencyStopDeactivation:
             "stop_time": None,
         }
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager):
             # Act
             response = client.post("/api/safety/emergency-stop/deactivate")
 
@@ -162,7 +162,7 @@ class TestEmergencyStopDeactivation:
             "stop_time": None,
         }
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager):
             # Act
             response = client.post("/api/safety/emergency-stop/deactivate")
 
@@ -190,8 +190,8 @@ class TestSafetyStatus:
             "test_scope_001": MagicMock(),
         }
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.get("/api/safety/status")
@@ -220,8 +220,8 @@ class TestSafetyStatus:
             "test_load_001": MagicMock(),
         }
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Act
             response = client.get("/api/safety/status")
@@ -286,8 +286,8 @@ class TestEmergencyStopWorkflow:
         mock_psu.set_output = AsyncMock()
         mock_equipment_manager.equipment = {"test_psu_001": mock_psu}
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Step 1: Activate emergency stop
             activate_response = client.post("/api/safety/emergency-stop/activate")
@@ -310,8 +310,8 @@ class TestEmergencyStopWorkflow:
         """Test that emergency stop state persists across multiple requests."""
         mock_equipment_manager.equipment = {}
 
-        with patch("api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-             patch("api.safety.equipment_manager", mock_equipment_manager):
+        with patch("server.api.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+             patch("server.api.safety.equipment_manager", mock_equipment_manager):
 
             # Activate
             response1 = client.post("/api/safety/emergency-stop/activate")

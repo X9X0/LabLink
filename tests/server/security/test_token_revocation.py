@@ -11,14 +11,11 @@ import sys
 
 import pytest
 from fastapi import HTTPException
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../server"))
-
-import security.manager as manager_module
-from api.security import get_current_user
-from security.auth import AuthConfig, create_access_token, decode_token
-from security.manager import SecurityManager
-from security.models import AuthMethod, User
+import server.security.manager as manager_module
+from server.api.security import get_current_user
+from server.security.auth import AuthConfig, create_access_token, decode_token
+from server.security.manager import SecurityManager
+from server.security.models import AuthMethod, User
 
 
 @pytest.fixture
@@ -139,7 +136,7 @@ class TestGetCurrentUserEnforcement:
         self, security_manager, config
     ):
         """Guards against the session check rejecting legitimate tokens."""
-        from security.models import UserCreate
+        from server.security.models import UserCreate
 
         created = await security_manager.create_user(
             UserCreate(

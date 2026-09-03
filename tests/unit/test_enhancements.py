@@ -23,8 +23,8 @@ def main():
     print("Test 1: Configuration Management")
     print("-" * 70)
     try:
-        from config.settings import settings
-        from config.validator import validate_config
+        from server.config.settings import settings
+        from server.config.validator import validate_config
 
         print(f"✓ Settings loaded successfully")
         print(f"  - Server name: {settings.server_name}")
@@ -51,7 +51,7 @@ def main():
     print("Test 2: Error Handling & Recovery System")
     print("-" * 70)
     try:
-        from equipment.error_handler import (
+        from server.equipment.error_handler import (
             retry_handler,
             reconnection_handler,
             health_monitor,
@@ -88,7 +88,7 @@ def main():
     print("Test 3: Equipment Profile System")
     print("-" * 70)
     try:
-        from equipment.profiles import profile_manager, EquipmentProfile, create_default_profiles
+        from server.equipment.profiles import profile_manager, EquipmentProfile, create_default_profiles
 
         print(f"✓ Profile manager loaded")
         print(f"  - Profile directory: {profile_manager.profile_dir}")
@@ -122,7 +122,7 @@ def main():
     print("Test 4: API Endpoints")
     print("-" * 70)
     try:
-        from api import equipment_router, data_router, profiles_router
+        from server.api import equipment_router, data_router, profiles_router
 
         print(f"✓ All routers loaded successfully")
         print(f"  - Equipment router: {len(equipment_router.routes)} endpoints")

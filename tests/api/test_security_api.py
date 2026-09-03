@@ -14,14 +14,11 @@ import sys
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../server"))
-
-import security.manager as manager_module
-from api.security import router
-from security.auth import AuthConfig
-from security.manager import SecurityManager
-from security.models import UserCreate
+import server.security.manager as manager_module
+from server.api.security import router
+from server.security.auth import AuthConfig
+from server.security.manager import SecurityManager
+from server.security.models import UserCreate
 
 PASSWORD = "Str0ng-Passw0rd!"
 
