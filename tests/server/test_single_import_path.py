@@ -165,3 +165,38 @@ class TestLaunchTarget:
         source = (REPO / "server" / "main.py").read_text(encoding="utf-8")
 
         assert '"server.main:app"' in source
+
+
+class TestLauncherStartsTheServerCorrectly:
+    """lablink.py must not recreate the shape the container no longer uses.
+
+    It used to `cd server/` *and* put the repo root on PYTHONPATH, with a
+    comment saying the server had mixed imports and needed both. Supplying
+    both is precisely what let one file import under two names. The
+    workaround was the defect, and it would now trip the startup guard.
+    """
+
+    def _launch_block(self) -> str:
+        source = (REPO / "lablink.py").read_text(encoding="utf-8")
+        return source.split("def launch_server", 1)[1].split("\n    def ", 1)[0]
+
+    def test_runs_from_the_repo_root_as_a_module(self):
+        block = self._launch_block()
+
+        assert "-m server.main" in block, (
+            "the launcher must start the server the way the container does"
+        )
+
+    def test_does_not_cd_into_the_package(self):
+        block = self._launch_block()
+
+        assert "cd {server_dir}" not in block, (
+            "running from inside server/ puts the package directory on "
+            "sys.path and reintroduces the second import path"
+        )
+
+    def test_does_not_set_pythonpath_alongside_it(self):
+        """Both together are what create the duplication."""
+        block = self._launch_block()
+
+        assert "PYTHONPATH={lablink_root}" not in block
