@@ -1670,3 +1670,143 @@ Not fixed here. `main.py` uses bare imports *because* of how the container
 launches it, so changing them without changing the launch breaks startup. It
 needs its own change and a boot on hardware rather than a sweep. Written up
 on #197.
+
+## #197 fixed, on hardware, and the legacy supply finally has a name (2026-09-03)
+
+The boot on hardware that the previous section said was needed. An image
+built through the wizard with **LabLink Branch** set to
+`fix/single-import-path`, first boot from a blank card, same Pi address as
+the second bench.
+
+The branch field is the whole test. The builder does not package the working
+tree -- it writes a first-boot script that fetches
+`github.com/X9X0/LabLink/archive/refs/heads/<branch>.tar.gz` -- so an image
+built with the field left on `main` would have proved nothing at all. The
+slash in the branch name is fine: GitHub serves it, and `--strip-components=1`
+makes the extracted directory name irrelevant.
+
+### The three things that needed hardware
+
+**It boots.** `/health` answered 220 s after power-on, `lablink-server` at
+`Up (healthy)`. That was the stated risk -- `WORKDIR` and the uvicorn target
+both changed, so a mistake means no container rather than a quiet
+degradation.
+
+**The second name cannot resolve.** Not "discouraged" -- absent:
+
+```
+live process : python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+/app         : VERSION backups config data diagnose-pi.sh logs profiles
+               server shared states
+
+import equipment.locks        -> ModuleNotFoundError: No module named 'equipment'
+import server.equipment.locks -> OK <LockManager object at 0x7f8957d7f0>
+```
+
+There is no `equipment/` directory under `/app` for the bare name to find.
+
+**The lock expires.** The probe that exposed the bug, `timeout_seconds=30`:
+
+```
+t+ 0.0s  locked=True   time_remaining=29.99
+t+30.1s  locked=True   time_remaining=0.0
+t+35.1s  locked=False
+```
+
+Reaped at t+35 s, against a 75 s bound and a reaper that wakes every 10 s. It
+previously sat at `time_remaining 0.0` for ever.
+
+### Four more launchers, which the sweep had missed
+
+The rewrite fixed the compose image and `lablink.py` and stopped. Everything
+else still ran `main.py` from inside the package -- and now that every
+intra-server import is spelled `server.*`, that is no longer a latent hazard:
+
+```
+$ python server/main.py --help
+ModuleNotFoundError: No module named 'server'
+```
+
+`main.py` puts only `shared/` on `sys.path`, so from inside `server/` there
+is nothing above the package to import it by name. The guard never gets to
+explain; the process dies on line 18.
+
+- **The repo-root `Dockerfile`.** Not dead code -- `build_docker.sh:16` runs
+  `docker build .` against it. `COPY server/ .` flattened the package into
+  `/app`, leaving no `server` package at all: the mirror image of the compose
+  bug from the same root cause.
+- **`install-server.sh`**, both the `nohup` start and the systemd unit it
+  writes. The unit outlives the install, so that is the one that would have
+  failed on a reboot weeks later.
+- **`start_server.sh`**, which did `cd server; python3 main.py`.
+- The instructions printed by `setup.py` and `demo_acquisition_full.py`.
+
+Fixed in `854b38a`, with the launch-target test parametrized over both
+Dockerfiles rather than only the compose one -- fixing the file in front of
+you is how those two diverged in the first place. The fixed root image was
+built and run on the Pi rather than reviewed: `Application startup complete`,
+`/health` healthy, guard quiet. Merged as `2b3fe02`.
+
+### The legacy supply is a 1685B, and the scaling is the hazard
+
+Recorded here because the previous section could only say "either a different
+unit or an unreliable read". It is the same unit -- `gmax 605680` again,
+byte for byte -- and the operator identifies it as a **B&K 1685B**.
+
+That settles the identity and sharpens the warning. Discovery's naive 0.1
+scaling reads `605680` as 60.5 V / **68.0 A**, and no 1685B sources 68 A. So
+the current field's scaling on this model is not 0.1, which is exactly what
+the discovery note means by "the current field scaling and the SOUT polarity
+differ between them". The model must be supplied at connect time; a value
+derived from the GMAX arithmetic is not a substitute.
+
+With it supplied explicitly the whole suite runs:
+
+```
+LABLINK_EQUIPMENT_RESOURCE=ASRL/dev/ttyUSB0::INSTR
+LABLINK_EQUIPMENT_MODEL=1685B
+
+29 passed in 22.03s
+  readings: voltage_set 18.0, current_set 1.7,
+            voltage_actual 17.96, current_actual 0.01
+  container fds: 23 -> 23
+```
+
+**29/29** -- the first full pass. The four that skipped on every earlier run
+skipped for want of `LABLINK_EXPECT_EQUIPMENT`, not for want of an
+instrument; the 1685B had been attached the whole time. Worth stating plainly
+because two runs were written up as "no instruments attached" when the real
+answer was that nobody had told the suite to look.
+
+### The disconnect de-energises: confirmed a second time
+
+`4195601` established this on the first bench's supply. Independently
+reproduced here on a different unit at a different setpoint. Before the run,
+the supply was energised at 18 V, essentially unloaded at 10 mA. Afterwards:
+
+```
+voltage_set     18.0     (retained)
+current_set     1.7      (retained)
+voltage_actual  0.1
+output_enabled  False
+```
+
+Setpoints survive in the instrument's own memory; only the output drops. The
+suite sets nothing -- it is `instrument.close()` dropping DTR/RTS, and the
+supply treating that as a reset. Two units, two benches, two setpoints: this
+is the behaviour, not a one-off.
+
+**Anyone running the equipment tests against a live bench should know the
+output will be off afterwards.**
+
+### A methodology note, on numbers that moved
+
+An early full-suite run reported `37 failed, 1309 passed`, and the failures
+were entirely self-inflicted: a second `pytest` process running concurrently
+against the same `logs/`, `states/` and sqlite files. The five files that
+failed were exactly the state-touching ones. Run alone, the same tree gives
+`1363 passed`, against `1355` on the branch without the launcher commit --
+the difference being precisely the eight tests it adds.
+
+Two pytest processes in one working tree do not produce a second opinion.
+They produce a race.
