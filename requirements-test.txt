@@ -39,3 +39,10 @@ paramiko>=4.0.0
 # the test skips, and the wizard is free to drift from the server unnoticed --
 # which is the one thing that test exists to catch.
 pydantic[email]>=2.0
+
+# And again for tests/unit/test_bk_discovery.py, whose TestLegacyProbeFraming
+# cases error out with "No module named 'serial'" rather than running. They
+# cover the GMAX probe framing on the legacy fixed-width supplies -- the path
+# with no *IDN? to fall back on -- so losing them loses the only coverage of
+# how that instrument family is recognised at all.
+pyserial>=3.5

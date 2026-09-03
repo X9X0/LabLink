@@ -31,9 +31,10 @@ def test_server():
     print("Testing LabLink Server...\n")
 
     try:
-        # Test root endpoint
+        # Test root endpoint. `/` serves the dashboard HTML; the JSON
+        # description of the server is at `/api`.
         print("1. Testing root endpoint...")
-        response = requests.get(f"{SERVER_URL}/", timeout=5)
+        response = requests.get(f"{SERVER_URL}/api", timeout=5)
         print(f"   Response: {response.json()}\n")
 
         # Test health endpoint
@@ -43,7 +44,9 @@ def test_server():
 
         # Test device discovery
         print("3. Testing device discovery...")
-        response = requests.post(f"{SERVER_URL}/api/equipment/discover", timeout=5)
+        # Discovery scans VISA/serial and is slow -- 25s against a bench with
+        # real ports attached. Five seconds was never going to be enough.
+        response = requests.post(f"{SERVER_URL}/api/equipment/discover", timeout=45)
         if response.status_code == 200:
             devices = response.json()
             print(f"   Found {len(devices.get('devices', []))} devices:")
