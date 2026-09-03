@@ -52,8 +52,11 @@ def format_remaining(status: dict) -> str:
     if remaining is None:
         return "unknown"
     if remaining <= 0:
-        # Worth saying plainly: an expired lock still blocks control until the
-        # server reaps it, and on at least one deployment it never did.
+        # Not "0s". acquire_lock gates on the lock being present, not on
+        # is_expired(), so a lock past its timeout genuinely still refuses
+        # everyone else until the reaper removes it. Since #197 that is one
+        # sweep away -- ten seconds at most -- rather than the never it used
+        # to be, but "0s" would still invite a retry that gets refused.
         return "expired (still held)"
     minutes, seconds = divmod(int(remaining), 60)
     hours, minutes = divmod(minutes, 60)
@@ -274,8 +277,9 @@ class EquipmentLockDialog(QDialog):
         else:
             expired = self.status.get("time_remaining") == 0 and \
                 self.status.get("timeout_seconds") != 0
-            extra = (" This lock has passed its timeout but is still held, so "
-                     "the holder may well be gone." if expired else "")
+            extra = (" This lock has passed its timeout and is waiting to be "
+                     "released; it should clear within a few seconds."
+                     if expired else "")
             self.hint_label.setText(
                 f"Held by {describe_holder(self.status)}. You can read from this "
                 f"instrument but not control it.{extra}"

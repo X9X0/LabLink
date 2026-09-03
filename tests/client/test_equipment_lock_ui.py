@@ -88,11 +88,13 @@ class TestFormatRemaining:
             == "no timeout"
 
     def test_expired_but_still_held_says_so(self):
-        """The distinction that matters when a lock will not go away.
+        """The distinction that matters while a lock is on its way out.
 
-        A lock past its timeout still blocks control until the server reaps
-        it, and on at least one deployment the reaper never ran. "0s" would
-        suggest waiting; this says what is actually true.
+        acquire_lock gates on the lock being present, not on is_expired(), so
+        a lock past its timeout still refuses everyone else until the reaper
+        removes it. #197 is fixed, so that is now one ten-second sweep rather
+        than for ever -- but "0s" would still invite a retry that is refused,
+        and this says what is actually true.
         """
         assert format_remaining(status(time_remaining=0.0)) == "expired (still held)"
 
