@@ -49,6 +49,7 @@ logs/
 # Configuration
 .env
 config.local.json
+config/update_config.json
 *.key
 *.pem
 
@@ -62,3 +63,11 @@ benchmark-results.json
 # Local conversation logs
 docs/CONVERSATION_LOG.md
 docs/DEVELOPMENT_CONVERSATION_VERBOSE.md
+
+# Auto-generated JWT signing secret (never commit)
+.jwt_secret
+**/.jwt_secret
+
+# Environment files: templates are tracked as .env.example, real ones never
+server/.env
+.env

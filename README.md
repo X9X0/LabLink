@@ -1,11 +1,11 @@
 # LabLink
 
-![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1127%20passing-brightgreen.svg)
 ![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
-![Security](https://img.shields.io/badge/security-hardened-yellow.svg)
+![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
 
 A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol and BK Precision scopes, power supplies, and loads).
 
@@ -316,11 +316,12 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ## Technology Stack
 
-- **Language**: Python 3.11+
-- **Server**: FastAPI, PyVISA
-- **Client**: PyQt6, pyqtgraph
-- **Communication**: WebSockets, REST API
-- **Data Formats**: CSV, HDF5, NumPy binary
+- **Language**: Python 3.12+ (3.13 in the server container)
+- **Server**: FastAPI 0.141, PyVISA 1.16, uvicorn
+- **Client**: PyQt6 6.11, pyqtgraph 0.14, qasync
+- **Communication**: WebSockets 17, REST API
+- **Data**: NumPy 2.5, pandas 3.0, SciPy 1.18, HDF5
+- **Deployment**: Docker on Raspberry Pi OS Trixie (Debian 13)
 
 ## Quick Start
 
@@ -444,9 +445,15 @@ For detailed setup instructions:
 
 ## Project Status
 
-**Current Version**: v1.2.4 (Production Ready) 🎉
+**Current Version**: v2.0.0 (Production Ready) 🎉
 
-**Release Date**: December 09, 2025
+**Release Date**: September 01, 2026
+
+> **Upgrading from 1.x?** 2.0.0 is a deliberate compatibility break — read
+> [docs/BREAKING_CHANGES_2.0.md](docs/BREAKING_CHANGES_2.0.md) first. In short:
+> Python 3.12 is the minimum, every user is logged out on upgrade, and SSH
+> deployment no longer accepts `ssh-rsa` host keys. Upgrade server and client
+> together.
 
 **Development Phases Complete**:
 - ✅ REST API operational (90+ endpoints)

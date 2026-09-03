@@ -1,27 +1,48 @@
-# Test dependencies for LabLink
+# Test dependencies for LabLink (2.x baseline)
 
 # Core testing framework
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-timeout>=2.1.0
-pytest-xdist>=3.3.0  # For parallel test execution
+pytest>=9.1.1
+pytest-asyncio>=1.4.0
+pytest-cov>=7.1.0
+pytest-timeout>=2.4.0
+pytest-xdist>=3.8.0  # For parallel test execution
 
 # Mocking and fixtures
-pytest-mock>=3.11.0
+pytest-mock>=3.15.1
 
 # HTTP testing
-requests>=2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
-httpx>=0.24.0  # For async HTTP testing
+requests>=2.34.2
+httpx>=0.28.1  # For async HTTP testing
 
 # Coverage reporting
-coverage[toml]>=7.3.0
+coverage[toml]>=7.16.0
 
 # Code quality
-flake8>=6.1.0
-pylint>=2.17.0
-mypy>=1.5.0
+flake8>=7.3.0
+pylint>=4.0.8
+mypy>=2.3.1
 
 # Optional: For better test output
-pytest-sugar>=0.9.7
-pytest-html>=3.2.0
+pytest-sugar>=1.1.1
+pytest-html>=4.2.0
+
+# Raspberry Pi image builder (tests/client/test_pi_image_native.py).
+# Without these the image-builder tests importorskip themselves and pass
+# vacuously, which is worse than not having them.
+pyfatfs>=1.1.0
+passlib>=1.7.4
+paramiko>=4.0.0
+
+# Same reason: test_the_server_validator_agrees loads
+# server/security/models.py to check the wizard's password rules against the
+# server's own validator. Without email-validator the module will not import,
+# the test skips, and the wizard is free to drift from the server unnoticed --
+# which is the one thing that test exists to catch.
+pydantic[email]>=2.0
+
+# And again for tests/unit/test_bk_discovery.py, whose TestLegacyProbeFraming
+# cases error out with "No module named 'serial'" rather than running. They
+# cover the GMAX probe framing on the legacy fixed-width supplies -- the path
+# with no *IDN? to fall back on -- so losing them loses the only coverage of
+# how that instrument family is recognised at all.
+pyserial>=3.5

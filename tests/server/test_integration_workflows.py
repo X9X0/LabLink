@@ -13,29 +13,27 @@ from pathlib import Path
 
 # Add server to path
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../server'))
-
-from security.auth import (
+from server.security.auth import (
     hash_password, verify_password, create_access_token,
     create_refresh_token, AuthConfig
 )
-from security.models import (
+from server.security.models import (
     User, Role, RoleType, Permission, PermissionAction, ResourceType,
     create_default_admin_role, create_default_operator_role,
     create_default_viewer_role
 )
-from security.mfa import (
+from server.security.mfa import (
     generate_totp_secret, generate_provisioning_uri, generate_qr_code,
     verify_totp_token, generate_backup_codes, hash_backup_code, verify_backup_code
 )
-from database.manager import DatabaseManager
-from database.models import CommandRecord, MeasurementRecord, CommandStatus
-from backup.manager import BackupManager
-from backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
-from discovery.manager import DiscoveryManager
-from discovery.models import DiscoveryConfig, DiscoveredDevice, DeviceType, DiscoveryMethod
-from scheduler.manager import SchedulerManager
-from scheduler.models import ScheduleConfig, ScheduleType, TriggerType
+from server.database.manager import DatabaseManager
+from server.database.models import CommandRecord, MeasurementRecord, CommandStatus
+from server.backup.manager import BackupManager
+from server.backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
+from server.discovery.manager import DiscoveryManager
+from server.discovery.models import DiscoveryConfig, DiscoveredDevice, DeviceType, DiscoveryMethod
+from server.scheduler.manager import SchedulerManager
+from server.scheduler.models import ScheduleConfig, ScheduleType, TriggerType
 
 
 class TestSecurityWorkflow:
@@ -50,7 +48,7 @@ class TestSecurityWorkflow:
     @pytest.fixture
     def auth_config(self):
         """Create auth configuration."""
-        return AuthConfig()
+        return AuthConfig(secret_key="integration-workflow-test-key")
 
     def test_complete_user_authentication_flow(self, auth_config):
         """Test complete user authentication workflow.
@@ -90,12 +88,9 @@ class TestSecurityWorkflow:
         assert refresh_token is not None
         assert isinstance(refresh_token, str)
 
-        # 6. Verify user has admin permissions
-        admin_permission = Permission(
-            action=PermissionAction.WRITE,
-            resource=ResourceType.EQUIPMENT
-        )
-        assert admin_permission in admin_role.permissions
+        # 6. Verify the admin role covers equipment
+        admin_grants = {(p.resource, p.action) for p in admin_role.permissions}
+        assert (ResourceType.EQUIPMENT, PermissionAction.ADMIN) in admin_grants
 
     def test_mfa_setup_and_verification_flow(self):
         """Test complete MFA setup and verification workflow.
@@ -149,9 +144,26 @@ class TestSecurityWorkflow:
         operator_role = create_default_operator_role()
         viewer_role = create_default_viewer_role()
 
-        # 2. Verify permission hierarchy
-        assert len(admin_role.permissions) > len(operator_role.permissions)
-        assert len(operator_role.permissions) > len(viewer_role.permissions)
+        # 2. Verify the privilege hierarchy.
+        # Raw permission counts are a poor proxy (admin holds one ADMIN
+        # permission per resource, so it can tie operator on count while being
+        # strictly more powerful). Compare what the roles can actually do.
+        admin_actions = {p.action for p in admin_role.permissions}
+        operator_actions = {p.action for p in operator_role.permissions}
+        viewer_actions = {p.action for p in viewer_role.permissions}
+
+        assert PermissionAction.ADMIN in admin_actions
+        assert PermissionAction.ADMIN not in operator_actions
+        assert PermissionAction.ADMIN not in viewer_actions
+
+        # Admin covers every resource the lesser roles do.
+        admin_resources = {p.resource for p in admin_role.permissions}
+        assert admin_resources >= {p.resource for p in operator_role.permissions}
+        assert admin_resources >= {p.resource for p in viewer_role.permissions}
+
+        # Operator can change things; viewer is read-only.
+        assert PermissionAction.WRITE in operator_actions
+        assert viewer_actions == {PermissionAction.READ}
 
         # 3. Create users with different roles
         admin_user = User(
@@ -168,21 +180,17 @@ class TestSecurityWorkflow:
             roles=[viewer_role.role_id]
         )
 
-        # 4. Test permission checking
-        write_equipment = Permission(
-            action=PermissionAction.WRITE,
-            resource=ResourceType.EQUIPMENT
-        )
+        # 4. Test permission checking on (resource, action) pairs, since each
+        # Permission object carries a unique id and timestamp.
+        admin_grants = {(p.resource, p.action) for p in admin_role.permissions}
 
-        # Admin should have write permission
-        assert write_equipment in admin_role.permissions
+        # Admin holds the ADMIN action on equipment
+        assert (ResourceType.EQUIPMENT, PermissionAction.ADMIN) in admin_grants
 
         # Viewer should only have read permission
-        read_equipment = Permission(
-            action=PermissionAction.READ,
-            resource=ResourceType.EQUIPMENT
-        )
-        assert read_equipment in viewer_role.permissions
+        viewer_grants = {(p.resource, p.action) for p in viewer_role.permissions}
+        assert (ResourceType.EQUIPMENT, PermissionAction.READ) in viewer_grants
+        assert {action for _, action in viewer_grants} == {PermissionAction.READ}
 
 
 class TestDatabaseWorkflow:
@@ -237,13 +245,13 @@ class TestDatabaseWorkflow:
 
         # 2. Retrieve command history
         history = db_manager.get_command_history(limit=10)
-        assert len(history) == 3
+        assert len(history.records) == 3
 
         # 3. Filter by equipment
         scope_history = db_manager.get_command_history(
             equipment_id="scope-001",
             limit=10
-        )
+        ).records
         assert len(scope_history) == 2
         assert all(cmd['equipment_id'] == "scope-001" for cmd in scope_history)
 
@@ -287,8 +295,8 @@ class TestDatabaseWorkflow:
             assert record_id > 0
 
         # 2. Retrieve measurements
-        history = db_manager.get_measurement_history(limit=10)
-        assert len(history) >= 3
+        history = db_manager.get_measurements(limit=10)
+        assert len(history.records) >= 3
 
 
 class TestBackupWorkflow:
@@ -301,7 +309,7 @@ class TestBackupWorkflow:
             config = BackupConfig(backup_dir=temp_dir)
             yield BackupManager(config)
 
-    def test_backup_creation_and_listing_flow(self, backup_manager):
+    async def test_backup_creation_and_listing_flow(self, backup_manager):
         """Test creating backups and listing them.
 
         Exercises:
@@ -325,7 +333,7 @@ class TestBackupWorkflow:
 
         backup_ids = []
         for request in backup_requests:
-            backup = backup_manager.create_backup(request)
+            backup = await backup_manager.create_backup(request)
             if backup:
                 backup_ids.append(backup.backup_id)
 
@@ -334,7 +342,7 @@ class TestBackupWorkflow:
         assert len(backups) >= len(backup_ids)
 
         # 3. Get backup statistics
-        stats = backup_manager.get_backup_statistics()
+        stats = backup_manager.get_statistics()
         assert stats is not None
         assert stats.total_backups >= len(backup_ids)
 
@@ -500,9 +508,9 @@ class TestCrossModuleIntegration:
 
         # 4. Verify data was stored
         history = db.get_command_history(equipment_id=device.device_id, limit=10)
-        assert len(history) >= 1
+        assert len(history.records) >= 1
 
-    def test_scheduled_backup_workflow(self, integrated_system):
+    async def test_scheduled_backup_workflow(self, integrated_system):
         """Test scheduled backup workflow.
 
         Exercises:
@@ -527,7 +535,7 @@ class TestCrossModuleIntegration:
             compression=CompressionType.NONE,
             description="Integration test backup"
         )
-        backup_result = backup.create_backup(backup_request)
+        backup_result = await backup.create_backup(backup_request)
 
         if backup_result:
             assert backup_result.backup_id is not None

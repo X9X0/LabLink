@@ -8,10 +8,20 @@ on:
   workflow_dispatch:
 
 env:
-  PYTHON_VERSION_DEFAULT: '3.11'
+  PYTHON_VERSION_DEFAULT: '3.12'
   # Coverage baseline: 26% (established 2025-01-14)
   # Target: Increase by 1% per quarter to reach 30% by Q2 2025
-  MIN_COVERAGE_PERCENT: 26
+  # Lowered from 26 when import-time side effects were removed (#194). Two
+  # test modules used to execute a script body at import, running a good deal
+  # of server/ code during collection, and coverage counted it. That was never
+  # test coverage -- no assertion depended on any of it -- so the figure was
+  # overstating what the suite actually checks. 18% is the first honest
+  # measurement of tests/unit/ alone; this is set just below it.
+  #
+  # It should go back up by covering code with tests, not by reinstating the
+  # accounting. Running tests/client/ here too is the obvious next step: it
+  # holds real tests that CI has never executed.
+  MIN_COVERAGE_PERCENT: 17
   TARGET_COVERAGE_PERCENT: 80
 
 jobs:
@@ -24,7 +34,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.12', '3.13']
       fail-fast: false
 
     steps:
@@ -51,7 +61,8 @@ jobs:
             libxcb-xinerama0 \
             libxcb-xfixes0 \
             x11-utils \
-            xvfb
+            xvfb \
+            dosfstools
 
       - name: Install dependencies
         run: |
@@ -64,6 +75,18 @@ jobs:
           # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
           pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
 
+      - name: Collection must not modify tracked files
+        run: |
+          # Importing a test module runs anything at its top level. That used
+          # to rewrite profiles/*.json on every collection, so the timestamps
+          # got committed by accident. Catch it here rather than in review.
+          pytest tests/ --collect-only -q > /dev/null
+          if ! git diff --quiet; then
+            echo "Collecting tests modified tracked files:"
+            git diff --stat
+            exit 1
+          fi
+
       - name: Run unit tests with coverage
         env:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
@@ -71,7 +94,10 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           # Use xvfb-run for GUI tests (headless X server)
-          xvfb-run -a pytest tests/unit/ \
+          # tests/client/ covers the desktop client: the Pi image builder
+          # and the SSH known-hosts handling. It was not run here at all, so
+          # those suites were dead weight in CI.
+          xvfb-run -a pytest tests/unit/ tests/client/ \
             -v \
             --cov=server \
             --cov=client \
@@ -206,12 +232,20 @@ jobs:
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
-          # Wait for server to start (max 30 seconds)
+          # Wait for server to start (max 30 seconds), and fail if it never
+          # does. The integration tests skip on ConnectionError, which is right
+          # for a developer with no server running and wrong here: the server
+          # failed to start for months while this step shrugged and every test
+          # downstream skipped into a green tick.
           echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://localhost:8000/health > /dev/null; then
               echo "✅ Server is up!"
               break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::Server did not start within 30s"
+              exit 1
             fi
             echo "Waiting... ($i/30)"
             sleep 1
@@ -329,10 +363,25 @@ jobs:
 
       - name: Security audit with pip-audit
         run: |
-          # Allow specific known vulnerabilities
-          # - pip 24.0 (GHSA-4xh5-x5gv-qwph): Dev/CI only, trusted sources
-          # - ecdsa 0.19.1 (GHSA-wj6h-64fc-37mp): Orphaned dependency, not used
-          pip-audit --desc --ignore-vuln GHSA-4xh5-x5gv-qwph --ignore-vuln GHSA-wj6h-64fc-37mp || {
+          # Audit the requirements LabLink declares, not the environment.
+          #
+          # Auditing the environment audits the scanners too: `safety` depends
+          # on nltk, so PYSEC-2026-3740 -- a vulnerability in a tool we install
+          # to look for vulnerabilities, in a package LabLink never imports and
+          # does not ship -- failed the build with no patched version to move
+          # to. A supply-chain gate should cover what we ship.
+          #
+          # This also widens coverage: client/requirements.txt was never
+          # audited, because the job installs only shared and server.
+          #
+          # The previous --ignore-vuln entries covered pip itself and an
+          # orphaned ecdsa, both environment artefacts that a requirements
+          # audit does not see. If either ever appears in a requirements file,
+          # failing is the right answer.
+          pip-audit --desc \
+            -r shared/requirements.txt \
+            -r server/requirements.txt \
+            -r client/requirements.txt || {
             echo "❌ CRITICAL: Security vulnerabilities found in dependencies"
             echo "Review docs/security/phase3_security_audit.md for details"
             exit 1

@@ -8,6 +8,11 @@ from typing import Callable, List, Optional
 
 import pyvisa
 
+from server.equipment.bk_registry import (CATEGORY_LABELS,
+                                   CATEGORY_TO_EQUIPMENT_TYPE, MANUFACTURER,
+                                   is_bk_manufacturer, is_drivable,
+                                   resolve_model)
+
 from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
                      DiscoveryConfig, DiscoveryMethod)
 from .usb_hardware_db import get_device_info_from_resource
@@ -312,6 +317,7 @@ class VISAScanner:
                     device.device_type = self._infer_device_type(device_info)
                     device.confidence_score = 0.9  # High confidence if we got *IDN?
                     device.status = ConnectionStatus.AVAILABLE
+                    self._apply_bk_registry(device)
                     logger.debug(
                         f"Successfully queried *IDN? from {resource_name}: "
                         f"{device.manufacturer} {device.model}"
@@ -374,6 +380,51 @@ class VISAScanner:
             )
 
         return device
+
+    def _apply_bk_registry(self, device: DiscoveredDevice) -> None:
+        """Enrich a discovered B&K device from the model registry.
+
+        A B&K instrument reports its SKU, not its family — 9241, 2569B-MSO,
+        MR40003 — and the manufacturer field is spelled six different ways
+        across the line. Resolving both means discovery can name the family,
+        list the interfaces it actually has, and say up front whether LabLink
+        can drive it, instead of handing the UI a bare SKU string.
+        """
+        if not is_bk_manufacturer(device.manufacturer):
+            return
+
+        # Normalise the six manufacturer spellings to one.
+        device.metadata["reported_manufacturer"] = device.manufacturer
+        device.manufacturer = MANUFACTURER
+
+        bk_model = resolve_model(device.model)
+        if not bk_model:
+            logger.info(
+                f"B&K device {device.model!r} at {device.resource_name} has no "
+                f"published programming manual in the registry"
+            )
+            return
+
+        device.metadata.update({
+            "bk_family": bk_model.key,
+            "bk_family_name": bk_model.name,
+            "bk_category": CATEGORY_LABELS.get(bk_model.category,
+                                               bk_model.category),
+            "protocol": bk_model.protocol,
+            "interfaces": bk_model.interfaces,
+            "usb_mode": bk_model.usb,
+            "default_baud": bk_model.baud,
+            "socket_ports": list(bk_model.ports),
+            "driver_supported": is_drivable(bk_model),
+        })
+        if bk_model.notes:
+            device.metadata["notes"] = bk_model.notes
+        device.capabilities = list(dict.fromkeys(
+            device.capabilities + bk_model.interfaces
+        ))
+        # A registry hit on top of a successful *IDN? is as certain as
+        # identification gets short of connecting.
+        device.confidence_score = max(device.confidence_score, 0.95)
 
     def _get_interface_type(self, resource_name: str) -> str:
         """Get interface type from resource name.
@@ -528,6 +579,17 @@ class VISAScanner:
         Returns:
             Inferred device type
         """
+        # B&K first: the registry knows exactly what every documented family
+        # is, so it settles the type before the keyword heuristics below get a
+        # chance to guess. "DS" alone matches half the catalogue.
+        if is_bk_manufacturer(device_info.get("manufacturer")):
+            bk_model = resolve_model(device_info.get("model"))
+            if bk_model:
+                equipment_type = CATEGORY_TO_EQUIPMENT_TYPE.get(bk_model.category)
+                if equipment_type:
+                    return DeviceType(equipment_type)
+                return DeviceType.UNKNOWN
+
         # Get manufacturer and model
         manufacturer = (device_info.get("manufacturer") or "").lower()
         model = (device_info.get("model") or "").lower()

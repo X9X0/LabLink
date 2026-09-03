@@ -25,7 +25,6 @@ class LabLinkMDNSService:
     def __init__(
         self,
         port: int = 8000,
-        ws_port: int = 8001,
         server_name: Optional[str] = None,
         server_version: str = "1.0.0",
     ):
@@ -34,7 +33,6 @@ class LabLinkMDNSService:
 
         Args:
             port: HTTP API port
-            ws_port: WebSocket port
             server_name: Server name (defaults to hostname)
             server_version: Server version
         """
@@ -45,7 +43,6 @@ class LabLinkMDNSService:
             )
 
         self.port = port
-        self.ws_port = ws_port
         self.server_version = server_version
 
         # Get server name
@@ -97,7 +94,9 @@ class LabLinkMDNSService:
             properties = {
                 "version": self.server_version,
                 "api_port": str(self.port),
-                "ws_port": str(self.ws_port),
+                # /ws is a route on the API port; there is no separate
+                # WebSocket port. Advertised for older clients that read it.
+                "ws_port": str(self.port),
                 "hostname": self.server_name,
             }
 
@@ -212,7 +211,7 @@ class LabLinkMDNSService:
             "running": self.running,
             "server_name": self.server_name,
             "port": self.port,
-            "ws_port": self.ws_port,
+            "ws_port": self.port,
             "version": self.server_version,
             "service_type": self.SERVICE_TYPE,
         }

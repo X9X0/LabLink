@@ -147,7 +147,10 @@ def mock_diagnostics_manager():
         "calibration_status": {"status": "current"},
     }
 
-    # Statistics recording methods (non-async)
+    # Synchronous methods on the real manager must not be AsyncMocks, or the
+    # endpoints receive a coroutine instead of a value.
+    mock_manager.get_health_cache = MagicMock(return_value=mock_health)
+    mock_manager.get_benchmark_history = MagicMock(return_value=[mock_benchmark])
     mock_manager.record_connection = MagicMock()
     mock_manager.record_disconnection = MagicMock()
 
@@ -170,8 +173,8 @@ def diagnostics_client(mock_diagnostics_manager, mock_equipment_manager_for_diag
     """Create a test client with diagnostics router."""
     app = FastAPI()
 
-    with patch("server.diagnostics.diagnostics_manager", mock_diagnostics_manager), \
-         patch("equipment.manager.equipment_manager", mock_equipment_manager_for_diagnostics):
+    with patch("server.api.diagnostics.diagnostics_manager", mock_diagnostics_manager), \
+         patch("server.equipment.manager.equipment_manager", mock_equipment_manager_for_diagnostics):
 
         # Import and register diagnostics router
         from server.api.diagnostics import router as diagnostics_router

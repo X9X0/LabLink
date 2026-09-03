@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Set
 
-from equipment.manager import equipment_manager
+from server.equipment.manager import equipment_manager
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ class StreamManager:
         self, acquisition_id: str, interval_ms: int, num_samples: int = 100
     ):
         """Stream real-time acquisition data."""
-        from acquisition import acquisition_manager
+        from server.acquisition import acquisition_manager
 
         interval_sec = interval_ms / 1000.0
 
@@ -255,7 +255,14 @@ async def handle_websocket(websocket: WebSocket):
         while True:
             # Receive messages from client
             data = await websocket.receive_text()
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                logger.warning(f"Received invalid JSON from WebSocket client: {data!r}")
+                await stream_manager.send_to_client(
+                    websocket, {"type": "error", "detail": "Invalid JSON"}
+                )
+                continue
 
             # Handle different message types
             msg_type = message.get("type")

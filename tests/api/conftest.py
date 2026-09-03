@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
-# Add server to path
-server_path = Path(__file__).parent.parent.parent / "server"
-sys.path.insert(0, str(server_path))
+# The repo root, so `server.*` resolves. Deliberately NOT server/ itself:
+# putting both on the path lets the same file import under two names, and
+# Python then builds two module objects with two sets of module-level
+# singletons. That is issue #197 -- a lock reaper polling a dictionary the
+# API never writes to.
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 @pytest.fixture
@@ -20,21 +23,35 @@ def mock_equipment_manager():
     mock_manager.equipment = {}
     mock_manager.initialize = AsyncMock()
     mock_manager.shutdown = AsyncMock()
+    from server.discovery.models import DiscoveredDevice, DiscoveryMethod
+
     mock_manager.discover_devices = AsyncMock(return_value=[
-        "USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
-        "USB0::0x0957::0x0F07::MY12345678::INSTR",
+        DiscoveredDevice(
+            device_id="dev-1",
+            resource_name="USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
+            model="DS1054Z",
+            discovery_method=DiscoveryMethod.VISA,
+        ),
+        DiscoveredDevice(
+            device_id="dev-2",
+            resource_name="USB0::0x0957::0x0F07::MY12345678::INSTR",
+            model="E36312A",
+            discovery_method=DiscoveryMethod.VISA,
+        ),
     ])
     mock_manager.connect_device = AsyncMock(return_value="test_scope_001")
     mock_manager.disconnect_device = AsyncMock()
-    mock_manager.get_connected_devices = MagicMock(return_value=[])
+    mock_manager.get_connected_devices = AsyncMock(return_value=[])
     mock_manager.get_device = MagicMock(return_value=None)
+    mock_manager.get_equipment = MagicMock(return_value=None)
     return mock_manager
 
 
 @pytest.fixture
 def mock_equipment():
     """Create a mock equipment instance."""
-    from shared.models.equipment import EquipmentInfo, EquipmentType, EquipmentStatus
+    from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                        EquipmentStatus, EquipmentType)
 
     mock_eq = MagicMock()
     mock_eq.equipment_id = "test_scope_001"
@@ -46,13 +63,8 @@ def mock_equipment():
         type=EquipmentType.OSCILLOSCOPE,
         model="Rigol DS1054Z",
         manufacturer="Rigol",
-        resource="USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
-        capabilities={
-            "num_channels": 4,
-            "max_sample_rate": 1e9,
-            "max_bandwidth": 50e6,
-        },
-        status=EquipmentStatus.CONNECTED,
+        connection_type=ConnectionType.USB,
+        resource_string="USB0::0x1AB1::0x04CE::DS1ZA123456789::INSTR",
     )
 
     mock_eq.get_info = AsyncMock(return_value=mock_info)
@@ -69,7 +81,8 @@ def mock_equipment():
 @pytest.fixture
 def mock_power_supply():
     """Create a mock power supply instance."""
-    from shared.models.equipment import EquipmentInfo, EquipmentType, EquipmentStatus
+    from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                        EquipmentStatus, EquipmentType)
 
     mock_psu = MagicMock()
     mock_psu.equipment_id = "test_psu_001"
@@ -80,13 +93,8 @@ def mock_power_supply():
         type=EquipmentType.POWER_SUPPLY,
         model="Keysight E36312A",
         manufacturer="Keysight",
-        resource="USB0::0x0957::0x0F07::MY12345678::INSTR",
-        capabilities={
-            "num_channels": 3,
-            "max_voltage": 30.0,
-            "max_current": 5.0,
-        },
-        status=EquipmentStatus.CONNECTED,
+        connection_type=ConnectionType.USB,
+        resource_string="USB0::0x0957::0x0F07::MY12345678::INSTR",
     )
 
     mock_psu.get_info = AsyncMock(return_value=mock_info)
@@ -108,6 +116,8 @@ def mock_lock_manager():
     mock_manager.release_lock = AsyncMock()
     mock_manager.check_lock = AsyncMock(return_value=None)
     mock_manager.get_all_locks = MagicMock(return_value={})
+    mock_manager.can_control_equipment = MagicMock(return_value=True)
+    mock_manager.get_lock_status = MagicMock(return_value={})
     mock_manager.start_cleanup_task = AsyncMock()
     mock_manager.stop_cleanup_task = AsyncMock()
     return mock_manager
@@ -251,17 +261,17 @@ def app_with_mocks(
     app = FastAPI(title="LabLink Test API")
 
     # Patch the managers before importing routers
-    with patch("equipment.manager.equipment_manager", mock_equipment_manager), \
-         patch("equipment.locks.lock_manager", mock_lock_manager), \
-         patch("equipment.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-         patch("acquisition.acquisition_manager", mock_acquisition_manager), \
-         patch("alarm.alarm_manager", mock_alarm_manager), \
-         patch("scheduler.scheduler_manager", mock_scheduler_manager):
+    with patch("server.equipment.manager.equipment_manager", mock_equipment_manager), \
+         patch("server.equipment.locks.lock_manager", mock_lock_manager), \
+         patch("server.equipment.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+         patch("server.acquisition.acquisition_manager", mock_acquisition_manager), \
+         patch("server.alarm.alarm_manager", mock_alarm_manager), \
+         patch("server.scheduler.scheduler_manager", mock_scheduler_manager):
 
         # Import and register routers
         try:
-            from api.equipment import router as equipment_router
-            from api.safety import router as safety_router
+            from server.api.equipment import router as equipment_router
+            from server.api.safety import router as safety_router
             # Uncomment as more routers are tested
             # from api.acquisition import router as acquisition_router
             # from api.alarms import router as alarms_router

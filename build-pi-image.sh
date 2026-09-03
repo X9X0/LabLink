@@ -16,23 +16,74 @@ NC='\033[0m'
 
 # Configuration
 PI_MODEL="${PI_MODEL:-5}"  # Default to Pi 5
-PI_OS_VERSION="${PI_OS_VERSION:-2024-03-15}"
 
-# Select appropriate image URL based on Pi model
+# Base Raspberry Pi OS image.
+#   PI_OS_VARIANT  lite (default) or full
+#   PI_OS_URL      set this to override the selection entirely
+#
+# "lite" has no desktop and is the right choice for a headless lab appliance:
+# LabLink runs in Docker and needs no GUI. Choose "full" only if you intend to
+# run the LabLink desktop client on the Pi itself (e.g. a bench unit with a
+# touchscreen).
+#
+# Pinned deliberately, not tracked automatically: a base image bump changes
+# the host OS under every deployment, so it should be a conscious change that
+# gets built and booted before shipping.
+#
+# 2.0.0 moves to Debian Trixie (13) from Bookworm (12). Verified before the
+# switch: Docker publishes trixie packages for arm64, Raspberry Pi OS ships
+# trixie for both arm64 and armhf (so Pi 3 is still covered), and this script
+# installs no packages of its own and never touches raspi-config or
+# config.txt, so there is little Bookworm-specific surface to break. Wi-Fi is
+# configured through both wpa_supplicant.conf and a NetworkManager connection
+# file, and Trixie uses NetworkManager.
+#
+# To pin back to the previous Bookworm base:
+#   PI_OS_DIR_DATE=2024-03-15 PI_OS_FILE_DATE=2024-03-15 PI_OS_CODENAME=bookworm
+# Extra space added to the image before writing it.
+#
+# Raspberry Pi OS grows the root filesystem to fill the card on first boot, so
+# this space is written to the SD card and then immediately superseded - it
+# costs burn time and buys nothing. Measured on a 2.0.0 Trixie build: the base
+# rootfs already had ~280 MB free, and the build itself writes only kilobytes
+# (first-boot script, systemd unit, wifi config), while the finished image was
+# 4.77 GB of which 2 GB was this padding.
+#
+# The exception is AUTO_EXPAND=no: without the first-boot growth the image has
+# to carry room for Docker and the LabLink containers itself.
+if [ "${AUTO_EXPAND:-yes}" = "no" ]; then
+    PI_IMAGE_EXPAND_MB="${PI_IMAGE_EXPAND_MB:-2048}"
+else
+    PI_IMAGE_EXPAND_MB="${PI_IMAGE_EXPAND_MB:-256}"
+fi
+
+PI_OS_VARIANT="${PI_OS_VARIANT:-lite}"
+PI_OS_DIR_DATE="${PI_OS_DIR_DATE:-2026-06-19}"
+PI_OS_FILE_DATE="${PI_OS_FILE_DATE:-2026-06-18}"
+PI_OS_CODENAME="${PI_OS_CODENAME:-trixie}"
+
 case "$PI_MODEL" in
-    "3")
-        # Pi 3 uses 32-bit armhf image
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2024-03-15/2024-03-15-raspios-bookworm-armhf-lite.img.xz"
+    "3")  PI_OS_ARCH="armhf" ;;   # Pi 3 uses the 32-bit image
+    *)    PI_OS_ARCH="arm64" ;;   # Pi 4/5 use 64-bit
+esac
+
+case "$PI_OS_VARIANT" in
+    lite)
+        PI_OS_REPO="raspios_lite_${PI_OS_ARCH}"
+        PI_OS_SUFFIX="-lite"
         ;;
-    "4")
-        # Pi 4 can use 64-bit arm64 image
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+    full|desktop)
+        PI_OS_REPO="raspios_${PI_OS_ARCH}"
+        PI_OS_SUFFIX=""
         ;;
-    "5"|*)
-        # Pi 5 uses 64-bit arm64 image (default)
-        PI_OS_URL="https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2024-03-15/2024-03-15-raspios-bookworm-arm64-lite.img.xz"
+    *)
+        echo "ERROR: PI_OS_VARIANT must be 'lite' or 'full' (got: $PI_OS_VARIANT)" >&2
+        exit 1
         ;;
 esac
+
+# Allow a complete override; otherwise assemble from the parts above.
+PI_OS_URL="${PI_OS_URL:-https://downloads.raspberrypi.org/${PI_OS_REPO}/images/${PI_OS_REPO}-${PI_OS_DIR_DATE}/${PI_OS_FILE_DATE}-raspios-${PI_OS_CODENAME}-${PI_OS_ARCH}${PI_OS_SUFFIX}.img.xz}"
 
 # Use environment variable if set, otherwise use command-line arg, otherwise default with date
 OUTPUT_IMAGE="${OUTPUT_IMAGE:-${1:-lablink-pi-$(date +%Y%m%d).img}}"
@@ -42,6 +93,9 @@ MOUNT_ROOT="$WORK_DIR/root"
 
 # LabLink configuration
 LABLINK_VERSION="${LABLINK_VERSION:-latest}"
+# Git branch the image installs on first boot. Defaults to main; set this to
+# build a test image from a feature branch before it is merged.
+LABLINK_BRANCH="${LABLINK_BRANCH:-main}"
 LABLINK_HOSTNAME="${LABLINK_HOSTNAME:-lablink}"
 ENABLE_SSH="${ENABLE_SSH:-yes}"
 WIFI_SSID="${WIFI_SSID:-}"
@@ -671,7 +725,7 @@ echo "[LabLink] Downloading LabLink..."
 mkdir -p /opt/lablink
 cd /opt/lablink
 
-if curl -L https://github.com/X9X0/LabLink/archive/refs/heads/main.tar.gz -o lablink.tar.gz; then
+if curl -fL "https://github.com/X9X0/LabLink/archive/refs/heads/__LABLINK_BRANCH__.tar.gz" -o lablink.tar.gz; then
     echo "[LabLink] Download successful, extracting..."
     tar -xzf lablink.tar.gz --strip-components=1
     rm lablink.tar.gz
@@ -692,11 +746,36 @@ if [ -f .env.example ]; then
 
     # Set default admin password for web UI
     # Password must meet requirements: 8+ chars, uppercase letter
-    WEB_ADMIN_PASSWORD="${LABLINK_ADMIN_PASSWORD:-LabLink@2025}"
-    sed -i "s/LABLINK_DEFAULT_ADMIN_PASSWORD=.*/LABLINK_DEFAULT_ADMIN_PASSWORD=$WEB_ADMIN_PASSWORD/" .env
-    sed -i "s/LABLINK_DEFAULT_ADMIN_EMAIL=.*/LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com/" .env
+    #
+    # This runs on the Pi, where the build-time environment does not exist, so
+    # the password is read from the file the build wrote into the image. It
+    # is deliberately not echoed: the journal is world-readable.
+    STAGED_PASSWORD_FILE=/etc/lablink-build-admin-password
+    if [ -r "$STAGED_PASSWORD_FILE" ]; then
+        WEB_ADMIN_PASSWORD=$(cat "$STAGED_PASSWORD_FILE")
+    else
+        WEB_ADMIN_PASSWORD=""
+    fi
+    if [ -z "$WEB_ADMIN_PASSWORD" ]; then
+        WEB_ADMIN_PASSWORD="LabLink@2025"
+        USED_DEFAULT_PASSWORD=yes
+    fi
 
-    echo "[LabLink] Environment configured with admin password: $WEB_ADMIN_PASSWORD"
+    # Rewrite the line rather than sed it, so no character in the password can
+    # be interpreted as a delimiter or backreference.
+    grep -v '^LABLINK_DEFAULT_ADMIN_PASSWORD=' .env > .env.tmp || true
+    printf 'LABLINK_DEFAULT_ADMIN_PASSWORD=%s\n' "$WEB_ADMIN_PASSWORD" >> .env.tmp
+    mv .env.tmp .env
+    sed -i "s|LABLINK_DEFAULT_ADMIN_EMAIL=.*|LABLINK_DEFAULT_ADMIN_EMAIL=admin@example.com|" .env
+
+    if [ -z "${USED_DEFAULT_PASSWORD:-}" ]; then
+        echo "[LabLink] Environment configured with the admin password set at build time"
+        # Consumed: do not leave the plaintext password on the filesystem.
+        rm -f "$STAGED_PASSWORD_FILE"
+    else
+        echo "[LabLink] WARNING: no build-time admin password; using the built-in default."
+        echo "[LabLink] Change it immediately: this default is public."
+    fi
 else
     echo "[LabLink] WARNING: .env.example not found"
 fi
@@ -1034,6 +1113,21 @@ systemctl disable lablink-first-boot.service
 
 FIRSTBOOT
 
+    # The heredoc above is quoted, so nothing inside it expanded at build time.
+    # Substitute the chosen branch into the generated script now.
+    sed -i "s|__LABLINK_BRANCH__|${LABLINK_BRANCH}|g" \
+        "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
+
+    # Pass the admin password through a file rather than the script body: the
+    # heredoc does not expand it, and a file keeps any password character safe
+    # from sed quoting. Root-only, and removed by first boot once consumed.
+    if [ -n "${LABLINK_ADMIN_PASSWORD:-}" ]; then
+        printf '%s' "$LABLINK_ADMIN_PASSWORD" \
+            > "$MOUNT_ROOT/etc/lablink-build-admin-password"
+        chmod 600 "$MOUNT_ROOT/etc/lablink-build-admin-password"
+        print_step "Admin password staged for first boot"
+    fi
+
     chmod +x "$MOUNT_ROOT/usr/local/bin/lablink-first-boot.sh"
 
     # Create systemd service for first boot
@@ -1312,7 +1406,7 @@ main() {
     BASE_IMAGE=$(download_pi_os)
 
     # Expand image for LabLink
-    expand_image "$BASE_IMAGE" 2048  # Add 2GB
+    expand_image "$BASE_IMAGE" "$PI_IMAGE_EXPAND_MB"
 
     # Mount image
     mount_image "$BASE_IMAGE"

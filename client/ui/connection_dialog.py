@@ -41,10 +41,9 @@ class ConnectionDialog(QDialog):
         server_layout.addRow("API Port:", self.api_port_input)
 
         # WebSocket Port
-        self.ws_port_input = QSpinBox()
-        self.ws_port_input.setRange(1, 65535)
-        self.ws_port_input.setValue(8001)
-        server_layout.addRow("WebSocket Port:", self.ws_port_input)
+        # There is no separate WebSocket port: /ws is a route on the API
+        # port. The field that used to be here was inert - LabLinkClient has
+        # always built the WebSocket URL from api_port.
 
         server_group.setLayout(server_layout)
         layout.addWidget(server_group)
@@ -55,13 +54,13 @@ class ConnectionDialog(QDialog):
 
         localhost_btn = QPushButton("Localhost")
         localhost_btn.clicked.connect(
-            lambda: self.set_connection("localhost", 8000, 8001)
+            lambda: self.set_connection("localhost", 8000)
         )
         quick_layout.addWidget(localhost_btn)
 
         pi_btn = QPushButton("Raspberry Pi")
         pi_btn.clicked.connect(
-            lambda: self.set_connection("lablink-pi.local", 8000, 8001)
+            lambda: self.set_connection("lablink-pi.local", 8000)
         )
         quick_layout.addWidget(pi_btn)
 
@@ -81,17 +80,17 @@ class ConnectionDialog(QDialog):
         # TODO: Load from settings file
         self.host_input.setText("lablink-pi.local")
 
-    def set_connection(self, host: str, api_port: int, ws_port: int):
+    def set_connection(self, host: str, api_port: int, ws_port: int = None):
         """Set connection parameters.
 
         Args:
             host: Server hostname
             api_port: API port
-            ws_port: WebSocket port
+            ws_port: accepted and ignored; kept so saved profiles that still
+                carry a websocket port continue to load
         """
         self.host_input.setText(host)
         self.api_port_input.setValue(api_port)
-        self.ws_port_input.setValue(ws_port)
 
     def get_host(self) -> str:
         """Get entered host.
@@ -110,9 +109,9 @@ class ConnectionDialog(QDialog):
         return self.api_port_input.value()
 
     def get_ws_port(self) -> int:
-        """Get entered WebSocket port.
+        """WebSocket port, which is the API port.
 
-        Returns:
-            Port number
+        /ws is a route on the API server, so there is no separate port. This
+        returns the API port so existing callers keep working.
         """
-        return self.ws_port_input.value()
+        return self.api_port_input.value()

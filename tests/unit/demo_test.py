@@ -6,9 +6,6 @@ import json
 from pathlib import Path
 
 # Add server directory to path
-sys.path.insert(0, str(Path(__file__).parent / "server"))
-
-
 def test_api_structure():
     """Test that API files are structured correctly."""
     print("=== Testing API Structure ===\n")
@@ -67,7 +64,7 @@ def test_model_imports():
 
         for file_path, expected_classes in models_to_check:
             if Path(file_path).exists():
-                with open(file_path) as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
                     found = [c for c in expected_classes if f"class {c}" in content]
                     print(f"✓ {file_path}: {len(found)}/{len(expected_classes)} classes")
@@ -87,7 +84,7 @@ def test_api_client_methods():
         print("✗ Client file not found")
         return
 
-    with open(client_file) as f:
+    with open(client_file, encoding="utf-8") as f:
         content = f.read()
 
     expected_methods = [
@@ -129,7 +126,7 @@ def count_code_lines():
         files = 0
         for file in Path(directory).rglob(pattern):
             if "__pycache__" not in str(file):
-                with open(file) as f:
+                with open(file, encoding="utf-8") as f:
                     lines = len(f.readlines())
                     total += lines
                     files += 1
@@ -157,7 +154,7 @@ def test_endpoint_count():
         if api_file.name == "__init__.py":
             continue
 
-        with open(api_file) as f:
+        with open(api_file, encoding="utf-8") as f:
             content = f.read()
             # Count @router decorators
             endpoints = content.count("@router.")

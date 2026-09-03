@@ -18,7 +18,7 @@ from .models import (JobExecution, JobHistory, JobStatus, ScheduleConfig,
 from .storage import SchedulerStorage
 
 if TYPE_CHECKING:
-    from websocket_server import StreamManager
+    from server.websocket_server import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class SchedulerManager:
             await self._validate_profile(config.profile_id)
 
         # Save to database
-        self._storage.save_job(config)
+        await asyncio.to_thread(self._storage.save_job, config)
 
         self._jobs[config.job_id] = config
 
@@ -151,7 +151,7 @@ class SchedulerManager:
             self._scheduler.remove_job(job_id)
 
         # Update database
-        self._storage.save_job(config)
+        await asyncio.to_thread(self._storage.save_job, config)
 
         self._jobs[job_id] = config
 
@@ -184,7 +184,7 @@ class SchedulerManager:
             self._scheduler.remove_job(job_id)
 
         # Delete from database
-        self._storage.delete_job(job_id)
+        await asyncio.to_thread(self._storage.delete_job, job_id)
 
         del self._jobs[job_id]
         logger.info(f"Deleted job: {job_id}")
@@ -203,7 +203,7 @@ class SchedulerManager:
             self._scheduler.pause_job(job_id)
 
         self._jobs[job_id].enabled = False
-        self._storage.save_job(self._jobs[job_id])
+        await asyncio.to_thread(self._storage.save_job, self._jobs[job_id])
 
         logger.info(f"Paused job: {job_id}")
         return True
@@ -219,7 +219,7 @@ class SchedulerManager:
             await self._add_to_scheduler(self._jobs[job_id])
 
         self._jobs[job_id].enabled = True
-        self._storage.save_job(self._jobs[job_id])
+        await asyncio.to_thread(self._storage.save_job, self._jobs[job_id])
 
         logger.info(f"Resumed job: {job_id}")
         return True
@@ -397,7 +397,7 @@ class SchedulerManager:
 
     async def _load_jobs_from_storage(self):
         """Load all jobs from persistent storage."""
-        jobs = self._storage.load_all_jobs()
+        jobs = await asyncio.to_thread(self._storage.load_all_jobs)
         logger.info(f"Loading {len(jobs)} jobs from storage...")
 
         for config in jobs:
@@ -417,7 +417,9 @@ class SchedulerManager:
         while True:
             try:
                 await asyncio.sleep(86400)  # Run daily
-                deleted = self._storage.cleanup_old_executions(days=30)
+                deleted = await asyncio.to_thread(
+                    self._storage.cleanup_old_executions, days=30
+                )
                 logger.info(
                     f"Periodic cleanup: removed {deleted} old execution records"
                 )
@@ -508,11 +510,13 @@ class SchedulerManager:
         self._executions[execution.execution_id] = execution
 
         # Check execution limit
-        count = self._storage.get_execution_count(config.job_id)
+        count = await asyncio.to_thread(
+            self._storage.get_execution_count, config.job_id
+        )
         if config.max_executions and count >= config.max_executions:
             execution.status = JobStatus.SKIPPED
             execution.error = "Maximum executions reached"
-            self._storage.save_execution(execution)
+            await asyncio.to_thread(self._storage.save_execution, execution)
             del self._executions[execution.execution_id]
             return
 
@@ -521,7 +525,7 @@ class SchedulerManager:
             if config.conflict_policy == "skip":
                 execution.status = JobStatus.SKIPPED
                 execution.error = "Job already running (conflict_policy=skip)"
-                self._storage.save_execution(execution)
+                await asyncio.to_thread(self._storage.save_execution, execution)
                 del self._executions[execution.execution_id]
                 logger.info(f"Skipped job {config.job_id} due to conflict")
                 return
@@ -591,8 +595,10 @@ class SchedulerManager:
                 ).total_seconds()
 
             # Save to storage
-            self._storage.save_execution(execution)
-            self._storage.increment_execution_count(config.job_id)
+            await asyncio.to_thread(self._storage.save_execution, execution)
+            await asyncio.to_thread(
+                self._storage.increment_execution_count, config.job_id
+            )
 
             # Remove from memory and running set
             if execution.execution_id in self._executions:
@@ -607,8 +613,8 @@ class SchedulerManager:
             config: Job configuration with profile_id
         """
         try:
-            from equipment.manager import equipment_manager
-            from equipment.profiles import profile_manager
+            from server.equipment.manager import equipment_manager
+            from server.equipment.profiles import profile_manager
 
             if not config.equipment_id:
                 logger.warning(
@@ -641,7 +647,7 @@ class SchedulerManager:
             ValueError: If profile not found
         """
         try:
-            from equipment.profiles import profile_manager
+            from server.equipment.profiles import profile_manager
 
             profile = profile_manager.get_profile(profile_id)
             if not profile:
@@ -662,7 +668,7 @@ class SchedulerManager:
             error: Exception that caused failure
         """
         try:
-            from alarm import AlarmSeverity, alarm_manager
+            from server.alarm import AlarmSeverity, alarm_manager
 
             alarm_manager.create_alarm(
                 source=f"scheduler.{config.job_id}",
@@ -688,8 +694,8 @@ class SchedulerManager:
 
     async def _run_acquisition(self, config: ScheduleConfig) -> dict:
         """Run scheduled acquisition."""
-        from acquisition import AcquisitionConfig, acquisition_manager
-        from equipment.manager import equipment_manager
+        from server.acquisition import AcquisitionConfig, acquisition_manager
+        from server.equipment.manager import equipment_manager
 
         acq_config = AcquisitionConfig(**config.parameters)
         equipment = equipment_manager.get_equipment(config.equipment_id)
@@ -701,14 +707,14 @@ class SchedulerManager:
 
     async def _capture_state(self, config: ScheduleConfig) -> dict:
         """Capture equipment state."""
-        from equipment.state import state_manager
+        from server.equipment.state import state_manager
 
         state = await state_manager.capture_state(config.equipment_id)
         return {"state_id": state.state_id, "timestamp": state.timestamp.isoformat()}
 
     async def _take_measurement(self, config: ScheduleConfig) -> dict:
         """Take single measurement."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(config.equipment_id)
         command = config.parameters.get("command", "get_readings")
@@ -720,7 +726,7 @@ class SchedulerManager:
 
     async def _execute_command(self, config: ScheduleConfig) -> dict:
         """Execute equipment command."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(config.equipment_id)
         command = config.parameters.get("command")
@@ -731,7 +737,7 @@ class SchedulerManager:
 
     async def _run_equipment_test(self, config: ScheduleConfig) -> dict:
         """Run equipment diagnostic test."""
-        from diagnostics import diagnostics_manager
+        from server.diagnostics import diagnostics_manager
 
         equipment_id = config.equipment_id
         test_name = config.parameters.get("test_name", "connection")

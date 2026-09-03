@@ -45,14 +45,16 @@ class ServerConnection:
         if data.get("last_connected"):
             try:
                 last_connected = datetime.fromisoformat(data["last_connected"])
-            except:
+            except Exception:
                 pass
 
         return cls(
             name=data["name"],
             host=data["host"],
             api_port=data["api_port"],
-            ws_port=data["ws_port"],
+            # /ws is served on the API port; older profiles carry a
+            # separate value that was never used.
+            ws_port=data.get("ws_port", data["api_port"]),
             last_connected=last_connected,
             user=data.get("user"),
             metadata=data.get("metadata", {}),
@@ -295,7 +297,7 @@ class ServerManager:
             if server.connected and server.client:
                 try:
                     server.client.disconnect()
-                except:
+                except Exception:
                     pass
 
             server.connected = False

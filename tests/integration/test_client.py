@@ -7,15 +7,34 @@ import json
 SERVER_URL = "http://localhost:8000"
 
 
+def _require_lablink_server():
+    """Skip unless a real LabLink server answers on SERVER_URL.
+
+    A bare ConnectionError check is not enough: an unrelated service may hold
+    the port and return HTML, which then fails as a JSON decode error rather
+    than skipping.
+    """
+    try:
+        response = requests.get(f"{SERVER_URL}/health", timeout=5)
+        payload = response.json()
+    except (requests.exceptions.RequestException, ValueError):
+        pytest.skip("LabLink server not running on localhost:8000")
+
+    if response.status_code != 200 or "status" not in payload:
+        pytest.skip("localhost:8000 is not a LabLink server")
+
+
 @pytest.mark.integration
 def test_server():
     """Test basic server functionality."""
+    _require_lablink_server()
     print("Testing LabLink Server...\n")
 
     try:
-        # Test root endpoint
+        # Test root endpoint. `/` serves the dashboard HTML; the JSON
+        # description of the server is at `/api`.
         print("1. Testing root endpoint...")
-        response = requests.get(f"{SERVER_URL}/", timeout=5)
+        response = requests.get(f"{SERVER_URL}/api", timeout=5)
         print(f"   Response: {response.json()}\n")
 
         # Test health endpoint
@@ -25,12 +44,14 @@ def test_server():
 
         # Test device discovery
         print("3. Testing device discovery...")
-        response = requests.post(f"{SERVER_URL}/api/equipment/discover", timeout=5)
+        # Discovery scans VISA/serial and is slow -- 25s against a bench with
+        # real ports attached. Five seconds was never going to be enough.
+        response = requests.post(f"{SERVER_URL}/api/equipment/discover", timeout=45)
         if response.status_code == 200:
             devices = response.json()
-            print(f"   Found {len(devices.get('resources', []))} devices:")
-            for device in devices.get('resources', []):
-                print(f"     - {device}")
+            print(f"   Found {len(devices.get('devices', []))} devices:")
+            for device in devices.get('devices', []):
+                print(f"     - {device.get('resource_name')}")
         else:
             print(f"   Error: {response.status_code}")
         print()
@@ -56,6 +77,7 @@ def test_server():
 @pytest.mark.integration
 def test_connect_device():
     """Test connecting to a device (requires actual hardware)."""
+    _require_lablink_server()
     print("\nTesting device connection...\n")
 
     try:

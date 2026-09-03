@@ -335,7 +335,7 @@ class PiDiscovery:
                     try:
                         cmd = [arp_path, "-n", ip]
                         break
-                    except:
+                    except Exception:
                         continue
                 else:
                     cmd = ["arp", "-n", ip]
@@ -400,7 +400,7 @@ class PiDiscovery:
                     )
                     # Got a hostname, return it (strip domain if FQDN)
                     return hostname.split('.')[0] if hostname else None
-                except:
+                except Exception:
                     pass
 
                 # If reverse lookup failed, try common .local patterns
@@ -412,7 +412,7 @@ class PiDiscovery:
                         )
                         if resolved_ip == ip:
                             return pattern.replace('.local', '')
-                    except:
+                    except Exception:
                         continue
 
                 return None
@@ -504,7 +504,7 @@ class PiDiscovery:
                             "version": version_data.get("version", "unknown"),
                             "name": "LabLink",
                         }
-                except:
+                except Exception:
                     pass
 
                 return True, {"version": "unknown", "name": "LabLink"}

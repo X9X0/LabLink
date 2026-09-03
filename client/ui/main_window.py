@@ -40,6 +40,12 @@ class MainWindow(QMainWindow):
 
     # Signals
     connection_changed = pyqtSignal(bool)  # True if connected, False if disconnected
+    # Emitted from the git-lookup worker thread. A signal rather than a
+    # QTimer: singleShot called off the GUI thread creates a timer owned by
+    # that thread, which has no event loop, so it never fires and dies with
+    # the thread. That is why the branch indicator never appeared. Signals
+    # cross threads properly, delivered on the receiver's thread.
+    branch_detected = pyqtSignal(str)
 
     def __init__(self):
         """Initialize main window."""
@@ -214,17 +220,38 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def _read_client_version(self) -> str:
+        """Version of the client that is actually running."""
+        from pathlib import Path
+
+        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        try:
+            return version_file.read_text().strip()
+        except OSError:
+            return "unknown"
+
+    def _version_text(self) -> str:
+        return f"LabLink {self._client_version}"
+
     def _setup_status_bar(self):
         """Set up status bar."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        # Git branch indicator (debug mode only)
-        branch_info = self._get_git_branch()
-        if branch_info and not branch_info.startswith("main"):
-            self.branch_label = QLabel(f"📍 {branch_info}")
-            self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-            self.status_bar.addWidget(self.branch_label)
+        # Which client code is running. The status bar previously showed the
+        # connection and the *server* version, so there was nothing anywhere
+        # in the UI identifying the client itself -- and after the branch
+        # selector checks out a different ref, that is the thing you need to
+        # see. The branch is appended once the git lookup returns.
+        self._client_version = self._read_client_version()
+        self.version_label = QLabel(self._version_text())
+        self.version_label.setStyleSheet("color: gray;")
+        self.status_bar.addWidget(self.version_label)
+
+        # Git branch indicator populated asynchronously to avoid blocking startup
+        self.branch_detected.connect(self._show_branch_label)
+        import threading
+        threading.Thread(target=self._fetch_git_branch_async, daemon=True).start()
 
         # Connection status label
         self.connection_label = QLabel("Not Connected")
@@ -255,12 +282,15 @@ class MainWindow(QMainWindow):
             client_dir = Path(__file__).parent.parent.parent
 
             # Get branch name
+            from client.utils.proc import no_window_kwargs
+
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
                 cwd=client_dir,
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=1,
+                **no_window_kwargs()
             )
 
             if branch_result.returncode == 0:
@@ -272,7 +302,8 @@ class MainWindow(QMainWindow):
                     cwd=client_dir,
                     capture_output=True,
                     text=True,
-                    timeout=1
+                    timeout=1,
+                    **no_window_kwargs()
                 )
 
                 if hash_result.returncode == 0:
@@ -285,12 +316,37 @@ class MainWindow(QMainWindow):
 
         return None
 
+    def _fetch_git_branch_async(self):
+        """Fetch git branch info in the background; emit it for the GUI thread."""
+        branch_info = self._get_git_branch()
+        if branch_info:
+            self.branch_detected.emit(branch_info)
+
+    def _show_branch_label(self, branch_info: str):
+        """Append the branch and commit to the version label (main thread only).
+
+        Shown for every branch including main. It used to be hidden on main,
+        which meant the status bar said nothing at all about what was running
+        in the common case -- and after the client checks out a different ref,
+        "which code is this?" is exactly the question being asked.
+        """
+        on_main = branch_info.startswith("main")
+        self.version_label.setText(f"{self._version_text()}  📍 {branch_info}")
+        self.version_label.setStyleSheet(
+            "color: gray;" if on_main else "color: #27ae60; font-weight: bold;"
+        )
+        self.version_label.setToolTip(
+            f"LabLink client {self._client_version}\n"
+            f"Running from branch {branch_info}\n\n"
+            "This is the code executing now, not the server's version."
+        )
+
     # ==================== Connection Management ====================
 
     def show_connection_dialog(self):
         """Show connection dialog."""
-        if self.connection_dialog is None:
-            self.connection_dialog = ConnectionDialog(self)
+        # Recreate each time so the dialog always reflects current settings
+        self.connection_dialog = ConnectionDialog(self)
 
         if self.connection_dialog.exec():
             host = self.connection_dialog.get_host()
@@ -478,6 +534,13 @@ class MainWindow(QMainWindow):
         # Set client for all panels
         self.equipment_panel.set_client(self.client)
         self.control_panel.set_client(self.client)
+        # Losing a lock mid-session greys out the controls; say why.
+        try:
+            self.control_panel.status_message.connect(
+                lambda text: self.status_bar.showMessage(text, 10000)
+            )
+        except (TypeError, RuntimeError):  # already connected
+            pass
         self.acquisition_panel.set_client(self.client)
         self.alarm_panel.set_client(self.client)
         self.scheduler_panel.set_client(self.client)
@@ -496,10 +559,9 @@ class MainWindow(QMainWindow):
         self.refresh_all()
 
         # Attempt WebSocket connection (optional, non-blocking)
-        # Schedule async task using asyncio's event loop (qasync provides it)
+        # _connect_websocket is an asyncSlot so calling it schedules it via qasync
         try:
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(self._connect_websocket(), loop=loop)
+            self._connect_websocket()
         except Exception as e:
             logger.error(f"Connection error: {e}")
 
@@ -543,11 +605,14 @@ class MainWindow(QMainWindow):
             logger.error(f"WebSocket connection error: {e}")
             # Don't show error to user - WebSocket is optional
 
-    def disconnect_from_server(self):
+    @qasync.asyncSlot()
+    async def disconnect_from_server(self):
         """Disconnect from server."""
         if self.client:
-            # Schedule async disconnect properly
-            asyncio.create_task(self.client.disconnect())
+            try:
+                await self.client.disconnect()
+            except Exception as e:
+                logger.debug(f"Error during disconnect: {e}")
             self.client = None
 
         # Reset connection states

@@ -1,10 +1,11 @@
 """API endpoints for database queries and management."""
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from database import get_database_manager
-from database.models import CommandStatus, QueryResult, SessionStatus
+from server.database import get_database_manager
+from server.database.models import CommandStatus, QueryResult, SessionStatus
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -92,7 +93,8 @@ async def query_command_history(
 
         status_enum = CommandStatus(status) if status else None
 
-        result = db.get_command_history(
+        result = await asyncio.to_thread(
+            db.get_command_history,
             equipment_id=equipment_id,
             user_id=user_id,
             start_time=start_time,
@@ -129,7 +131,8 @@ async def get_recent_commands(
 
         start_time = datetime.now() - timedelta(minutes=minutes)
 
-        result = db.get_command_history(
+        result = await asyncio.to_thread(
+            db.get_command_history,
             equipment_id=equipment_id,
             start_time=start_time,
             limit=limit,
@@ -163,7 +166,8 @@ async def get_failed_commands(
 
         start_time = datetime.now() - timedelta(hours=hours)
 
-        result = db.get_command_history(
+        result = await asyncio.to_thread(
+            db.get_command_history,
             equipment_id=equipment_id,
             start_time=start_time,
             status=CommandStatus.FAILED,
@@ -212,7 +216,8 @@ async def query_measurements(
     try:
         db = get_database_manager()
 
-        result = db.get_measurements(
+        result = await asyncio.to_thread(
+            db.get_measurements,
             equipment_id=equipment_id,
             measurement_type=measurement_type,
             start_time=start_time,
@@ -250,7 +255,8 @@ async def get_recent_measurements(
 
         start_time = datetime.now() - timedelta(minutes=minutes)
 
-        result = db.get_measurements(
+        result = await asyncio.to_thread(
+            db.get_measurements,
             equipment_id=equipment_id,
             measurement_type=measurement_type,
             start_time=start_time,
@@ -290,7 +296,8 @@ async def get_measurement_trend(
         start_time = datetime.now() - timedelta(hours=hours)
 
         # Get all measurements in the time range
-        result = db.get_measurements(
+        result = await asyncio.to_thread(
+            db.get_measurements,
             equipment_id=equipment_id,
             measurement_type=measurement_type,
             start_time=start_time,
@@ -373,7 +380,8 @@ async def get_usage_statistics(
     try:
         db = get_database_manager()
 
-        stats = db.get_equipment_usage_statistics(
+        stats = await asyncio.to_thread(
+            db.get_equipment_usage_statistics,
             equipment_id=equipment_id,
             start_time=start_time,
             end_time=end_time,
@@ -403,48 +411,7 @@ async def get_usage_summary(
         db = get_database_manager()
         start_time = datetime.now() - timedelta(days=days)
 
-        # Get statistics for all equipment (no equipment_id filter)
-        # This requires a custom query
-        import sqlite3
-
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                equipment_id,
-                equipment_type,
-                COUNT(*) as session_count,
-                SUM(duration_seconds) as total_duration,
-                AVG(duration_seconds) as avg_duration,
-                SUM(command_count) as total_commands,
-                SUM(measurement_count) as total_measurements,
-                SUM(error_count) as total_errors
-            FROM equipment_usage
-            WHERE session_start >= ?
-            GROUP BY equipment_id, equipment_type
-            ORDER BY total_duration DESC
-        """,
-            (start_time.isoformat(),),
-        )
-
-        results = []
-        for row in cursor.fetchall():
-            results.append(
-                {
-                    "equipment_id": row[0],
-                    "equipment_type": row[1],
-                    "session_count": row[2],
-                    "total_duration_seconds": row[3] or 0.0,
-                    "average_duration_seconds": row[4] or 0.0,
-                    "total_commands": row[5] or 0,
-                    "total_measurements": row[6] or 0,
-                    "total_errors": row[7] or 0,
-                }
-            )
-
-        conn.close()
+        results = await asyncio.to_thread(db.get_all_equipment_usage_by_days, days)
 
         return {
             "period_days": days,
@@ -479,7 +446,7 @@ async def get_database_statistics():
     """
     try:
         db = get_database_manager()
-        stats = db.get_database_statistics()
+        stats = await asyncio.to_thread(db.get_database_statistics)
         return stats
 
     except Exception as e:
@@ -501,7 +468,7 @@ async def cleanup_old_records(request: CleanupRequest):
     """
     try:
         db = get_database_manager()
-        db.cleanup_old_records(days=request.retention_days)
+        await asyncio.to_thread(db.cleanup_old_records, days=request.retention_days)
 
         return {
             "message": "Old records cleaned up successfully",
@@ -525,7 +492,7 @@ async def get_database_health():
     """
     try:
         db = get_database_manager()
-        stats = db.get_database_statistics()
+        stats = await asyncio.to_thread(db.get_database_statistics)
 
         warnings = []
 

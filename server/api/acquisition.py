@@ -707,7 +707,7 @@ async def create_sync_group(request: CreateSyncGroupRequest):
         Sync group status
     """
     try:
-        from acquisition.synchronization import SyncConfig, sync_manager
+        from server.acquisition.synchronization import SyncConfig, sync_manager
 
         config = SyncConfig(
             group_id=request.group_id,
@@ -745,7 +745,7 @@ async def create_sync_group(request: CreateSyncGroupRequest):
 async def add_to_sync_group(group_id: str, request: AddToSyncGroupRequest):
     """Add an acquisition session to a synchronization group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -779,7 +779,7 @@ async def add_to_sync_group(group_id: str, request: AddToSyncGroupRequest):
 async def start_sync_group(group_id: str):
     """Start all acquisitions in a sync group simultaneously."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -821,7 +821,7 @@ async def start_sync_group(group_id: str):
 async def stop_sync_group(group_id: str):
     """Stop all acquisitions in a sync group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -851,7 +851,7 @@ async def stop_sync_group(group_id: str):
 async def pause_sync_group(group_id: str):
     """Pause all acquisitions in a sync group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -881,7 +881,7 @@ async def pause_sync_group(group_id: str):
 async def resume_sync_group(group_id: str):
     """Resume all acquisitions in a sync group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -911,7 +911,7 @@ async def resume_sync_group(group_id: str):
 async def get_sync_group_status(group_id: str):
     """Get status of a synchronization group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         status = await sync_manager.get_group_status(group_id)
 
@@ -947,7 +947,7 @@ async def get_sync_group_status(group_id: str):
 async def get_sync_group_data(group_id: str, num_samples: Optional[int] = None):
     """Get synchronized data from all acquisitions in a group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         group = await sync_manager.get_sync_group(group_id)
         if group is None:
@@ -980,7 +980,7 @@ async def get_sync_group_data(group_id: str, num_samples: Optional[int] = None):
 async def list_sync_groups():
     """List all synchronization groups."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         groups = await sync_manager.list_sync_groups()
 
@@ -1010,7 +1010,7 @@ async def list_sync_groups():
 async def delete_sync_group(group_id: str):
     """Delete a synchronization group."""
     try:
-        from acquisition.synchronization import sync_manager
+        from server.acquisition.synchronization import sync_manager
 
         success = await sync_manager.delete_sync_group(group_id)
 

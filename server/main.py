@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 shared_path = Path(__file__).parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-from api import (acquisition_router, alarms_router, analysis_router,
+from server.api import (acquisition_router, alarms_router, analysis_router,
                  backup_router, calibration_enhanced_router,
                  calibration_router, data_router, database_router,
                  diagnostics_router, discovery_router, equipment_router,
@@ -23,22 +23,65 @@ from api import (acquisition_router, alarms_router, analysis_router,
                  profiles_router, safety_router, scheduler_router,
                  security_router, state_router, system_router,
                  testing_router, waveform_router)
-from config.settings import settings
-from config.validator import validate_config
-from logging_config import LoggingMiddleware, get_logger, setup_logging
-from system import get_version
-from web.routes import register_web_routes
-from websocket_server import handle_websocket
+from server.config.settings import settings
+from server.config.validator import validate_config
+from server.logging_config import LoggingMiddleware, get_logger, setup_logging
+from server.system import get_version
+from server.web.routes import register_web_routes
+from server.websocket_server import handle_websocket
 
 # Setup advanced logging system
 setup_logging()
 logger = get_logger(__name__)
 
 
+def _assert_single_import_path() -> None:
+    """Fail loudly if this package is loaded under two names.
+
+    When both /app and /app/server are on sys.path, the same file imports as
+    `equipment.locks` and `server.equipment.locks`, and Python builds two
+    module objects -- each with its own module-level singletons. Nothing
+    raises. The lifespan then configures one set while every request uses the
+    other, and the symptom is a lock reaper that never reaps, a state
+    directory that is never set, and an emergency stop one import away from
+    being checked on the wrong object.
+
+    That went unnoticed for months because it produces no error, no log line
+    and no failing test. So check for it, and refuse to start rather than run
+    in a shape nobody can debug from the outside.
+    """
+    import sys
+
+    loaded = set(sys.modules)
+    duplicates = sorted(
+        name for name in loaded
+        if not name.startswith("server.")
+        and f"server.{name}" in loaded
+        and name.split(".")[0] in {
+            "acquisition", "alarm", "analysis", "api", "backup", "config",
+            "database", "diagnostics", "discovery", "equipment", "firmware",
+            "logging_config", "performance", "scheduler", "security", "system",
+            "waveform", "web", "websocket",
+        }
+    )
+    if duplicates:
+        raise RuntimeError(
+            "The server package is loaded under two names, so its "
+            "module-level singletons are duplicated and startup would "
+            "configure objects no request will use.\n\n"
+            f"  duplicated: {', '.join(duplicates)}\n\n"
+            "Both the repo root and server/ are on sys.path. Start the server "
+            "as `python -m uvicorn server.main:app` from the repo root, and "
+            "import everything as server.* -- see issue #197."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    from system import get_version
+    _assert_single_import_path()
+
+    from server.system import get_version
 
     logger.info("=" * 70)
     logger.info(f"LabLink Server v{get_version()} - {settings.server_name}")
@@ -51,7 +94,6 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     logger.info(f"API Port: {settings.api_port}")
-    logger.info(f"WebSocket Port: {settings.ws_port}")
     logger.info(f"Log Level: {settings.log_level}")
     logger.info(
         f"Auto-reconnect: {'enabled' if settings.enable_auto_reconnect else 'disabled'}"
@@ -76,7 +118,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize equipment manager
-    from equipment.manager import equipment_manager
+    from server.equipment.manager import equipment_manager
 
     logger.info("Initializing equipment manager...")
     await equipment_manager.initialize()
@@ -84,7 +126,7 @@ async def lifespan(app: FastAPI):
     # Auto-register mock equipment if enabled
     if settings.enable_mock_equipment:
         logger.info("Mock equipment enabled - registering mock devices...")
-        from equipment.mock_helper import MockEquipmentHelper
+        from server.equipment.mock_helper import MockEquipmentHelper
 
         try:
             equipment_ids = await MockEquipmentHelper.register_default_mock_equipment(
@@ -100,22 +142,22 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to register mock equipment: {e}")
 
     # Start health monitoring
-    from equipment.error_handler import health_monitor
+    from server.equipment.error_handler import health_monitor
 
     await health_monitor.start(equipment_manager)
 
     # Create default profiles
-    from equipment.profiles import create_default_profiles
+    from server.equipment.profiles import create_default_profiles
 
     create_default_profiles()
 
     # Start lock cleanup task
-    from equipment.locks import lock_manager
+    from server.equipment.locks import lock_manager
 
     await lock_manager.start_cleanup_task()
 
     # Initialize state manager
-    from equipment.state import state_manager
+    from server.equipment.state import state_manager
 
     state_dir = settings.state_dir if hasattr(settings, "state_dir") else "./states"
     state_manager.set_state_directory(state_dir)
@@ -127,7 +169,7 @@ async def lifespan(app: FastAPI):
         state_manager.load_states_from_disk()
 
     # Initialize acquisition manager
-    from acquisition import acquisition_manager
+    from server.acquisition import acquisition_manager
 
     acq_export_dir = (
         settings.acquisition_export_dir
@@ -137,7 +179,7 @@ async def lifespan(app: FastAPI):
     acquisition_manager.set_export_directory(acq_export_dir)
 
     # Start scheduler with persistence (v0.14.0)
-    from scheduler import initialize_scheduler_manager
+    from server.scheduler import initialize_scheduler_manager
 
     logger.info("Initializing scheduler with persistence...")
     sched_db_path = (
@@ -150,7 +192,7 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduler started with SQLite persistence")
 
     # Initialize equipment-alarm integrator
-    from alarm import alarm_manager, initialize_integrator
+    from server.alarm import alarm_manager, initialize_integrator
 
     logger.info("Initializing equipment-alarm integrator...")
     integrator = initialize_integrator(equipment_manager, alarm_manager)
@@ -158,7 +200,7 @@ async def lifespan(app: FastAPI):
     logger.info("Equipment-alarm monitoring started")
 
     # Wire alarm manager to WebSocket stream manager for real-time notifications
-    from websocket_server import stream_manager
+    from server.websocket_server import stream_manager
     alarm_manager.set_stream_manager(stream_manager)
     logger.info("Alarm manager connected to WebSocket for real-time notifications")
 
@@ -167,7 +209,7 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduler manager connected to WebSocket for real-time notifications")
 
     # Initialize calibration manager (v0.12.0)
-    from equipment.calibration import initialize_calibration_manager
+    from server.equipment.calibration import initialize_calibration_manager
 
     logger.info("Initializing calibration manager...")
     cal_storage_path = (
@@ -179,14 +221,14 @@ async def lifespan(app: FastAPI):
     logger.info("Calibration manager initialized")
 
     # Initialize error code database (v0.12.0)
-    from equipment.error_codes import initialize_error_code_db
+    from server.equipment.error_codes import initialize_error_code_db
 
     logger.info("Initializing error code database...")
     error_db = initialize_error_code_db()
     logger.info("Error code database initialized")
 
     # Initialize performance monitor (v0.13.0)
-    from performance import initialize_performance_monitor
+    from server.performance import initialize_performance_monitor
 
     logger.info("Initializing performance monitoring system...")
     perf_db_path = (
@@ -199,8 +241,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize waveform manager (v0.16.0)
     if settings.enable_waveform_analysis:
-        from api.waveform import init_waveform_api
-        from waveform.manager import WaveformManager
+        from server.api.waveform import init_waveform_api
+        from server.waveform.manager import WaveformManager
 
         logger.info("Initializing waveform capture & analysis system...")
         waveform_manager = WaveformManager(equipment_manager)
@@ -210,7 +252,7 @@ async def lifespan(app: FastAPI):
         )
 
     # Initialize database manager (v0.18.0)
-    from database import initialize_database_manager
+    from server.database import initialize_database_manager
 
     logger.info("Initializing database integration...")
     db_path = (
@@ -224,7 +266,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize enhanced calibration manager (v0.19.0)
-    from equipment.calibration_enhanced import \
+    from server.equipment.calibration_enhanced import \
         initialize_enhanced_calibration_manager
 
     logger.info("Initializing enhanced calibration system...")
@@ -239,7 +281,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize test executor (v0.20.0)
-    from testing import initialize_test_executor
+    from server.testing import initialize_test_executor
 
     logger.info("Initializing automated test sequences...")
     test_executor = initialize_test_executor(equipment_manager, db_manager)
@@ -248,7 +290,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize backup manager (v0.21.0)
-    from backup import BackupConfig, CompressionType, initialize_backup_manager
+    from server.backup import BackupConfig, CompressionType, initialize_backup_manager
 
     logger.info("Initializing backup & restore system...")
     backup_config = BackupConfig(
@@ -276,7 +318,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize discovery manager (v0.22.0)
     if settings.enable_discovery:
-        from discovery import DiscoveryConfig, initialize_discovery_manager
+        from server.discovery import DiscoveryConfig, initialize_discovery_manager
 
         logger.info("Initializing equipment discovery system...")
         discovery_config = DiscoveryConfig(
@@ -290,6 +332,9 @@ async def lifespan(app: FastAPI):
             scan_usb=settings.discovery_scan_usb,
             scan_gpib=settings.discovery_scan_gpib,
             scan_serial=settings.discovery_scan_serial,
+            enable_serial_probe=settings.discovery_enable_serial_probe,
+            serial_probe_usb_only=settings.discovery_serial_probe_usb_only,
+            serial_probe_timeout_sec=settings.discovery_serial_probe_timeout_sec,
             test_connections=settings.discovery_test_connections,
             query_idn=settings.discovery_query_idn,
             enable_history=settings.discovery_enable_history,
@@ -324,13 +369,37 @@ async def lifespan(app: FastAPI):
 
     # Initialize security system (v0.23.0)
     if settings.enable_advanced_security:
-        from security import (AuthConfig, generate_secure_secret_key,
+        from server.security import (AuthConfig, generate_secure_secret_key,
                               init_security_manager)
 
         logger.info("Initializing advanced security system...")
 
-        # Generate or use configured JWT secret
-        jwt_secret = settings.jwt_secret_key or generate_secure_secret_key()
+        # Generate or use configured JWT secret.
+        # A freshly generated secret is persisted next to the security DB:
+        # without that, every restart invalidates all outstanding tokens, and
+        # each worker in a multi-worker deployment would sign with a different
+        # key, producing intermittent 401s.
+        jwt_secret = settings.jwt_secret_key
+        if not jwt_secret:
+            secret_file = Path(settings.security_db_path).parent / ".jwt_secret"
+            try:
+                if secret_file.exists():
+                    jwt_secret = secret_file.read_text().strip()
+                if not jwt_secret:
+                    jwt_secret = generate_secure_secret_key()
+                    secret_file.parent.mkdir(parents=True, exist_ok=True)
+                    secret_file.write_text(jwt_secret)
+                    secret_file.chmod(0o600)
+                logger.warning(
+                    "LABLINK_JWT_SECRET_KEY is not set; using the generated secret at "
+                    f"{secret_file}. Set the environment variable in production."
+                )
+            except OSError as e:
+                jwt_secret = jwt_secret or generate_secure_secret_key()
+                logger.error(
+                    f"Could not persist JWT secret to {secret_file}: {e}. "
+                    "Using an in-memory secret - all tokens will be invalidated on restart."
+                )
 
         auth_config = AuthConfig(
             secret_key=jwt_secret,
@@ -346,53 +415,67 @@ async def lifespan(app: FastAPI):
 
         # Create default admin user if enabled
         if settings.create_default_admin:
-            from security import UserCreate
+            from server.security import UserCreate
 
-            try:
-                admin_user = await security_manager.get_user_by_username(
-                    settings.default_admin_username
+            if not settings.default_admin_password:
+                logger.error(
+                    "⚠️  LABLINK_DEFAULT_ADMIN_PASSWORD is not set. "
+                    "Default admin user will NOT be created. "
+                    "Set this environment variable to enable first-time login."
                 )
-                if not admin_user:
-                    # Get admin role
-                    admin_role = security_manager.get_role_by_name("admin")
-                    admin_user = await security_manager.create_user(
-                        UserCreate(
-                            username=settings.default_admin_username,
-                            email=settings.default_admin_email,
-                            password=settings.default_admin_password,
-                            full_name="Default Administrator",
-                            roles=[admin_role.role_id] if admin_role else [],
-                            must_change_password=True,
-                        ),
-                        created_by=None,
+            else:
+                try:
+                    admin_user = await security_manager.get_user_by_username(
+                        settings.default_admin_username
                     )
-                    admin_user.is_superuser = True
+                    if not admin_user:
+                        # Get admin role
+                        admin_role = security_manager.get_role_by_name("admin")
+                        admin_user = await security_manager.create_user(
+                            UserCreate(
+                                username=settings.default_admin_username,
+                                email=settings.default_admin_email,
+                                password=settings.default_admin_password,
+                                full_name="Default Administrator",
+                                roles=[admin_role.role_id] if admin_role else [],
+                                must_change_password=True,
+                            ),
+                            created_by=None,
+                        )
+                        admin_user.is_superuser = True
 
-                    # Update superuser flag in database
-                    from datetime import datetime
-                    from sqlite3 import connect
+                        # Update superuser flag in database
+                        # NOTE: do not import datetime here. It is already
+                        # imported at module scope, and a local import makes it
+                        # a local of lifespan(), which the nested
+                        # discovery_progress_callback() then closes over. That
+                        # callback runs on every discovery scan, and this
+                        # branch only runs when the default admin is created,
+                        # so the name is usually unbound -> "cannot access free
+                        # variable 'datetime'" and every scan fails.
+                        from sqlite3 import connect
 
-                    conn = connect(str(security_manager.db_path))
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        """
-                        UPDATE users SET is_superuser = 1, updated_at = ? WHERE user_id = ?
-                    """,
-                        (datetime.utcnow(), admin_user.user_id),
-                    )
-                    conn.commit()
-                    conn.close()
+                        conn = connect(str(security_manager.db_path))
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """
+                            UPDATE users SET is_superuser = 1, updated_at = ? WHERE user_id = ?
+                        """,
+                            (datetime.now(timezone.utc), admin_user.user_id),
+                        )
+                        conn.commit()
+                        conn.close()
 
-                    logger.warning(
-                        f"⚠️  DEFAULT ADMIN CREATED - Username: {settings.default_admin_username}, Password: {settings.default_admin_password}"
-                    )
-                    logger.warning("⚠️  CHANGE THE DEFAULT PASSWORD IMMEDIATELY!")
-                else:
-                    logger.info(
-                        f"Default admin user already exists: {settings.default_admin_username}"
-                    )
-            except Exception as e:
-                logger.error(f"Failed to create default admin user: {e}")
+                        logger.warning(
+                            f"⚠️  DEFAULT ADMIN CREATED - Username: {settings.default_admin_username}"
+                        )
+                        logger.warning("⚠️  CHANGE THE DEFAULT PASSWORD IMMEDIATELY!")
+                    else:
+                        logger.info(
+                            f"Default admin user already exists: {settings.default_admin_username}"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create default admin user: {e}")
 
         logger.info(
             "Advanced security initialized - JWT auth, RBAC, API keys, IP whitelisting, audit logging enabled"
@@ -400,7 +483,7 @@ async def lifespan(app: FastAPI):
 
         # Initialize OAuth2 providers if enabled (v0.25.0)
         if settings.enable_oauth2:
-            from security import (OAUTH2_DEFAULTS, OAuth2Config,
+            from server.security import (OAUTH2_DEFAULTS, OAuth2Config,
                                   OAuth2Provider, init_oauth2_manager)
 
             logger.info("Initializing OAuth2 authentication providers...")
@@ -482,7 +565,7 @@ async def lifespan(app: FastAPI):
         logger.info("Advanced security disabled")
 
     # Initialize update manager (v0.28.0)
-    from system import update_manager
+    from server.system import update_manager
 
     logger.info("Initializing update manager...")
     await update_manager.initialize()
@@ -494,18 +577,17 @@ async def lifespan(app: FastAPI):
 
     # Detect if running inside Docker
     import os
-    running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False)
+    running_in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', '').lower() in ('1', 'true', 'yes')
 
     if settings.enable_mdns_discovery and not running_in_docker:
-        from utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
-        from system import get_version
+        from server.utils.mdns import ZEROCONF_AVAILABLE, LabLinkMDNSService
+        from server.system import get_version
 
         if ZEROCONF_AVAILABLE:
             try:
                 logger.info("Starting mDNS server broadcasting...")
                 mdns_service = LabLinkMDNSService(
                     port=settings.api_port,
-                    ws_port=settings.ws_port,
                     server_name=settings.server_name,
                     server_version=get_version(),
                 )
@@ -542,7 +624,7 @@ async def lifespan(app: FastAPI):
         mdns_service.stop()
 
     # Stop equipment-alarm integrator
-    from alarm import get_integrator
+    from server.alarm import get_integrator
 
     integrator = get_integrator()
     if integrator:
@@ -550,19 +632,19 @@ async def lifespan(app: FastAPI):
         logger.info("Equipment-alarm monitoring stopped")
 
     # Stop scheduler
-    from scheduler import scheduler_manager
+    from server.scheduler import scheduler_manager
 
     await scheduler_manager.shutdown()
 
     # Stop update manager scheduled checks
-    from system import update_manager
+    from server.system import update_manager
 
     if update_manager.scheduled_check_task and not update_manager.scheduled_check_task.done():
         await update_manager.stop_scheduled_checks()
         logger.info("Update manager scheduled checks stopped")
 
     # Stop backup auto-backup task
-    from backup import get_backup_manager
+    from server.backup import get_backup_manager
 
     backup_manager = get_backup_manager()
     await backup_manager.stop_auto_backup()
@@ -570,19 +652,19 @@ async def lifespan(app: FastAPI):
 
     # Stop discovery auto-discovery task
     if settings.enable_discovery:
-        from discovery import get_discovery_manager
+        from server.discovery import get_discovery_manager
 
         discovery_manager = get_discovery_manager()
         await discovery_manager.stop_auto_discovery()
         logger.info("Discovery auto-discovery task stopped")
 
     # Stop lock cleanup task
-    from equipment.locks import lock_manager
+    from server.equipment.locks import lock_manager
 
     await lock_manager.stop_cleanup_task()
 
     # Stop health monitoring
-    from equipment.error_handler import health_monitor
+    from server.equipment.error_handler import health_monitor
 
     await health_monitor.stop()
 
@@ -601,9 +683,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Allowed origins come from settings (LABLINK_CORS_ORIGINS env var).
+# The default "*" is intentionally broad for a local-network lab tool;
+# override with a comma-separated list of origins for production deployments.
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -655,17 +741,45 @@ async def api_root():
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    from equipment.manager import equipment_manager
+    from server.equipment.manager import equipment_manager
 
     return {
         "status": "healthy",
-        "connected_devices": len(equipment_manager.get_connected_devices()),
+        "connected_devices": len(await equipment_manager.get_connected_devices()),
     }
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time data streaming."""
+async def websocket_endpoint(websocket: WebSocket, token: str = None):
+    """WebSocket endpoint for real-time data streaming.
+
+    Requires a valid JWT access token passed as the ``token`` query parameter
+    when advanced security is enabled (e.g. ``wss://host/ws?token=<jwt>``).
+    """
+    if settings.enable_advanced_security:
+        try:
+            from server.security import get_security_manager
+            from server.security.auth import decode_token
+
+            security_manager = get_security_manager()
+            if security_manager:
+                if not token:
+                    await websocket.close(code=4001, reason="Authentication token required")
+                    return
+                payload = decode_token(token, security_manager.config)
+                if not payload:
+                    await websocket.close(code=4001, reason="Invalid or expired token")
+                    return
+                if not payload.session_id or not security_manager.session_manager.get_session(
+                    payload.session_id
+                ):
+                    await websocket.close(code=4001, reason="Session has been revoked or expired")
+                    return
+        except Exception as e:
+            logger.warning(f"WebSocket auth check failed: {e}")
+            await websocket.close(code=4001, reason="Authentication error")
+            return
+
     await handle_websocket(websocket)
 
 
@@ -687,7 +801,10 @@ if __name__ == "__main__":
         logger.info("🐛 DEBUG MODE ENABLED via command-line flag")
 
     uvicorn.run(
-        "main:app",
+        # Must match the container's target: the module is server.main, and
+        # naming it "main:app" here would re-import this file under a second
+        # name, which is the defect this branch removes.
+        "server.main:app",
         host=settings.host,
         port=settings.api_port,
         reload=settings.debug,

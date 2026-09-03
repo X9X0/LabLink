@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 import threading
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -62,8 +63,7 @@ class DatabaseManager:
 
     def _create_schema(self):
         """Create database schema."""
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Command history table
@@ -185,7 +185,6 @@ class DatabaseManager:
             )
 
             conn.commit()
-            conn.close()
 
             logger.info("Database schema created successfully")
 
@@ -203,8 +202,7 @@ class DatabaseManager:
         if not self.config.enable_command_logging:
             return -1
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -230,7 +228,6 @@ class DatabaseManager:
 
             record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
-            conn.close()
 
             return record_id
 
@@ -281,8 +278,7 @@ class DatabaseManager:
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Get total count
@@ -303,7 +299,6 @@ class DatabaseManager:
             )
 
             records = [dict(row) for row in cursor.fetchall()]
-            conn.close()
 
         query_time = (datetime.now() - query_start).total_seconds() * 1000
 
@@ -330,8 +325,7 @@ class DatabaseManager:
         if not self.config.enable_measurement_archival:
             return -1
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -358,7 +352,6 @@ class DatabaseManager:
 
             record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
-            conn.close()
 
             return record_id
 
@@ -404,8 +397,7 @@ class DatabaseManager:
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Get total count
@@ -433,7 +425,6 @@ class DatabaseManager:
                     record["metadata"] = json.loads(record["metadata"])
                 records.append(record)
 
-            conn.close()
 
         query_time = (datetime.now() - query_start).total_seconds() * 1000
 
@@ -460,8 +451,7 @@ class DatabaseManager:
         if not self.config.enable_usage_tracking:
             return -1
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -480,7 +470,6 @@ class DatabaseManager:
 
             record_id = cursor.lastrowid if cursor.lastrowid is not None else -1
             conn.commit()
-            conn.close()
 
             return record_id
 
@@ -501,8 +490,7 @@ class DatabaseManager:
             error_count: Number of errors encountered
             disconnect_reason: Reason for disconnection
         """
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Get session start time
@@ -512,7 +500,6 @@ class DatabaseManager:
             )
             row = cursor.fetchone()
             if not row:
-                conn.close()
                 return
 
             session_start = datetime.fromisoformat(row[0])
@@ -539,7 +526,6 @@ class DatabaseManager:
             )
 
             conn.commit()
-            conn.close()
 
     def get_equipment_usage_statistics(
         self,
@@ -572,8 +558,7 @@ class DatabaseManager:
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -592,7 +577,6 @@ class DatabaseManager:
             )
 
             row = cursor.fetchone()
-            conn.close()
 
             return {
                 "session_count": row[0] or 0,
@@ -603,6 +587,50 @@ class DatabaseManager:
                 "total_errors": row[5] or 0,
             }
 
+    def get_all_equipment_usage_by_days(self, days: int) -> List[Dict[str, Any]]:
+        """Get per-equipment usage stats aggregated over the last N days.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            List of dicts with usage stats per equipment, ordered by total duration
+        """
+        start_time = datetime.now() - timedelta(days=days)
+        with self._lock, closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT equipment_id, equipment_type,
+                       COUNT(*) as session_count,
+                       SUM(duration_seconds) as total_duration,
+                       AVG(duration_seconds) as avg_duration,
+                       SUM(command_count) as total_commands,
+                       SUM(measurement_count) as total_measurements,
+                       SUM(error_count) as total_errors
+                FROM equipment_usage
+                WHERE session_start >= ?
+                GROUP BY equipment_id, equipment_type
+                ORDER BY total_duration DESC
+            """,
+                (start_time.isoformat(),),
+            )
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "equipment_id": r[0],
+                "equipment_type": r[1],
+                "session_count": r[2],
+                "total_duration_seconds": r[3] or 0.0,
+                "average_duration_seconds": r[4] or 0.0,
+                "total_commands": r[5] or 0,
+                "total_measurements": r[6] or 0,
+                "total_errors": r[7] or 0,
+            }
+            for r in rows
+        ]
+
     # === Data Session Operations ===
 
     def create_data_session(self, record: DataSessionRecord):
@@ -611,8 +639,7 @@ class DatabaseManager:
         Args:
             record: Data session record
         """
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -638,7 +665,6 @@ class DatabaseManager:
             )
 
             conn.commit()
-            conn.close()
 
     def update_data_session(
         self,
@@ -698,8 +724,7 @@ class DatabaseManager:
         if not updates:
             return
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Calculate duration if ending session
@@ -729,7 +754,6 @@ class DatabaseManager:
             )
 
             conn.commit()
-            conn.close()
 
     # === Cleanup Operations ===
 
@@ -745,8 +769,7 @@ class DatabaseManager:
         retention_days = days or self.config.retention_days
         cutoff_date = datetime.now() - timedelta(days=retention_days)
 
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Delete old command history
@@ -778,17 +801,16 @@ class DatabaseManager:
             session_deleted = cursor.rowcount
 
             conn.commit()
-            conn.close()
 
             logger.info(
                 f"Cleaned up old records: {command_deleted} commands, {measurement_deleted} measurements, "
                 f"{usage_deleted} usage records, {session_deleted} sessions"
             )
 
-            # Vacuum database to reclaim space
-            conn = self._get_connection()
-            conn.execute("VACUUM")
-            conn.close()
+        # Vacuum on its own connection, after the one above is closed —
+        # VACUUM cannot run while another connection holds the database.
+        with self._lock, closing(self._get_connection()) as vacuum_conn:
+            vacuum_conn.execute("VACUUM")
 
     def get_database_statistics(self) -> Dict[str, Any]:
         """Get database statistics.
@@ -796,8 +818,7 @@ class DatabaseManager:
         Returns:
             Dictionary with database statistics
         """
-        with self._lock:
-            conn = self._get_connection()
+        with self._lock, closing(self._get_connection()) as conn:
             cursor = conn.cursor()
 
             # Get record counts
@@ -819,7 +840,6 @@ class DatabaseManager:
             )
             db_size_bytes = cursor.fetchone()[0]
 
-            conn.close()
 
         return {
             "command_count": command_count,

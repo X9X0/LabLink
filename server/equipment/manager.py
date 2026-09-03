@@ -10,7 +10,12 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
+from .bk_power_supply import (BK1685B, BK1687B, BK1688B, BK1696, BK1901B,
+                              BK1902B, BK9103, BK9104, BK9130B, BK9205B,
+                              BK9206B)
+from .bk_registry import (PROTOCOL_SCPI, equipment_type_for, resolve_model)
+from .bk_scpi import (BKSCPIElectronicLoad, BKSCPIMultimeter,
+                      BKSCPIPowerSupply)
 from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_oscilloscope import MockOscilloscope
 from .mock.mock_power_supply import MockPowerSupply
@@ -61,7 +66,7 @@ class EquipmentManager:
         """
         try:
             # Use discovery manager for comprehensive discovery with filtering
-            from discovery import get_discovery_manager
+            from server.discovery import get_discovery_manager
 
             discovery_manager = get_discovery_manager()
             result = await discovery_manager.scan()
@@ -79,7 +84,7 @@ class EquipmentManager:
                 return []
 
             try:
-                from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
+                from server.discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
                 import uuid
 
                 resources = self.resource_manager.list_resources()
@@ -147,7 +152,7 @@ class EquipmentManager:
                 self.equipment[equipment_id] = equipment
 
                 # Record connection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_connection(equipment_id)
 
                 logger.info(
@@ -200,19 +205,84 @@ class EquipmentManager:
         elif "DL3021" in model_upper:
             return RigolDL3021A(self.resource_manager, resource_string)
 
-        # BK Precision power supplies
-        elif "9206" in model_upper:
-            return BK9206B(self.resource_manager, resource_string)
-        elif "9205" in model_upper:
-            return BK9205B(self.resource_manager, resource_string)
-        elif "9130" in model_upper or "9131" in model_upper:
-            return BK9130B(self.resource_manager, resource_string)
-        elif "1685" in model_upper:
-            return BK1685B(self.resource_manager, resource_string)
-        elif "1902" in model_upper:
-            return BK1902B(self.resource_manager, resource_string)
+        # B&K Precision: dispatched through the model registry so every
+        # documented family is reachable, not just the hand-listed few.
+        bk_equipment = self._create_bk_instance(
+            resource_string, equipment_type, model
+        )
+        if bk_equipment is not None:
+            return bk_equipment
 
         return None
+
+    #: Models with a hand-written driver, which wins over the generic one.
+    _BK_SPECIFIC_DRIVERS = {
+        "1685B": BK1685B, "1687B": BK1687B, "1688B": BK1688B,
+        "1901B": BK1901B, "1902B": BK1902B,
+        "9103": BK9103, "9104": BK9104,
+        "9130B": BK9130B, "9131B": BK9130B, "9132B": BK9130B,
+        "9205B": BK9205B, "9206B": BK9206B,
+        "1696": BK1696, "1697": BK1696, "1698": BK1696,
+    }
+
+    #: Generic SCPI driver per LabLink equipment type.
+    _BK_GENERIC_DRIVERS = {
+        EquipmentType.POWER_SUPPLY: BKSCPIPowerSupply,
+        EquipmentType.ELECTRONIC_LOAD: BKSCPIElectronicLoad,
+        EquipmentType.MULTIMETER: BKSCPIMultimeter,
+    }
+
+    def _create_bk_instance(
+        self, resource_string: str, equipment_type: EquipmentType, model: str
+    ) -> Optional[BaseEquipment]:
+        """Build a B&K driver for `model`, or None if it is not a B&K model.
+
+        A SKU is resolved to its family first, so a 9241 gets the 9240-series
+        driver and a 2569B-MSO is recognised as a 2560B scope, rather than
+        falling through as unsupported.
+        """
+        info = resolve_model(model)
+        if info is None:
+            return None
+
+        # An exact SKU with its own driver takes precedence over the family's.
+        sku = model.upper().replace(" ", "").replace("-", "")
+        for candidate in (sku, info.key):
+            driver = self._BK_SPECIFIC_DRIVERS.get(candidate)
+            if driver:
+                return driver(self.resource_manager, resource_string)
+        for documented_sku in info.skus:
+            if sku.endswith(documented_sku) and documented_sku in self._BK_SPECIFIC_DRIVERS:
+                return self._BK_SPECIFIC_DRIVERS[documented_sku](
+                    self.resource_manager, resource_string
+                )
+
+        # No hand-written driver: the generic SCPI drivers cover the rest,
+        # but only where the protocol family and the category both line up.
+        if info.protocol != PROTOCOL_SCPI:
+            logger.warning(
+                f"B&K {info.name} speaks the {info.protocol} protocol, which "
+                f"has no LabLink driver yet"
+            )
+            return None
+
+        resolved_type = equipment_type_for(info)
+        if resolved_type is None:
+            logger.warning(
+                f"B&K {info.name} is a {info.category}; LabLink has no "
+                f"equipment type for it"
+            )
+            return None
+
+        driver = self._BK_GENERIC_DRIVERS.get(EquipmentType(resolved_type))
+        if driver is None:
+            return None
+
+        logger.info(
+            f"Using the generic B&K SCPI driver for {info.name} "
+            f"({resolved_type})"
+        )
+        return driver(self.resource_manager, resource_string, model=model)
 
     async def disconnect_device(self, equipment_id: str):
         """Disconnect a device."""
@@ -221,7 +291,7 @@ class EquipmentManager:
                 equipment = self.equipment[equipment_id]
 
                 # Safe state on disconnect - disable outputs
-                from config.settings import settings
+                from server.config.settings import settings
 
                 if settings.safe_state_on_disconnect:
                     try:
@@ -248,7 +318,7 @@ class EquipmentManager:
                 del self.equipment[equipment_id]
 
                 # Record disconnection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_disconnection(equipment_id)
 
                 logger.info(f"Disconnected device {equipment_id}")
@@ -257,13 +327,14 @@ class EquipmentManager:
         """Get equipment by ID."""
         return self.equipment.get(equipment_id)
 
-    def get_connected_devices(self) -> List[EquipmentInfo]:
+    async def get_connected_devices(self) -> List[EquipmentInfo]:
         """Get list of all connected devices."""
-        return [
-            equipment.cached_info
-            for equipment in self.equipment.values()
-            if equipment.cached_info
-        ]
+        async with self._lock:
+            return [
+                equipment.cached_info
+                for equipment in self.equipment.values()
+                if equipment.cached_info
+            ]
 
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""

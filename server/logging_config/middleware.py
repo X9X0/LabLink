@@ -101,7 +101,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         user_info = self._extract_user_info(request)
 
         # Start timer
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         # Process request
         try:
@@ -113,7 +113,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             # Calculate duration
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
             # Log access
             status_code = response.status_code if "response" in locals() else 500

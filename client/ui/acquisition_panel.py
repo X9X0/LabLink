@@ -24,7 +24,8 @@ from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                              QTableWidgetItem, QTabWidget, QTextEdit,
                              QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+import qasync
+from client.api.client import LabLinkClient, call_blocking
 
 try:
     from client.ui.widgets.plot_widget import PlotWidget
@@ -160,6 +161,7 @@ class AcquisitionPanel(QWidget):
         self.last_data_time: Optional[float] = None
 
         # Auto-refresh timer
+        self._sessions_refresh_in_flight = False
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self._auto_refresh)
         self.refresh_timer.setInterval(2000)  # 2 seconds
@@ -711,13 +713,14 @@ Samples Collected: {session.get('sample_count', 0)}
         except Exception as e:
             logger.warning(f"Could not stop acquisition stream: {e}")
 
-    def refresh_equipment(self):
+    @qasync.asyncSlot()
+    async def refresh_equipment(self):
         """Refresh equipment list."""
         if not self.client:
             return
 
         try:
-            equipment_list = self.client.list_equipment()
+            equipment_list = await call_blocking(self.client.list_equipment)
             self.equipment_combo.clear()
             for eq in equipment_list:
                 self.equipment_combo.addItem(
@@ -730,13 +733,18 @@ Samples Collected: {session.get('sample_count', 0)}
         """Refresh acquisition panel data."""
         self.refresh_sessions(silent=True)
 
-    def refresh_sessions(self, silent: bool = False):
+    @qasync.asyncSlot()
+    async def refresh_sessions(self, silent: bool = False):
         """Refresh active acquisition sessions."""
         if not self.client:
             return
 
+        if self._sessions_refresh_in_flight:
+            return
+
+        self._sessions_refresh_in_flight = True
         try:
-            sessions = self.client.list_acquisition_sessions()
+            sessions = await call_blocking(self.client.list_acquisition_sessions)
             self.active_sessions.clear()
             self.sessions_list.clear()
 
@@ -761,6 +769,8 @@ Samples Collected: {session.get('sample_count', 0)}
         except Exception as e:
             if not silent:
                 logger.error(f"Error refreshing sessions: {e}")
+        finally:
+            self._sessions_refresh_in_flight = False
 
     def create_session(self):
         """Create new acquisition session."""

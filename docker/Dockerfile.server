@@ -2,7 +2,7 @@
 # Multi-stage build for smaller image size
 
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -22,11 +22,11 @@ COPY server/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 LABEL maintainer="LabLink Project"
 LABEL description="LabLink Server - Laboratory Equipment Control"
-LABEL version="1.2.4"
+LABEL version="2.0.0"
 
 WORKDIR /app
 
@@ -34,7 +34,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    sudo \
     iproute2 \
     iputils-ping \
     procps \
@@ -73,5 +72,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run server
-WORKDIR /app/server
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Launch from /app, not from inside server/.
+#
+# With the working directory inside the package, `-m uvicorn` puts it on
+# sys.path, and PYTHONPATH=/app puts the parent there too -- so the same file
+# imports as both `equipment.locks` and `server.equipment.locks`, and Python
+# builds two module objects with two sets of module-level singletons. That was
+# issue #197: a lock reaper polling a dictionary the API never writes to.
+#
+# From /app there is no `equipment` directory to find, so the second spelling
+# does not resolve at all. Not merely discouraged: impossible.
+WORKDIR /app
+CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

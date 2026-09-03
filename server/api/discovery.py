@@ -1,8 +1,9 @@
 """API endpoints for Equipment Discovery system."""
 
+import asyncio
 from typing import List, Optional
 
-from discovery import (ConnectionHistoryEntry, ConnectionStatistics,
+from server.discovery import (ConnectionHistoryEntry, ConnectionStatistics,
                        DeviceAlias, DiscoveredDevice, DiscoveryScanRequest,
                        DiscoveryScanResult, DiscoveryStatus, LastKnownGood,
                        SmartRecommendation, get_discovery_manager)
@@ -302,8 +303,11 @@ async def get_connection_history(
     """
     try:
         manager = get_discovery_manager()
-        history = manager.history.get_history(
-            device_id=device_id, event_type=event_type, limit=limit
+        history = await asyncio.to_thread(
+            manager.history.get_history,
+            device_id=device_id,
+            event_type=event_type,
+            limit=limit,
         )
         return history
     except Exception as e:
@@ -345,7 +349,7 @@ async def get_connection_statistics(device_id: str):
     """
     try:
         manager = get_discovery_manager()
-        stats = manager.history.get_statistics(device_id)
+        stats = await asyncio.to_thread(manager.history.get_statistics, device_id)
 
         if stats is None:
             raise HTTPException(
@@ -377,7 +381,7 @@ async def get_last_known_good(device_id: str):
     """
     try:
         manager = get_discovery_manager()
-        lkg = manager.history.get_last_known_good(device_id)
+        lkg = await asyncio.to_thread(manager.history.get_last_known_good, device_id)
 
         if lkg is None:
             raise HTTPException(
@@ -528,15 +532,15 @@ async def scan_raspberry_pis(
     ```
     """
     try:
-        from discovery import pi_discovery
+        from server.discovery import pi_discovery
         import time
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         # Run discovery
         discovered_pis = await pi_discovery.discover_network(network=network, timeout=timeout)
 
-        scan_time = time.time() - start_time
+        scan_time = time.perf_counter() - start_time
         lablink_count = sum(1 for pi in discovered_pis if pi.is_lablink)
 
         return {
@@ -580,7 +584,7 @@ async def get_pi_discovery_status():
     ```
     """
     try:
-        from discovery import pi_discovery
+        from server.discovery import pi_discovery
 
         return {
             "scan_in_progress": pi_discovery.scan_in_progress,

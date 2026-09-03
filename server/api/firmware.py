@@ -6,8 +6,8 @@ from typing import List, Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
-from equipment.manager import equipment_manager
-from firmware import firmware_manager
+from server.equipment.manager import equipment_manager
+from server.firmware import firmware_manager
 from shared.models.firmware import (
     FirmwareCompatibilityCheck,
     FirmwareInfo,

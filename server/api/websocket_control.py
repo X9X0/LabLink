@@ -255,7 +255,7 @@ async def send_test_message(request: SendTestMessageRequest):
         raise HTTPException(status_code=503, detail="WebSocket manager not initialized")
 
     # Convert API enums to internal enums
-    from websocket.enhanced_features import CompressionType, MessagePriority
+    from server.websocket.enhanced_features import CompressionType, MessagePriority
 
     priority_map = {
         MessagePriorityAPI.LOW: MessagePriority.LOW,

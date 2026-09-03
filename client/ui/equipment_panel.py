@@ -1,6 +1,7 @@
 """Equipment control panel for LabLink GUI."""
 
 import asyncio
+import qasync
 import logging
 from typing import Dict, List, Optional, Set
 
@@ -12,7 +13,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
                              QMessageBox, QProgressDialog, QPushButton,
                              QSplitter, QTextEdit, QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,11 @@ class DiscoverySettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
-    def _load_settings(self):
+    @qasync.asyncSlot()
+    async def _load_settings(self):
         """Load current discovery settings from server."""
         try:
-            settings = self.client.get_discovery_settings()
+            settings = await call_blocking(self.client.get_discovery_settings)
             self.tcpip_checkbox.setChecked(settings.get("scan_tcpip", True))
             self.usb_checkbox.setChecked(settings.get("scan_usb", True))
             self.serial_checkbox.setChecked(settings.get("scan_serial", False))
@@ -424,13 +426,14 @@ class EquipmentPanel(QWidget):
             self.progress_dialog.setLabelText(f"{method} scan complete: {device_count} devices")
             self.progress_dialog.setValue(100)
 
-    def refresh(self):
+    @qasync.asyncSlot()
+    async def refresh(self):
         """Refresh equipment list."""
         if not self.client:
             return
 
         try:
-            equipment_data = self.client.list_equipment()
+            equipment_data = await call_blocking(self.client.list_equipment)
             self.equipment_list.clear()
 
             for eq_data in equipment_data:
@@ -665,15 +668,21 @@ class EquipmentPanel(QWidget):
             # User cancelled, still refresh in case something changed
             self.refresh()
 
-    def connect_equipment(self):
+    @qasync.asyncSlot()
+    async def connect_equipment(self):
         """Connect to selected equipment."""
         if not self.selected_equipment or not self.client:
             return
 
         try:
-            result = self.client.connect_equipment(self.selected_equipment.equipment_id)
+            result = await call_blocking(
+                self.client.connect_equipment,
+                self.selected_equipment.resource_string,
+                self.selected_equipment.type,
+                self.selected_equipment.model,
+            )
 
-            if result.get("success"):
+            if result.get("status") == "connected":
                 QMessageBox.information(
                     self, "Success", "Equipment connected successfully"
                 )
@@ -681,8 +690,9 @@ class EquipmentPanel(QWidget):
                 self._on_equipment_selected()  # Refresh details
 
                 # Auto-start WebSocket streaming for connected equipment
-                equipment_id = self.selected_equipment.equipment_id
-                asyncio.create_task(self._start_equipment_stream(equipment_id))
+                equipment_id = result.get("equipment_id", "")
+                if equipment_id:
+                    asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Connection failed")
@@ -692,7 +702,8 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error connecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
 
-    def disconnect_equipment(self):
+    @qasync.asyncSlot()
+    async def disconnect_equipment(self):
         """Disconnect from selected equipment."""
         if not self.selected_equipment or not self.client:
             return
@@ -704,7 +715,7 @@ class EquipmentPanel(QWidget):
             if equipment_id in self.streaming_equipment:
                 asyncio.create_task(self._stop_equipment_stream(equipment_id))
 
-            result = self.client.disconnect_equipment(equipment_id)
+            result = await call_blocking(self.client.disconnect_equipment, equipment_id)
 
             # Server returns {"equipment_id": "...", "status": "disconnected"}
             if result.get("status") == "disconnected":
@@ -731,13 +742,16 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error disconnecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Disconnection failed: {str(e)}")
 
-    def refresh_readings(self):
+    @qasync.asyncSlot()
+    async def refresh_readings(self):
         """Refresh current readings from equipment."""
         if not self.selected_equipment or not self.client:
             return
 
         try:
-            readings = self.client.get_readings(self.selected_equipment.equipment_id)
+            readings = await call_blocking(
+                self.client.get_readings, self.selected_equipment.equipment_id
+            )
 
             # Server returns readings data directly (PowerSupplyData, ScopeData, etc.)
             self.selected_equipment.current_readings = readings
@@ -747,7 +761,8 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error getting readings: {e}")
             QMessageBox.warning(self, "Error", f"Failed to get readings: {str(e)}")
 
-    def send_command(self):
+    @qasync.asyncSlot()
+    async def send_command(self):
         """Send custom command to equipment."""
         if not self.selected_equipment or not self.client:
             return
@@ -757,8 +772,11 @@ class EquipmentPanel(QWidget):
             return
 
         try:
-            result = self.client.send_command(
-                self.selected_equipment.equipment_id, command, {}
+            result = await call_blocking(
+                self.client.send_command,
+                self.selected_equipment.equipment_id,
+                command,
+                {},
             )
 
             if result.get("success"):

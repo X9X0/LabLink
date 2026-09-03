@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from backup import (BackupInfo, BackupMetadata, BackupRequest,
+from server.backup import (BackupInfo, BackupMetadata, BackupRequest,
                     BackupStatistics, BackupType, BackupVerificationResult,
                     RestoreRequest, RestoreResult, get_backup_manager)
 from fastapi import APIRouter, HTTPException, Query

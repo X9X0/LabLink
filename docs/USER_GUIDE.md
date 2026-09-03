@@ -34,7 +34,7 @@ Complete guide for using the LabLink laboratory equipment control system.
 
 ### Prerequisites
 
-- **Python 3.11 or higher**
+- **Python 3.12 or higher**
 - **Operating System:** Windows, macOS, or Linux
 - **Network:** Local network access to server
 

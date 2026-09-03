@@ -30,7 +30,7 @@ from typing import Any, Dict, List
 
 # Import our log analysis modules
 try:
-    from log_analyzer import (LogAnalyzer, LogEntry, LogFormatter, LogQuery,
+    from server.log_analyzer import (LogAnalyzer, LogEntry, LogFormatter, LogQuery,
                               LogReader)
 except ImportError:
     print("Error: log_analyzer.py must be in the same directory", file=sys.stderr)

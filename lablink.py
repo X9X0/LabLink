@@ -1881,15 +1881,23 @@ class LabLinkLauncher(QMainWindow):
             debug_flag = " --debug" if self.debug_mode else ""
 
             # Launch in new terminal
-            # Server has mixed imports - needs both server/ as cwd AND LabLink root in PYTHONPATH
+            # Run from the repo root as `-m server.main`, matching the
+            # container.
+            #
+            # This used to cd into server/ *and* put the repo root on
+            # PYTHONPATH, with a comment explaining that the server had mixed
+            # imports and needed both. Supplying both is what let the same
+            # file import under two names, so every module-level singleton
+            # existed twice and the lock reaper polled a dictionary nothing
+            # wrote to (#197). The workaround was the defect.
             if platform.system() == "Linux":
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'
                 subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'
                 subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py{debug_flag}'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'], shell=True)
 
             self._show_auto_close_message(
                 "Server Starting",

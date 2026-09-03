@@ -30,6 +30,25 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+async def call_blocking(fn, *args, **kwargs):
+    """Run a blocking LabLinkClient call off the Qt/asyncio event loop.
+
+    LabLinkClient is synchronous (requests-based), so calling it directly from
+    a slot or a qasync coroutine freezes the GUI for the whole round-trip.
+    """
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+_DEFAULT_TIMEOUT = 10  # seconds
+
+
+class _TimeoutSession(requests.Session):
+    """requests.Session that applies a default timeout to every request."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", _DEFAULT_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
 class LabLinkClient:
     """Client for communicating with LabLink server."""
 
@@ -41,7 +60,9 @@ class LabLinkClient:
         Args:
             host: Server hostname or IP address
             api_port: REST API port
-            ws_port: WebSocket port
+            ws_port: retained for backwards compatibility and ignored. The
+                /ws endpoint is a route on the API server, so the WebSocket
+                connection is built from api_port.
         """
         self.host = host
         self.api_port = api_port
@@ -49,7 +70,7 @@ class LabLinkClient:
 
         self.api_base_url = f"http://{host}:{api_port}/api"
 
-        self._session = requests.Session()
+        self._session = _TimeoutSession()
 
         # Session ID for equipment lock management
         self.session_id = str(uuid.uuid4())
@@ -147,7 +168,7 @@ class LabLinkClient:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Login request failed: {e}")
-            raise Exception(f"Login request failed: {e}")
+            raise
 
     def logout(self) -> bool:
         """Logout from LabLink server.
@@ -407,6 +428,27 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def get_supported_models(
+        self, equipment_type: Optional[str] = None, supported_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """List the instrument models the server knows how to talk to.
+
+        Args:
+            equipment_type: Optional LabLink equipment type filter
+            supported_only: Omit families the server has no driver for
+
+        Returns:
+            List of model catalogue entries
+        """
+        params: Dict[str, Any] = {"supported_only": supported_only}
+        if equipment_type:
+            params["equipment_type"] = equipment_type
+        response = self._session.get(
+            f"{self.api_base_url}/equipment/models", params=params
+        )
+        response.raise_for_status()
+        return response.json().get("models", [])
+
     def get_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Get equipment details.
 
@@ -433,17 +475,26 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
-    def connect_equipment(self, equipment_id: str) -> Dict[str, Any]:
+    def connect_equipment(
+        self, resource_string: str, equipment_type: str, model: str
+    ) -> Dict[str, Any]:
         """Connect to equipment.
 
         Args:
-            equipment_id: Equipment ID
+            resource_string: VISA resource string or connection info
+            equipment_type: Equipment type (e.g. "oscilloscope")
+            model: Equipment model name
 
         Returns:
-            Response dictionary
+            Response dictionary with equipment_id and status
         """
+        payload = {
+            "resource_string": resource_string,
+            "equipment_type": equipment_type,
+            "model": model,
+        }
         response = self._session.post(
-            f"{self.api_base_url}/equipment/{equipment_id}/connect"
+            f"{self.api_base_url}/equipment/connect", json=payload
         )
         response.raise_for_status()
         return response.json()
@@ -609,11 +660,40 @@ class LabLinkClient:
             "timeout_seconds": timeout_seconds,
             "queue_if_busy": False,
         }
+        # Name the holder. The server falls back to the authenticated user, but
+        # sending it means a lock is attributable even on a server without
+        # authentication enabled.
+        username = (self.user_data or {}).get("username") if self.user_data else None
+        if username:
+            payload["username"] = username
         response = self._session.post(
             f"{self.api_base_url}/locks/acquire", json=payload
         )
         response.raise_for_status()
         return response.json()
+
+    def get_lock_status(self, equipment_id: str) -> Dict[str, Any]:
+        """Who holds the lock on this equipment, and until when.
+
+        Returns a dict with `locked`, and when locked also `username`,
+        `client_ip`, `acquired_at`, `time_remaining`, `timeout_seconds` and
+        `session_id`.
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/locks/status/{equipment_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_all_locks(self) -> Dict[str, Any]:
+        """Every lock currently held, keyed by equipment id."""
+        response = self._session.get(f"{self.api_base_url}/locks/all")
+        response.raise_for_status()
+        return response.json()
+
+    def holds_lock(self, status: Dict[str, Any]) -> bool:
+        """Whether a lock status describes a lock held by this client."""
+        return bool(status.get("locked")) and status.get("session_id") == self.session_id
 
     def release_lock(self, equipment_id: str, force: bool = False) -> Dict[str, Any]:
         """Release a lock on equipment.

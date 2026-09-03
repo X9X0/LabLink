@@ -4,17 +4,19 @@ import hashlib
 import logging
 import os
 import platform
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
 try:
-    from PyQt6.QtCore import Qt, QThread, pyqtSignal
+    from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
     from PyQt6.QtGui import QFont, QAction
     from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
                                  QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                                 QMenu, QMessageBox, QProgressBar, QPushButton,
+                                 QListWidget, QListWidgetItem, QMenu,
+                                 QMessageBox, QProgressBar, QPushButton,
                                  QTextEdit, QVBoxLayout, QWidget)
 
     PYQT_AVAILABLE = True
@@ -22,6 +24,327 @@ except ImportError:
     PYQT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+class _DiskScanThread(QThread):
+    """Enumerate disks off the GUI thread.
+
+    ``list_disks`` starts PowerShell, which measured at about three seconds on
+    the machine this was written for. Called from a QTimer that would run on
+    the GUI thread, and freeze it -- at the exact moment the user inserts the
+    card and is watching for a response.
+    """
+
+    result = pyqtSignal(object)  # list[Disk], or None if the scan failed
+
+    def run(self):
+        try:
+            from client.utils.sd_write_win import list_disks
+
+            self.result.emit(list_disks())
+        except Exception:  # a failed scan is a retry, not a crash
+            logger.debug("Disk scan failed", exc_info=True)
+            self.result.emit(None)
+
+
+class DetectCardDialog(QDialog):
+    """Identify the card by watching one appear.
+
+    Picking a disk from a list is where this goes wrong: the entries look
+    alike, a card reader often reports itself as a fixed disk, and the cost of
+    a misclick is somebody's drive. Asking the user to insert the card and
+    taking whatever turns up removes the guess entirely -- the disk that was
+    not there ten seconds ago is the card, whatever it claims to be.
+
+    The manual chooser is still here behind a button, because sometimes the
+    watch does not fire -- a reader that stays enumerated with the card in it,
+    for instance -- and someone who knows their hardware should not be stuck.
+    It refuses non-removable media until it is confirmed a second time, and
+    refuses the system disk always.
+    """
+
+    POLL_MS = 1000
+
+    def __init__(self, image_size: int, parent=None):
+        super().__init__(parent)
+        self.image_size = image_size
+        self.selected_disk = None
+        self.override_used = False
+        self._baseline = set()
+        self._manual = False
+
+        self.setWindowTitle("Insert the SD card")
+        self.setMinimumWidth(560)
+        self._setup_ui()
+        self._start_watching()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout()
+
+        title = QLabel("Insert the SD card now")
+        f = QFont()
+        f.setPointSize(12)
+        f.setBold(True)
+        title.setFont(f)
+        layout.addWidget(title)
+
+        self.instructions = QLabel(
+            "Please insert the SD card now.\n\n"
+            "If it is already inserted, remove it and insert it again.\n\n"
+            "Watching for a new drive to appear -- whichever one shows up is "
+            "the card, so there is nothing to pick and nothing to get wrong."
+        )
+        self.instructions.setWordWrap(True)
+        layout.addWidget(self.instructions)
+
+        self.status = QLabel("<i>Waiting for a card...</i>")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        self.disk_list = QListWidget()
+        self.disk_list.setVisible(False)
+        self.disk_list.itemSelectionChanged.connect(self._on_manual_selection)
+        layout.addWidget(self.disk_list)
+
+        buttons = QHBoxLayout()
+        self.manual_button = QPushButton("Choose manually (advanced)")
+        self.manual_button.setToolTip(
+            "Skip detection and pick a disk yourself. Only if you are certain "
+            "which one it is."
+        )
+        self.manual_button.clicked.connect(self._show_manual)
+        buttons.addWidget(self.manual_button)
+
+        buttons.addStretch()
+
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        buttons.addWidget(self.cancel_button)
+
+        self.use_button = QPushButton("Use this card")
+        self.use_button.setEnabled(False)
+        self.use_button.setDefault(True)
+        self.use_button.clicked.connect(self._accept_selection)
+        buttons.addWidget(self.use_button)
+
+        layout.addLayout(buttons)
+        self.setLayout(layout)
+
+    def _start_watching(self):
+        """Take the baseline on a worker, so the dialog opens immediately."""
+        self._mask = self._drive_letter_mask()
+        self._ticks = 0
+        self._scan = None
+        self._baseline = None  # not established yet
+
+        self.status.setText("<i>Looking at the drives already attached...</i>")
+
+        self._baseline_scan = _DiskScanThread(self)
+        self._baseline_scan.result.connect(self._on_baseline)
+        self._baseline_scan.start()
+
+    def _on_baseline(self, disks):
+        if disks is None:
+            self.status.setText(
+                "<b>Could not list disks.</b> Use "
+                "<i>Choose manually</i>, or close and try again."
+            )
+            return
+
+        self._baseline = {d.number for d in disks}
+        self.status.setText(
+            f"<i>Watching. {len(disks)} drive(s) already attached -- "
+            "insert the card now.</i>"
+        )
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll)
+        self.timer.start(self.POLL_MS)
+
+    def _drive_letter_mask(self) -> int:
+        """A cheap fingerprint of what is mounted, for skipping the real scan.
+
+        Enumerating disks means starting PowerShell, which costs a good part
+        of a second. Doing that once a second is heavy on its own and was
+        visibly janky besides. GetLogicalDrives is a single call into
+        kernel32, so it can be polled freely, and inserting a card almost
+        always changes it -- the boot partition is FAT and gets a letter.
+
+        It is only a trigger, not the answer: a full scan still runs on a
+        slower beat, so a card that somehow claims no drive letter is found a
+        few seconds later rather than never.
+        """
+        try:
+            import ctypes
+
+            return int(ctypes.windll.kernel32.GetLogicalDrives())
+        except Exception:
+            return -1  # unavailable, so always take the slow path
+
+    def _poll(self):
+        """Decide whether a scan is worth starting. Never scans inline."""
+        if self._manual or self._scan is not None or self._baseline is None:
+            return
+
+        self._ticks = getattr(self, "_ticks", 0) + 1
+        mask = self._drive_letter_mask()
+        changed = mask != getattr(self, "_mask", mask)
+        self._mask = mask
+
+        # Full scan when something mounted or unmounted, and every few ticks
+        # regardless as a backstop.
+        if not changed and mask != -1 and self._ticks % 4:
+            return
+
+        self._scan = _DiskScanThread(self)
+        self._scan.result.connect(self._on_scan)
+        self._scan.finished.connect(self._scan_done)
+        self._scan.start()
+
+    def _scan_done(self):
+        self._scan = None
+
+    def _on_scan(self, disks):
+        from client.utils.sd_write_win import newly_appeared
+
+        if disks is None or self._manual:
+            return
+
+        present = {d.number for d in disks}
+
+        # A disk that has gone away stops being part of the baseline, so
+        # putting it back counts as an appearance.
+        #
+        # Without this the documented path does not work at all: the card is
+        # usually already inserted, so it is in the baseline from the start,
+        # and reinserting it hands back the same disk number, which is then
+        # filtered out as "not new". The instruction on screen says to remove
+        # and reinsert, and that was the one case that could never fire.
+        departed = self._baseline - present
+        if departed:
+            self._baseline &= present
+            self.status.setText(
+                "<i>Card removed. Now insert it again.</i>"
+            )
+            return  # nothing can be new on the same scan that saw it leave
+
+        found = newly_appeared(self._baseline, disks)
+
+        if not found:
+            return
+        if len(found) > 1:
+            # Two at once is ambiguous, and guessing is the one thing this
+            # dialog exists to avoid.
+            self.status.setText(
+                "<b>More than one drive appeared.</b> Remove them all, then "
+                "insert only the SD card."
+            )
+            return
+
+        self.timer.stop()
+        disk = found[0]
+        self.selected_disk = disk
+        self.status.setText(
+            f"<b>Found:</b> {disk.describe()}<br><br>"
+            "Everything on it will be erased."
+        )
+        self.use_button.setEnabled(True)
+
+    def _show_manual(self):
+        """The override. Lists every disk, with the dangerous ones marked."""
+        from client.utils.sd_write_win import SDWriteError, list_disks
+
+        self._manual = True
+        if hasattr(self, "timer"):
+            self.timer.stop()
+
+        try:
+            disks = list_disks()
+        except SDWriteError as exc:
+            self.status.setText(f"<b>Could not list disks:</b> {exc}")
+            return
+
+        self.disk_list.clear()
+        for disk in disks:
+            label = disk.describe()
+            if disk.is_system or disk.is_boot:
+                label += "   [SYSTEM DISK - cannot be written]"
+            elif not disk.looks_removable:
+                label += "   [not removable media]"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, disk)
+            if disk.is_system or disk.is_boot:
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.disk_list.addItem(item)
+
+        self.disk_list.setVisible(True)
+        self.instructions.setText(
+            "Choosing manually. The disk you pick will be completely erased.\n\n"
+            "The system disk cannot be selected. Anything that is not "
+            "removable media will ask again before writing."
+        )
+        self.status.setText("<i>Select a disk.</i>")
+        self.manual_button.setEnabled(False)
+        self.selected_disk = None
+        self.use_button.setEnabled(False)
+
+    def _on_manual_selection(self):
+        items = self.disk_list.selectedItems()
+        if not items:
+            self.selected_disk = None
+            self.use_button.setEnabled(False)
+            return
+        disk = items[0].data(Qt.ItemDataRole.UserRole)
+        self.selected_disk = disk
+        self.status.setText(f"<b>Selected:</b> {disk.describe()}")
+        self.use_button.setEnabled(True)
+
+    def _accept_selection(self):
+        from client.utils.sd_write_win import SDWriteError, check_target
+
+        disk = self.selected_disk
+        if disk is None:
+            return
+
+        # Try the strict rules first; only ask about the override if they are
+        # what stands in the way.
+        try:
+            check_target(disk, self.image_size, override=False)
+        except SDWriteError as exc:
+            if disk.is_system or disk.is_boot:
+                QMessageBox.critical(self, "Refused", str(exc))
+                return
+            if self.image_size > disk.size or disk.size <= 0:
+                QMessageBox.critical(self, "Refused", str(exc))
+                return
+
+            reply = QMessageBox.warning(
+                self, "Not removable media",
+                f"{exc}\n\nWrite to it anyway? Everything on it will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            self.override_used = True
+
+        letters = ", ".join(f"{d}:" for d in disk.drive_letters)
+        confirm = QMessageBox.warning(
+            self, "Erase this card?",
+            f"{disk.describe()}\n\n"
+            + (f"This will erase {letters} and everything on the card.\n\n"
+               if letters else "This will erase everything on the card.\n\n")
+            + "This cannot be undone. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.accept()
+
+    def closeEvent(self, event):
+        if hasattr(self, "timer"):
+            self.timer.stop()
+        super().closeEvent(event)
 
 
 class ImageWriterThread(QThread):
@@ -137,13 +460,15 @@ class ImageWriterThread(QThread):
             # Create a wrapper script for the write operation
             import tempfile
 
-            # Build the dd command
+            # Build the dd command — quote paths to prevent shell injection
+            qimage = shlex.quote(self.image_path)
+            qdevice = shlex.quote(self.device_path)
             if self.image_path.endswith(".xz"):
-                dd_cmd = f"xz -dc '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"xz -dc {qimage} | dd of={qdevice} bs=4M status=progress"
             elif self.image_path.endswith(".gz"):
-                dd_cmd = f"gunzip -c '{self.image_path}' | dd of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"gunzip -c {qimage} | dd of={qdevice} bs=4M status=progress"
             else:
-                dd_cmd = f"dd if='{self.image_path}' of={self.device_path} bs=4M status=progress"
+                dd_cmd = f"dd if={qimage} of={qdevice} bs=4M status=progress"
 
             # Create wrapper script
             script_content = f"""#!/bin/bash
@@ -292,7 +617,7 @@ sync
                 # Clean up script on error
                 try:
                     os.unlink(script_path)
-                except:
+                except Exception:
                     pass
                 raise
 
@@ -301,22 +626,115 @@ sync
             return False
 
     def _write_windows(self) -> bool:
-        """Write image on Windows."""
-        # For Windows, we need special handling
-        # This requires Win32DiskImager or similar tool, or using pywin32
-        # For now, provide instructions to user
+        """Write the card through an elevated helper process.
 
-        self.progress.emit(50, "Windows write not yet implemented")
-        self.finished.emit(
-            False,
-            "Windows SD card writing requires administrator privileges.\n\n"
-            "Please use one of these tools:\n"
-            "- Raspberry Pi Imager (recommended)\n"
-            "- balenaEtcher\n"
-            "- Win32 Disk Imager\n\n"
-            f"Image file: {self.image_path}",
-        )
-        return False
+        Raw device access needs administrator rights, and a process cannot
+        elevate itself, so this starts a second one via ShellExecute's
+        ``runas`` verb. That is where the UAC prompt comes from.
+
+        Note the scope: the image *builder* needs no privileges on any
+        platform, which is the point of that work. Only putting a finished
+        image onto a card does -- Raspberry Pi Imager prompts for it too.
+
+        ``self.device_path`` must be a real ``\\\\.\\PhysicalDriveN``. It is
+        set from the disk number that ``DetectCardDialog`` identified, never
+        derived from a drive letter.
+        """
+        import json
+        import tempfile
+        import time
+
+        from client.utils.sd_write_win import (SDWriteError, list_disks,
+                                               run_elevated)
+
+        try:
+            number = int(str(self.device_path).rsplit("PhysicalDrive", 1)[1])
+        except (IndexError, ValueError):
+            self.finished.emit(
+                False, f"Not a physical disk path: {self.device_path}")
+            return False
+
+        # The card may have been pulled between choosing and writing.
+        try:
+            disk = next((d for d in list_disks() if d.number == number), None)
+        except SDWriteError as exc:
+            self.finished.emit(False, str(exc))
+            return False
+        if disk is None:
+            self.finished.emit(
+                False, f"Disk {number} is no longer present. Was the card removed?")
+            return False
+
+        progress_path = os.path.join(tempfile.gettempdir(),
+                                     f"lablink-sdwrite-{os.getpid()}.jsonl")
+        if os.path.exists(progress_path):
+            os.remove(progress_path)
+
+        self.progress.emit(2, "Asking for administrator rights...")
+        try:
+            run_elevated(self.image_path, number, progress_path,
+                         override=getattr(self, "override", False),
+                         verify=self.verify)
+        except SDWriteError as exc:
+            self.finished.emit(False, str(exc))
+            return False
+
+        # ShellExecute does not give us a pipe, so the helper appends its
+        # progress to a file and we follow it.
+        last = 0
+        failure = None
+        seen_end = False
+        idle_since = time.time()
+
+        while not self._stop_requested:
+            time.sleep(0.5)
+            if not os.path.exists(progress_path):
+                if time.time() - idle_since > 120:
+                    failure = "The elevated writer never started."
+                    break
+                continue
+            try:
+                with open(progress_path, "r", encoding="utf-8") as fh:
+                    lines = fh.read().splitlines()
+            except OSError:
+                continue
+
+            for line in lines[last:]:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                pct, msg = event.get("percent", 0), event.get("message", "")
+                if pct < 0:
+                    failure = msg
+                    seen_end = True
+                else:
+                    self.progress.emit(pct, msg)
+                    if pct >= 100:
+                        seen_end = True
+                idle_since = time.time()
+            last = len(lines)
+
+            if seen_end:
+                break
+            if time.time() - idle_since > 600:
+                failure = "The elevated writer stopped responding."
+                break
+
+        try:
+            os.remove(progress_path)
+        except OSError:
+            pass
+
+        if self._stop_requested:
+            self.finished.emit(False, "Cancelled. The card is probably unusable.")
+            return False
+        if failure:
+            self.finished.emit(False, failure)
+            return False
+
+        self.finished.emit(True, f"Card written and verified: {disk.describe()}")
+        return True
 
     def _verify_write(self) -> bool:
         """Verify written image."""
@@ -331,6 +749,8 @@ sync
             ).returncode == 0
 
             # Create verification script that compares first 100MB of image with device
+            qimage = shlex.quote(self.image_path)
+            qdevice = shlex.quote(self.device_path)
             verify_script = f"""#!/bin/bash
 set -e
 exec 2>&1
@@ -338,7 +758,7 @@ exec 2>&1
 echo "Verifying first 100MB of written image..."
 
 # Compare first 100MB (102400 blocks of 1024 bytes)
-if cmp -n 104857600 '{self.image_path}' '{self.device_path}'; then
+if cmp -n 104857600 {qimage} {qdevice}; then
     echo "Verification successful: Data matches!"
     exit 0
 else
@@ -398,7 +818,7 @@ fi
                 # Clean up script on error
                 try:
                     os.unlink(script_path)
-                except:
+                except Exception:
                     pass
                 raise
 
@@ -591,25 +1011,30 @@ def get_removable_drives() -> List[Dict[str, str]]:
                     )
 
         elif platform.system() == "Windows":
-            # Windows drive detection
-            import ctypes
-            import string
+            # Ask Get-Disk for the real disk number. This used to walk drive
+            # letters and compute the device as
+            #
+            #     f"\\\\.\\PhysicalDrive{ord(letter) - ord('A')}"
+            #
+            # which is not a mapping that exists: D: became PhysicalDrive3
+            # whatever disk 3 happened to be, and C: became PhysicalDrive2 on
+            # a machine whose only disk is 0. It was never noticed because the
+            # write itself was a stub, so the wrong path was never opened.
+            from client.utils.sd_write_win import list_disks
 
-            kernel32 = ctypes.windll.kernel32
-            for letter in string.ascii_uppercase:
-                drive = f"{letter}:\\"
-                drive_type = kernel32.GetDriveTypeW(drive)
-
-                # DRIVE_REMOVABLE = 2
-                if drive_type == 2:
-                    drives.append(
-                        {
-                            "device": f"\\\\.\\PhysicalDrive{ord(letter) - ord('A')}",
-                            "name": f"{letter}: (Removable)",
-                            "size": "Unknown",
-                            "vendor": "Removable",
-                        }
-                    )
+            for disk in list_disks():
+                if disk.is_system or disk.is_boot:
+                    continue
+                letters = ", ".join(f"{d}:" for d in disk.drive_letters)
+                drives.append(
+                    {
+                        "device": disk.device_path,
+                        "name": f"Disk {disk.number}: {disk.name or 'unknown'}"
+                                + (f" ({letters})" if letters else ""),
+                        "size": f"{disk.size_gb} GB",
+                        "vendor": disk.bus_type or "unknown bus",
+                    }
+                )
 
     except Exception as e:
         logger.error(f"Failed to list drives: {e}")
@@ -634,45 +1059,62 @@ class SDCardWriter(QDialog):
         self.setWindowTitle("SD Card Writer")
         self.resize(700, 600)
 
-        # Apply visual styling
+        # Apply visual styling. Colours come from the theme: a stylesheet set
+        # on a widget overrides the application one, so hardcoded white here
+        # survived into dark mode and met the dark sheet's pale text.
+        from client.ui.theme import dialog_palette
+
+        _c = dialog_palette()
         self.setStyleSheet("""
-            QDialog {
-                background-color: #ecf0f1;
-            }
-            QGroupBox {
-                border: 2px solid #bdc3c7;
+            QDialog {{
+                background-color: {window_bg};
+                color: {text};
+            }}
+            QGroupBox {{
+                border: 2px solid {panel_border};
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
-                background-color: white;
+                background-color: {panel_bg};
+                color: {text};
                 font-weight: bold;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 15px;
                 padding: 5px 10px;
-                background-color: white;
-            }
-            QPushButton {
+                background-color: {panel_bg};
+                color: {text};
+            }}
+            QLabel {{
+                color: {text};
+            }}
+            QListWidget, QComboBox, QTextEdit, QLineEdit {{
+                background-color: {field_bg};
+                color: {text};
+                border: 1px solid {panel_border};
+                border-radius: 4px;
+            }}
+            QPushButton {{
                 background-color: #3498db;
                 color: white;
                 border: 2px solid #2471a3;
                 border-radius: 6px;
                 padding: 8px 15px;
                 min-height: 30px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #2e86c1;
                 border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: #2471a3;
-            }
-            QPushButton:disabled {
+            }}
+            QPushButton:disabled {{
                 background-color: #95a5a6;
                 border: 2px solid #7f8c8d;
-            }
-        """)
+            }}
+        """.format(**_c))
 
         self._setup_ui()
 
@@ -924,23 +1366,47 @@ class SDCardWriter(QDialog):
 
     def _write_image(self):
         """Write image to SD card."""
-        # Final confirmation
-        reply = QMessageBox.warning(
-            self,
-            "Confirm Write",
-            f"⚠️ WARNING ⚠️\n\n"
-            f"This will ERASE ALL DATA on:\n"
-            f"{self.device_path}\n\n"
-            f"Image: {Path(self.image_path).name}\n\n"
-            f"Are you absolutely sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
+        override = False
 
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+        if platform.system() == "Windows":
+            # Identify the card by watching one appear rather than trusting
+            # whatever is selected in the combo. The dialog does its own
+            # confirmation, including the disk's model and size, so there is
+            # no second generic "are you sure" after it.
+            try:
+                image_size = os.path.getsize(self.image_path)
+            except OSError as exc:
+                QMessageBox.critical(self, "Cannot read image", str(exc))
+                return
 
-        # No privilege check needed - pkexec will handle it in the write thread
+            dialog = DetectCardDialog(image_size, parent=self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self._log("Write cancelled at card selection")
+                return
+
+            disk = dialog.selected_disk
+            override = dialog.override_used
+            self.device_path = disk.device_path
+            self._log(f"Card identified: {disk.describe()}")
+            if override:
+                self._log("Selected manually, overriding the removable-media check")
+        else:
+            reply = QMessageBox.warning(
+                self,
+                "Confirm Write",
+                f"⚠️ WARNING ⚠️\n\n"
+                f"This will ERASE ALL DATA on:\n"
+                f"{self.device_path}\n\n"
+                f"Image: {Path(self.image_path).name}\n\n"
+                f"Are you absolutely sure?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        # No privilege check needed - pkexec or UAC handles it in the thread
 
         # Start write
         self._log("=" * 60)
@@ -951,6 +1417,7 @@ class SDCardWriter(QDialog):
         self.writer_thread = ImageWriterThread(
             self.image_path, self.device_path, self.verify_check.isChecked()
         )
+        self.writer_thread.override = override
         self.writer_thread.progress.connect(self._on_progress)
         self.writer_thread.finished.connect(self._on_finished)
         self.writer_thread.start()

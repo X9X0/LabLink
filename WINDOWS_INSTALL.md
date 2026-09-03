@@ -30,6 +30,59 @@ If you don't have the repository yet, you can install directly from GitHub:
 iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
 ```
 
+## Upgrading to 2.0 from an earlier version
+
+**2.0 requires Python 3.12 or newer.** numpy 2.5 and scipy 1.18 both dropped
+3.11, so an existing 3.10 or 3.11 install cannot run it. Check first:
+
+```powershell
+python --version
+```
+
+If that reports anything below 3.12, install 3.12+ from
+https://www.python.org/downloads/ (tick **"Add Python to PATH"**) before going
+further. Upgrading LabLink on an older Python fails with a confusing pip
+dependency-resolution error rather than a clear message.
+
+Then, from your existing LabLink directory:
+
+```powershell
+cd $env:USERPROFILE\LabLink
+git pull
+Remove-Item -Recurse -Force client\venv
+python -m venv client\venv
+client\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r client\requirements.txt
+```
+
+The virtual environment is deliberately recreated rather than upgraded in
+place: 2.0 changes major versions of numpy, PyQt6 and several others, and pip
+resolves that far more reliably in a clean environment than by upgrading over
+the old one.
+
+Or simply re-run the installer, which now performs the same steps and enforces
+the Python version:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+### What changes for you
+
+- **You will be logged out.** 2.0 binds access tokens to a server-side session,
+  so tokens issued by 1.x are refused. Log in again; no data is affected.
+- **Upgrade the server too.** A 1.x client will not work against a 2.x server,
+  or the reverse.
+- **If you deploy to a Raspberry Pi over SSH** and that Pi is old enough to
+  offer only an `ssh-rsa` host key, it will now be refused. Fix it on the Pi
+  with `sudo ssh-keygen -A` and restart its SSH service. Current Raspberry Pi OS
+  is unaffected.
+
+Full detail: [docs/BREAKING_CHANGES_2.0.md](docs/BREAKING_CHANGES_2.0.md)
+
+---
+
 ## Understanding the Execution Policy Error
 
 If you try to run `.\install-client.ps1` directly, you'll see this error:
@@ -85,7 +138,7 @@ Then you can run scripts normally:
 
 The `install-client.ps1` script will:
 
-1. **Check for Python 3.11+** - Installs if missing or too old
+1. **Check for Python 3.12+** - Installs if missing or too old
 2. **Optionally install Git** - Makes updates easier (you'll be prompted)
 3. **Download LabLink** - Clones repository or downloads ZIP
 4. **Create virtual environment** - Isolates Python dependencies
@@ -101,7 +154,7 @@ If you prefer to install manually or the script doesn't work for some reason:
 
 ### Prerequisites
 
-1. **Python 3.11 or higher**
+1. **Python 3.12 or higher**
    - Download from: https://www.python.org/downloads/
    - During installation, check "Add Python to PATH"
 
@@ -153,7 +206,7 @@ If you prefer to install manually or the script doesn't work for some reason:
 ## System Requirements
 
 - **OS:** Windows 10 or Windows 11 (64-bit)
-- **Python:** 3.11 or higher
+- **Python:** 3.12 or higher
 - **RAM:** 4 GB minimum, 8 GB recommended
 - **Disk Space:** ~500 MB for installation
 - **Network:** Required for connecting to LabLink servers

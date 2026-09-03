@@ -12,11 +12,26 @@ RASPBERRY_PI_OUI = [
     "28:CD:C1",  # Raspberry Pi Trading Ltd
 ]
 
-# Equipment Manufacturers
+# Equipment Manufacturers.
+# The B&K list is not maintained here — server.equipment.bk_registry holds
+# every documented family, and GET /api/equipment/models serves it. This
+# constant is only the coarse manufacturer grouping.
 SUPPORTED_MANUFACTURERS = {
     "RIGOL": ["MSO2072A", "DS1054Z", "DS2000"],
     "BK_PRECISION": ["9206B", "9130B", "9131B", "1902B"],
 }
+
+# Every spelling of B&K Precision seen in a *IDN? reply across their published
+# programming manuals. Matching on one of these alone misses most of the line;
+# use server.equipment.bk_registry.is_bk_manufacturer rather than this list.
+BK_MANUFACTURER_SPELLINGS = [
+    "B&K Precision",
+    "B&KPrecision",
+    "B&KPRECISION",
+    "B&K PRECISION",
+    "BK Precision",
+    "BK",
+]
 
 # VISA Resource Patterns
 VISA_USB_PATTERN = "USB?*INSTR"

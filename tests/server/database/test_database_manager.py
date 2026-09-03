@@ -19,16 +19,14 @@ import tempfile
 import sqlite3
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from database.models import (
+from server.database.models import (
     CommandRecord,
     MeasurementRecord,
     EquipmentUsageRecord,
     DataSessionRecord,
     QueryResult
 )
-from database.manager import DatabaseManager
+from server.database.manager import DatabaseManager
 
 
 class TestDatabaseManagerInit:
@@ -103,14 +101,14 @@ class TestCommandHistory:
                 )
                 db_manager.log_command(record)
 
-            history = db_manager.get_command_history(
+            result = db_manager.get_command_history(
                 equipment_id="scope-001",
                 limit=10
             )
 
-            if history:
-                assert isinstance(history, list)
-                assert len(history) <= 10
+            assert isinstance(result.records, list)
+            assert len(result.records) <= 10
+            assert result.total_count >= len(result.records)
         except (NotImplementedError, AttributeError):
             pytest.skip("get_command_history not implemented")
 
@@ -122,11 +120,11 @@ class TestCommandHistory:
                 record = CommandRecord(equipment_id=eq_id, command=cmd, response="RESP")
                 db_manager.log_command(record)
 
-            history = db_manager.get_command_history(equipment_id="scope-001")
+            history = db_manager.get_command_history(equipment_id="scope-001").records
 
-            if history:
-                # Should only return commands for scope-001
-                assert all(cmd.equipment_id == "scope-001" for cmd in history if hasattr(cmd, 'equipment_id'))
+            assert history, "expected the logged scope-001 commands"
+            # Should only return commands for scope-001
+            assert all(cmd["equipment_id"] == "scope-001" for cmd in history)
         except (NotImplementedError, AttributeError):
             pytest.skip("Command filtering not implemented")
 
@@ -172,17 +170,21 @@ class TestMeasurementArchival:
             ]
 
             for eq_id, mtype, val, unit in measurements:
-                db_manager.archive_measurement(eq_id, mtype, val, unit)
+                db_manager.archive_measurement(
+                    MeasurementRecord(
+                        equipment_id=eq_id,
+                        measurement_type=mtype,
+                        value=val,
+                        unit=unit,
+                    )
+                )
 
-            history = db_manager.get_measurement_history(
-                equipment_id="scope-001",
-                limit=10
-            )
+            result = db_manager.get_measurements(equipment_id="scope-001", limit=10)
 
-            if history:
-                assert isinstance(history, list)
+            assert isinstance(result.records, list)
+            assert len(result.records) == 2  # two scope-001 measurements
         except (NotImplementedError, AttributeError):
-            pytest.skip("get_measurement_history not implemented")
+            pytest.skip("get_measurements not implemented")
 
     def test_query_measurements_by_type(self, db_manager):
         """Test querying measurements by type."""
@@ -305,38 +307,56 @@ class TestDataQuery:
             # Create multiple records
             for i in range(25):
                 db_manager.archive_measurement(
-                    f"scope-{i%3}",
-                    "voltage",
-                    float(i),
-                    "V"
+                    MeasurementRecord(
+                        equipment_id=f"scope-{i%3}",
+                        measurement_type="voltage",
+                        value=float(i),
+                        unit="V",
+                    )
                 )
 
             # Query with pagination
-            page1 = db_manager.query_data(limit=10, offset=0)
-            page2 = db_manager.query_data(limit=10, offset=10)
+            page1 = db_manager.get_measurements(limit=10, offset=0)
+            page2 = db_manager.get_measurements(limit=10, offset=10)
 
-            if page1 and page2:
-                # Pages should be different
-                assert len(page1) <= 10
-                assert len(page2) <= 10
+            assert len(page1.records) == 10
+            assert len(page2.records) == 10
+            assert page1.total_count == 25
+            # Pages must not overlap
+            ids1 = {r["record_id"] for r in page1.records}
+            ids2 = {r["record_id"] for r in page2.records}
+            assert ids1.isdisjoint(ids2)
         except (NotImplementedError, AttributeError):
             pytest.skip("Pagination not implemented")
 
     def test_query_with_filters(self, db_manager):
-        """Test querying with multiple filters."""
-        try:
-            query = DataQuery(
-                equipment_id="scope-001",
-                measurement_type="voltage",
-                start_date=datetime.utcnow() - timedelta(days=1),
-                end_date=datetime.utcnow(),
-                limit=50
+        """Test combining equipment, type and time-range filters."""
+        for eq_id, mtype, value in [
+            ("scope-001", "voltage", 1.0),
+            ("scope-001", "current", 2.0),
+            ("scope-002", "voltage", 3.0),
+        ]:
+            db_manager.archive_measurement(
+                MeasurementRecord(
+                    equipment_id=eq_id,
+                    measurement_type=mtype,
+                    value=value,
+                    unit="X",
+                )
             )
 
-            results = db_manager.query_data_advanced(query)
-            # Should return filtered results
-        except (NotImplementedError, AttributeError):
-            pytest.skip("Advanced querying not implemented")
+        result = db_manager.get_measurements(
+            equipment_id="scope-001",
+            measurement_type="voltage",
+            start_time=datetime.now() - timedelta(days=1),
+            end_time=datetime.now() + timedelta(days=1),
+            limit=50,
+        )
+
+        assert len(result.records) == 1
+        assert result.records[0]["equipment_id"] == "scope-001"
+        assert result.records[0]["measurement_type"] == "voltage"
+        assert result.records[0]["value"] == 1.0
 
 
 class TestDatabaseCleanup:
@@ -361,7 +381,7 @@ class TestDatabaseCleanup:
             retention_days = 30
 
             deleted_count = db_manager.cleanup_old_records(
-                retention_days=retention_days
+                days=retention_days
             )
 
             assert isinstance(deleted_count, (int, type(None)))

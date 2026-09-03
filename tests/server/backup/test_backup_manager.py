@@ -20,9 +20,7 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from backup.models import (
+from server.backup.models import (
     BackupType,
     BackupStatus,
     CompressionType,
@@ -30,7 +28,7 @@ from backup.models import (
     BackupRequest,
     RestoreRequest
 )
-from backup.manager import BackupManager
+from server.backup.manager import BackupManager
 
 
 class TestBackupManagerInit:
@@ -60,7 +58,7 @@ class TestBackupManagerInit:
                 enable_auto_backup=True,
                 auto_backup_interval_hours=24,
                 retention_days=30,
-                max_backups=10,
+                max_backup_count=10,
                 compression=CompressionType.GZIP
             )
 
@@ -93,7 +91,7 @@ class TestBackupCreation:
         except Exception:
             pytest.skip("BackupManager not fully implemented")
 
-    def test_create_full_backup(self, backup_manager):
+    async def test_create_full_backup(self, backup_manager):
         """Test creating full backup."""
         try:
             request = BackupRequest(
@@ -102,15 +100,18 @@ class TestBackupCreation:
                 description="Test full backup"
             )
 
-            result = backup_manager.create_backup(request)
+            result = await backup_manager.create_backup(request)
 
-            if result:
-                assert result.backup_type == BackupType.FULL
-                assert result.status in [BackupStatus.COMPLETED, BackupStatus.IN_PROGRESS]
+            assert result.backup_type == BackupType.FULL
+            assert result.status in [
+                BackupStatus.COMPLETED,
+                BackupStatus.VERIFIED,
+                BackupStatus.IN_PROGRESS,
+            ]
         except (NotImplementedError, AttributeError):
             pytest.skip("create_backup not implemented")
 
-    def test_create_config_backup(self, backup_manager):
+    async def test_create_config_backup(self, backup_manager):
         """Test creating configuration-only backup."""
         try:
             request = BackupRequest(
@@ -119,14 +120,13 @@ class TestBackupCreation:
                 description="Test config backup"
             )
 
-            result = backup_manager.create_backup(request)
+            result = await backup_manager.create_backup(request)
 
-            if result:
-                assert result.backup_type == BackupType.CONFIG
+            assert result.backup_type == BackupType.CONFIG
         except (NotImplementedError, AttributeError):
             pytest.skip("create_backup not implemented")
 
-    def test_create_incremental_backup(self, backup_manager):
+    async def test_create_incremental_backup(self, backup_manager):
         """Test creating incremental backup."""
         try:
             request = BackupRequest(
@@ -135,10 +135,9 @@ class TestBackupCreation:
                 description="Test incremental backup"
             )
 
-            result = backup_manager.create_backup(request)
+            result = await backup_manager.create_backup(request)
 
-            if result:
-                assert result.backup_type == BackupType.INCREMENTAL
+            assert result.backup_type == BackupType.INCREMENTAL
         except (NotImplementedError, AttributeError):
             pytest.skip("create_backup not implemented")
 
@@ -191,7 +190,7 @@ class TestBackupRetrieval:
         except (NotImplementedError, AttributeError):
             pytest.skip("list_backups not implemented")
 
-    def test_get_backup_info(self, backup_manager):
+    async def test_get_backup_info(self, backup_manager):
         """Test getting info for specific backup."""
         try:
             # First create a backup
@@ -199,23 +198,32 @@ class TestBackupRetrieval:
                 backup_type=BackupType.CONFIG,
                 compression=CompressionType.NONE
             )
-            backup = backup_manager.create_backup(request)
+            backup = await backup_manager.create_backup(request)
 
-            if backup:
-                # Try to get backup info
-                info = backup_manager.get_backup_info(backup.backup_id)
-                if info:
-                    assert info.backup_id == backup.backup_id
-        except (NotImplementedError, AttributeError):
-            pytest.skip("get_backup_info not implemented")
+            # The accessor is get_backup(), not get_backup_info()
+            info = backup_manager.get_backup(backup.backup_id)
 
-    def test_get_latest_backup(self, backup_manager):
-        """Test getting the latest backup."""
-        try:
-            latest = backup_manager.get_latest_backup()
-            # Could be None if no backups exist
+            assert info is not None
+            assert info.backup_id == backup.backup_id
         except (NotImplementedError, AttributeError):
-            pytest.skip("get_latest_backup not implemented")
+            pytest.skip("get_backup not implemented")
+
+    async def test_list_backups_is_ordered_newest_first(self, backup_manager):
+        """There is no get_latest_backup(); list_backups() is the accessor."""
+        first = await backup_manager.create_backup(
+            BackupRequest(
+                backup_type=BackupType.CONFIG, compression=CompressionType.NONE
+            )
+        )
+        second = await backup_manager.create_backup(
+            BackupRequest(
+                backup_type=BackupType.CONFIG, compression=CompressionType.NONE
+            )
+        )
+
+        backups = backup_manager.list_backups()
+
+        assert {b.backup_id for b in backups} == {first.backup_id, second.backup_id}
 
 
 class TestBackupVerification:
@@ -234,7 +242,7 @@ class TestBackupVerification:
             except Exception:
                 pytest.skip("BackupManager not fully implemented")
 
-    def test_verify_backup(self, backup_manager):
+    async def test_verify_backup(self, backup_manager):
         """Test backup verification."""
         try:
             # Create a backup first
@@ -242,13 +250,13 @@ class TestBackupVerification:
                 backup_type=BackupType.CONFIG,
                 compression=CompressionType.NONE
             )
-            backup = backup_manager.create_backup(request)
+            backup = await backup_manager.create_backup(request)
 
-            if backup:
-                # Verify the backup
-                result = backup_manager.verify_backup(backup.backup_id)
-                if result:
-                    assert result.is_valid is not None
+            # Verify the backup
+            result = await backup_manager.verify_backup(backup.backup_id)
+
+            assert result is not None
+            assert result.verified is True
         except (NotImplementedError, AttributeError):
             pytest.skip("verify_backup not implemented")
 
@@ -278,7 +286,7 @@ class TestBackupRestoration:
             except Exception:
                 pytest.skip("BackupManager not fully implemented")
 
-    def test_restore_backup(self, backup_manager):
+    async def test_restore_backup(self, backup_manager):
         """Test restoring a backup."""
         try:
             # Create a backup first
@@ -286,20 +294,22 @@ class TestBackupRestoration:
                 backup_type=BackupType.CONFIG,
                 compression=CompressionType.NONE
             )
-            backup = backup_manager.create_backup(backup_request)
+            backup = await backup_manager.create_backup(backup_request)
 
-            if backup:
-                # Try to restore it
-                restore_request = RestoreRequest(
-                    backup_id=backup.backup_id,
-                    restore_config=True,
-                    restore_profiles=False,
-                    restore_data=False
-                )
+            # Try to restore it
+            restore_request = RestoreRequest(
+                backup_id=backup.backup_id,
+                restore_config=True,
+                restore_profiles=False,
+                restore_data=False
+            )
 
-                result = backup_manager.restore_backup(restore_request)
-                if result:
-                    assert result.success is not None
+            result = await backup_manager.restore_backup(restore_request)
+
+            # RestoreResult reports a status string, not a success flag.
+            assert result.backup_id == backup.backup_id
+            assert result.status in ("success", "partial", "failed")
+            assert result.restored_config is True
         except (NotImplementedError, AttributeError):
             pytest.skip("restore_backup not implemented")
 
@@ -334,16 +344,15 @@ class TestBackupCleanup:
             config = BackupConfig(
                 backup_dir=temp_dir,
                 retention_days=7,
-                max_backups=5
+                max_backup_count=5
             )
             try:
                 yield BackupManager(config)
             except Exception:
                 pytest.skip("BackupManager not fully implemented")
 
-    def test_cleanup_old_backups(self, backup_manager):
+    async def test_cleanup_old_backups(self, backup_manager):
         """Test cleaning up old backups."""
-        import inspect
         try:
             # Create multiple backups
             for i in range(3):
@@ -352,20 +361,19 @@ class TestBackupCleanup:
                     compression=CompressionType.NONE,
                     description=f"Backup {i}"
                 )
-                backup_manager.create_backup(request)
+                await backup_manager.create_backup(request)
 
-            # Try cleanup
-            deleted_count = backup_manager.cleanup_old_backups()
+            assert len(backup_manager.list_backups()) == 3
 
-            # Skip if it's an async method (returns coroutine)
-            if inspect.iscoroutine(deleted_count):
-                pytest.skip("cleanup_old_backups is async - requires async test")
+            deleted_count = await backup_manager.cleanup_old_backups()
 
-            assert isinstance(deleted_count, int) or deleted_count is None
+            # Nothing is old enough to prune yet
+            assert deleted_count == 0
+            assert len(backup_manager.list_backups()) == 3
         except (NotImplementedError, AttributeError):
             pytest.skip("cleanup_old_backups not implemented")
 
-    def test_delete_backup(self, backup_manager):
+    async def test_delete_backup(self, backup_manager):
         """Test deleting a specific backup."""
         try:
             # Create a backup
@@ -373,12 +381,12 @@ class TestBackupCleanup:
                 backup_type=BackupType.CONFIG,
                 compression=CompressionType.NONE
             )
-            backup = backup_manager.create_backup(request)
+            backup = await backup_manager.create_backup(request)
 
-            if backup:
-                # Delete it
-                result = backup_manager.delete_backup(backup.backup_id)
-                # Should return success status
+            result = backup_manager.delete_backup(backup.backup_id)
+
+            assert result is True
+            assert backup_manager.get_backup(backup.backup_id) is None
         except (NotImplementedError, AttributeError):
             pytest.skip("delete_backup not implemented")
 
@@ -406,13 +414,22 @@ class TestBackupStatistics:
         except (NotImplementedError, AttributeError):
             pytest.skip("get_statistics not implemented")
 
-    def test_get_backup_history(self, backup_manager):
-        """Test getting backup history."""
-        try:
-            history = backup_manager.get_backup_history(days=7)
-            assert isinstance(history, (list, tuple, dict, type(None)))
-        except (NotImplementedError, AttributeError):
-            pytest.skip("get_backup_history not implemented")
+    async def test_statistics_reflect_created_backups(self, backup_manager):
+        """Statistics should count the backups that exist.
+
+        There is no get_backup_history(); list_backups() plus get_statistics()
+        are the reporting surface.
+        """
+        await backup_manager.create_backup(
+            BackupRequest(
+                backup_type=BackupType.CONFIG, compression=CompressionType.NONE
+            )
+        )
+
+        stats = backup_manager.get_statistics()
+
+        assert stats.total_backups == 1
+        assert len(backup_manager.list_backups()) == 1
 
 
 class TestBackupConfig:
@@ -425,20 +442,18 @@ class TestBackupConfig:
             enable_auto_backup=True,
             auto_backup_interval_hours=24,
             retention_days=30,
-            max_backups=10,
+            max_backup_count=10,
             compression=CompressionType.GZIP,
-            verify_backups=True,
-            create_restore_backup=True
+            verify_after_backup=True,
         )
 
         assert config.backup_dir == "/tmp/backups"
         assert config.enable_auto_backup is True
         assert config.auto_backup_interval_hours == 24
         assert config.retention_days == 30
-        assert config.max_backups == 10
+        assert config.max_backup_count == 10
         assert config.compression == CompressionType.GZIP
-        assert config.verify_backups is True
-        assert config.create_restore_backup is True
+        assert config.verify_after_backup is True
 
     def test_backup_config_defaults(self):
         """Test BackupConfig with default values."""

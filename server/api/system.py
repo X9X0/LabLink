@@ -1,13 +1,25 @@
 """API endpoints for system management."""
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from server.system import get_version, get_version_info, update_manager
 from server.system.update_manager import UpdateMode
+
+try:
+    from .security import require_superuser
+    _superuser_dep: List = [Depends(require_superuser)]
+except Exception:
+    # Security not initialised — log a warning at import time.
+    # All mutation endpoints will be unprotected until security is enabled.
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "Security module unavailable — system mutation endpoints are UNPROTECTED"
+    )
+    _superuser_dep = []
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +101,7 @@ async def get_update_status():
         )
 
 
-@router.post("/system/update/check", summary="Check for updates")
+@router.post("/system/update/check", summary="Check for updates", dependencies=_superuser_dep)
 async def check_for_updates(request: UpdateCheckRequest):
     """Check if updates are available.
 
@@ -113,7 +125,7 @@ async def check_for_updates(request: UpdateCheckRequest):
         )
 
 
-@router.post("/system/update/start", summary="Start system update")
+@router.post("/system/update/start", summary="Start system update", dependencies=_superuser_dep)
 async def start_system_update(request: UpdateStartRequest):
     """Start the system update process.
 
@@ -140,7 +152,7 @@ async def start_system_update(request: UpdateStartRequest):
         )
 
 
-@router.post("/system/update/rollback", summary="Rollback to previous version")
+@router.post("/system/update/rollback", summary="Rollback to previous version", dependencies=_superuser_dep)
 async def rollback_system():
     """Rollback to the previous version.
 
@@ -160,7 +172,7 @@ async def rollback_system():
 # ==================== Update Mode Endpoints ====================
 
 
-@router.post("/system/update/configure-mode", summary="Configure update mode")
+@router.post("/system/update/configure-mode", summary="Configure update mode", dependencies=_superuser_dep)
 async def configure_update_mode(request: UpdateModeConfigRequest):
     """Configure update detection mode (stable vs development).
 
@@ -185,7 +197,7 @@ async def configure_update_mode(request: UpdateModeConfigRequest):
 # ==================== Branch Management Endpoints ====================
 
 
-@router.post("/system/update/branches", summary="Get available branches")
+@router.post("/system/update/branches", summary="Get available branches", dependencies=_superuser_dep)
 async def get_available_branches(request: BranchRequest):
     """Get list of available branches from remote repository.
 
@@ -207,7 +219,7 @@ async def get_available_branches(request: BranchRequest):
         )
 
 
-@router.post("/system/update/set-tracked-branch", summary="Set tracked branch")
+@router.post("/system/update/set-tracked-branch", summary="Set tracked branch", dependencies=_superuser_dep)
 async def set_tracked_branch(request: SetTrackedBranchRequest):
     """Set the branch to track for updates in development mode.
 
@@ -239,7 +251,7 @@ class AutoRebuildConfigRequest(BaseModel):
     rebuild_command: Optional[str] = None
 
 
-@router.post("/system/update/configure-rebuild", summary="Configure auto-rebuild")
+@router.post("/system/update/configure-rebuild", summary="Configure auto-rebuild", dependencies=_superuser_dep)
 async def configure_auto_rebuild(request: AutoRebuildConfigRequest):
     """Configure automatic Docker rebuild after updates.
 
@@ -263,7 +275,7 @@ async def configure_auto_rebuild(request: AutoRebuildConfigRequest):
         )
 
 
-@router.post("/system/update/rebuild", summary="Execute Docker rebuild")
+@router.post("/system/update/rebuild", summary="Execute Docker rebuild", dependencies=_superuser_dep)
 async def execute_rebuild():
     """Execute Docker rebuild and restart.
 
@@ -297,7 +309,7 @@ class ScheduledCheckConfigRequest(BaseModel):
     git_branch: Optional[str] = None
 
 
-@router.post("/system/update/configure-scheduled", summary="Configure scheduled checks")
+@router.post("/system/update/configure-scheduled", summary="Configure scheduled checks", dependencies=_superuser_dep)
 async def configure_scheduled_checks(request: ScheduledCheckConfigRequest):
     """Configure automatic scheduled update checking.
 
@@ -329,7 +341,7 @@ async def configure_scheduled_checks(request: ScheduledCheckConfigRequest):
         )
 
 
-@router.post("/system/update/scheduled/start", summary="Start scheduled checks")
+@router.post("/system/update/scheduled/start", summary="Start scheduled checks", dependencies=_superuser_dep)
 async def start_scheduled_checks():
     """Start the scheduled update checking task.
 
@@ -348,7 +360,7 @@ async def start_scheduled_checks():
         )
 
 
-@router.post("/system/update/scheduled/stop", summary="Stop scheduled checks")
+@router.post("/system/update/scheduled/stop", summary="Stop scheduled checks", dependencies=_superuser_dep)
 async def stop_scheduled_checks():
     """Stop the scheduled update checking task.
 

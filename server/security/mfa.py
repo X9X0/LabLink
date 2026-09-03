@@ -183,6 +183,15 @@ def generate_backup_codes(count: int = BACKUP_CODE_COUNT) -> List[str]:
     return codes
 
 
+def normalize_backup_code(code: str) -> str:
+    """Canonical form of a backup code: no hyphen, upper case.
+
+    Hashing and verification must both use this, or a generated code (which is
+    formatted as ``ABCD-1234``) can never be verified.
+    """
+    return code.replace("-", "").upper()
+
+
 def hash_backup_code(code: str) -> str:
     """
     Hash a backup code for storage.
@@ -194,7 +203,7 @@ def hash_backup_code(code: str) -> str:
         Bcrypt hashed code
     """
     salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(code.encode("utf-8"), salt)
+    hashed = bcrypt.hashpw(normalize_backup_code(code).encode("utf-8"), salt)
     return hashed.decode("utf-8")
 
 
@@ -210,8 +219,8 @@ def verify_backup_code(plain_code: str, hashed_code: str) -> bool:
         True if code matches
     """
     try:
-        # Remove hyphen if present
-        plain_code = plain_code.replace("-", "").upper()
+        # Must match the normalization applied by hash_backup_code().
+        plain_code = normalize_backup_code(plain_code)
 
         is_valid = bcrypt.checkpw(
             plain_code.encode("utf-8"), hashed_code.encode("utf-8")

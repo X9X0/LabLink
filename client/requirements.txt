@@ -1,34 +1,47 @@
+# LabLink Client dependencies (2.x baseline)
+#
+# Pinned exactly for reproducible builds. Security floors use >= so a patched
+# release can be picked up without editing this file.
+
 # GUI Framework
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
-PyQt6-Charts==6.6.0
-PyQt6-Charts-Qt6==6.6.0
-pyqtgraph==0.13.3
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.0
+PyQt6-Charts==6.11.0
+PyQt6-Charts-Qt6==6.11.0
+pyqtgraph==0.14.0
+qasync==0.28.0
 
 # Networking
-requests==2.32.4  # Security: Fixes CVE-2024-47081 (netrc leak), CVE-2024-35195 (verify=False persistence)
-websockets==12.0
-aiohttp==3.12.14  # Security: Fixes CVE-2024-23334 (directory traversal), CVE-2024-30251 (DoS), CVE-2024-52304 (request smuggling), CVE-2024-27306 (XSS), CVE-2024-23829 (HTTP parser), CVE-2025-53643 (smuggling)
+requests==2.34.2
+websockets==17.1
+aiohttp==3.14.3
 
-# SSH and Deployment
-paramiko==3.4.0
-scp==0.14.5
+# Remote deployment
+# paramiko 5.x drops ssh-rsa (RSA/SHA-1) host keys and DSA entirely; see
+# BREAKING-CHANGES in the 2.0.0 release notes.
+paramiko==5.0.0
+scp==0.16.1
 
-# Network Discovery
-# scapy removed due to security vulnerability with no patch (pickle deserialization RCE, <=2.6.1)
-# Not used in codebase - was planned for network scanning but never implemented
-zeroconf==0.132.2
+# Discovery
+zeroconf==0.151.3
 
 # Data Handling
-numpy==1.26.3
-pandas==2.2.0
-h5py==3.10.0
+numpy==2.5.2
+pandas==3.0.5
+h5py==3.16.0
 
-# Configuration
-pydantic==2.5.3
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
+# Models / configuration
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.2
+python-dateutil==2.9.0.post0
 
-# Utilities
-python-dateutil==2.8.2
-qasync
+# Credential storage
+keyring==25.7.0
+
+# Raspberry Pi image builder: writes the image's FAT boot partition directly,
+# so building works on Windows and macOS with no root and no loop device.
+# passlib supplies the SHA-512 crypt hash for userconf.txt, since Python 3.13
+# removed the crypt module.
+pyfatfs==1.1.0
+passlib==1.7.4

@@ -6,7 +6,10 @@ This wizard creates custom Raspberry Pi images with LabLink pre-installed.
 import logging
 import os
 import re
+import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -36,9 +39,14 @@ class ImageBuildThread(QThread):
         pi_model: str = "5",
         wifi_ssid: str = "",
         wifi_password: str = "",
+        wifi_country: str = "US",
         admin_password: str = "",
+        password_generated: bool = False,
         enable_ssh: bool = True,
         auto_expand: bool = True,
+        branch: str = "main",
+        os_variant: str = "lite",
+        use_native_builder: Optional[bool] = None,
     ):
         """Initialize build thread.
 
@@ -48,9 +56,16 @@ class ImageBuildThread(QThread):
             pi_model: Raspberry Pi model (3, 4, or 5)
             wifi_ssid: Wi-Fi network name (optional)
             wifi_password: Wi-Fi password (optional)
+            wifi_country: Two-letter regulatory domain for the Wi-Fi radio
             admin_password: Admin user password (optional)
             enable_ssh: Enable SSH on first boot
             auto_expand: Auto-expand filesystem on first boot
+            branch: Git branch the image installs on first boot
+            os_variant: Raspberry Pi OS base image, "lite" or "full"
+            use_native_builder: Force the pure-Python builder on or off. The
+                default picks it automatically: it is the only builder that
+                works off Linux, and it needs no root anywhere, so it is
+                preferred unless LABLINK_USE_SHELL_BUILDER is set.
         """
         super().__init__()
         self.output_path = output_path
@@ -58,9 +73,20 @@ class ImageBuildThread(QThread):
         self.pi_model = pi_model
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
+        self.wifi_country = wifi_country
         self.admin_password = admin_password
+        self.password_generated = password_generated
         self.enable_ssh = enable_ssh
         self.auto_expand = auto_expand
+        self.branch = branch
+        self.os_variant = os_variant
+        if use_native_builder is None:
+            # The shell builder only exists as an escape hatch on Linux now.
+            use_native_builder = not (
+                sys.platform.startswith("linux")
+                and os.environ.get("LABLINK_USE_SHELL_BUILDER")
+            )
+        self.use_native_builder = use_native_builder
         self.recent_output = []  # Buffer for recent output lines
 
     def _parse_progress_only(self, line: str):
@@ -95,11 +121,59 @@ class ImageBuildThread(QThread):
             except (ValueError, IndexError):
                 pass
 
+    def _run_native(self) -> bool:
+        """Build the image in pure Python. Returns True if the build ran.
+
+        This needs no root, no loop device and no bash, so it is the only path
+        that works on Windows and macOS. It writes the boot partition directly
+        and lets Raspberry Pi OS's own first-run mechanism do the rest — the
+        same division of labour the shell builder uses, which already defers
+        the LabLink install to first boot.
+        """
+        from client.utils.pi_image_native import (ImageConfig, base_image_url,
+                                                  build_image)
+
+        self.output.emit("Building with the native (pure Python) builder.\n")
+        self.output.emit("No administrator privileges are required.\n\n")
+
+        config = ImageConfig(
+            output_path=self.output_path,
+            base_image_url=base_image_url(self.pi_model, self.os_variant),
+            hostname=self.hostname,
+            admin_password=self.admin_password,
+            password_generated=self.password_generated,
+            wifi_ssid=self.wifi_ssid,
+            wifi_password=self.wifi_password,
+            wifi_country=self.wifi_country,
+            enable_ssh=self.enable_ssh,
+            branch=self.branch,
+        )
+        self.output.emit(f"Base image: {config.base_image_url}\n")
+
+        def on_progress(pct: int, msg: str) -> None:
+            self.progress.emit(pct, msg)
+            self.output.emit(msg + "\n")
+
+        build_image(config, progress=on_progress)
+        return True
+
     def run(self):
         """Run image building process."""
         try:
             self.progress.emit(0, "Starting image build process...")
             logger.info("ImageBuildThread starting")
+
+            if self.use_native_builder:
+                try:
+                    self._run_native()
+                except Exception as exc:
+                    logger.exception("Native image build failed")
+                    self.finished.emit(False, f"Image build failed: {exc}")
+                else:
+                    self.finished.emit(
+                        True, f"Image built successfully: {self.output_path}"
+                    )
+                return
 
             # Check if build script exists
             script_path = Path(__file__).parent.parent.parent / "build-pi-image.sh"
@@ -125,27 +199,31 @@ class ImageBuildThread(QThread):
                 env["WIFI_SSID"] = self.wifi_ssid
             if self.wifi_password:
                 env["WIFI_PASSWORD"] = self.wifi_password
+            if self.wifi_country:
+                env["WIFI_COUNTRY"] = self.wifi_country
             if self.admin_password:
                 env["LABLINK_ADMIN_PASSWORD"] = self.admin_password  # Fixed: was ADMIN_PASSWORD
 
             env["ENABLE_SSH"] = "yes" if self.enable_ssh else "no"
             env["AUTO_EXPAND"] = "yes" if self.auto_expand else "no"
+            env["LABLINK_BRANCH"] = self.branch
+            env["PI_OS_VARIANT"] = self.os_variant
 
             self.progress.emit(5, "Launching build script...")
             self.output.emit(f"Build script: {script_path}\n")
             self.output.emit(f"Building image: {self.output_path}\n")
             self.output.emit(f"Hostname: {self.hostname}\n")
+            self.output.emit(f"Branch: {self.branch}\n")
+            self.output.emit(f"Base image: Raspberry Pi OS {self.os_variant}\n")
             self.output.emit(f"\n--- Starting build process ---\n")
 
             logger.info(f"Launching bash with script: {script_path}")
             logger.info(f"Output path: {self.output_path}")
 
-            # Check if pkexec is available for GUI sudo
-            pkexec_available = subprocess.run(
-                ['which', 'pkexec'],
-                capture_output=True,
-                check=False
-            ).returncode == 0
+            # Check if pkexec is available for GUI sudo. shutil.which rather
+            # than the `which` command, which does not exist everywhere and
+            # raised FileNotFoundError instead of reporting it was missing.
+            pkexec_available = shutil.which("pkexec") is not None
 
             # Build script wrapper that exports env vars
             # Get current user for ownership fixing after build
@@ -160,16 +238,20 @@ export LABLINK_HOSTNAME='{self.hostname}'
 export PI_MODEL='{self.pi_model}'
 export ENABLE_SSH='{"yes" if self.enable_ssh else "no"}'
 export AUTO_EXPAND='{"yes" if self.auto_expand else "no"}'
+export LABLINK_BRANCH={shlex.quote(self.branch)}
+export PI_OS_VARIANT={shlex.quote(self.os_variant)}
 export SUDO_USER='{current_user}'
 export ORIGINAL_UID='{current_uid}'
 export ORIGINAL_GID='{current_gid}'
 """
             if self.wifi_ssid:
-                script_wrapper += f"export WIFI_SSID='{self.wifi_ssid}'\n"
+                script_wrapper += f"export WIFI_SSID={shlex.quote(self.wifi_ssid)}\n"
             if self.wifi_password:
-                script_wrapper += f"export WIFI_PASSWORD='{self.wifi_password}'\n"
+                script_wrapper += f"export WIFI_PASSWORD={shlex.quote(self.wifi_password)}\n"
+            if self.wifi_country:
+                script_wrapper += f"export WIFI_COUNTRY={shlex.quote(self.wifi_country)}\n"
             if self.admin_password:
-                script_wrapper += f"export LABLINK_ADMIN_PASSWORD='{self.admin_password}'\n"
+                script_wrapper += f"export LABLINK_ADMIN_PASSWORD={shlex.quote(self.admin_password)}\n"
 
             script_wrapper += f"exec bash {script_path}\n"
 
@@ -414,6 +496,40 @@ class ConfigurationPage(QWizardPage):
         self.pi_model_combo.setCurrentIndex(0)  # Default to Pi 5
         hardware_layout.addRow("Raspberry Pi Model:", self.pi_model_combo)
 
+        # Branch the image installs on first boot. Editable so an unlisted
+        # branch can be typed in; defaults to main.
+        self.branch_combo = QComboBox()
+        self.branch_combo.setEditable(True)
+        self.branch_combo.addItem("main")
+        try:
+            from client.utils.git_operations import get_git_branches
+
+            for name in get_git_branches() or []:
+                if name and name != "main":
+                    self.branch_combo.addItem(name)
+        except Exception as e:  # branch list is a convenience, not required
+            logger.warning(f"Could not list git branches for image builder: {e}")
+        self.branch_combo.setCurrentText("main")
+        self.branch_combo.setToolTip(
+            "Git branch the Pi installs on first boot. Use main for releases, "
+            "or a feature branch to build a test image."
+        )
+        hardware_layout.addRow("LabLink Branch:", self.branch_combo)
+
+        # Base OS. Lite is correct for a headless appliance: LabLink runs in
+        # Docker and needs no desktop. Full is only useful if the client GUI
+        # will run on the Pi itself.
+        self.os_variant_combo = QComboBox()
+        self.os_variant_combo.addItem("Lite (headless, recommended)", "lite")
+        self.os_variant_combo.addItem("Full (includes desktop)", "full")
+        self.os_variant_combo.setCurrentIndex(0)
+        self.os_variant_combo.setToolTip(
+            "Lite has no desktop and is the right choice for a headless lab "
+            "server. Choose Full only if you intend to run the LabLink desktop "
+            "client on the Pi itself."
+        )
+        hardware_layout.addRow("Base Image:", self.os_variant_combo)
+
         hardware_group.setLayout(hardware_layout)
         layout.addWidget(hardware_group)
 
@@ -428,7 +544,7 @@ class ConfigurationPage(QWizardPage):
         self.admin_password_edit = QLineEdit()
         self.admin_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.admin_password_edit.setPlaceholderText(
-            "Leave empty to use default: lablink"
+            "Leave empty to generate a strong one (shown before you write the card)"
         )
         basic_layout.addRow("Admin Password:", self.admin_password_edit)
 
@@ -448,6 +564,14 @@ class ConfigurationPage(QWizardPage):
         self.wifi_password_edit.setPlaceholderText("Wi-Fi password")
         wifi_layout.addRow("Wi-Fi Password:", self.wifi_password_edit)
 
+        # Raspberry Pi OS soft-blocks the radio until a regulatory domain is
+        # set, and the wrong domain can stop the Pi associating at all.
+        self.wifi_country_edit = QLineEdit()
+        self.wifi_country_edit.setText("US")
+        self.wifi_country_edit.setMaxLength(2)
+        self.wifi_country_edit.setPlaceholderText("Two-letter country code, e.g. US, GB, DE")
+        wifi_layout.addRow("Wi-Fi Country:", self.wifi_country_edit)
+
         wifi_group.setLayout(wifi_layout)
         layout.addWidget(wifi_group)
 
@@ -461,6 +585,13 @@ class ConfigurationPage(QWizardPage):
 
         self.auto_expand_check = QCheckBox("Auto-expand filesystem on first boot")
         self.auto_expand_check.setChecked(True)
+        self.auto_expand_check.setToolTip(
+            "Raspberry Pi OS grows the root filesystem to fill the card on "
+            "first boot, so the image itself stays small and burns faster.\n\n"
+            "Untick only if that growth is not wanted: the image is then "
+            "padded by 2GB so there is room for Docker and the containers, "
+            "which makes it correspondingly slower to write."
+        )
         options_layout.addWidget(self.auto_expand_check)
 
         options_group.setLayout(options_layout)
@@ -487,9 +618,13 @@ class ConfigurationPage(QWizardPage):
 
         # Info label
         info_label = QLabel(
-            "ℹ️ The image will be based on Raspberry Pi OS Lite with LabLink pre-installed.\n"
-            "Build process may take 10-30 minutes depending on your internet connection.\n\n"
-            "⚠️ This tool requires root privileges. You will be prompted for your password."
+            "ℹ️ The image is based on Raspberry Pi OS, and installs LabLink the "
+            "first time the Pi boots.\n"
+            "Building takes 10-30 minutes, mostly downloading the base image.\n\n"
+            "✓ Works on Windows, macOS and Linux, and needs no administrator "
+            "privileges.\n"
+            "The Pi needs a network connection on its first boot to finish "
+            "installing."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet(
@@ -505,7 +640,10 @@ class ConfigurationPage(QWizardPage):
         self.registerField("output_path*", self.output_path_edit)
         self.registerField("wifi_ssid", self.wifi_ssid_edit)
         self.registerField("wifi_password", self.wifi_password_edit)
+        self.registerField("wifi_country", self.wifi_country_edit)
         self.registerField("admin_password", self.admin_password_edit)
+        self.registerField("branch", self.branch_combo, "currentText")
+        self.registerField("os_variant", self.os_variant_combo, "currentData")
 
         # Connect text changes to notify wizard of completion status
         self.hostname_edit.textChanged.connect(self.completeChanged)
@@ -549,6 +687,36 @@ class ConfigurationPage(QWizardPage):
                 self, "No Output Path", "Please select where to save the image."
             )
             return False
+
+        # A blank password used to need a warning here, because it produced an
+        # image with no account at all. It now generates one instead, which is
+        # shown above the build output and on the Pi's own console banner, so
+        # there is no longer a bad outcome to warn about and nothing to
+        # interrupt the user for.
+        #
+        # A password that is *set* still needs checking, though, and against
+        # LabLink's rules rather than the Pi's. The Pi account takes anything;
+        # the LabLink server does not, and when it refuses, it starts with no
+        # admin user and the web UI cannot be logged in to at all. That is
+        # only visible in a container log on the Pi.
+        typed_password = self.admin_password_edit.text()
+        if typed_password:
+            from client.utils.pi_image_native import check_lablink_password
+
+            problem = check_lablink_password(typed_password)
+            if problem:
+                QMessageBox.warning(
+                    self, "Password too weak for LabLink",
+                    f"The password needs {problem}.\n\n"
+                    "The Pi's own login would accept it, but LabLink's server "
+                    "rejects it and then starts with no admin account -- the "
+                    "web interface comes up with nobody able to log in.\n\n"
+                    "Rules: at least 8 characters, with an upper-case letter, "
+                    "a lower-case letter and a digit.\n\n"
+                    "Leave the field blank to have a strong one generated.",
+                )
+                self.admin_password_edit.setFocus()
+                return False
 
         # Check if Wi-Fi SSID and password are both provided or both empty
         wifi_ssid = self.wifi_ssid_edit.text().strip()
@@ -633,18 +801,48 @@ class BuildProgressPage(QWizardPage):
         output_path = self.field("output_path")
         wifi_ssid = self.field("wifi_ssid") or ""
         wifi_password = self.field("wifi_password") or ""
+        wifi_country = (self.field("wifi_country") or "US").strip().upper() or "US"
         admin_password = self.field("admin_password") or ""
+
+        # A blank field used to mean "no account at all": customize_image only
+        # writes userconf.txt when a password is set, so the image booted with
+        # sshd enabled and nothing to log in as. The placeholder promised a
+        # default of "lablink" that nothing implemented. Generate one instead
+        # -- unique per image, and shown below before the card is written.
+        generated_password = ""
+        if not admin_password:
+            from client.utils.pi_image_native import generate_admin_password
+
+            admin_password = generate_admin_password()
+            generated_password = admin_password
 
         # Get checkbox states from previous page
         config_page = self.wizard().page(0)
         enable_ssh = config_page.enable_ssh_check.isChecked()
         auto_expand = config_page.auto_expand_check.isChecked()
+        branch = (self.field("branch") or "main").strip() or "main"
+        os_variant = self.field("os_variant") or "lite"
 
         # Reset state
         self.build_complete = False
         self.build_success = False
         self.progress_bar.setValue(0)
         self.output_text.clear()
+
+        # Before anything scrolls past: a generated password is the only copy
+        # the user will see until the Pi's own first-boot banner, and they
+        # need it to log in at all.
+        if generated_password:
+            self.output_text.insertPlainText(
+                "=" * 66 + "\n"
+                "  No password was entered, so one was generated for this image:\n"
+                "\n"
+                f"      user: admin      password: {generated_password}\n"
+                "\n"
+                "  Write it down now. It is also shown on the Pi's console after\n"
+                "  first boot, and can be changed there with `passwd`.\n"
+                + "=" * 66 + "\n\n"
+            )
 
         # Create build thread
         self.build_thread = ImageBuildThread(
@@ -653,9 +851,13 @@ class BuildProgressPage(QWizardPage):
             pi_model=pi_model,
             wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
+            wifi_country=wifi_country,
             admin_password=admin_password,
+            password_generated=bool(generated_password),
             enable_ssh=enable_ssh,
             auto_expand=auto_expand,
+            branch=branch,
+            os_variant=os_variant,
         )
 
         # Connect signals
@@ -742,49 +944,70 @@ class PiImageBuilderWizard(QWizard):
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
         self.resize(700, 600)
 
-        # Apply visual styling
+        # Apply visual styling.
+        #
+        # These colours follow the theme rather than being fixed. A stylesheet
+        # set on a widget overrides the application one, so the hardcoded
+        # white here used to survive into dark mode and collide with the dark
+        # sheet's pale text -- white panels, grey text, unreadable.
+        from client.ui.theme import dialog_palette
+
+        _c = dialog_palette()
         self.setStyleSheet("""
-            QWizard {
-                background-color: #ecf0f1;
-            }
-            QWizardPage {
-                background-color: #ecf0f1;
-            }
-            QGroupBox {
-                border: 2px solid #bdc3c7;
+            QWizard {{
+                background-color: {window_bg};
+            }}
+            QWizardPage {{
+                background-color: {window_bg};
+                color: {text};
+            }}
+            QGroupBox {{
+                border: 2px solid {panel_border};
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
-                background-color: white;
+                background-color: {panel_bg};
+                color: {text};
                 font-weight: bold;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 15px;
                 padding: 5px 10px;
-                background-color: white;
-            }
-            QPushButton {
+                background-color: {panel_bg};
+                color: {text};
+            }}
+            QLabel {{
+                color: {text};
+            }}
+            QLineEdit, QComboBox, QTextEdit {{
+                background-color: {field_bg};
+                color: {text};
+                border: 1px solid {panel_border};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton {{
                 background-color: #3498db;
                 color: white;
                 border: 2px solid #2471a3;
                 border-radius: 6px;
                 padding: 8px 15px;
                 min-height: 30px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #2e86c1;
                 border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: #2471a3;
-            }
-            QPushButton:disabled {
+            }}
+            QPushButton:disabled {{
                 background-color: #95a5a6;
                 border: 2px solid #7f8c8d;
                 color: #ecf0f1;
-            }
-        """)
+            }}
+        """.format(**_c))
 
         # Add pages
         self.config_page = ConfigurationPage()

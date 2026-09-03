@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -463,6 +463,7 @@ class TestSequencePanel(QWidget):
         self.steps: List[Dict] = []
         self.execution_id: Optional[str] = None
         self.progress_timer: Optional[QTimer] = None
+        self._poll_in_flight = False
 
         # WebSocket streaming state
         self.ws_signals = TestSequenceWebSocketSignals()
@@ -1012,8 +1013,11 @@ class TestSequencePanel(QWidget):
             self.progress_bar.setValue(0)
             self.progress_label.setText("Starting execution...")
 
-            result = self.client.execute_test_sequence(
-                sequence_data, executed_by="user", environment={}
+            result = await call_blocking(
+                self.client.execute_test_sequence,
+                sequence_data,
+                executed_by="user",
+                environment={},
             )
 
             self.execution_id = result.get("execution_id")
@@ -1038,13 +1042,20 @@ class TestSequencePanel(QWidget):
         self.execute_btn.setEnabled(False)
         self.abort_btn.setEnabled(True)
 
-    def _poll_execution_status(self):
+    @qasync.asyncSlot()
+    async def _poll_execution_status(self):
         """Poll for execution status."""
         if not self.execution_id or not self.client:
             return
 
+        if self._poll_in_flight:
+            return
+
+        self._poll_in_flight = True
         try:
-            status = self.client.get_execution_status(self.execution_id)
+            status = await call_blocking(
+                self.client.get_execution_status, self.execution_id
+            )
 
             # Update progress
             current_step = status.get("current_step", 0)
@@ -1066,6 +1077,8 @@ class TestSequencePanel(QWidget):
 
         except Exception as e:
             logger.error(f"Failed to poll execution status: {e}")
+        finally:
+            self._poll_in_flight = False
 
     @qasync.asyncSlot()
     async def _abort_execution(self):
@@ -1074,7 +1087,7 @@ class TestSequencePanel(QWidget):
             return
 
         try:
-            self.client.abort_test_execution(self.execution_id)
+            await call_blocking(self.client.abort_test_execution, self.execution_id)
             self.progress_label.setText("Aborting execution...")
         except Exception as e:
             QMessageBox.critical(self, "Abort Error", f"Failed to abort: {e}")

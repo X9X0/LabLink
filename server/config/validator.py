@@ -40,10 +40,6 @@ class ConfigValidator:
     def _validate_server_settings(self):
         """Validate server configuration."""
         # Check port conflicts
-        if settings.api_port == settings.ws_port:
-            self.errors.append(
-                f"API port and WebSocket port cannot be the same: {settings.api_port}"
-            )
 
         # Check port range
         if settings.api_port < 1024:
@@ -51,10 +47,6 @@ class ConfigValidator:
                 f"API port {settings.api_port} < 1024 may require root privileges"
             )
 
-        if settings.ws_port < 1024:
-            self.warnings.append(
-                f"WebSocket port {settings.ws_port} < 1024 may require root privileges"
-            )
 
         # Check host binding
         if settings.host == "0.0.0.0":

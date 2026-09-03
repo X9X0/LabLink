@@ -77,7 +77,7 @@ class DiagnosticsManager:
                     # Cache is fresh, return cached result
                     return self._health_cache[equipment_id]
 
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
@@ -170,7 +170,7 @@ class DiagnosticsManager:
 
     async def _check_connection(self, equipment_id: str) -> ConnectionDiagnostics:
         """Check connection status and quality."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         stats = self._connection_stats[equipment_id]
@@ -179,11 +179,11 @@ class DiagnosticsManager:
             return ConnectionDiagnostics(equipment_id=equipment_id, is_connected=False)
 
         # Measure response time
-        start = time.time()
+        start = time.perf_counter()
         try:
             # Simple query to test connection
             await equipment.query("*IDN?")
-            response_time_ms = (time.time() - start) * 1000
+            response_time_ms = (time.perf_counter() - start) * 1000
             is_connected = True
         except Exception as e:
             response_time_ms = None
@@ -271,7 +271,7 @@ class DiagnosticsManager:
         self, equipment_id: str
     ) -> Optional[PerformanceBenchmark]:
         """Run performance benchmarks on equipment."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
@@ -283,9 +283,9 @@ class DiagnosticsManager:
         test_commands = ["*IDN?", "*OPC?", "*STB?"]
         for cmd in test_commands:
             try:
-                start = time.time()
+                start = time.perf_counter()
                 await equipment.query(cmd)
-                latency = (time.time() - start) * 1000
+                latency = (time.perf_counter() - start) * 1000
                 command_latencies[cmd] = latency
             except Exception as e:
                 logger.debug(f"Benchmark command {cmd} failed: {e}")
@@ -334,7 +334,7 @@ class DiagnosticsManager:
 
     async def _check_functionality(self, equipment_id: str) -> List[DiagnosticResult]:
         """Run functionality tests on equipment."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         results = []
@@ -378,9 +378,9 @@ class DiagnosticsManager:
         started_at = datetime.now()
 
         try:
-            start = time.time()
+            start = time.perf_counter()
             result_value = await test_func()
-            duration = time.time() - start
+            duration = time.perf_counter() - start
 
             return DiagnosticResult(
                 test_id=f"test_{name.lower().replace(' ', '_')}",
@@ -507,7 +507,7 @@ class DiagnosticsManager:
         categories: Optional[List[DiagnosticCategory]] = None,
     ) -> DiagnosticReport:
         """Generate comprehensive diagnostic report."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         started_at = datetime.now()
 
@@ -573,7 +573,7 @@ class DiagnosticsManager:
 
     async def get_system_diagnostics(self) -> SystemDiagnostics:
         """Get system-wide diagnostics."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         # Equipment overview
         all_equipment = equipment_manager._equipment
@@ -628,7 +628,7 @@ class DiagnosticsManager:
         Returns:
             Temperature in Celsius, or None if not supported
         """
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
@@ -653,8 +653,8 @@ class DiagnosticsManager:
         Returns:
             Dictionary with error information
         """
-        from equipment.error_codes import get_error_code_db
-        from equipment.manager import equipment_manager
+        from server.equipment.error_codes import get_error_code_db
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:
@@ -703,7 +703,7 @@ class DiagnosticsManager:
         Returns:
             Diagnostic result
         """
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         started_at = datetime.now()
@@ -719,9 +719,9 @@ class DiagnosticsManager:
             )
 
         try:
-            start_time = time.time()
+            start_time = time.perf_counter()
             result = await equipment.run_self_test()
-            duration = time.time() - start_time
+            duration = time.perf_counter() - start_time
 
             if result is None:
                 return DiagnosticResult(
@@ -768,7 +768,7 @@ class DiagnosticsManager:
         Returns:
             Dictionary with calibration status information
         """
-        from equipment.calibration import get_calibration_manager
+        from server.equipment.calibration import get_calibration_manager
 
         cal_manager = get_calibration_manager()
 
@@ -808,7 +808,7 @@ class DiagnosticsManager:
         Returns:
             Dictionary with all diagnostic information
         """
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
 

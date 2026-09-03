@@ -81,7 +81,7 @@ class TestExecutor:
                     break
 
                 execution.current_step = i
-                step_start = time.time()
+                step_start = time.perf_counter()
 
                 logger.info(f"Executing step {step.step_number}: {step.name}")
 
@@ -106,7 +106,7 @@ class TestExecutor:
                         step.status = TestStatus.ERROR
                         step.error_message = f"Unknown step type: {step.step_type}"
 
-                    step.duration_seconds = time.time() - step_start
+                    step.duration_seconds = time.perf_counter() - step_start
                     step.executed_at = datetime.now()
 
                 except Exception as e:
@@ -114,7 +114,7 @@ class TestExecutor:
                     step.status = TestStatus.ERROR
                     step.error_message = str(e)
                     step.passed = False
-                    step.duration_seconds = time.time() - step_start
+                    step.duration_seconds = time.perf_counter() - step_start
 
                     if sequence.abort_on_fail and step.critical:
                         logger.error(f"Critical step failed, aborting test")
