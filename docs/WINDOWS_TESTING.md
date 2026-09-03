@@ -47,7 +47,7 @@ non-event.
 |---|---|
 | CLI builder on Windows | ✅ verified -- built an image, booted a Pi 5 end to end |
 | Regression suite on Windows | ✅ full `tests/client/`: 130 collected, 129 passed, 1 skipped (no dosfstools) |
-| `tests/unit/` on Windows | ⚠️ 609 collected, 597 passed, 4 failed (all one clock bug), 3 errors (no pyserial); 5 files must be `--ignore`d or the run aborts |
+| `tests/unit/` on Windows | ✅ **764 collected, 758 passed, 6 skipped, 0 failed** -- runs as a directory, no `--ignore` needed (fixed in 25dbf21) |
 | CI on Linux (3.12 + 3.13) | ✅ 15/15 |
 | Wizard environment on Windows (3.12 venv, deps, launch) | ✅ prepped and verified headlessly |
 | `pkg_resources` shim | ✅ confirmed load-bearing on Windows (setuptools 84.0.0) |
@@ -59,6 +59,7 @@ non-event.
 | Live-Pi suite against the GUI chain | ✅ **29 collected, 29 passed, 0 skipped, 0 failed** |
 | Instrument discovery on a builder-made Pi | ✅ a B&K-protocol supply on a CP210x bridge, discovered through the container |
 | Instrument session (connect, read, poll) | ✅ real readings, including under 10x polling, against a live supply |
+| "Read-only" instrument tests | ⚠️ **read-only in commands, not in effect** -- `disconnect` de-energises a live output (#198) |
 | Password strength checked at entry | ✅ fixed -- wizard and CLI now enforce LabLink's own rules |
 | Blank password producing an unloggable Pi | ✅ fixed -- a password is generated and published; 22501c8 |
 | Client restart after a branch switch, on Windows | ❌ not run |
@@ -1425,10 +1426,42 @@ timing-sensitive path that mocks cannot reproduce", and it is much stronger
 evidence than polling a supply sitting at zero.
 
 **Nothing here energises anything.** The session tests connect, query and
-disconnect; `connect` sends only `GMAX`. The output being live was the
-operator's doing, and the instrument was verified afterwards, by raw serial
-rather than through LabLink, to be back at `GOUT 1` / 0.11 V -- byte for byte
-what it read before any of this started.
+disconnect; `connect` sends only `GMAX`. The instrument was verified
+afterwards, by raw serial rather than through LabLink, to be back at
+`GOUT 1` / 0.11 V -- byte for byte what it read before any of this started.
+
+> **Correction (2026-09-02): the suite de-energised it, not the operator.**
+>
+> The sentence above is true and was incomplete, and I asked the wrong
+> question about it -- I wondered who had switched the output *on* and never
+> accounted for who switched it *off*, then attributed that to the operator.
+> A controlled test on 10.10.0.51, run with the user's consent and nothing
+> attached to the output terminals, settles it:
+>
+> ```
+> initial                    out=False  Vact= 0.11
+> after enabling             out=True   Vact=11.98
+> --- disconnect (closes the serial port) ---
+> after disconnect/reconnect out=False  Vact= 4.1   (capacitance discharging)
+> ```
+>
+> The 11.98 V is the same figure recorded here, from the same setpoint, which
+> ties the two observations together.
+>
+> `disconnect()` in `server/equipment/base.py` calls only
+> `instrument.close()`, and there is no `SOUT` anywhere in the equipment
+> layer -- so it is the serial port closing that does it, almost certainly
+> DTR/RTS dropping and the supply treating that as a reset.
+>
+> So **`tests/hardware/test_live_pi.py` is read-only in the commands it sends
+> and not in its effect.** Its own docstring says "Nothing sets an output, a
+> voltage or a current, so a run cannot leave an instrument energised". The
+> first half is accurate; the conclusion is the wrong way round. Running the
+> acceptance suite against a bench mid-experiment switches the output off.
+>
+> Filed as #198. Recorded here rather than quietly amended, for the same
+> reason as the "no instruments attached" correction earlier -- except that
+> one was an accuracy problem and this one has a safety edge.
 
 **29 of 29, nothing skipped**, on a Pi whose image was built and written
 entirely through the Windows GUI.
@@ -1510,3 +1543,270 @@ re-imaging.
 written to a card by the wizard, booted on a Pi, installing itself and
 passing the project's own acceptance suite. No part of it had been done
 through the GUI before today, and the card write had never worked at all.
+
+## Verifying the fixes those findings produced (2026-09-02)
+
+25dbf21, fd8a7aa and bb73902 landed against the problems recorded above.
+Re-run on the same Windows machine that found them:
+
+**`tests/unit/` runs as a directory now.** It used to abort outright --
+`no tests ran`, an `INTERNALERROR` from a module-scope `sys.exit(1)` during
+collection -- and needed five `--ignore` flags to get a number at all.
+
+```
+764 collected -- 758 passed, 6 skipped, 0 failed, 0 errors
+```
+
+No `--ignore` flags. The four failures that were all one bug -- durations
+measured with `time.time()`, which resolves to 15.625 ms on Windows -- are
+gone with the move to monotonic clocks. And `git status` is **clean
+afterwards**: collecting the directory no longer rewrites the checked-in
+`profiles/*.json`, because the script bodies no longer execute on import.
+
+Three errors remained, for `No module named 'serial'`. Not a bug -- the same
+undeclared-dependency shape as `email-validator` earlier, and the same
+consequence: `TestLegacyProbeFraming` silently does not run, and those cases
+are the only coverage of how the legacy fixed-width family is recognised when
+there is no `*IDN?` to fall back on. `pyserial` added to
+`requirements-test.txt` for the reason the file already lists the others.
+
+**The host-key handling is better than what I did by hand.** Faced with the
+twelve skips, I cleared the offending key and moved on. bb73902 makes it
+*fail*, with a message that separates the two cases -- "if this Pi was just
+reimaged that is expected", against "if it was not reimaged, do not clear it:
+something else is". That is the right instinct and the opposite of mine:
+clearing a changed host key should require justifying it, not be the reflex.
+fd8a7aa adds the supported way to accept the new key.
+
+Everything still green together, after the merge from main:
+
+| suite | result |
+|---|---|
+| `tests/client/` | 207 collected, 206 passed, 1 skipped |
+| `tests/unit/` | 764 collected, 758 passed, 6 skipped |
+| `tests/hardware/test_live_pi.py` | 29 collected, **29 passed** |
+
+Unchanged and still worth stating plainly: **the generated-password path has
+only unit tests behind it.** Both hardware builds used a typed password, so
+nothing has yet seen the console banner on a real Pi. And the on-to-off
+transition of the first bench's supply output remains unexplained rather than
+resolved.
+
+### A note toward #197, from that Pi's container logs
+
+Narrowing rather than a fix; the diagnosis was that the lock cleanup task
+"is being created and then not reaping -- most likely raising every pass into
+a caught-and-logged handler". The logs on 10.10.0.51 rule that out:
+
+| log line | occurrences |
+|---|---|
+| `Lock cleanup task started` | **1** |
+| `Lock cleanup task stopped` | 0 |
+| `Error in lock cleanup loop` | **0** |
+| `Lock expired for equipment` | **0** |
+
+So the task is created, never cancelled, and never raises -- and never reaps
+anything either, while the API reports locks sitting at `time_remaining 0.0`.
+
+Two possibilities are also eliminated by reading the code:
+
+- `is_expired()` and `time_remaining()` compute from the same expression,
+  `last_activity + timeout_seconds` against `datetime.now()`. A lock showing
+  `time_remaining` of 0.0 is therefore expired by `is_expired()` too, so they
+  cannot be disagreeing.
+- ~~There is one `LockManager` -- `lock_manager = LockManager()` at module
+  scope in `locks.py` -- and `server/api/locks.py` uses that same object. So
+  it is not the reaper walking a different dictionary from the one the API
+  reports.~~ **Wrong, and wrong in an instructive way -- see below.**
+
+What is left is that **the loop body never executes**: the task object exists
+and its coroutine never runs a pass.
+
+### Root cause: `locks.py` is loaded twice, under two names
+
+It *is* the reaper walking a different dictionary. I checked whether the file
+declares one `LockManager` -- it does -- and concluded there was one object.
+That is source identity, and the question was runtime identity. The module
+gets imported under two names:
+
+```
+server/main.py:112      from equipment.locks import lock_manager
+server/api/locks.py:9   from server.equipment.locks import ...
+```
+
+The container runs `python main.py` with the working directory inside
+`server/`, so **both resolve**, and Python builds two distinct module objects,
+each executing `lock_manager = LockManager()`. Confirmed inside the running
+deployment rather than in a reproduction:
+
+```
+module names loaded : ['equipment.locks', 'server.equipment.locks']
+distinct modules    : 2
+SAME OBJECT         : False
+bare._locks is pkg._locks: False
+```
+
+The lifespan starts the cleanup task on one instance; every acquire, release
+and status query goes through the other, whose `_locks` is empty and always
+will be. Which is exactly what the log counters described -- started once,
+never cancelled, never raised, never reaped -- because an iteration over an
+empty dictionary does all of that.
+
+**It is broader than the locks.** Every module-level singleton duplicates the
+same way: `equipment_manager`, `session_manager`, `emergency_stop_manager`,
+`state_manager`, `profile_manager`. Everything the lifespan configures at
+startup -- health monitoring, the state directory, default profiles, mock
+equipment -- is applied to objects no request ever touches. Locks are simply
+the one with a visible symptom.
+
+The API side is internally consistent today, so this is not an emergency-stop
+bypass: `api/equipment.py` also uses `server.equipment.manager`, and a driver
+reached through it resolves its relative `from .safety import
+emergency_stop_manager` to `server.equipment.safety`, matching `api/safety.py`.
+It is one import statement away from not being consistent, which is not where
+anyone wants an interlock sitting.
+
+Not fixed here. `main.py` uses bare imports *because* of how the container
+launches it, so changing them without changing the launch breaks startup. It
+needs its own change and a boot on hardware rather than a sweep. Written up
+on #197.
+
+## #197 fixed, on hardware, and the legacy supply finally has a name (2026-09-03)
+
+The boot on hardware that the previous section said was needed. An image
+built through the wizard with **LabLink Branch** set to
+`fix/single-import-path`, first boot from a blank card, same Pi address as
+the second bench.
+
+The branch field is the whole test. The builder does not package the working
+tree -- it writes a first-boot script that fetches
+`github.com/X9X0/LabLink/archive/refs/heads/<branch>.tar.gz` -- so an image
+built with the field left on `main` would have proved nothing at all. The
+slash in the branch name is fine: GitHub serves it, and `--strip-components=1`
+makes the extracted directory name irrelevant.
+
+### The three things that needed hardware
+
+**It boots.** `/health` answered 220 s after power-on, `lablink-server` at
+`Up (healthy)`. That was the stated risk -- `WORKDIR` and the uvicorn target
+both changed, so a mistake means no container rather than a quiet
+degradation.
+
+**The second name cannot resolve.** Not "discouraged" -- absent:
+
+```
+live process : python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+/app         : VERSION backups config data diagnose-pi.sh logs profiles
+               server shared states
+
+import equipment.locks        -> ModuleNotFoundError: No module named 'equipment'
+import server.equipment.locks -> OK <LockManager object at 0x7f8957d7f0>
+```
+
+There is no `equipment/` directory under `/app` for the bare name to find.
+
+**The lock expires.** The probe that exposed the bug, `timeout_seconds=30`:
+
+```
+t+ 0.0s  locked=True   time_remaining=29.99
+t+30.1s  locked=True   time_remaining=0.0
+t+35.1s  locked=False
+```
+
+Reaped at t+35 s, against a 75 s bound and a reaper that wakes every 10 s. It
+previously sat at `time_remaining 0.0` for ever.
+
+### Four more launchers, which the sweep had missed
+
+The rewrite fixed the compose image and `lablink.py` and stopped. Everything
+else still ran `main.py` from inside the package -- and now that every
+intra-server import is spelled `server.*`, that is no longer a latent hazard:
+
+```
+$ python server/main.py --help
+ModuleNotFoundError: No module named 'server'
+```
+
+`main.py` puts only `shared/` on `sys.path`, so from inside `server/` there
+is nothing above the package to import it by name. The guard never gets to
+explain; the process dies on line 18.
+
+- **The repo-root `Dockerfile`.** Not dead code -- `build_docker.sh:16` runs
+  `docker build .` against it. `COPY server/ .` flattened the package into
+  `/app`, leaving no `server` package at all: the mirror image of the compose
+  bug from the same root cause.
+- **`install-server.sh`**, both the `nohup` start and the systemd unit it
+  writes. The unit outlives the install, so that is the one that would have
+  failed on a reboot weeks later.
+- **`start_server.sh`**, which did `cd server; python3 main.py`.
+- The instructions printed by `setup.py` and `demo_acquisition_full.py`.
+
+Fixed in `854b38a`, with the launch-target test parametrized over both
+Dockerfiles rather than only the compose one -- fixing the file in front of
+you is how those two diverged in the first place. The fixed root image was
+built and run on the Pi rather than reviewed: `Application startup complete`,
+`/health` healthy, guard quiet. Merged as `2b3fe02`.
+
+### The legacy supply is a 1685B, and the scaling is the hazard
+
+Recorded here because the previous section could only say "either a different
+unit or an unreliable read". It is the same unit -- `gmax 605680` again,
+byte for byte -- and the operator identifies it as a **B&K 1685B**.
+
+That settles the identity and sharpens the warning. Discovery's naive 0.1
+scaling reads `605680` as 60.5 V / **68.0 A**, and no 1685B sources 68 A. So
+the current field's scaling on this model is not 0.1, which is exactly what
+the discovery note means by "the current field scaling and the SOUT polarity
+differ between them". The model must be supplied at connect time; a value
+derived from the GMAX arithmetic is not a substitute.
+
+With it supplied explicitly the whole suite runs:
+
+```
+LABLINK_EQUIPMENT_RESOURCE=ASRL/dev/ttyUSB0::INSTR
+LABLINK_EQUIPMENT_MODEL=1685B
+
+29 passed in 22.03s
+  readings: voltage_set 18.0, current_set 1.7,
+            voltage_actual 17.96, current_actual 0.01
+  container fds: 23 -> 23
+```
+
+**29/29** -- the first full pass. The four that skipped on every earlier run
+skipped for want of `LABLINK_EXPECT_EQUIPMENT`, not for want of an
+instrument; the 1685B had been attached the whole time. Worth stating plainly
+because two runs were written up as "no instruments attached" when the real
+answer was that nobody had told the suite to look.
+
+### The disconnect de-energises: confirmed a second time
+
+`4195601` established this on the first bench's supply. Independently
+reproduced here on a different unit at a different setpoint. Before the run,
+the supply was energised at 18 V, essentially unloaded at 10 mA. Afterwards:
+
+```
+voltage_set     18.0     (retained)
+current_set     1.7      (retained)
+voltage_actual  0.1
+output_enabled  False
+```
+
+Setpoints survive in the instrument's own memory; only the output drops. The
+suite sets nothing -- it is `instrument.close()` dropping DTR/RTS, and the
+supply treating that as a reset. Two units, two benches, two setpoints: this
+is the behaviour, not a one-off.
+
+**Anyone running the equipment tests against a live bench should know the
+output will be off afterwards.**
+
+### A methodology note, on numbers that moved
+
+An early full-suite run reported `37 failed, 1309 passed`, and the failures
+were entirely self-inflicted: a second `pytest` process running concurrently
+against the same `logs/`, `states/` and sqlite files. The five files that
+failed were exactly the state-touching ones. Run alone, the same tree gives
+`1363 passed`, against `1355` on the branch without the launcher commit --
+the difference being precisely the eight tests it adds.
+
+Two pytest processes in one working tree do not produce a second opinion.
+They produce a race.
