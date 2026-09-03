@@ -8,7 +8,7 @@ from typing import Callable, List, Optional
 
 import pyvisa
 
-from equipment.bk_registry import (CATEGORY_LABELS,
+from server.equipment.bk_registry import (CATEGORY_LABELS,
                                    CATEGORY_TO_EQUIPMENT_TYPE, MANUFACTURER,
                                    is_bk_manufacturer, is_drivable,
                                    resolve_model)

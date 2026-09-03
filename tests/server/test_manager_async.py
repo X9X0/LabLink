@@ -13,19 +13,17 @@ from datetime import datetime, timedelta
 
 # Add server to path
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../server'))
-
-from backup.manager import BackupManager
-from backup.models import (
+from server.backup.manager import BackupManager
+from server.backup.models import (
     BackupConfig, BackupRequest, BackupType, CompressionType,
     RestoreRequest
 )
-from scheduler.manager import SchedulerManager
-from scheduler.models import (
+from server.scheduler.manager import SchedulerManager
+from server.scheduler.models import (
     ScheduleConfig, ScheduleType, TriggerType, JobExecution
 )
-from discovery.manager import DiscoveryManager
-from discovery.models import DiscoveryConfig
+from server.discovery.manager import DiscoveryManager
+from server.discovery.models import DiscoveryConfig
 
 
 class TestBackupManagerAsync:

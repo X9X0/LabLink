@@ -24,7 +24,16 @@ COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY server/ .
+#
+# Into /app/server/, not into /app. Flattening the package's contents into the
+# working directory leaves no `server` package to import at all, so every
+# `from server.x import y` fails outright -- and the arrangement that made the
+# old spelling work is the one issue #197 was about.
+COPY server/ /app/server/
+COPY shared/ /app/shared/
+
+# Needed by server/system/version.py
+COPY VERSION /app/VERSION
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/states
@@ -39,7 +48,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=3)" || exit 1
 
 # Environment variables
-ENV LABLINK_SERVER_NAME="LabLink Server" \
+ENV PYTHONPATH=/app \
+    LABLINK_SERVER_NAME="LabLink Server" \
     LABLINK_LOG_LEVEL="INFO" \
     LABLINK_HOST="0.0.0.0" \
     LABLINK_API_PORT="8000" \
@@ -52,4 +62,10 @@ RUN useradd -m -u 1000 lablink && \
 USER lablink
 
 # Start server
-CMD ["python", "main.py"]
+#
+# From /app, naming the package -- the same launch the compose image uses. See
+# docker/Dockerfile.server for why the working directory must not be inside
+# server/: with the package directory on sys.path the same file imports under
+# two names, and Python builds two of every module-level singleton.
+WORKDIR /app
+CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

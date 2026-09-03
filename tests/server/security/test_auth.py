@@ -16,9 +16,7 @@ import sys
 import os
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from security.auth import (
+from server.security.auth import (
     hash_password,
     verify_password,
     create_access_token,
@@ -31,7 +29,7 @@ from security.auth import (
     LoginAttemptTracker,
     generate_secure_secret_key
 )
-from security.models import AuthMethod, User, Role, RoleType, TokenPayload
+from server.security.models import AuthMethod, User, Role, RoleType, TokenPayload
 
 
 class TestPasswordHashing:

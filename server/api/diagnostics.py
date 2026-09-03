@@ -31,7 +31,7 @@ async def get_equipment_health(equipment_id: str):
 @router.get("/diagnostics/health", summary="Get all equipment health")
 async def get_all_equipment_health():
     """Get health status for all equipment."""
-    from equipment.manager import equipment_manager
+    from server.equipment.manager import equipment_manager
 
     try:
         equipment_ids = list(equipment_manager.equipment.keys())

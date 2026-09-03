@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from security import (APIKey,  # Models; MFA Models; Manager; Auth
+from server.security import (APIKey,  # Models; MFA Models; Manager; Auth
                       APIKeyCreate, APIKeyResponse, AuditEventType,
                       AuditLogEntry, AuditLogQuery, BackupCodesResponse,
                       IPWhitelistCreate, IPWhitelistEntry, LoginRequest,
@@ -29,7 +29,7 @@ from security import (APIKey,  # Models; MFA Models; Manager; Auth
                       UserResponse, UserUpdate, create_access_token,
                       create_refresh_token, decode_refresh_token,
                       get_security_manager, user_to_response, verify_password)
-from security.rbac import get_client_ip
+from server.security.rbac import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ async def get_current_user(
     security_manager = get_security_manager()
     token = credentials.credentials
 
-    from security.auth import decode_token
+    from server.security.auth import decode_token
 
     token_payload = decode_token(token, security_manager.config)
 
@@ -206,7 +206,7 @@ async def login(request: Request, login_request: LoginRequest):
             )
 
         # Verify MFA token
-        from security.mfa import verify_mfa_token
+        from server.security.mfa import verify_mfa_token
 
         is_valid, used_backup_code = verify_mfa_token(
             user.mfa_secret, mfa_token, user.backup_codes
@@ -236,7 +236,7 @@ async def login(request: Request, login_request: LoginRequest):
         if used_backup_code:
             # Find and remove the used backup code
             for code_hash in user.backup_codes:
-                from security.mfa import verify_backup_code
+                from server.security.mfa import verify_backup_code
 
                 if verify_backup_code(mfa_token, code_hash):
                     await security_manager.remove_backup_code(user.user_id, code_hash)
@@ -262,7 +262,7 @@ async def login(request: Request, login_request: LoginRequest):
 
     # Create session, then mint the access token bound to it so logout /
     # password-change can revoke it before its natural expiry.
-    from security.models import AuthMethod as AuthMethodEnum
+    from server.security.models import AuthMethod as AuthMethodEnum
 
     session_id = security_manager.session_manager.create_session(
         user,
@@ -347,7 +347,7 @@ async def refresh_token(request: Request, refresh_request: RefreshTokenRequest):
 
     # Create a fresh session for the new access token so it remains
     # revocable (logout/password-change) just like a token from /login.
-    from security.models import AuthMethod as AuthMethodEnum
+    from server.security.models import AuthMethod as AuthMethodEnum
 
     session_id = security_manager.session_manager.create_session(
         user,
@@ -396,8 +396,8 @@ async def setup_mfa(current_user: User = Depends(get_current_user)):
             detail="MFA is already enabled",
         )
 
-    from security.mfa import hash_backup_codes
-    from security.mfa import setup_mfa as mfa_setup
+    from server.security.mfa import hash_backup_codes
+    from server.security.mfa import setup_mfa as mfa_setup
 
     # Generate MFA setup data
     secret, qr_code, backup_codes, provisioning_uri = mfa_setup(current_user.username)
@@ -440,7 +440,7 @@ async def verify_mfa_setup(
         )
 
     # Verify the token
-    from security.mfa import verify_totp_token
+    from server.security.mfa import verify_totp_token
 
     if not verify_totp_token(user.mfa_secret, verify_request.token):
         raise HTTPException(
@@ -466,7 +466,7 @@ async def disable_mfa(
 
     Requires password confirmation and optional MFA token.
     """
-    from security.auth import verify_password
+    from server.security.auth import verify_password
 
     # Verify password
     if not verify_password(disable_request.password, current_user.hashed_password):
@@ -483,7 +483,7 @@ async def disable_mfa(
                 detail="MFA token is required to disable MFA",
             )
 
-        from security.mfa import verify_mfa_token
+        from server.security.mfa import verify_mfa_token
 
         is_valid, _ = verify_mfa_token(
             current_user.mfa_secret,
@@ -533,7 +533,7 @@ async def regenerate_backup_codes(current_user: User = Depends(get_current_user)
             detail="MFA is not enabled",
         )
 
-    from security.mfa import generate_backup_codes, hash_backup_codes
+    from server.security.mfa import generate_backup_codes, hash_backup_codes
 
     # Generate new codes
     new_codes = generate_backup_codes()
@@ -691,7 +691,7 @@ async def reset_password(
 
     from sqlite3 import connect
 
-    from security.auth import hash_password
+    from server.security.auth import hash_password
 
     conn = connect(str(security_manager.db_path))
     cursor = conn.cursor()
@@ -959,7 +959,7 @@ async def list_my_sessions(current_user: User = Depends(get_current_user)):
 @router.get("/oauth2/providers", tags=["oauth2"])
 async def list_oauth2_providers():
     """List available OAuth2 providers."""
-    from security.oauth2 import get_oauth2_manager
+    from server.security.oauth2 import get_oauth2_manager
 
     oauth2_manager = get_oauth2_manager()
     enabled_providers = oauth2_manager.get_enabled_providers()
@@ -993,7 +993,7 @@ async def get_oauth2_authorization_url(
     Returns:
         Authorization URL and state
     """
-    from security.oauth2 import get_oauth2_manager
+    from server.security.oauth2 import get_oauth2_manager
 
     oauth2_manager = get_oauth2_manager()
     prov = oauth2_manager.get_provider(provider)
@@ -1046,7 +1046,7 @@ async def oauth2_login(
     Returns:
         JWT tokens and user information
     """
-    from security.oauth2 import get_oauth2_manager
+    from server.security.oauth2 import get_oauth2_manager
 
     security_manager = get_security_manager()
     oauth2_manager = get_oauth2_manager()
@@ -1090,7 +1090,7 @@ async def oauth2_login(
             # Create new user from OAuth2 data
             import secrets
 
-            from security import UserCreate, create_default_operator_role
+            from server.security import UserCreate, create_default_operator_role
 
             # Generate random password (user won't use it, OAuth2 only)
             random_password = secrets.token_urlsafe(32)
@@ -1135,7 +1135,7 @@ async def oauth2_login(
 
         # Create session, then mint the access token bound to it (same
         # revocable-session pattern as password login).
-        from security.models import AuthMethod as AuthMethodEnum
+        from server.security.models import AuthMethod as AuthMethodEnum
 
         ip_address = request.client.host if request.client else None
 
@@ -1204,7 +1204,7 @@ async def link_oauth2_account(
     Returns:
         OAuth2 link response with provider info
     """
-    from security.oauth2 import get_oauth2_manager
+    from server.security.oauth2 import get_oauth2_manager
 
     security_manager = get_security_manager()
     oauth2_manager = get_oauth2_manager()

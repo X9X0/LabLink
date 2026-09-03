@@ -24,7 +24,7 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-from equipment.bk_registry import (MANUFACTURER, PROTOCOL_FIXED,
+from server.equipment.bk_registry import (MANUFACTURER, PROTOCOL_FIXED,
                                    CATEGORY_LABELS,
                                    CATEGORY_TO_EQUIPMENT_TYPE, BKModel,
                                    candidate_bauds, is_bk_manufacturer,

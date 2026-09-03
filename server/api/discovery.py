@@ -3,7 +3,7 @@
 import asyncio
 from typing import List, Optional
 
-from discovery import (ConnectionHistoryEntry, ConnectionStatistics,
+from server.discovery import (ConnectionHistoryEntry, ConnectionStatistics,
                        DeviceAlias, DiscoveredDevice, DiscoveryScanRequest,
                        DiscoveryScanResult, DiscoveryStatus, LastKnownGood,
                        SmartRecommendation, get_discovery_manager)
@@ -532,7 +532,7 @@ async def scan_raspberry_pis(
     ```
     """
     try:
-        from discovery import pi_discovery
+        from server.discovery import pi_discovery
         import time
 
         start_time = time.perf_counter()
@@ -584,7 +584,7 @@ async def get_pi_discovery_status():
     ```
     """
     try:
-        from discovery import pi_discovery
+        from server.discovery import pi_discovery
 
         return {
             "scan_in_progress": pi_discovery.scan_in_progress,

@@ -46,8 +46,8 @@ class MockEquipmentHelper:
             List of registered equipment IDs
 
         Example:
-            from equipment.manager import EquipmentManager
-            from equipment.mock_helper import MockEquipmentHelper
+            from server.equipment.manager import EquipmentManager
+            from server.equipment.mock_helper import MockEquipmentHelper
 
             manager = EquipmentManager()
             await manager.initialize()
@@ -224,8 +224,8 @@ async def setup_demo_lab(equipment_manager) -> Dict[str, str]:
         Dictionary mapping equipment types to IDs
 
     Example:
-        from equipment.manager import EquipmentManager
-        from equipment.mock_helper import setup_demo_lab
+        from server.equipment.manager import EquipmentManager
+        from server.equipment.mock_helper import setup_demo_lab
 
         manager = EquipmentManager()
         await manager.initialize()

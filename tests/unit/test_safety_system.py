@@ -59,7 +59,7 @@ def main():
     print("Test 1: Safety Module Imports")
     print("-" * 70)
     try:
-        from equipment.safety import (
+        from server.equipment.safety import (
             SafetyLimits,
             SafetyValidator,
             SafetyViolation,
@@ -244,7 +244,7 @@ def main():
     print("Test 7: Safety Configuration in Settings")
     print("-" * 70)
     try:
-        from config.settings import settings
+        from server.config.settings import settings
 
         print(f"✓ Safety settings loaded:")
         print(f"  - Enable safety limits: {settings.enable_safety_limits}")
@@ -264,7 +264,7 @@ def main():
     print("Test 8: Safety API Endpoints")
     print("-" * 70)
     try:
-        from api import safety_router
+        from server.api import safety_router
 
         print(f"✓ Safety router loaded")
         print(f"  - Total endpoints: {len(safety_router.routes)}")
@@ -287,7 +287,7 @@ def main():
     print("Test 9: Equipment Driver Integration")
     print("-" * 70)
     try:
-        from equipment.bk_power_supply import BKPowerSupplyBase
+        from server.equipment.bk_power_supply import BKPowerSupplyBase
 
         # Check that safety features are in class
         has_safety = hasattr(BKPowerSupplyBase, '_initialize_safety')
@@ -324,7 +324,7 @@ def main():
     print("Test 10: Safe State on Disconnect")
     print("-" * 70)
     try:
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
         import inspect
 
         disconnect_source = inspect.getsource(equipment_manager.disconnect_device)

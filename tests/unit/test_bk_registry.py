@@ -6,7 +6,7 @@ programming manuals, which is where the awkward forms come from.
 
 import pytest
 
-from equipment.bk_registry import (CATEGORY_TO_EQUIPMENT_TYPE,
+from server.equipment.bk_registry import (CATEGORY_TO_EQUIPMENT_TYPE,
                                    DRIVEN_CATEGORIES, MODELS,
                                    PROTOCOL_FIXED, PROTOCOL_PROPRIETARY,
                                    PROTOCOL_SCPI, PROTOCOL_SIGLENT, USB_CDC,

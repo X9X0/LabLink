@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 from server.waveform.advanced_analysis import AdvancedWaveformAnalyzer
-from waveform.advanced_models import (
+from server.waveform.advanced_models import (
     JitterType,
     JitterConfig,
     SpectrogramConfig,

@@ -20,9 +20,7 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from backup.models import (
+from server.backup.models import (
     BackupType,
     BackupStatus,
     CompressionType,
@@ -30,7 +28,7 @@ from backup.models import (
     BackupRequest,
     RestoreRequest
 )
-from backup.manager import BackupManager
+from server.backup.manager import BackupManager
 
 
 class TestBackupManagerInit:
