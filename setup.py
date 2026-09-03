@@ -741,7 +741,7 @@ Examples:
         print_success("Setup completed successfully!")
         print("\nNext steps:")
         print("  1. Review and update server/.env configuration")
-        print("  2. Start the server: cd server && python3 main.py")
+        print("  2. Start the server: python3 -m server.main")
         print("  3. Run demo: python3 demo_acquisition_full.py")
         print("\nFor more information, see:")
         print("  • README.md - Project overview")

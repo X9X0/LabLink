@@ -14,6 +14,7 @@ log line, no failing test. These are the tests that would have caught it.
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -146,20 +147,50 @@ class TestStartupGuard:
         assert "_assert_single_import_path()" in body.split("def ", 1)[0]
 
 
+# Every Dockerfile that builds the server. The repo has two -- compose builds
+# docker/Dockerfile.server, build_docker.sh builds the root one -- and fixing
+# only the one in front of you is how they diverged in the first place.
+SERVER_DOCKERFILES = ["Dockerfile", "docker/Dockerfile.server"]
+
+
 class TestLaunchTarget:
     """The container and the direct run must name the same module."""
 
-    def test_dockerfile_launches_server_main_from_the_repo_root(self):
-        text = (REPO / "docker" / "Dockerfile.server").read_text(encoding="utf-8")
+    @pytest.mark.parametrize("dockerfile", SERVER_DOCKERFILES)
+    def test_dockerfile_launches_server_main_from_the_repo_root(self, dockerfile):
+        text = (REPO / dockerfile).read_text(encoding="utf-8")
 
         assert '"server.main:app"' in text, (
-            "launching `main:app` from inside server/ puts the package "
-            "directory on sys.path and reintroduces the second import path"
+            f"{dockerfile}: launching `main:app` from inside server/ puts the "
+            "package directory on sys.path and reintroduces the second import "
+            "path"
         )
         launch = text.rsplit("CMD", 1)[0]
         assert launch.rstrip().endswith("WORKDIR /app"), (
-            "the working directory must be the repo root, not server/"
+            f"{dockerfile}: the working directory must be the repo root, not "
+            "server/"
         )
+
+    @pytest.mark.parametrize("dockerfile", SERVER_DOCKERFILES)
+    def test_dockerfile_keeps_the_package_directory(self, dockerfile):
+        """`COPY server/ .` flattens the package out of existence.
+
+        The contents land in /app with no `server` directory above them, so
+        `import server.main` cannot resolve at all and the container dies at
+        startup -- before the guard in main.py ever runs.
+        """
+        text = (REPO / dockerfile).read_text(encoding="utf-8")
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            # The whole directory, not `COPY server/requirements.txt .`
+            if not stripped.startswith("COPY server/ "):
+                continue
+            destination = stripped.split()[-1]
+            assert destination.rstrip("/").endswith("/server"), (
+                f"{dockerfile}: {stripped!r} copies the package's contents "
+                f"into {destination}, leaving no `server` package to import"
+            )
 
     def test_direct_run_agrees_with_the_container(self):
         source = (REPO / "server" / "main.py").read_text(encoding="utf-8")
@@ -200,3 +231,53 @@ class TestLauncherStartsTheServerCorrectly:
         block = self._launch_block()
 
         assert "PYTHONPATH={lablink_root}" not in block
+
+
+# The shell scripts that start the server on a native (non-Docker) install.
+# install-client.sh is deliberately absent: it launches client/main.py, which
+# is a different entry point and not part of the server package.
+SERVER_LAUNCH_SCRIPTS = ["start_server.sh", "install-server.sh"]
+
+
+class TestShellLaunchersStartTheServerCorrectly:
+    """The native install path must agree with the container.
+
+    `cd server && python3 main.py` does not merely risk the duplicate shape --
+    since every intra-server import is spelled server.*, running from inside
+    the package means `import server.api` does not resolve at all and the
+    server dies on its first import.
+    """
+
+    @pytest.mark.parametrize("script", SERVER_LAUNCH_SCRIPTS)
+    def test_launches_the_module_not_the_file(self, script):
+        text = (REPO / script).read_text(encoding="utf-8")
+
+        assert "-m server.main" in text, (
+            f"{script}: the server must be started as a module from the repo "
+            "root, the way the container starts it"
+        )
+
+    @pytest.mark.parametrize("script", SERVER_LAUNCH_SCRIPTS)
+    def test_does_not_run_main_py_directly(self, script):
+        text = (REPO / script).read_text(encoding="utf-8")
+
+        offenders = [
+            line.strip() for line in text.splitlines()
+            # Comments naming the old form are how the next reader learns why
+            if not line.strip().startswith("#")
+            and re.search(r"python3?\s+main\.py", line)
+        ]
+
+        assert not offenders, (
+            f"{script}: {offenders} runs the file from inside the package; "
+            "`import server.x` cannot resolve from there"
+        )
+
+    def test_systemd_unit_works_from_the_repo_root(self):
+        """A unit file is the launcher that outlives the install script."""
+        text = (REPO / "install-server.sh").read_text(encoding="utf-8")
+
+        assert "WorkingDirectory=$LABLINK_DIR\n" in text, (
+            "the unit must run from the repo root, not $LABLINK_DIR/server"
+        )
+        assert "ExecStart=$LABLINK_DIR/server/venv/bin/python -m server.main" in text
