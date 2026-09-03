@@ -52,9 +52,15 @@ class TestClientServerIntegration:
             pytest.skip("Server not running")
 
     def test_server_info(self, server_url):
-        """Test server info endpoint."""
+        """Test server info endpoint.
+
+        `/` serves the dashboard HTML; the JSON description lives at `/api`.
+        This asked for the root and parsed it as JSON, which had never once
+        failed because the server never started in CI -- see the wait loop in
+        the workflow, which used to let a dead server through.
+        """
         try:
-            response = requests.get(server_url, timeout=5)
+            response = requests.get(f"{server_url}/api", timeout=5)
             assert response.status_code == 200
 
             data = response.json()
@@ -66,9 +72,13 @@ class TestClientServerIntegration:
             pytest.skip("Server not running")
 
     def test_equipment_list(self, server_url):
-        """Test equipment list endpoint."""
+        """Test equipment list endpoint.
+
+        `/api/equipment` is a 404 -- the router has no route at its own root,
+        and the list is at `/api/equipment/list`.
+        """
         try:
-            response = requests.get(f"{server_url}/api/equipment", timeout=5)
+            response = requests.get(f"{server_url}/api/equipment/list", timeout=5)
             assert response.status_code == 200
 
             data = response.json()
@@ -78,17 +88,23 @@ class TestClientServerIntegration:
             pytest.skip("Server not running")
 
     def test_discovery(self, server_url):
-        """Test equipment discovery."""
+        """Test equipment discovery.
+
+        Two things were wrong and neither could show: the response carries
+        `devices`, a list, not a `discovered` count; and discovery scans
+        VISA/serial, which takes 25s against a bench with real ports, so a
+        10s timeout raised ReadTimeout before any assertion ran.
+        """
         try:
             response = requests.post(
                 f"{server_url}/api/equipment/discover",
-                timeout=10
+                timeout=45
             )
             assert response.status_code == 200
 
             data = response.json()
-            assert "discovered" in data
-            assert isinstance(data["discovered"], int)
+            assert "devices" in data
+            assert isinstance(data["devices"], list)
 
         except requests.exceptions.ConnectionError:
             pytest.skip("Server not running")

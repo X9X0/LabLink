@@ -98,12 +98,18 @@ jobs:
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
-          # Wait for server to start
+          # Wait for server to start, and fail if it never does -- see the
+          # matching note in comprehensive-tests.yml. A dead server here means
+          # every integration test skips and the job still reports success.
           echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://localhost:8000/health > /dev/null; then
               echo "Server is up!"
               break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::Server did not start within 30s"
+              exit 1
             fi
             echo "Waiting... ($i/30)"
             sleep 1
