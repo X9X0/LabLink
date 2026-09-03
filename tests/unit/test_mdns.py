@@ -16,8 +16,6 @@ import pytest
 
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "client"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "server"))
-
 try:
     from zeroconf import Zeroconf
     ZEROCONF_AVAILABLE = True

@@ -15,7 +15,7 @@ class TestAlarmManagement:
         alarm_id = "alarm_001"
         mock_alarm_manager.create_alarm.return_value = alarm_id
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.post("/api/alarms", json=sample_alarm_data)
 
@@ -35,7 +35,7 @@ class TestAlarmManagement:
         }
         mock_alarm_manager.create_alarm.side_effect = Exception("Equipment not found")
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.post("/api/alarms", json=invalid_data)
 
@@ -55,7 +55,7 @@ class TestAlarmManagement:
         }
         mock_alarm_manager.get_alarm.return_value = mock_alarm
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.get(f"/api/alarms/{alarm_id}")
 
@@ -73,7 +73,7 @@ class TestAlarmManagement:
         ]
         mock_alarm_manager.get_all_alarms.return_value = mock_alarms
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.get("/api/alarms")
 
@@ -92,7 +92,7 @@ class TestAlarmManagement:
             "enabled": False,
         }
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.patch(f"/api/alarms/{alarm_id}", json=update_data)
 
@@ -104,7 +104,7 @@ class TestAlarmManagement:
         # Arrange
         alarm_id = "alarm_001"
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.delete(f"/api/alarms/{alarm_id}")
 
@@ -123,7 +123,7 @@ class TestAlarmTriggering:
         alarm_id = "alarm_001"
         ack_data = {"acknowledged_by": "user_001"}
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.post(f"/api/alarms/{alarm_id}/acknowledge", json=ack_data)
 
@@ -138,7 +138,7 @@ class TestAlarmTriggering:
             {"alarm_id": "alarm_002", "triggered_at": datetime.utcnow().isoformat()},
         ]
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.get("/api/alarms/triggered")
 
@@ -150,7 +150,7 @@ class TestAlarmTriggering:
         # Arrange
         alarm_id = "alarm_001"
 
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
             # Act
             response = client.get(f"/api/alarms/{alarm_id}/history")
 
@@ -203,7 +203,7 @@ class TestSchedulerJobManagement:
         job_id = "job_001"
         mock_scheduler_manager.create_job.return_value = job_id
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.post("/api/scheduler/jobs", json=sample_scheduler_job_data)
 
@@ -225,7 +225,7 @@ class TestSchedulerJobManagement:
         }
         mock_scheduler_manager.create_job.side_effect = Exception("Invalid cron expression")
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.post("/api/scheduler/jobs", json=invalid_data)
 
@@ -244,7 +244,7 @@ class TestSchedulerJobManagement:
         }
         mock_scheduler_manager.get_job.return_value = mock_job
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.get(f"/api/scheduler/jobs/{job_id}")
 
@@ -262,7 +262,7 @@ class TestSchedulerJobManagement:
         ]
         mock_scheduler_manager.get_all_jobs.return_value = mock_jobs
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.get("/api/scheduler/jobs")
 
@@ -281,7 +281,7 @@ class TestSchedulerJobManagement:
             "enabled": False,
         }
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.patch(f"/api/scheduler/jobs/{job_id}", json=update_data)
 
@@ -293,7 +293,7 @@ class TestSchedulerJobManagement:
         # Arrange
         job_id = "job_001"
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.delete(f"/api/scheduler/jobs/{job_id}")
 
@@ -386,8 +386,8 @@ class TestAlarmSchedulerIntegration:
         mock_scheduler_manager.create_job.return_value = job_id
         mock_alarm_manager.create_alarm.return_value = alarm_id
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager), \
-             patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager), \
+             patch("server.api.alarms.alarm_manager", mock_alarm_manager):
 
             # Create alarm
             alarm_data = {
@@ -430,7 +430,7 @@ class TestSchedulerJobTypes:
             "cron_expression": "0 2 * * *",  # 2 AM daily
         }
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.post("/api/scheduler/jobs", json=job_data)
 
@@ -449,7 +449,7 @@ class TestSchedulerJobTypes:
             "interval_minutes": 15,
         }
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.post("/api/scheduler/jobs", json=job_data)
 
@@ -469,7 +469,7 @@ class TestSchedulerJobTypes:
             "run_at": future_time,
         }
 
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Act
             response = client.post("/api/scheduler/jobs", json=job_data)
 
@@ -493,7 +493,7 @@ class TestCompleteWorkflows:
 
         # api/alarms.py does not use equipment_manager, so there is nothing
         # to patch for it here.
-        with patch("api.alarms.alarm_manager", mock_alarm_manager):
+        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
 
             # Step 1: Create alarm
             alarm_data = {
@@ -523,7 +523,7 @@ class TestCompleteWorkflows:
 
     def test_scheduler_job_lifecycle(self, client, mock_scheduler_manager):
         """Test complete scheduler workflow: create -> trigger -> pause -> resume -> delete."""
-        with patch("api.scheduler.scheduler_manager", mock_scheduler_manager):
+        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
             # Step 1: Create job
             job_data = {
                 "name": "Test job",

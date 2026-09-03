@@ -4,9 +4,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
-from waveform.analyzer import WaveformAnalyzer
-from waveform.manager import WaveformManager
-from waveform.models import (CursorData, CursorType, EnhancedMeasurements,
+from server.waveform.analyzer import WaveformAnalyzer
+from server.waveform.manager import WaveformManager
+from server.waveform.models import (CursorData, CursorType, EnhancedMeasurements,
                              ExtendedWaveformData, HistogramData,
                              MathChannelConfig, MathChannelResult,
                              PersistenceConfig, PersistenceMode,

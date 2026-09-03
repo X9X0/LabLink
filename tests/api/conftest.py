@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
-# Add server to path
-server_path = Path(__file__).parent.parent.parent / "server"
-sys.path.insert(0, str(server_path))
+# The repo root, so `server.*` resolves. Deliberately NOT server/ itself:
+# putting both on the path lets the same file import under two names, and
+# Python then builds two module objects with two sets of module-level
+# singletons. That is issue #197 -- a lock reaper polling a dictionary the
+# API never writes to.
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 @pytest.fixture
@@ -20,7 +23,7 @@ def mock_equipment_manager():
     mock_manager.equipment = {}
     mock_manager.initialize = AsyncMock()
     mock_manager.shutdown = AsyncMock()
-    from discovery.models import DiscoveredDevice, DiscoveryMethod
+    from server.discovery.models import DiscoveredDevice, DiscoveryMethod
 
     mock_manager.discover_devices = AsyncMock(return_value=[
         DiscoveredDevice(
@@ -258,17 +261,17 @@ def app_with_mocks(
     app = FastAPI(title="LabLink Test API")
 
     # Patch the managers before importing routers
-    with patch("equipment.manager.equipment_manager", mock_equipment_manager), \
-         patch("equipment.locks.lock_manager", mock_lock_manager), \
-         patch("equipment.safety.emergency_stop_manager", mock_emergency_stop_manager), \
-         patch("acquisition.acquisition_manager", mock_acquisition_manager), \
-         patch("alarm.alarm_manager", mock_alarm_manager), \
-         patch("scheduler.scheduler_manager", mock_scheduler_manager):
+    with patch("server.equipment.manager.equipment_manager", mock_equipment_manager), \
+         patch("server.equipment.locks.lock_manager", mock_lock_manager), \
+         patch("server.equipment.safety.emergency_stop_manager", mock_emergency_stop_manager), \
+         patch("server.acquisition.acquisition_manager", mock_acquisition_manager), \
+         patch("server.alarm.alarm_manager", mock_alarm_manager), \
+         patch("server.scheduler.scheduler_manager", mock_scheduler_manager):
 
         # Import and register routers
         try:
-            from api.equipment import router as equipment_router
-            from api.safety import router as safety_router
+            from server.api.equipment import router as equipment_router
+            from server.api.safety import router as safety_router
             # Uncomment as more routers are tested
             # from api.acquisition import router as acquisition_router
             # from api.alarms import router as alarms_router

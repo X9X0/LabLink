@@ -18,7 +18,7 @@ from .models import (JobExecution, JobHistory, JobStatus, ScheduleConfig,
 from .storage import SchedulerStorage
 
 if TYPE_CHECKING:
-    from websocket_server import StreamManager
+    from server.websocket_server import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -613,8 +613,8 @@ class SchedulerManager:
             config: Job configuration with profile_id
         """
         try:
-            from equipment.manager import equipment_manager
-            from equipment.profiles import profile_manager
+            from server.equipment.manager import equipment_manager
+            from server.equipment.profiles import profile_manager
 
             if not config.equipment_id:
                 logger.warning(
@@ -647,7 +647,7 @@ class SchedulerManager:
             ValueError: If profile not found
         """
         try:
-            from equipment.profiles import profile_manager
+            from server.equipment.profiles import profile_manager
 
             profile = profile_manager.get_profile(profile_id)
             if not profile:
@@ -668,7 +668,7 @@ class SchedulerManager:
             error: Exception that caused failure
         """
         try:
-            from alarm import AlarmSeverity, alarm_manager
+            from server.alarm import AlarmSeverity, alarm_manager
 
             alarm_manager.create_alarm(
                 source=f"scheduler.{config.job_id}",
@@ -694,8 +694,8 @@ class SchedulerManager:
 
     async def _run_acquisition(self, config: ScheduleConfig) -> dict:
         """Run scheduled acquisition."""
-        from acquisition import AcquisitionConfig, acquisition_manager
-        from equipment.manager import equipment_manager
+        from server.acquisition import AcquisitionConfig, acquisition_manager
+        from server.equipment.manager import equipment_manager
 
         acq_config = AcquisitionConfig(**config.parameters)
         equipment = equipment_manager.get_equipment(config.equipment_id)
@@ -707,14 +707,14 @@ class SchedulerManager:
 
     async def _capture_state(self, config: ScheduleConfig) -> dict:
         """Capture equipment state."""
-        from equipment.state import state_manager
+        from server.equipment.state import state_manager
 
         state = await state_manager.capture_state(config.equipment_id)
         return {"state_id": state.state_id, "timestamp": state.timestamp.isoformat()}
 
     async def _take_measurement(self, config: ScheduleConfig) -> dict:
         """Take single measurement."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(config.equipment_id)
         command = config.parameters.get("command", "get_readings")
@@ -726,7 +726,7 @@ class SchedulerManager:
 
     async def _execute_command(self, config: ScheduleConfig) -> dict:
         """Execute equipment command."""
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(config.equipment_id)
         command = config.parameters.get("command")
@@ -737,7 +737,7 @@ class SchedulerManager:
 
     async def _run_equipment_test(self, config: ScheduleConfig) -> dict:
         """Run equipment diagnostic test."""
-        from diagnostics import diagnostics_manager
+        from server.diagnostics import diagnostics_manager
 
         equipment_id = config.equipment_id
         test_name = config.parameters.get("test_name", "connection")

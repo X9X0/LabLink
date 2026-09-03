@@ -15,9 +15,7 @@ from unittest.mock import Mock, patch, MagicMock
 import io
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from security.mfa import (
+from server.security.mfa import (
     generate_totp_secret,
     generate_qr_code,
     generate_provisioning_uri,

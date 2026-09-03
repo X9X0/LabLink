@@ -9,11 +9,8 @@ import os
 import sys
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../server"))
-
-from security.auth import AuthConfig, LoginAttemptTracker
-from security.manager import SecurityManager
+from server.security.auth import AuthConfig, LoginAttemptTracker
+from server.security.manager import SecurityManager
 
 
 @pytest.fixture

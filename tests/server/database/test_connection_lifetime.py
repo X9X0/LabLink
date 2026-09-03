@@ -12,11 +12,8 @@ import sys
 from datetime import datetime
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../server"))
-
-from database.manager import DatabaseManager
-from database.models import CommandRecord, CommandStatus
+from server.database.manager import DatabaseManager
+from server.database.models import CommandRecord, CommandStatus
 
 
 def open_fd_count():

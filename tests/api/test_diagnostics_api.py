@@ -174,7 +174,7 @@ def diagnostics_client(mock_diagnostics_manager, mock_equipment_manager_for_diag
     app = FastAPI()
 
     with patch("server.api.diagnostics.diagnostics_manager", mock_diagnostics_manager), \
-         patch("equipment.manager.equipment_manager", mock_equipment_manager_for_diagnostics):
+         patch("server.equipment.manager.equipment_manager", mock_equipment_manager_for_diagnostics):
 
         # Import and register diagnostics router
         from server.api.diagnostics import router as diagnostics_router

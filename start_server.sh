@@ -20,6 +20,11 @@ echo "Activating virtual environment..."
 source venv/bin/activate
 
 # Start the server
+#
+# From the repo root, naming the module -- not `cd server && python3 main.py`.
+# Running it from inside the package puts server/ on sys.path, so `import
+# server.x` cannot resolve at all, and the arrangement that used to make it
+# work imported the same file under two names (issue #197). The server now
+# refuses to start in that shape.
 echo "Starting LabLink server..."
-cd server
-python3 main.py
+python3 -m server.main "$@"

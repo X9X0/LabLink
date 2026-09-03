@@ -13,29 +13,27 @@ from pathlib import Path
 
 # Add server to path
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../server'))
-
-from security.auth import (
+from server.security.auth import (
     hash_password, verify_password, create_access_token,
     create_refresh_token, AuthConfig
 )
-from security.models import (
+from server.security.models import (
     User, Role, RoleType, Permission, PermissionAction, ResourceType,
     create_default_admin_role, create_default_operator_role,
     create_default_viewer_role
 )
-from security.mfa import (
+from server.security.mfa import (
     generate_totp_secret, generate_provisioning_uri, generate_qr_code,
     verify_totp_token, generate_backup_codes, hash_backup_code, verify_backup_code
 )
-from database.manager import DatabaseManager
-from database.models import CommandRecord, MeasurementRecord, CommandStatus
-from backup.manager import BackupManager
-from backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
-from discovery.manager import DiscoveryManager
-from discovery.models import DiscoveryConfig, DiscoveredDevice, DeviceType, DiscoveryMethod
-from scheduler.manager import SchedulerManager
-from scheduler.models import ScheduleConfig, ScheduleType, TriggerType
+from server.database.manager import DatabaseManager
+from server.database.models import CommandRecord, MeasurementRecord, CommandStatus
+from server.backup.manager import BackupManager
+from server.backup.models import BackupConfig, BackupRequest, BackupType, CompressionType
+from server.discovery.manager import DiscoveryManager
+from server.discovery.models import DiscoveryConfig, DiscoveredDevice, DeviceType, DiscoveryMethod
+from server.scheduler.manager import SchedulerManager
+from server.scheduler.models import ScheduleConfig, ScheduleType, TriggerType
 
 
 class TestSecurityWorkflow:

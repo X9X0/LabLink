@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, AsyncMock
 # Add parent directory to path
 sys.path.append("..")
 
-from equipment.rigol_scope import RigolDS1104
-from equipment.rigol_electronic_load import RigolDL3021A
-from equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.rigol_scope import RigolDS1104
+from server.equipment.rigol_electronic_load import RigolDL3021A
+from server.equipment.bk_power_supply import BK9205B, BK1685B
 
 
 class TestResults:
