@@ -141,6 +141,9 @@ class ControlPanel(QWidget):
     """Advanced equipment control panel with visualization."""
 
     equipment_selected = pyqtSignal(str)
+    # Something the user needs told about, shown in the main window's status
+    # bar. Currently: control of an instrument passing to somebody else.
+    status_message = pyqtSignal(str)
 
     def __init__(self, client: Optional[LabLinkClient] = None, parent=None):
         """Initialize control panel.
@@ -166,6 +169,15 @@ class ControlPanel(QWidget):
         # Timer for reading updates (single timer to prevent serial port overload)
         self.readings_timer = QTimer()
         self.readings_timer.timeout.connect(self._update_readings)
+
+        # Lock state changes without us doing anything: it counts down, someone
+        # else can take or release it, and it can expire. Polled slowly -- this
+        # is a server-side query, not a serial one, and the countdown only needs
+        # to look alive.
+        self.lock_timer = QTimer()
+        self.lock_timer.timeout.connect(self._poll_lock_status)
+        self._lock_poll_in_flight = False
+        self._had_control = False
 
         self._setup_ui()
 
@@ -219,6 +231,20 @@ class ControlPanel(QWidget):
         self.equipment_info_label = QLabel("No equipment selected")
         self.equipment_info_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         layout.addWidget(self.equipment_info_label)
+
+        # Who holds this instrument. Always on screen, because "why will it not
+        # let me set anything" is otherwise unanswerable from the interface.
+        from client.ui.equipment_lock_dialog import LockStatusWidget
+
+        lock_row = QHBoxLayout()
+        self.lock_status_widget = LockStatusWidget()
+        lock_row.addWidget(self.lock_status_widget)
+        lock_row.addStretch()
+        self.manage_lock_button = QPushButton("Manage lock…")
+        self.manage_lock_button.clicked.connect(self._show_lock_dialog)
+        self.manage_lock_button.setEnabled(False)
+        lock_row.addWidget(self.manage_lock_button)
+        layout.addLayout(lock_row)
 
         # Control section
         control_group = self._create_control_section()
@@ -484,6 +510,94 @@ class ControlPanel(QWidget):
 
         return widget
 
+    def _set_controls_enabled(self, enabled: bool):
+        """Enable or disable the controls that send commands.
+
+        Readings stay live either way: not holding the lock means you cannot
+        change the instrument, not that you cannot watch it.
+        """
+        for name in ("voltage_dial", "voltage_spinbox", "current_dial",
+                     "current_spinbox", "output_button"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.setEnabled(enabled)
+
+    def _apply_lock_status(self, status: Optional[dict]):
+        """Render a lock status and gate the controls to match."""
+        if status is None:
+            self.lock_status_widget.update_status(None)
+            self.manage_lock_button.setEnabled(False)
+            self._had_control = False
+            return
+
+        mine = bool(self.client) and self.client.holds_lock(status)
+        self.lock_status_widget.update_status(status, is_mine=mine)
+        self.manage_lock_button.setEnabled(True)
+        self._set_controls_enabled(mine)
+
+        # Say so when control is taken away mid-session. Controls greying out
+        # with no explanation is the thing this feature exists to stop, and
+        # losing a lock to an override or an expiry is exactly when it happens.
+        if self._had_control and not mine:
+            from client.ui.equipment_lock_dialog import describe_holder
+
+            holder = (describe_holder(status) if status.get("locked")
+                      else "no one - it expired")
+            self.status_message.emit(
+                f"Control of this instrument has passed to {holder}"
+            )
+            logger.warning(f"Lost the lock on the selected equipment to {holder}")
+        self._had_control = mine
+
+    @qasync.asyncSlot()
+    async def _poll_lock_status(self):
+        """Re-read the lock off the GUI thread."""
+        if not (self.client and self.selected_equipment):
+            return
+        if self._lock_poll_in_flight:
+            return
+        self._lock_poll_in_flight = True
+        try:
+            status = await call_blocking(
+                self.client.get_lock_status, self.selected_equipment.equipment_id
+            )
+            self._apply_lock_status(status)
+        except Exception as exc:
+            logger.debug(f"Could not read lock status: {exc}")
+        finally:
+            self._lock_poll_in_flight = False
+
+    def _refresh_lock_status(self):
+        """Ask for a lock refresh now, without blocking the caller."""
+        if not (self.client and self.selected_equipment):
+            self._apply_lock_status(None)
+            return
+        self._poll_lock_status()
+
+    def _show_lock_dialog(self):
+        """Open the take/release/override dialog for the selected equipment."""
+        if not (self.client and self.selected_equipment):
+            return
+        from client.ui.equipment_lock_dialog import EquipmentLockDialog
+
+        dialog = EquipmentLockDialog(
+            self.client,
+            self.selected_equipment.equipment_id,
+            getattr(self.selected_equipment, "name", ""),
+            self,
+        )
+        dialog.exec()
+
+        # The dialog may have taken or given up control.
+        self._refresh_lock_status()
+        try:
+            status = self.client.get_lock_status(
+                self.selected_equipment.equipment_id
+            )
+            self._set_controls_enabled(self.client.holds_lock(status))
+        except Exception:
+            pass
+
     def _on_equipment_selected(self):
         """Handle equipment selection."""
         selected_items = self.equipment_list_widget.selectedItems()
@@ -497,6 +611,9 @@ class ControlPanel(QWidget):
                     logger.error(f"Error releasing lock: {e}")
             self.selected_equipment = None
             self._stop_data_acquisition()
+            # Clear the strip too, or it keeps naming a lock on equipment that
+            # is no longer selected.
+            self._apply_lock_status(None)
             return
 
         equipment_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
@@ -517,36 +634,40 @@ class ControlPanel(QWidget):
                     f"{equipment.name} - {equipment.manufacturer} {equipment.model}"
                 )
 
-                # Acquire exclusive lock for control
+                # Take the lock for control, without taking it from anyone.
+                #
+                # This used to force-release whatever it found first and then
+                # acquire, so selecting equipment silently stole control from
+                # whoever had it -- which made the lock meaningless in the GUI
+                # and unattributable when it mattered. Overriding is now a
+                # deliberate act in the lock dialog, with the holder named.
                 if self.client:
                     try:
-                        # First, try to force-release any existing lock (clears stale locks from previous sessions)
-                        # This will silently fail if there's no lock - that's OK
-                        try:
-                            self.client.release_lock(equipment_id, force=True)
-                            logger.info(f"Force-released any existing lock on {equipment_id}")
-                        except Exception as e:
-                            logger.debug(f"Could not force-release lock (may not exist): {e}")
-                            pass  # Ignore errors - lock might not exist
-
-                        # Now try to acquire the lock
-                        self.client.acquire_lock(equipment_id, lock_mode="exclusive")
-                        logger.info(f"Acquired exclusive lock on {equipment_id}")
+                        status = self.client.get_lock_status(equipment_id)
                     except Exception as e:
-                        logger.error(f"Error acquiring lock: {e}")
-                        # Show user-friendly error if lock acquisition failed
-                        if "409" in str(e) or "Conflict" in str(e):
-                            from PyQt6.QtWidgets import QMessageBox
-                            QMessageBox.warning(
-                                self,
-                                "Equipment Locked",
-                                f"Cannot control {equipment.name} - it is locked by another session.\n\n"
-                                "This can happen if:\n"
-                                "• Another client is using this equipment\n"
-                                "• A previous session didn't release the lock\n\n"
-                                "You can view readings, but cannot send control commands.",
+                        logger.error(f"Could not read lock status: {e}")
+                        status = {}
+
+                    if status.get("locked") and not self.client.holds_lock(status):
+                        from client.ui.equipment_lock_dialog import describe_holder
+
+                        holder = describe_holder(status)
+                        logger.info(
+                            f"{equipment_id} is locked by {holder}; read-only"
+                        )
+                        self._set_controls_enabled(False)
+                    else:
+                        try:
+                            self.client.acquire_lock(
+                                equipment_id, lock_mode="exclusive"
                             )
-                        # Continue anyway - allow read-only access
+                            logger.info(f"Acquired exclusive lock on {equipment_id}")
+                            self._set_controls_enabled(True)
+                        except Exception as e:
+                            logger.error(f"Error acquiring lock: {e}")
+                            self._set_controls_enabled(False)
+
+                    self._refresh_lock_status()
 
                 # Get equipment status to configure controls based on capabilities
                 try:
@@ -701,9 +822,15 @@ class ControlPanel(QWidget):
         # This helps prevent empty serial responses from the BK power supply
         QTimer.singleShot(500, lambda: self.readings_timer.start(1000))  # 500ms delay, then 1 Hz
 
+        # Poll the lock at 5s. Slower than the readings on purpose: it is a
+        # server query rather than a serial one, and the countdown only has to
+        # look alive. It matters mostly for noticing control being taken away.
+        self.lock_timer.start(5000)
+
     def _stop_data_acquisition(self):
         """Stop acquiring data."""
         self.readings_timer.stop()
+        self.lock_timer.stop()
 
     @qasync.asyncSlot()
     async def _update_readings(self):
