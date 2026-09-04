@@ -52,6 +52,7 @@ Complete documentation for the LabLink laboratory equipment control system.
 | [Testing Guide](TESTING.md) | Running the suites, fixtures and markers | Developers |
 | [Testing Infrastructure](TESTING_INFRASTRUCTURE.md) | CI/CD workflows and coverage tooling | Contributors |
 | [Development Roadmap](../ROADMAP.md) | Feature roadmap and plans | Contributors |
+| [Hardware Bench Log](BENCH_LOG.md) | What the Pi deployments and instruments actually did, dated | Contributors |
 
 ### Deployment & Operations
 
@@ -84,9 +85,12 @@ needs someone who knows which one people actually read:
   [GETTING_STARTED_CLIENT.md](GETTING_STARTED_CLIENT.md), though these do
   address different audiences.
 
-The `phase2_*` and `phase3_*` progress reports are point-in-time records
-rather than documentation; they belong with [history/](history/) whenever
-someone is confident nothing links to them.
+The `phase2_*` and `phase3_*` progress reports have moved to
+[history/](history/): they are point-in-time records rather than
+documentation. So has the hardware bench log, which is now
+[BENCH_LOG.md](BENCH_LOG.md) rather than `WINDOWS_TESTING.md` -- it began as a
+Windows test plan and became a running record of what the Pi deployments and
+the bench instruments actually did.
 
 ## Documentation Sections
 

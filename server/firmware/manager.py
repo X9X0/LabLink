@@ -456,8 +456,14 @@ class FirmwareManager:
             if request.create_backup:
                 progress.progress_percent = 30.0
                 progress.current_step = "Creating firmware backup"
-                # TODO: Implement backup logic if equipment supports it
-                logger.info("Firmware backup created (placeholder)")
+                # Not implemented. It logged "Firmware backup created" at INFO,
+                # which reads in the journal exactly like a backup that
+                # happened -- and the caller asked for one precisely because
+                # they wanted something to fall back on.
+                logger.warning(
+                    "create_backup was requested but firmware backup is not "
+                    "implemented; no backup exists for this update"
+                )
 
             # Step 4: Upload firmware to equipment
             progress.status = FirmwareUpdateStatus.UPLOADING
@@ -515,10 +521,25 @@ class FirmwareManager:
             progress.completed_at = datetime.now()
 
             # Auto-rollback if requested
+            #
+            # Rollback is not implemented. This used to set the status to
+            # ROLLED_BACK regardless, and the history record derives
+            # `rolled_back` from that status -- so a failed update reported the
+            # instrument as recovered when nothing had touched it. On lab
+            # equipment firmware that is the most expensive kind of wrong
+            # answer, so the status stays FAILED and the operator is told
+            # plainly that the device needs attention.
             if request.auto_rollback_on_failure:
-                logger.info(f"Attempting auto-rollback for update {update_id}")
-                # TODO: Implement rollback logic
-                progress.status = FirmwareUpdateStatus.ROLLED_BACK
+                logger.error(
+                    f"Auto-rollback was requested for update {update_id} but "
+                    f"rollback is not implemented. The device has NOT been "
+                    f"restored and may be in an indeterminate state."
+                )
+                progress.error_message = (
+                    f"{progress.error_message} "
+                    "(auto-rollback requested but not implemented; the device "
+                    "was not restored)"
+                ).strip()
 
             # Record in history
             await self._record_history(update_id, request, progress, success=False)

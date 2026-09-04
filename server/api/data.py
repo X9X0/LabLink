@@ -21,9 +21,16 @@ async def configure_stream(config: DataStreamConfig):
         if equipment is None:
             raise HTTPException(status_code=404, detail="Device not found")
 
-        # Store streaming configuration
-        # TODO: Implement streaming manager
-        return {"status": "configured", "config": config.dict()}
+        # There is no streaming manager to configure. This used to answer
+        # {"status": "configured"} and store nothing, so a caller had no way to
+        # tell the feature apart from a working one. 501 says what is true.
+        # Nothing in the client calls this endpoint.
+        raise HTTPException(
+            status_code=501,
+            detail="Stream configuration is not implemented: there is no "
+                   "streaming manager to store this configuration. Use the "
+                   "WebSocket endpoint for live data.",
+        )
     except HTTPException:
         raise
     except Exception as e:

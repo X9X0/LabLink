@@ -46,3 +46,9 @@ pydantic[email]>=2.0
 # with no *IDN? to fall back on -- so losing them loses the only coverage of
 # how that instrument family is recognised at all.
 pyserial>=3.5
+
+# And once more for tests/performance/test_benchmarks.py, which skips with
+# "pytest-benchmark not installed" for anyone who installs only these
+# requirements. CI has been papering over it with an ad-hoc `pip install`
+# line in the workflow, so the suite passed there and skipped everywhere else.
+pytest-benchmark>=4.0

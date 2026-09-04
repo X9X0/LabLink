@@ -1,45 +1,24 @@
-# Testing the Windows image builder
+# Hardware bench log
 
-Branch: `feat/native-pi-image-builder` (PR #190)
+A running record of what the Raspberry Pi deployments and the instruments on
+the bench actually did, in the order it happened. Entries are appended; an
+earlier one is corrected only by a later one that says so explicitly, which is
+why the corrections are still here rather than edited away.
 
-## ▶ Next task
+Most of this cannot be recovered from the code or the commit history. It is
+what a particular Pi, a particular card reader and a particular power supply
+did on a given day -- including the several occasions where that contradicted
+what the code implied, and the reasoning that was wrong before it was right.
 
-**End-to-end through the GUI: build an image, write the card, boot the Pi.**
-Every stage has now been done in isolation; none has been done as one chain,
-and the card write in particular has never succeeded from the wizard.
+It began as a test plan for the Windows image builder (PR #190) and kept
+going, through the SD card writer, the live-Pi acceptance suite, the B&K
+instruments, and the root cause of #197. The original "next task" at the top
+of this file -- the end-to-end run through the GUI -- was completed on
+2026-09-01 and is recorded below, so it has been removed from the header
+rather than left standing as a pending instruction.
 
-1. `git pull`, then launch the client from the 3.12 venv.
-2. Confirm the status bar reads `feat/native-pi-image-builder` **before doing
-   anything else**. If it does not, old code is running and the run proves
-   nothing.
-3. **Tools → Build Raspberry Pi Image...**, and build one.
-4. Write the card with the new writer — this is the step that has never
-   worked from the wizard.
-5. Boot the Pi from that card.
-
-What to watch, and record either way:
-
-- **The generated password**, if the field is left blank. It must be visible
-  *before* the card is written; it exists nowhere else. If it is easy to miss
-  on screen, that is a finding.
-- **A UAC prompt at the card write, and only there.** The raw write needs
-  elevation and cannot self-elevate. Building an image still must not prompt.
-- **Whether the insert-the-card flow reads clearly** to someone who has not
-  read the code. Two disks appearing at once should be reported as ambiguous
-  rather than resolved by picking one — worth provoking with a spare USB
-  stick if there is one.
-- **On boot**: the console banner carrying the generated password, and that
-  it disappears after `passwd`. Then `tests/hardware/test_live_pi.py` against
-  it — 25+ passed from a wizard-built, wizard-written card is the end of the
-  chain.
-
-**Writing the card is the only destructive step in this document.** If the
-insertion detection is at all unclear about which disk it chose, stop and
-report rather than confirming through it.
-
-Append findings here as before. Record it in the same detail if it all works:
-"it worked" from a path nothing has ever exercised is a result, not a
-non-event.
+The sections that follow the status table are the original procedure for
+building and testing an image on Windows, which is still current.
 
 ## Status
 
