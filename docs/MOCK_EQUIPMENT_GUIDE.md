@@ -301,7 +301,7 @@ Scope 3: 1000 points
 Run the interactive demo:
 
 ```bash
-python demo_mock_equipment.py
+python examples/demo_mock_equipment.py
 ```
 
 **Demo Menu:**
@@ -550,7 +550,7 @@ await manager.connect_device("MOCK::SCOPE", EquipmentType.OSCILLOSCOPE, "MockSco
 cd /path/to/LabLink
 
 # Run with proper Python path
-PYTHONPATH=. python demo_mock_equipment.py
+PYTHONPATH=. python examples/demo_mock_equipment.py
 ```
 
 ---
@@ -609,7 +609,7 @@ async def setup_multi_scope_lab(
 
 ## 🎓 Next Steps
 
-- **Try the demo script**: `python demo_mock_equipment.py`
+- **Try the demo script**: `python examples/demo_mock_equipment.py`
 - **Write tests**: Use mock equipment in your test suite
 - **Explore the code**: Check `server/equipment/mock/` for implementation details
 - **Contribute**: Add new mock equipment types or enhance existing ones
@@ -634,7 +634,7 @@ export LABLINK_ENABLE_MOCK_EQUIPMENT=true
 python -m server.main
 
 # Run demo
-python demo_mock_equipment.py
+python examples/demo_mock_equipment.py
 
 # Run tests
 pytest tests/ -v
@@ -645,5 +645,5 @@ pytest tests/ -v
 *For more information, see:*
 - `server/equipment/mock/` - Mock equipment implementation
 - `server/equipment/mock_helper.py` - Helper utilities
-- `demo_mock_equipment.py` - Interactive demo script
+- `examples/demo_mock_equipment.py` - Interactive demo script
 - API documentation: `http://localhost:8000/docs`
