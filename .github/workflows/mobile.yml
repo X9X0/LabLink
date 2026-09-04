@@ -1,0 +1,54 @@
+name: Mobile
+
+# Nothing checked mobile/ until now. That is how a dependency bump Expo itself
+# rejects (#181: React Native 0.84 under SDK 54, which pins 0.81) could sit open
+# for six months, and how three type errors went unnoticed in a directory with
+# two commits.
+#
+# Scoped to mobile/** so it stays out of the way of the Python work, which
+# shares none of these dependencies.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+
+jobs:
+  check:
+    name: Install, SDK check, typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Metro 0.83 requires >=20.19.4; anything older only warns at install
+          # time and then fails somewhere less obvious.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check dependencies against the Expo SDK
+        # Expo pins react, react-native and several native modules per SDK
+        # version. This is the check that would have failed #181: it reports
+        # every package whose version disagrees with the installed SDK, and
+        # exits non-zero when any do.
+        run: npx expo install --check
+
+      - name: Typecheck
+        run: npx tsc --noEmit

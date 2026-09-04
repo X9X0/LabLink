@@ -8,20 +8,24 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  StyleProp,
   ViewStyle,
   TextStyle,
 } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger';
+type ButtonSize = 'small' | 'medium' | 'large';
+
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
-  size?: 'small' | 'medium' | 'large';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -34,18 +38,18 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
 }) => {
-  const buttonStyle = [
+  const buttonStyle: StyleProp<ViewStyle> = [
     styles.button,
-    styles[`button${variant.charAt(0).toUpperCase() + variant.slice(1)}` as keyof typeof styles],
-    styles[`button${size.charAt(0).toUpperCase() + size.slice(1)}` as keyof typeof styles],
+    buttonVariants[variant],
+    buttonSizes[size],
     disabled && styles.buttonDisabled,
     style,
   ];
 
-  const textStyleCombined = [
+  const textStyleCombined: StyleProp<TextStyle> = [
     styles.text,
-    styles[`text${variant.charAt(0).toUpperCase() + variant.slice(1)}` as keyof typeof styles],
-    styles[`text${size.charAt(0).toUpperCase() + size.slice(1)}` as keyof typeof styles],
+    textVariants[variant],
+    textSizes[size],
     disabled && styles.textDisabled,
     textStyle,
   ];
@@ -139,3 +143,34 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+
+// Explicit maps, rather than building the style key from the variant string.
+// A computed key forces TypeScript to widen the lookup to every entry in the
+// sheet -- text styles included -- so the ViewStyle array picked up fontWeight
+// and stopped type-checking. These also make an unknown variant a compile
+// error instead of undefined at render time.
+const buttonVariants: Record<ButtonVariant, ViewStyle> = {
+  primary: styles.buttonPrimary,
+  secondary: styles.buttonSecondary,
+  outline: styles.buttonOutline,
+  danger: styles.buttonDanger,
+};
+
+const buttonSizes: Record<ButtonSize, ViewStyle> = {
+  small: styles.buttonSmall,
+  medium: styles.buttonMedium,
+  large: styles.buttonLarge,
+};
+
+const textVariants: Record<ButtonVariant, TextStyle> = {
+  primary: styles.textPrimary,
+  secondary: styles.textSecondary,
+  outline: styles.textOutline,
+  danger: styles.textDanger,
+};
+
+const textSizes: Record<ButtonSize, TextStyle> = {
+  small: styles.textSmall,
+  medium: styles.textMedium,
+  large: styles.textLarge,
+};
