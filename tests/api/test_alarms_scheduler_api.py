@@ -1,552 +1,415 @@
-"""Tests for alarms and scheduler API endpoints."""
+"""Alarm and scheduler API tests, against the API rather than around it.
+
+Every test in this file used to pass without touching the endpoints it names.
+The alarm and scheduler routers were commented out of the test app, so each
+request returned 404 -- and each assertion accepted 404:
+
+    assert response.status_code in [200, 404]
+
+Which holds whether the API works perfectly or does not exist. Twenty-six
+tests reported green over sixteen alarm routes and twelve scheduler routes
+that had never been exercised, and three more skipped with "Alarms API not
+implemented" while `server/api/alarms.py` sat there implementing it. The
+requests were also aimed at `/api/alarms`, which is not a route; the real one
+is `/api/alarms/create`.
+
+These now run against the real managers via the `alarms_client` fixture: the
+alarm manager is in-memory, and the scheduler gets a temporary SQLite file. No
+assertion accepts a 404 unless absence is the thing being tested.
+"""
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from datetime import datetime, timedelta
 
 
-@pytest.mark.api
+def alarm_payload(**overrides):
+    """A valid CreateAlarmRequest body.
+
+    `enabled` defaults to False: creating an enabled threshold alarm starts a
+    monitoring task against equipment that does not exist here, and the point
+    of most of these tests is the API, not the monitor.
+    """
+    payload = {
+        "name": "Overvoltage",
+        "description": "Supply above its limit",
+        "equipment_id": "ps_001",
+        "parameter": "voltage",
+        "alarm_type": "threshold",
+        "condition": "greater_than",
+        "severity": "warning",
+        "threshold": 12.5,
+        "enabled": False,
+        "tags": ["bench"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def job_payload(**overrides):
+    """A valid CreateJobRequest body."""
+    payload = {
+        "name": "Nightly measurement",
+        "description": "Take a reading at 9am",
+        "schedule_type": "measurement",
+        "equipment_id": "ps_001",
+        "trigger_type": "cron",
+        "cron_expression": "0 9 * * *",
+        "enabled": False,
+        "tags": ["bench"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def create_alarm(client, **overrides) -> str:
+    response = client.post("/api/alarms/create", json=alarm_payload(**overrides))
+    assert response.status_code == 200, response.text
+    return response.json()["alarm_id"]
+
+
+def create_job(client, **overrides) -> str:
+    response = client.post("/api/scheduler/jobs/create", json=job_payload(**overrides))
+    assert response.status_code == 200, response.text
+    return response.json()["job_id"]
+
+
 class TestAlarmManagement:
-    """Tests for alarm management endpoints."""
+    """Alarm CRUD."""
 
-    def test_create_alarm_success(self, client, mock_alarm_manager, sample_alarm_data):
-        """Test successful alarm creation."""
-        # Arrange
-        alarm_id = "alarm_001"
-        mock_alarm_manager.create_alarm.return_value = alarm_id
+    def test_create_alarm_success(self, alarms_client):
+        response = alarms_client.post("/api/alarms/create", json=alarm_payload())
 
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.post("/api/alarms", json=sample_alarm_data)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["success"] is True
+        assert body["alarm_id"]
 
-            # Assert - endpoint may not exist yet
-            if response.status_code in [200, 201]:
-                data = response.json()
-                assert "alarm_id" in data or "id" in data
-                mock_alarm_manager.create_alarm.assert_called_once()
+    def test_a_created_alarm_is_retrievable(self, alarms_client):
+        """The old version asserted a status code and never read anything back."""
+        alarm_id = create_alarm(alarms_client, name="Undervoltage", threshold=4.5)
 
-    def test_create_alarm_invalid_equipment(self, client, mock_alarm_manager):
-        """Test creating alarm with invalid equipment ID."""
-        # Arrange
-        invalid_data = {
-            "equipment_id": "nonexistent",
-            "alarm_type": "overvoltage",
-            "threshold": 15.0,
-        }
-        mock_alarm_manager.create_alarm.side_effect = Exception("Equipment not found")
+        alarm = alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]
 
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.post("/api/alarms", json=invalid_data)
+        assert alarm["name"] == "Undervoltage"
+        assert alarm["threshold"] == 4.5
+        assert alarm["parameter"] == "voltage"
 
-            # Assert
-            assert response.status_code in [400, 404, 500]
+    def test_create_alarm_rejects_a_missing_required_field(self, alarms_client):
+        response = alarms_client.post("/api/alarms/create", json={"name": "no parameter"})
 
-    def test_get_alarm_info(self, client, mock_alarm_manager):
-        """Test getting alarm information."""
-        # Arrange
-        alarm_id = "alarm_001"
-        mock_alarm = {
-            "alarm_id": alarm_id,
-            "equipment_id": "test_psu_001",
-            "alarm_type": "overvoltage",
-            "threshold": 15.0,
-            "status": "armed",
-        }
-        mock_alarm_manager.get_alarm.return_value = mock_alarm
+        assert response.status_code == 422
 
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.get(f"/api/alarms/{alarm_id}")
-
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert data["alarm_id"] == alarm_id
-
-    def test_list_alarms(self, client, mock_alarm_manager):
-        """Test listing all alarms."""
-        # Arrange
-        mock_alarms = [
-            {"alarm_id": "alarm_001", "equipment_id": "test_psu_001", "status": "armed"},
-            {"alarm_id": "alarm_002", "equipment_id": "test_load_001", "status": "triggered"},
-        ]
-        mock_alarm_manager.get_all_alarms.return_value = mock_alarms
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.get("/api/alarms")
-
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert isinstance(data, list)
-                assert len(data) == 2
-
-    def test_update_alarm(self, client, mock_alarm_manager):
-        """Test updating alarm configuration."""
-        # Arrange
-        alarm_id = "alarm_001"
-        update_data = {
-            "threshold": 20.0,
-            "enabled": False,
-        }
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.patch(f"/api/alarms/{alarm_id}", json=update_data)
-
-            # Assert - endpoint may not exist yet
-            assert response.status_code in [200, 404]
-
-    def test_delete_alarm(self, client, mock_alarm_manager):
-        """Test deleting alarm."""
-        # Arrange
-        alarm_id = "alarm_001"
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.delete(f"/api/alarms/{alarm_id}")
-
-            # Assert
-            if response.status_code in [200, 204]:
-                mock_alarm_manager.delete_alarm.assert_called_once()
-
-
-@pytest.mark.api
-class TestAlarmTriggering:
-    """Tests for alarm triggering and acknowledgment."""
-
-    def test_acknowledge_alarm(self, client, mock_alarm_manager):
-        """Test acknowledging triggered alarm."""
-        # Arrange
-        alarm_id = "alarm_001"
-        ack_data = {"acknowledged_by": "user_001"}
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.post(f"/api/alarms/{alarm_id}/acknowledge", json=ack_data)
-
-            # Assert
-            if response.status_code == 200:
-                mock_alarm_manager.acknowledge_alarm.assert_called_once()
-
-    def test_get_triggered_alarms(self, client, mock_alarm_manager):
-        """Test getting list of triggered alarms."""
-        # Arrange
-        triggered_alarms = [
-            {"alarm_id": "alarm_002", "triggered_at": datetime.utcnow().isoformat()},
-        ]
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.get("/api/alarms/triggered")
-
-            # Assert - endpoint may not exist yet
-            assert response.status_code in [200, 404]
-
-    def test_get_alarm_history(self, client, mock_alarm_manager):
-        """Test getting alarm trigger history."""
-        # Arrange
-        alarm_id = "alarm_001"
-
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-            # Act
-            response = client.get(f"/api/alarms/{alarm_id}/history")
-
-            # Assert
-            assert response.status_code in [200, 404]
-
-
-@pytest.mark.api
-class TestAlarmNotifications:
-    """Tests for alarm notifications."""
-
-    def test_configure_alarm_notifications(self, client):
-        """Test configuring alarm notifications."""
-        # Arrange
-        alarm_id = "alarm_001"
-        notification_data = {
-            "email": ["admin@example.com"],
-            "sms": [],
-            "webhook": "https://example.com/webhook",
-        }
-
-        # Act
-        response = client.post(
-            f"/api/alarms/{alarm_id}/notifications",
-            json=notification_data
+    def test_create_alarm_rejects_an_unknown_severity(self, alarms_client):
+        """AlarmConfig validates the enum; the route turns that into a 400."""
+        response = alarms_client.post(
+            "/api/alarms/create", json=alarm_payload(severity="catastrophic")
         )
 
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 201, 404]
+        assert response.status_code == 400
+        assert "severity" in response.text
 
-    def test_test_alarm_notification(self, client):
-        """Test sending test alarm notification."""
-        # Arrange
-        alarm_id = "alarm_001"
+    def test_get_unknown_alarm_is_404(self, alarms_client):
+        """A 404 asserted deliberately, rather than tolerated everywhere."""
+        assert alarms_client.get("/api/alarms/no-such-alarm").status_code == 404
 
-        # Act
-        response = client.post(f"/api/alarms/{alarm_id}/notifications/test")
+    def test_list_alarms(self, alarms_client):
+        first = create_alarm(alarms_client, name="First")
+        second = create_alarm(alarms_client, name="Second")
 
-        # Assert
-        assert response.status_code in [200, 404]
+        body = alarms_client.get("/api/alarms").json()
+
+        listed = {a["alarm_id"] for a in body["alarms"]}
+        assert {first, second} <= listed
+        assert body["count"] >= 2
+
+    def test_update_alarm(self, alarms_client):
+        alarm_id = create_alarm(alarms_client, threshold=12.5)
+
+        response = alarms_client.put(
+            f"/api/alarms/{alarm_id}", json={"threshold": 15.0, "severity": "critical"}
+        )
+
+        assert response.status_code == 200, response.text
+        after = alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]
+        assert after["threshold"] == 15.0
+        assert after["severity"] == "critical"
+
+    def test_delete_alarm(self, alarms_client):
+        alarm_id = create_alarm(alarms_client)
+
+        assert alarms_client.delete(f"/api/alarms/{alarm_id}").status_code == 200
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").status_code == 404
+
+    def test_enable_and_disable(self, alarms_client):
+        alarm_id = create_alarm(alarms_client, enabled=False)
+
+        assert alarms_client.post(f"/api/alarms/{alarm_id}/enable").status_code == 200
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]["enabled"] is True
+
+        assert alarms_client.post(f"/api/alarms/{alarm_id}/disable").status_code == 200
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]["enabled"] is False
 
 
-@pytest.mark.api
+class TestAlarmEvents:
+    """Triggering, acknowledgement and history."""
+
+    def test_active_events_starts_empty(self, alarms_client):
+        body = alarms_client.get("/api/alarms/events/active").json()
+
+        assert body["events"] == []
+
+    def test_event_history_is_a_list(self, alarms_client):
+        create_alarm(alarms_client)
+
+        body = alarms_client.get("/api/alarms/events").json()
+
+        assert isinstance(body["events"], list)
+
+    def test_acknowledging_an_unknown_event_is_rejected(self, alarms_client):
+        """The old test acknowledged nothing and accepted 404 as success."""
+        response = alarms_client.post(
+            "/api/alarms/events/acknowledge",
+            json={"event_id": "no-such-event", "acknowledged_by": "operator"},
+        )
+
+        assert response.status_code in (400, 404)
+
+    def test_check_runs_against_a_created_alarm(self, alarms_client):
+        alarm_id = create_alarm(alarms_client)
+
+        response = alarms_client.post(
+            "/api/alarms/check",
+            json={"alarm_id": alarm_id, "equipment_id": "ps_001",
+                  "parameter": "voltage", "value": 13.0},
+        )
+
+        assert response.status_code == 200, response.text
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").status_code == 200
+
+    def test_statistics_are_reported(self, alarms_client):
+        create_alarm(alarms_client)
+
+        response = alarms_client.get("/api/alarms/statistics")
+
+        # Explicitly 200: a 404 body is also "a non-empty dict", which is how
+        # this file used to pass while testing nothing.
+        assert response.status_code == 200, response.text
+        assert response.json()["success"] is True
+        assert "statistics" in response.json()
+
+
+class TestAlarmNotifications:
+    """Notification configuration."""
+
+    def test_configure_notifications(self, alarms_client):
+        response = alarms_client.post(
+            "/api/alarms/notifications/configure",
+            json={"channel": "email", "enabled": True,
+                  "config": {"recipients": ["bench@example.com"]}},
+        )
+
+        assert response.status_code == 200, response.text
+
+    def test_configuration_is_readable(self, alarms_client):
+        response = alarms_client.get("/api/alarms/notifications/config")
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), dict)
+
+
 class TestSchedulerJobManagement:
-    """Tests for scheduler job management."""
+    """Job CRUD."""
 
-    def test_create_job_success(self, client, mock_scheduler_manager, sample_scheduler_job_data):
-        """Test successful job creation."""
-        # Arrange
-        job_id = "job_001"
-        mock_scheduler_manager.create_job.return_value = job_id
+    def test_create_job_success(self, alarms_client):
+        response = alarms_client.post("/api/scheduler/jobs/create", json=job_payload())
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.post("/api/scheduler/jobs", json=sample_scheduler_job_data)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["success"] is True
+        assert body["job_id"]
 
-            # Assert - endpoint may not exist yet
-            if response.status_code in [200, 201]:
-                data = response.json()
-                assert "job_id" in data or "id" in data
-                mock_scheduler_manager.create_job.assert_called_once()
+    def test_a_created_job_is_retrievable(self, alarms_client):
+        job_id = create_job(alarms_client, name="Hourly capture")
 
-    def test_create_job_invalid_cron(self, client, mock_scheduler_manager):
-        """Test creating job with invalid cron expression."""
-        # Arrange
-        invalid_data = {
-            "name": "Invalid job",
-            "equipment_id": "test_psu_001",
-            "action": "measure",
-            "schedule_type": "cron",
-            "cron_expression": "invalid cron",
-        }
-        mock_scheduler_manager.create_job.side_effect = Exception("Invalid cron expression")
+        job = alarms_client.get(f"/api/scheduler/jobs/{job_id}").json()["job"]
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.post("/api/scheduler/jobs", json=invalid_data)
+        assert job["name"] == "Hourly capture"
+        assert job["trigger_type"] == "cron"
 
-            # Assert
-            assert response.status_code in [400, 404, 500]
+    def test_create_job_rejects_missing_required_fields(self, alarms_client):
+        response = alarms_client.post("/api/scheduler/jobs/create", json={"name": "nothing else"})
 
-    def test_get_job_info(self, client, mock_scheduler_manager):
-        """Test getting job information."""
-        # Arrange
-        job_id = "job_001"
-        mock_job = {
-            "job_id": job_id,
-            "name": "Daily check",
-            "equipment_id": "test_psu_001",
-            "status": "scheduled",
-        }
-        mock_scheduler_manager.get_job.return_value = mock_job
+        assert response.status_code == 422
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.get(f"/api/scheduler/jobs/{job_id}")
+    @pytest.mark.xfail(
+        strict=True,
+        reason="The scheduler accepts an invalid cron expression: "
+               "validate_cron_expression is unimplemented, which is also why "
+               "two tests in tests/server/scheduler skip. When it is "
+               "implemented this will XPASS -- turn it into a plain assert.",
+    )
+    def test_create_job_rejects_an_invalid_cron_expression(self, alarms_client):
+        response = alarms_client.post(
+            "/api/scheduler/jobs/create",
+            json=job_payload(cron_expression="not a cron", enabled=True),
+        )
 
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert data["job_id"] == job_id
+        assert response.status_code >= 400
 
-    def test_list_jobs(self, client, mock_scheduler_manager):
-        """Test listing all scheduled jobs."""
-        # Arrange
-        mock_jobs = [
-            {"job_id": "job_001", "name": "Daily check", "status": "scheduled"},
-            {"job_id": "job_002", "name": "Hourly monitor", "status": "running"},
-        ]
-        mock_scheduler_manager.get_all_jobs.return_value = mock_jobs
+    def test_get_unknown_job_is_404(self, alarms_client):
+        assert alarms_client.get("/api/scheduler/jobs/no-such-job").status_code == 404
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.get("/api/scheduler/jobs")
+    def test_list_jobs(self, alarms_client):
+        first = create_job(alarms_client, name="First")
+        second = create_job(alarms_client, name="Second")
 
-            # Assert
-            if response.status_code == 200:
-                data = response.json()
-                assert isinstance(data, list)
-                assert len(data) == 2
+        body = alarms_client.get("/api/scheduler/jobs").json()
 
-    def test_update_job(self, client, mock_scheduler_manager):
-        """Test updating job configuration."""
-        # Arrange
-        job_id = "job_001"
-        update_data = {
-            "cron_expression": "0 10 * * *",  # Changed to 10 AM
-            "enabled": False,
-        }
+        listed = {j["job_id"] for j in body["jobs"]}
+        assert {first, second} <= listed
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.patch(f"/api/scheduler/jobs/{job_id}", json=update_data)
+    def test_delete_job(self, alarms_client):
+        job_id = create_job(alarms_client)
 
-            # Assert - endpoint may not exist yet
-            assert response.status_code in [200, 404]
-
-    def test_delete_job(self, client, mock_scheduler_manager):
-        """Test deleting scheduled job."""
-        # Arrange
-        job_id = "job_001"
-
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.delete(f"/api/scheduler/jobs/{job_id}")
-
-            # Assert
-            if response.status_code in [200, 204]:
-                mock_scheduler_manager.delete_job.assert_called_once()
+        assert alarms_client.delete(f"/api/scheduler/jobs/{job_id}").status_code == 200
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").status_code == 404
 
 
-@pytest.mark.api
 class TestSchedulerJobControl:
-    """Tests for scheduler job control."""
+    """Pause, resume and manual run."""
 
-    def test_pause_job(self, client):
-        """Test pausing a scheduled job."""
-        # Arrange
-        job_id = "job_001"
+    def test_pause_and_resume(self, alarms_client):
+        job_id = create_job(alarms_client, enabled=True)
 
-        # Act
-        response = client.post(f"/api/scheduler/jobs/{job_id}/pause")
+        assert alarms_client.post(f"/api/scheduler/jobs/{job_id}/pause").status_code == 200
+        assert alarms_client.post(f"/api/scheduler/jobs/{job_id}/resume").status_code == 200
 
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 404]
+    def test_pause_unknown_job_is_rejected(self, alarms_client):
+        response = alarms_client.post("/api/scheduler/jobs/no-such-job/pause")
 
-    def test_resume_job(self, client):
-        """Test resuming a paused job."""
-        # Arrange
-        job_id = "job_001"
+        assert response.status_code in (400, 404)
 
-        # Act
-        response = client.post(f"/api/scheduler/jobs/{job_id}/resume")
+    def test_trigger_job_manually(self, alarms_client):
+        job_id = create_job(alarms_client)
 
-        # Assert
-        assert response.status_code in [200, 404]
+        response = alarms_client.post(f"/api/scheduler/jobs/{job_id}/run")
 
-    def test_trigger_job_manually(self, client):
-        """Test manually triggering a job."""
-        # Arrange
-        job_id = "job_001"
-
-        # Act
-        response = client.post(f"/api/scheduler/jobs/{job_id}/trigger")
-
-        # Assert
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200, response.text
 
 
-@pytest.mark.api
-class TestSchedulerJobHistory:
-    """Tests for job execution history."""
+class TestSchedulerHistory:
+    """Executions and statistics."""
 
-    def test_get_job_execution_history(self, client):
-        """Test getting job execution history."""
-        # Arrange
-        job_id = "job_001"
+    def test_job_history_summarises_the_job(self, alarms_client):
+        """`history` is a summary object, not the list of executions.
 
-        # Act
-        response = client.get(f"/api/scheduler/jobs/{job_id}/history")
+        The executions themselves are at /scheduler/executions; this endpoint
+        returns counters for one job.
+        """
+        job_id = create_job(alarms_client)
 
-        # Assert - endpoint may not exist yet
-        assert response.status_code in [200, 404]
+        response = alarms_client.get(f"/api/scheduler/jobs/{job_id}/history")
 
-    def test_get_recent_executions(self, client):
-        """Test getting recent job executions."""
-        # Act
-        response = client.get("/api/scheduler/executions/recent")
+        assert response.status_code == 200, response.text
+        history = response.json()["history"]
+        assert history["job_id"] == job_id
+        assert history["failed"] == 0
 
-        # Assert
-        assert response.status_code in [200, 404]
+    def test_recent_executions(self, alarms_client):
+        body = alarms_client.get("/api/scheduler/executions").json()
 
-    def test_get_failed_executions(self, client):
-        """Test getting failed job executions."""
-        # Act
-        response = client.get("/api/scheduler/executions/failed")
+        assert isinstance(body["executions"], list)
 
-        # Assert
-        assert response.status_code in [200, 404]
+    def test_statistics_and_running_jobs(self, alarms_client):
+        create_job(alarms_client)
+
+        assert alarms_client.get("/api/scheduler/statistics").status_code == 200
+        assert alarms_client.get("/api/scheduler/running").status_code == 200
 
 
-@pytest.mark.api
-@pytest.mark.integration
-class TestAlarmSchedulerIntegration:
-    """Integration tests for alarm and scheduler interaction."""
-
-    def test_scheduled_alarm_check(self, client, mock_scheduler_manager, mock_alarm_manager):
-        """Test scheduling recurring alarm checks."""
-        # Setup
-        job_id = "job_001"
-        alarm_id = "alarm_001"
-
-        mock_scheduler_manager.create_job.return_value = job_id
-        mock_alarm_manager.create_alarm.return_value = alarm_id
-
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager), \
-             patch("server.api.alarms.alarm_manager", mock_alarm_manager):
-
-            # Create alarm
-            alarm_data = {
-                "equipment_id": "test_psu_001",
-                "alarm_type": "overvoltage",
-                "threshold": 15.0,
-            }
-            alarm_response = client.post("/api/alarms", json=alarm_data)
-
-            if alarm_response.status_code not in [200, 201]:
-                pytest.skip("Alarms API not implemented")
-
-            # Schedule job to check alarm
-            job_data = {
-                "name": "Hourly voltage check",
-                "equipment_id": "test_psu_001",
-                "action": "check_alarm",
-                "schedule_type": "interval",
-                "interval_minutes": 60,
-            }
-            job_response = client.post("/api/scheduler/jobs", json=job_data)
-
-            # Verify both were created
-            if job_response.status_code in [200, 201]:
-                pass  # Success
-
-
-@pytest.mark.api
 class TestSchedulerJobTypes:
-    """Tests for different scheduler job types."""
+    """The trigger types the scheduler advertises."""
 
-    def test_create_cron_job(self, client, mock_scheduler_manager):
-        """Test creating cron-based job."""
-        # Arrange
-        job_data = {
-            "name": "Daily backup",
-            "equipment_id": "test_psu_001",
-            "action": "backup_state",
-            "schedule_type": "cron",
-            "cron_expression": "0 2 * * *",  # 2 AM daily
-        }
+    def test_create_cron_job(self, alarms_client):
+        job_id = create_job(alarms_client, trigger_type="cron", cron_expression="*/15 * * * *")
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.post("/api/scheduler/jobs", json=job_data)
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").json()["job"]["trigger_type"] == "cron"
 
-            # Assert
-            if response.status_code in [200, 201]:
-                pass
+    def test_create_interval_job(self, alarms_client):
+        job_id = create_job(
+            alarms_client, trigger_type="interval", cron_expression=None, interval_minutes=30
+        )
 
-    def test_create_interval_job(self, client, mock_scheduler_manager):
-        """Test creating interval-based job."""
-        # Arrange
-        job_data = {
-            "name": "Periodic measurement",
-            "equipment_id": "test_psu_001",
-            "action": "measure",
-            "schedule_type": "interval",
-            "interval_minutes": 15,
-        }
+        job = alarms_client.get(f"/api/scheduler/jobs/{job_id}").json()["job"]
+        assert job["trigger_type"] == "interval"
 
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.post("/api/scheduler/jobs", json=job_data)
+    def test_create_one_time_job(self, alarms_client):
+        job_id = create_job(
+            alarms_client, trigger_type="date", cron_expression=None,
+            run_date="2030-01-01T09:00:00",
+        )
 
-            # Assert
-            if response.status_code in [200, 201]:
-                pass
-
-    def test_create_one_time_job(self, client, mock_scheduler_manager):
-        """Test creating one-time scheduled job."""
-        # Arrange
-        future_time = (datetime.utcnow() + timedelta(hours=1)).isoformat()
-        job_data = {
-            "name": "Scheduled calibration",
-            "equipment_id": "test_psu_001",
-            "action": "calibrate",
-            "schedule_type": "once",
-            "run_at": future_time,
-        }
-
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Act
-            response = client.post("/api/scheduler/jobs", json=job_data)
-
-            # Assert
-            if response.status_code in [200, 201]:
-                pass
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").json()["job"]["trigger_type"] == "date"
 
 
-@pytest.mark.api
-@pytest.mark.integration
 class TestCompleteWorkflows:
-    """Integration tests for complete workflows."""
+    """The lifecycles end to end."""
 
-    def test_alarm_creation_and_monitoring_workflow(
-        self, client, mock_alarm_manager, mock_equipment_manager
-    ):
-        """Test complete alarm workflow: create -> arm -> trigger -> acknowledge."""
-        # Setup mock equipment
-        mock_psu = MagicMock()
-        mock_equipment_manager.get_device.return_value = mock_psu
+    def test_alarm_lifecycle(self, alarms_client):
+        alarm_id = create_alarm(alarms_client, name="Lifecycle")
 
-        # api/alarms.py does not use equipment_manager, so there is nothing
-        # to patch for it here.
-        with patch("server.api.alarms.alarm_manager", mock_alarm_manager):
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]["name"] == "Lifecycle"
+        assert alarms_client.post(f"/api/alarms/{alarm_id}/enable").status_code == 200
+        assert alarms_client.put(
+            f"/api/alarms/{alarm_id}", json={"threshold": 20.0}
+        ).status_code == 200
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").json()["alarm"]["threshold"] == 20.0
+        assert alarms_client.delete(f"/api/alarms/{alarm_id}").status_code == 200
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").status_code == 404
 
-            # Step 1: Create alarm
-            alarm_data = {
-                "equipment_id": "test_psu_001",
-                "alarm_type": "overvoltage",
-                "threshold": 15.0,
-                "enabled": True,
-            }
-            create_response = client.post("/api/alarms", json=alarm_data)
+    def test_scheduler_job_lifecycle(self, alarms_client):
+        job_id = create_job(alarms_client, name="Lifecycle", enabled=True)
 
-            if create_response.status_code not in [200, 201]:
-                pytest.skip("Alarms API not implemented")
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").json()["job"]["name"] == "Lifecycle"
+        assert alarms_client.post(f"/api/scheduler/jobs/{job_id}/pause").status_code == 200
+        assert alarms_client.post(f"/api/scheduler/jobs/{job_id}/resume").status_code == 200
+        assert alarms_client.delete(f"/api/scheduler/jobs/{job_id}").status_code == 200
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").status_code == 404
 
-            alarm_id = create_response.json().get("alarm_id", "alarm_001")
+    def test_an_alarm_and_a_job_coexist(self, alarms_client):
+        """The old integration test posted to two non-routes and asserted 404."""
+        alarm_id = create_alarm(alarms_client, name="Coexist")
+        job_id = create_job(alarms_client, name="Coexist")
 
-            # Step 2: Get alarm status
-            status_response = client.get(f"/api/alarms/{alarm_id}")
+        assert alarms_client.get(f"/api/alarms/{alarm_id}").status_code == 200
+        assert alarms_client.get(f"/api/scheduler/jobs/{job_id}").status_code == 200
 
-            # Step 3: Acknowledge (simulating trigger)
-            ack_response = client.post(
-                f"/api/alarms/{alarm_id}/acknowledge",
-                json={"acknowledged_by": "user_001"}
-            )
 
-            # Step 4: Delete alarm
-            delete_response = client.delete(f"/api/alarms/{alarm_id}")
+class TestLiteralRoutesAreNotShadowed:
+    """`/alarms/{alarm_id}` must be declared after every literal /alarms/... route.
 
-    def test_scheduler_job_lifecycle(self, client, mock_scheduler_manager):
-        """Test complete scheduler workflow: create -> trigger -> pause -> resume -> delete."""
-        with patch("server.api.scheduler.scheduler_manager", mock_scheduler_manager):
-            # Step 1: Create job
-            job_data = {
-                "name": "Test job",
-                "equipment_id": "test_psu_001",
-                "action": "measure",
-                "schedule_type": "interval",
-                "interval_minutes": 30,
-            }
-            create_response = client.post("/api/scheduler/jobs", json=job_data)
+    FastAPI matches in declaration order. While the parameterised route came
+    first, `/alarms/events` and `/alarms/statistics` resolved to it with
+    "events" and "statistics" taken as alarm ids, so both documented endpoints
+    answered 404 -- and the tests covering them accepted 404, so the repo
+    reported them working for as long as they existed.
+    """
 
-            if create_response.status_code not in [200, 201]:
-                pytest.skip("Scheduler API not implemented")
+    def test_events_is_not_taken_for_an_alarm_id(self, alarms_client):
+        response = alarms_client.get("/api/alarms/events")
 
-            job_id = create_response.json().get("job_id", "job_001")
+        assert response.status_code == 200, response.text
+        assert "events" in response.json()
 
-            # Step 2: Pause job
-            pause_response = client.post(f"/api/scheduler/jobs/{job_id}/pause")
+    def test_statistics_is_not_taken_for_an_alarm_id(self, alarms_client):
+        response = alarms_client.get("/api/alarms/statistics")
 
-            # Step 3: Resume job
-            resume_response = client.post(f"/api/scheduler/jobs/{job_id}/resume")
+        assert response.status_code == 200, response.text
+        assert "statistics" in response.json()
 
-            # Step 4: Trigger manually
-            trigger_response = client.post(f"/api/scheduler/jobs/{job_id}/trigger")
+    def test_a_real_alarm_id_still_resolves(self, alarms_client):
+        """The reorder must not cost the lookup it was competing with."""
+        alarm_id = create_alarm(alarms_client, name="Still findable")
 
-            # Step 5: Delete job
-            delete_response = client.delete(f"/api/scheduler/jobs/{job_id}")
+        body = alarms_client.get(f"/api/alarms/{alarm_id}").json()
+
+        assert body["alarm"]["name"] == "Still findable"

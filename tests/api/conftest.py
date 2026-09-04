@@ -355,3 +355,54 @@ def sample_scheduler_job_data() -> Dict:
         "cron_expression": "0 9 * * *",  # 9 AM daily
         "enabled": True,
     }
+
+
+@pytest.fixture
+def alarms_scheduler_app(tmp_path):
+    """A FastAPI app with the alarm and scheduler routers actually mounted.
+
+    These routers were commented out of `app_with_mocks`, so every request in
+    test_alarms_scheduler_api.py returned 404 -- and every assertion in that
+    file accepted 404, so 26 tests passed without touching the API they name.
+
+    Real managers rather than mocks, for the reason the mocks failed here: they
+    had drifted from the interface they stood in for. `create_alarm` returned
+    the string "alarm_001" where the route reads `result.alarm_id`, and the
+    route calls `list_alarms()` where the mock offered `get_all_alarms`. A
+    double that disagrees with the real object tests nothing except itself.
+
+    AlarmManager is pure in-memory. SchedulerManager persists, so it gets a
+    SQLite path under tmp_path rather than the repo's data/ directory.
+    """
+    from fastapi import FastAPI
+
+    import server.api.alarms as alarms_api
+    import server.api.scheduler as scheduler_api
+    from server.alarm.manager import AlarmManager
+    from server.scheduler.manager import SchedulerManager
+
+    alarm_manager = AlarmManager()
+    scheduler_manager = SchedulerManager(db_path=str(tmp_path / "scheduler.db"))
+
+    # Patch where the routes look the name up, not where it is defined: both
+    # modules did `from ... import alarm_manager` at import time, so patching
+    # the defining module would leave the bound name untouched. That is the
+    # same hazard as the patch targets in #197.
+    with patch.object(alarms_api, "alarm_manager", alarm_manager), \
+         patch.object(scheduler_api, "scheduler_manager", scheduler_manager):
+        app = FastAPI(title="LabLink Alarms/Scheduler Test API")
+        app.include_router(alarms_api.router, prefix="/api", tags=["alarms"])
+        app.include_router(scheduler_api.router, prefix="/api", tags=["scheduler"])
+
+        yield app
+
+        # Threshold alarms start a monitoring task on creation; leaving those
+        # running leaks tasks across tests.
+        for task in list(alarm_manager._monitoring_tasks.values()):
+            task.cancel()
+
+
+@pytest.fixture
+def alarms_client(alarms_scheduler_app):
+    """Test client whose app really serves the alarm and scheduler routes."""
+    return TestClient(alarms_scheduler_app)
