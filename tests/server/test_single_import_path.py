@@ -186,10 +186,12 @@ class TestStartupGuard:
         assert "_assert_single_import_path()" in body.split("def ", 1)[0]
 
 
-# Every Dockerfile that builds the server. The repo has two -- compose builds
-# docker/Dockerfile.server, build_docker.sh builds the root one -- and fixing
-# only the one in front of you is how they diverged in the first place.
-SERVER_DOCKERFILES = ["Dockerfile", "docker/Dockerfile.server"]
+# Every Dockerfile that builds the server, which is now one: the repo-root
+# Dockerfile is gone and build_docker.sh builds this file, the same one
+# docker-compose builds. It stays a list because the parametrised checks below
+# are what caught the divergence when there were two, and a second Dockerfile
+# arriving with nothing checking it is how #197 reached the Pi.
+SERVER_DOCKERFILES = ["docker/Dockerfile.server"]
 
 
 class TestLaunchTarget:

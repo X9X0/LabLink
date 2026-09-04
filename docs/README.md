@@ -49,8 +49,44 @@ Complete documentation for the LabLink laboratory equipment control system.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | [Test Suite](TEST_SUITE.md) | Comprehensive testing guide | Developers |
-| Development Roadmap | Feature roadmap and plans | Contributors |
-| Project Summary | High-level project overview | All |
+| [Testing Guide](TESTING.md) | Running the suites, fixtures and markers | Developers |
+| [Testing Infrastructure](TESTING_INFRASTRUCTURE.md) | CI/CD workflows and coverage tooling | Contributors |
+| [Development Roadmap](../ROADMAP.md) | Feature roadmap and plans | Contributors |
+
+### Deployment & Operations
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [Deployment Guide](DEPLOYMENT.md) | Docker, bare metal and Raspberry Pi deployment | Operators |
+| [Windows Installation](WINDOWS_INSTALL.md) | Client install on Windows, execution-policy fixes | Users |
+| [Ubuntu 24.04 Setup](UBUNTU_24.04_SETUP.md) | Step-by-step setup on Ubuntu 24.04 | Users |
+| [Versioning](VERSIONING.md) | How versions are set and bumped | Contributors |
+
+### Equipment Control & Safety
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [Safety System](SAFETY_SYSTEM.md) | Safety limits and interlocks | Operators |
+| [Lock System](LOCK_SYSTEM.md) | Equipment locks and session management | Operators |
+| [Mock Equipment Guide](MOCK_EQUIPMENT_GUIDE.md) | Working with simulated instruments | Developers |
+
+### Where the overlaps are
+
+Named rather than quietly merged, because deciding which of a pair to keep
+needs someone who knows which one people actually read:
+
+- **Testing** is covered three times — [TEST_SUITE.md](TEST_SUITE.md),
+  [TESTING.md](TESTING.md) and
+  [TESTING_INFRASTRUCTURE.md](TESTING_INFRASTRUCTURE.md).
+- **Mock equipment** twice — [MOCK_EQUIPMENT.md](MOCK_EQUIPMENT.md) and
+  [MOCK_EQUIPMENT_GUIDE.md](MOCK_EQUIPMENT_GUIDE.md).
+- **Getting started** twice — [GETTING_STARTED.md](GETTING_STARTED.md) and
+  [GETTING_STARTED_CLIENT.md](GETTING_STARTED_CLIENT.md), though these do
+  address different audiences.
+
+The `phase2_*` and `phase3_*` progress reports are point-in-time records
+rather than documentation; they belong with [history/](history/) whenever
+someone is confident nothing links to them.
 
 ## Documentation Sections
 

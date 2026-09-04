@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File .\install-client.ps1
   with `sudo ssh-keygen -A` and restart its SSH service. Current Raspberry Pi OS
   is unaffected.
 
-Full detail: [docs/BREAKING_CHANGES_2.0.md](docs/BREAKING_CHANGES_2.0.md)
+Full detail: [docs/BREAKING_CHANGES_2.0.md](BREAKING_CHANGES_2.0.md)
 
 ---
 
@@ -304,7 +304,7 @@ You can still use the SSH Deployment Wizard to deploy LabLink to an existing Ras
 If you encounter issues:
 
 1. Check this troubleshooting section
-2. Check the [main README](README.md) for general documentation
+2. Check the [main README](../README.md) for general documentation
 3. File an issue on GitHub: https://github.com/X9X0/LabLink/issues
 
 ## Next Steps
@@ -324,9 +324,9 @@ Once installed, you can:
    - Use Tools → Raspberry Pi Discovery to find LabLink servers on your network
 
 4. **Explore the Documentation**
-   - See [Getting Started Guide](docs/GETTING_STARTED.md)
-   - See [API Reference](docs/API_REFERENCE.md)
-   - See [Client README](client/README.md)
+   - See [Getting Started Guide](GETTING_STARTED.md)
+   - See [API Reference](API_REFERENCE.md)
+   - See [Client README](../client/README.md)
 
 ## License
 

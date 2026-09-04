@@ -420,7 +420,7 @@ For issues or feature requests:
 
 - [ROADMAP.md](../ROADMAP.md) - Project roadmap and version planning
 - [CHANGELOG.md](../CHANGELOG.md) - Detailed version history
-- [WAVEFORM_USER_GUIDE.md](WAVEFORM_USER_GUIDE.md) - Waveform capture system
+- [WAVEFORM_USER_GUIDE.md](../server/WAVEFORM_USER_GUIDE.md) - Waveform capture system
 - [ADVANCED_WAVEFORM_ANALYSIS.md](../server/ADVANCED_WAVEFORM_ANALYSIS.md) - Backend analysis features
 
 ---

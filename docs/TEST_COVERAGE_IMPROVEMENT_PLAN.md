@@ -416,7 +416,7 @@ These modules provide significant value but are smaller and faster to test:
 
 ## References
 
-- [TESTING.md](../TESTING.md) - Testing guide and commands
+- [TESTING.md](TESTING.md) - Testing guide and commands
 - [ROADMAP.md](../ROADMAP.md) - Project roadmap
 - [pytest.ini](../pytest.ini) - Pytest configuration
 - [.github/workflows/comprehensive-tests.yml](../.github/workflows/comprehensive-tests.yml) - CI/CD configuration

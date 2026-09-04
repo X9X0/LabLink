@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 
 # Paths
-images_dir = Path(__file__).parent / "images"
+# Two levels up: this lives in scripts/icons/, the artwork in images/
+images_dir = Path(__file__).resolve().parents[2] / "images"
 source = images_dir / "lablink_multi.ico"
 output_ico = images_dir / "icon.ico"
 output_favicon = images_dir / "favicon.png"
