@@ -5,7 +5,8 @@ from PIL import Image
 from pathlib import Path
 
 # Paths
-images_dir = Path(__file__).parent / "images"
+# Two levels up: this lives in scripts/icons/, the artwork in images/
+images_dir = Path(__file__).resolve().parents[2] / "images"
 source = images_dir / "Splash.png"
 favicon_out = images_dir / "favicon.png"
 ico_out = images_dir / "icon.ico"
