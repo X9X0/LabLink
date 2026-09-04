@@ -111,17 +111,6 @@ async def create_alarm(request: CreateAlarmRequest):
         raise HTTPException(status_code=500, detail=f"Failed to create alarm: {str(e)}")
 
 
-@router.get("/alarms/{alarm_id}", summary="Get alarm")
-async def get_alarm(alarm_id: str):
-    """Get alarm configuration by ID."""
-    alarm = alarm_manager.get_alarm(alarm_id)
-
-    if alarm is None:
-        raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
-
-    return {"success": True, "alarm": alarm.dict()}
-
-
 @router.get("/alarms", summary="List alarms")
 async def list_alarms(
     equipment_id: Optional[str] = None, enabled: Optional[bool] = None
@@ -381,6 +370,22 @@ async def get_alarm_statistics():
         raise HTTPException(
             status_code=500, detail=f"Failed to get statistics: {str(e)}"
         )
+
+
+# Declared after every literal /alarms/... route on purpose. FastAPI matches
+# in declaration order, so while this sat above them `/alarms/events` and
+# `/alarms/statistics` resolved here instead, with "events" and "statistics"
+# taken as alarm ids -- both endpoints answered 404 and nothing noticed,
+# because the tests covering them accepted 404 as success.
+@router.get("/alarms/{alarm_id}", summary="Get alarm")
+async def get_alarm(alarm_id: str):
+    """Get alarm configuration by ID."""
+    alarm = alarm_manager.get_alarm(alarm_id)
+
+    if alarm is None:
+        raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
+
+    return {"success": True, "alarm": alarm.dict()}
 
 
 # ==================== Notification Configuration Endpoints ====================
