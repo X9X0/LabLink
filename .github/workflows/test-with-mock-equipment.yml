@@ -148,7 +148,9 @@ jobs:
       - name: Test mock equipment demo (non-interactive)
         env:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
-          PYTHONPATH: ${{ github.workspace }}
+          # The demos live in examples/; the server packages they import
+          # are at the workspace root, so both belong on the path.
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/examples
         run: |
           echo "Testing demo script import..."
           echo "PYTHONPATH=$PYTHONPATH"

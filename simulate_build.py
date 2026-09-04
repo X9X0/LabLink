@@ -446,7 +446,7 @@ def main():
     print("\nNext Steps:")
     print("  1. Install Docker: https://docs.docker.com/get-docker/")
     print("  2. Build server: ./build_docker.sh")
-    print("  3. Build client: cd client && ./build_client.sh")
+    print("  3. Build client: ./build_client.sh")
 
     print("\nDocumentation:")
     print("  • docs/DEPLOYMENT.md - Complete deployment guide")
