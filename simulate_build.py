@@ -39,16 +39,21 @@ def validate_dockerfile():
     """Validate Dockerfile."""
     print_section("Validating Dockerfile")
 
-    dockerfile = Path("Dockerfile")
+    # The one docker-compose builds and the Pi runs. There used to be a second
+    # Dockerfile in the repo root, which this validated instead -- so it could
+    # pass while the deployed image was the other file entirely.
+    dockerfile = Path("docker/Dockerfile.server")
     if not dockerfile.exists():
-        print("✗ Dockerfile not found")
+        print(f"✗ {dockerfile} not found")
         return False
 
     with open(dockerfile) as f:
         content = f.read()
 
     checks = [
-        ("FROM python:3.12", "Base image"),
+        # Not pinned to a minor: the base image is bumped by dependabot, and a
+        # check that has to be edited to stay true gets edited without thought.
+        ("FROM python:3.", "Base image"),
         ("WORKDIR /app", "Working directory"),
         ("COPY server/requirements.txt", "Requirements copy"),
         ("RUN pip install", "Dependency installation"),
