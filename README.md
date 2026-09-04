@@ -86,6 +86,10 @@ The **LabLink Launcher** will:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install-client.ps1
    ```
+   It installs Python 3.12 if you do not have it, sets up the client
+   environment, and creates a `lablink-client.bat` launcher along with desktop
+   and Start Menu shortcuts.
+3. Launch from the desktop shortcut, or run `.\lablink-client.bat`
 
 **Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
 
@@ -98,15 +102,30 @@ The **LabLink Launcher** will:
 
 **Manual Installation (All Platforms):**
 
+Requires **Python 3.12 or newer** — numpy 2.5 and scipy 1.18 both drop 3.11,
+so an older interpreter fails while resolving dependencies rather than saying
+so plainly. The automated installers check this for you.
+
 1. Install dependencies:
+
+   Linux/macOS:
    ```bash
    cd client
    python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-2. Run the GUI client:
+   Windows (the interpreter is `python`; `python3` is often absent or a
+   Microsoft Store stub):
+   ```powershell
+   cd client
+   python -m venv venv
+   venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Run the GUI client, from `client/`:
    ```bash
    python main.py
    ```
