@@ -5,7 +5,7 @@ This script bypasses LabLink and talks directly to the power supply via serial.
 Use this to verify commands and syntax.
 
 Usage:
-    python3 test_bk_serial.py /dev/ttyUSB0
+    python3 scripts/probe_bk_serial.py /dev/ttyUSB0
 
 Commands:
     GMAX  - Get max voltage/current
@@ -110,7 +110,7 @@ def parse_gmax(response):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 test_bk_serial.py /dev/ttyUSB0")
+        print("Usage: python3 scripts/probe_bk_serial.py /dev/ttyUSB0")
         print("\nTo find your device, run: ls -la /dev/tty* | grep USB")
         sys.exit(1)
 
