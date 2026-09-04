@@ -947,6 +947,7 @@ echo "════════════════════════�
 echo ""
 echo "Useful Commands:"
 echo "  lablink-status         - Show this status"
+echo "  lablink-version        - Show version and git commit info"
 echo "  lablink-start          - Start LabLink"
 echo "  lablink-stop           - Stop LabLink"
 echo "  lablink-restart        - Restart LabLink"
@@ -1077,6 +1078,12 @@ lablink-status
 UPDATESCRIPT
 chmod +x /usr/local/bin/lablink-update
 
+# Install lablink-version command
+if [ -f /opt/lablink/lablink-version.sh ]; then
+    cp /opt/lablink/lablink-version.sh /usr/local/bin/lablink-version
+    chmod +x /usr/local/bin/lablink-version
+fi
+
 echo "[LabLink] First boot setup complete!"
 echo "[LabLink] ════════════════════════════════════════════════════════"
 echo "[LabLink] "
@@ -1086,6 +1093,7 @@ echo "[LabLink] Access LabLink at: http://$(hostname).local"
 echo "[LabLink] "
 echo "[LabLink] Useful commands:"
 echo "[LabLink]   lablink-status  - Check LabLink status"
+echo "[LabLink]   lablink-version - Show version and git commit info"
 echo "[LabLink]   lablink-logs    - View logs"
 echo "[LabLink]   lablink-update  - Update to latest code"
 echo "[LabLink] "
@@ -1195,6 +1203,7 @@ fi
 echo ""
 echo "Quick Commands:"
 echo "  lablink-status   - Show detailed status"
+echo "  lablink-version  - Show version and git commit info"
 echo "  lablink-logs     - View logs"
 echo "  lablink-restart  - Restart services"
 echo "  lablink-update   - Update to latest code"

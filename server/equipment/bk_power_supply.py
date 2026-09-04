@@ -573,6 +573,29 @@ class BK9205B(BaseEquipment):
             self.cached_info = await self.get_info()
 
         except Exception as e:
+            error_msg = str(e).lower()
+
+            # If device not found, provide diagnostic information
+            if "not found" in error_msg or "no device" in error_msg:
+                from server.utils.usb_diagnostics import log_usb_diagnostics
+                logger.error(f"Device not found at {self.resource_string}")
+                log_usb_diagnostics(self.resource_string)
+                # No canned list here. log_usb_diagnostics has just inspected
+                # the bus and logged what it found, and a fixed set of "common
+                # fixes" printed underneath it can only disagree with the
+                # evidence -- an unreadable serial is as often a stale resource
+                # string, with the instrument answering perfectly well, as it
+                # is anything needing a trip to the bench.
+                logger.error(
+                    "\n" + "=" * 70 + "\n"
+                    "USB DEVICE CONNECTION FAILED\n"
+                    "=" * 70 + "\n"
+                    "The diagnostics logged above say what was checked and what\n"
+                    "was found. 'USB Device Diagnostics' in the client's\n"
+                    "Diagnostics tab runs the same checks on demand.\n"
+                    + "=" * 70
+                )
+
             logger.error(f"Failed to connect to {self.resource_string}: {e}")
             self.connected = False
             raise
