@@ -432,7 +432,6 @@ jobs:
           pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
           # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
           pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
-          pip install pytest-benchmark
 
       - name: Run performance benchmarks
         env:
