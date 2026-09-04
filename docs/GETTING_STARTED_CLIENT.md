@@ -524,7 +524,7 @@ Now that you know the basics:
 **Congratulations!** 🎉 You're now ready to use LabLink for laboratory equipment control!
 
 For advanced features, see:
-- [Data Acquisition Guide](ACQUISITION_SYSTEM.md)
+- [Data Acquisition Guide](../server/ACQUISITION_SYSTEM.md)
 - [Alarm System Guide](../server/ALARM_SYSTEM.md)
 - [API Reference](API_REFERENCE.md)
 - [Mobile App Guide](../mobile/README.md)

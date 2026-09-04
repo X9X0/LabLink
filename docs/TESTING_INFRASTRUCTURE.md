@@ -487,7 +487,7 @@ def test_invalid_input(self, client):
 ## 📚 Resources
 
 ### Documentation
-- [API Test README](tests/api/README.md) - Detailed API testing guide
+- [API Test README](../tests/api/README.md) - Detailed API testing guide
 - [Pre-commit Hooks](.pre-commit-config.yaml) - Hook configuration
 - [CI/CD Workflow](.github/workflows/comprehensive-tests.yml) - Pipeline definition
 
@@ -551,7 +551,7 @@ pre-commit autoupdate               # Update hook versions
 
 For questions or issues with the testing infrastructure:
 
-1. Check the [API Test README](tests/api/README.md)
+1. Check the [API Test README](../tests/api/README.md)
 2. Review this document
 3. Check existing test files for examples
 4. Open an issue with the `testing` label

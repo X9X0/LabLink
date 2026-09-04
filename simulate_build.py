@@ -390,7 +390,7 @@ def create_build_instructions():
 
 ═══════════════════════════════════════════════════════════════════════
 
-For detailed deployment options, see DEPLOYMENT.md
+For detailed deployment options, see docs/DEPLOYMENT.md
 """
 
     print(instructions)
@@ -444,9 +444,9 @@ def main():
     print("  3. Build client: cd client && ./build_client.sh")
 
     print("\nDocumentation:")
-    print("  • DEPLOYMENT.md - Complete deployment guide")
+    print("  • docs/DEPLOYMENT.md - Complete deployment guide")
     print("  • README.md - Project overview")
-    print("  • TESTING.md - Testing procedures")
+    print("  • docs/TESTING.md - Testing procedures")
 
     print("\nEstimated Package Sizes:")
     print("  • Docker image:      250-350 MB")

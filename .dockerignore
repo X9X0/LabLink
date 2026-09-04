@@ -63,13 +63,14 @@ test_*.py
 *_test.py
 tests/
 
-# Deployment files
+# Documentation. `*.md` only matches the context root, so docs/ needs naming
+# in its own right -- the guides moved there in this commit would otherwise be
+# shipped to the daemon on every build. PROJECT_SUMMARY.md and the individual
+# guides that used to sit here are gone: one pattern each was a list to keep
+# in step with the filesystem, and it had already fallen out of step.
 *.md
+docs/
 LICENSE
-README.md
-DEPLOYMENT.md
-PROJECT_SUMMARY.md
-TESTING.md
 
 # Never bake environment files into the image. COPY server/ would
 # otherwise pick up server/.env, freezing deployment config (and any

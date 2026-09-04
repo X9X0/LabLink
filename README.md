@@ -391,7 +391,7 @@ The **LabLink Launcher** will:
    powershell -ExecutionPolicy Bypass -File .\install-client.ps1
    ```
 
-**Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](WINDOWS_INSTALL.md) for detailed instructions.
+**Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
 
 **Linux/macOS Users:**
 
@@ -421,13 +421,13 @@ The **LabLink Launcher** will:
    - Or enter custom hostname/IP and ports
 
 For detailed setup instructions:
-- **Windows:** See [Windows Installation Guide](WINDOWS_INSTALL.md)
+- **Windows:** See [Windows Installation Guide](docs/WINDOWS_INSTALL.md)
 - **Linux/macOS:** See [Getting Started Guide](docs/GETTING_STARTED.md)
 - **General:** See [Client README](client/README.md)
 
 ## Documentation
 
-- **[Windows Installation Guide](WINDOWS_INSTALL.md)** - Complete Windows installation guide (fixes execution policy errors)
+- **[Windows Installation Guide](docs/WINDOWS_INSTALL.md)** - Complete Windows installation guide (fixes execution policy errors)
 - **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - Step-by-step guide for Ubuntu 24.04 users
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
