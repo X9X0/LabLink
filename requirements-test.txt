@@ -51,4 +51,4 @@ pyserial>=3.5
 # "pytest-benchmark not installed" for anyone who installs only these
 # requirements. CI has been papering over it with an ad-hoc `pip install`
 # line in the workflow, so the suite passed there and skipped everywhere else.
-pytest-benchmark>=4.0
+pytest-benchmark>=5.3.0
