@@ -5,9 +5,9 @@
 
 # GUI Framework
 PyQt6==6.11.0
-PyQt6-Qt6==6.11.0
+PyQt6-Qt6==6.11.2
 PyQt6-Charts==6.11.0
-PyQt6-Charts-Qt6==6.11.0
+PyQt6-Charts-Qt6==6.11.2
 pyqtgraph==0.14.0
 qasync==0.28.0
 
@@ -33,7 +33,7 @@ h5py==3.16.0
 # Models / configuration
 pydantic==2.13.5
 pydantic-settings==2.15.0
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 python-dateutil==2.9.0.post0
 
 # Credential storage
