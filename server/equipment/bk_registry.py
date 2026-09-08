@@ -75,6 +75,9 @@ class BKModel:
     channels: int = 1
     max_voltage: Optional[float] = None
     max_current: Optional[float] = None
+    # Multi-range supplies are limited by output power, not by the voltage and
+    # current maxima independently: the 9205B reaches 60 V or 25 A but not both.
+    max_power: Optional[float] = None
     # Fixed-width protocol dialect (see bk_power_supply.FixedWidthDialect)
     dialect: Optional[str] = None
     notes: str = ""
@@ -205,11 +208,22 @@ _add("9140", "9140 Series", "psu", skus=("9140", "9141"), usb=USB_CDC,
      notes="Triple output, list mode, data logger, output pairing")
 _add("9240", "9240 Series", "psu", skus=("9240", "9241", "9242"), usb=USB_CDC,
      gpib=True, lan=True)
-_add("9200B", "9200B Series", "psu", skus=("9205B", "9206B"), usb=USB_TMC,
-     rs232=True, lan=True, bauds=STD_BAUDS, max_voltage=120.0, max_current=10.0,
-     notes="Multi-range: 60V/10A or 120V/5A. B&K publishes no programming "
-           "manual for this series; the SCPI set here is the one LabLink's "
-           "existing 9205B/9206B driver was written against")
+# The 9200B series is split per SKU: its two members share interfaces and
+# protocol but not ratings, and one row of limits for both was wrong for each.
+# B&K rates the 9205B at 60 V / 25 A and the 9206B at 150 V / 10 A, both 600 W.
+_add("9205B", "9205B (9200B Series)", "psu", skus=("9205",), usb=USB_TMC,
+     rs232=True, lan=True, bauds=STD_BAUDS,
+     max_voltage=60.0, max_current=25.0, max_power=600.0,
+     notes="Multi-range 600 W: any V/A combination within 60 V and 25 A whose "
+           "product stays under 600 W, so the instrument recalculates its own "
+           "maxima per setting -- SOUR:VOLT? MAX answered 48 with the "
+           "setpoints at 12 V / 20 A. B&K publishes no programming manual for "
+           "this series; the SCPI set here is the one LabLink's driver was "
+           "written against")
+_add("9206B", "9206B (9200B Series)", "psu", skus=("9206",), usb=USB_TMC,
+     rs232=True, lan=True, bauds=STD_BAUDS,
+     max_voltage=150.0, max_current=10.0, max_power=600.0,
+     notes="Multi-range 600 W, as the 9205B, but rated 150 V / 10 A")
 _add("9800", "9800 Series", "psu", usb=USB_TMC, rs232=True, lan=True,
      bauds=STD_BAUDS, notes="Programmable AC source")
 _add("9810", "9810 Series", "psu", usb=USB_CDC, gpib=True, lan=True)

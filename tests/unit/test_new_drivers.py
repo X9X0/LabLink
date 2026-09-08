@@ -183,8 +183,9 @@ async def test_bk9205b():
 
         # Test get_status
         status = await ps.get_status()
-        assert status.capabilities["max_voltage"] == 120.0
-        assert status.capabilities["max_current"] == 10.0
+        # 60 V / 25 A / 600 W, per B&K. See #116.
+        assert status.capabilities["max_voltage"] == 60.0
+        assert status.capabilities["max_current"] == 25.0
 
         # Test set_voltage
         await ps.set_voltage(12.0)
