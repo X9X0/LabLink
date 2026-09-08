@@ -156,7 +156,11 @@ class TestEquipmentConnection:
             mock_lock_manager.release_lock.assert_called_once_with(
                 equipment_id, session_id, force=False
             )
-            mock_equipment_manager.disconnect_device.assert_called_once_with(equipment_id)
+            # None: no on_disconnect given, so the manager applies the server's
+            # configured default. See issue #198 and test_disconnect_policy.py.
+            mock_equipment_manager.disconnect_device.assert_called_once_with(
+                equipment_id, None
+            )
 
     def test_disconnect_device_not_found(self, client, mock_equipment_manager):
         """Test disconnecting non-existent device."""

@@ -173,8 +173,26 @@ async def connect_device(request: ConnectDeviceRequest):
 
 
 @router.post("/disconnect/{equipment_id}")
-async def disconnect_device(equipment_id: str, session_id: Optional[str] = None):
-    """Disconnect a device."""
+async def disconnect_device(
+    equipment_id: str,
+    session_id: Optional[str] = None,
+    on_disconnect: Optional[str] = None,
+):
+    """Disconnect a device, leaving it in the state the operator chooses.
+
+    **This can switch off a live output, and by default it does.** LabLink
+    sends the off command itself, in `EquipmentManager.disconnect_device`,
+    when `safe_state_on_disconnect` is set -- which is the default.
+
+    - `on_disconnect=off` disables the output before closing the transport
+    - `on_disconnect=hold` leaves the instrument exactly as it is
+    - omitted: the server's configured default
+
+    "hold" means LabLink sends nothing; it is not a guarantee about the
+    instrument, since a serial port with `hupcl` set may drop DTR on close
+    regardless. See issue #198, whose original diagnosis blamed that close for
+    behaviour LabLink was in fact commanding.
+    """
     try:
         # Release locks for this equipment
         if settings.enable_equipment_locks and session_id:
@@ -183,8 +201,26 @@ async def disconnect_device(equipment_id: str, session_id: Optional[str] = None)
             except Exception as e:
                 logger.warning(f"Error releasing lock during disconnect: {e}")
 
-        await equipment_manager.disconnect_device(equipment_id)
-        return {"equipment_id": equipment_id, "status": "disconnected"}
+        try:
+            await equipment_manager.disconnect_device(equipment_id, on_disconnect)
+        except ValueError as e:
+            # An unknown policy is the caller's mistake, not a server fault --
+            # and silently falling back to the default would turn an output
+            # off for someone who asked for it to stay on.
+            raise HTTPException(status_code=400, detail=str(e))
+
+        applied = on_disconnect or equipment_manager.default_disconnect_policy()
+        return {
+            "equipment_id": equipment_id,
+            "status": "disconnected",
+            "on_disconnect": applied,
+        }
+    except HTTPException:
+        # Re-raise rather than let the handler below wrap it: without this, a
+        # rejected policy came back as `500 {"detail": "400: Unknown disconnect
+        # policy ..."}` -- the right message inside the wrong status, which a
+        # client cannot distinguish from the server having fallen over.
+        raise
     except Exception as e:
         logger.error(f"Error disconnecting device: {e}")
         raise HTTPException(status_code=500, detail=str(e))
