@@ -128,7 +128,7 @@ class UpdateManager:
         """Load saved configuration from file."""
         try:
             if self.config_file.exists():
-                with open(self.config_file, "r") as f:
+                with open(self.config_file, "r", encoding="utf-8") as f:
                     config = json.load(f)
 
                 # Load update mode
@@ -169,7 +169,7 @@ class UpdateManager:
                 "git_branch": self.git_branch,
             }
 
-            with open(self.config_file, "w") as f:
+            with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
 
             logger.debug(f"Saved update configuration to {self.config_file}")
@@ -699,7 +699,7 @@ class UpdateManager:
             }
 
             backup_path.mkdir(parents=True, exist_ok=True)
-            with open(backup_path / "backup_info.json", "w") as f:
+            with open(backup_path / "backup_info.json", "w", encoding="utf-8") as f:
                 json.dump(backup_info, f, indent=2)
 
             self._add_log(f"Backup created: {backup_name}")
@@ -828,7 +828,7 @@ class UpdateManager:
             if not backup_info_file.exists():
                 raise Exception("Backup info not found")
 
-            with open(backup_info_file) as f:
+            with open(backup_info_file, encoding="utf-8") as f:
                 backup_info = json.load(f)
 
             rollback_commit = backup_info.get("commit")

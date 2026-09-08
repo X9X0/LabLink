@@ -7,6 +7,13 @@ from pathlib import Path
 import json
 import hashlib
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 def print_header(text):
     """Print formatted header."""
     print("\n" + "=" * 70)
@@ -47,7 +54,7 @@ def validate_dockerfile():
         print(f"✗ {dockerfile} not found")
         return False
 
-    with open(dockerfile) as f:
+    with open(dockerfile, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
@@ -81,7 +88,7 @@ def validate_docker_compose():
         print("✗ docker-compose.yml not found")
         return False
 
-    with open(compose_file) as f:
+    with open(compose_file, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
@@ -113,7 +120,7 @@ def validate_pyinstaller_spec():
         print("✗ lablink.spec not found")
         return False
 
-    with open(spec_file) as f:
+    with open(spec_file, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
@@ -284,7 +291,7 @@ def generate_package_manifest():
     }
 
     # Save manifest
-    with open("package_manifest.json", "w") as f:
+    with open("package_manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     print("\n✓ Package manifest saved to: package_manifest.json")
@@ -401,7 +408,7 @@ For detailed deployment options, see docs/DEPLOYMENT.md
     print(instructions)
 
     # Save to file
-    with open("BUILD_INSTRUCTIONS.txt", "w") as f:
+    with open("BUILD_INSTRUCTIONS.txt", "w", encoding="utf-8") as f:
         f.write(instructions)
 
     print("\n✓ Build instructions saved to: BUILD_INSTRUCTIONS.txt")

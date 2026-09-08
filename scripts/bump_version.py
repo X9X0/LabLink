@@ -24,6 +24,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 def get_current_version(version_file: Path) -> str:
     """Read current version from VERSION file."""
@@ -31,7 +38,7 @@ def get_current_version(version_file: Path) -> str:
         print(f"❌ VERSION file not found: {version_file}")
         sys.exit(1)
 
-    version = version_file.read_text().strip()
+    version = version_file.read_text(encoding="utf-8").strip()
     if not re.match(r'^\d+\.\d+\.\d+$', version):
         print(f"❌ Invalid version format in VERSION file: {version}")
         sys.exit(1)
@@ -68,7 +75,7 @@ def update_version_file(version_file: Path, new_version: str, dry_run: bool = Fa
         print(f"  [DRY-RUN] Would update {version_file} to {new_version}")
         return
 
-    version_file.write_text(f"{new_version}\n")
+    version_file.write_text(f"{new_version}\n", encoding="utf-8")
     print(f"✓ Updated {version_file} → {new_version}")
 
 
@@ -78,7 +85,7 @@ def update_readme(readme_file: Path, new_version: str, dry_run: bool = False) ->
         print(f"⚠️  README.md not found, skipping")
         return
 
-    content = readme_file.read_text()
+    content = readme_file.read_text(encoding="utf-8")
     today = date.today().strftime("%B %d, %Y")
 
     # Update version badge
@@ -106,7 +113,7 @@ def update_readme(readme_file: Path, new_version: str, dry_run: bool = False) ->
         print(f"  [DRY-RUN] Would update README.md to version {new_version}")
         return
 
-    readme_file.write_text(content)
+    readme_file.write_text(content, encoding="utf-8")
     print(f"✓ Updated README.md → {new_version}")
 
 
@@ -116,7 +123,7 @@ def update_changelog(changelog_file: Path, new_version: str, dry_run: bool = Fal
         print(f"⚠️  CHANGELOG.md not found, skipping")
         return
 
-    content = changelog_file.read_text()
+    content = changelog_file.read_text(encoding="utf-8")
     today = date.today().strftime("%Y-%m-%d")
 
     # Find the position after the header
@@ -149,7 +156,7 @@ def update_changelog(changelog_file: Path, new_version: str, dry_run: bool = Fal
         print(f"  [DRY-RUN] Would add version {new_version} to CHANGELOG.md")
         return
 
-    changelog_file.write_text(updated_content)
+    changelog_file.write_text(updated_content, encoding="utf-8")
     print(f"✓ Added version {new_version} to CHANGELOG.md")
     print(f"  ⚠️  Please edit CHANGELOG.md to add release notes!")
 
@@ -160,7 +167,7 @@ def update_dockerfile(dockerfile: Path, new_version: str, dry_run: bool = False)
         print(f"⚠️  {dockerfile.name} not found, skipping")
         return
 
-    content = dockerfile.read_text()
+    content = dockerfile.read_text(encoding="utf-8")
 
     # Update LABEL version line
     updated_content = re.sub(
@@ -173,7 +180,7 @@ def update_dockerfile(dockerfile: Path, new_version: str, dry_run: bool = False)
         print(f"  [DRY-RUN] Would update {dockerfile.name} to version {new_version}")
         return
 
-    dockerfile.write_text(updated_content)
+    dockerfile.write_text(updated_content, encoding="utf-8")
     print(f"✓ Updated {dockerfile.name} → {new_version}")
 
 

@@ -27,6 +27,13 @@ import argparse
 from pathlib import Path
 from typing import List, Tuple, Optional
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 # Color codes for terminal output
 class Colors:
@@ -384,7 +391,7 @@ def create_requirements_files():
     server_req_path = Path("server/requirements.txt")
     if not server_req_path.exists():
         print_info(f"Creating {server_req_path}")
-        server_req_path.write_text('\n'.join(server_requirements) + '\n')
+        server_req_path.write_text('\n'.join(server_requirements) + '\n', encoding="utf-8")
         print_success(f"Created {server_req_path}")
     else:
         print_success(f"{server_req_path} exists")
@@ -394,7 +401,7 @@ def create_requirements_files():
     if not client_req_path.exists():
         print_info(f"Creating {client_req_path}")
         client_req_path.parent.mkdir(exist_ok=True)
-        client_req_path.write_text('\n'.join(client_requirements) + '\n')
+        client_req_path.write_text('\n'.join(client_requirements) + '\n', encoding="utf-8")
         print_success(f"Created {client_req_path}")
     else:
         print_success(f"{client_req_path} exists")
@@ -403,7 +410,7 @@ def create_requirements_files():
     test_req_path = Path("requirements-test.txt")
     if not test_req_path.exists():
         print_info(f"Creating {test_req_path}")
-        test_req_path.write_text('\n'.join(test_requirements) + '\n')
+        test_req_path.write_text('\n'.join(test_requirements) + '\n', encoding="utf-8")
         print_success(f"Created {test_req_path}")
     else:
         print_success(f"{test_req_path} exists")
@@ -424,7 +431,7 @@ def create_env_file():
 
     if env_example_path.exists():
         print_info(f"Copying {env_example_path} to {env_path}")
-        env_path.write_text(env_example_path.read_text())
+        env_path.write_text(env_example_path.read_text(encoding="utf-8"), encoding="utf-8")
         print_success(f"Created {env_path}")
         print_warning("Please review and update server/.env with your settings")
         return True
@@ -466,7 +473,7 @@ DEFAULT_SAMPLE_RATE=1000.0
 ENABLE_MDNS=true
 MDNS_SERVICE_NAME=LabLink Server
 """
-        env_path.write_text(default_env)
+        env_path.write_text(default_env, encoding="utf-8")
         print_success(f"Created {env_path}")
         print_warning("Please review and update server/.env with your settings")
         return True

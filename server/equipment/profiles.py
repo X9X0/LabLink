@@ -80,7 +80,7 @@ class ProfileManager:
             profile.modified_at = datetime.now()
             profile_path = self._get_profile_path(profile.name)
 
-            with open(profile_path, "w") as f:
+            with open(profile_path, "w", encoding="utf-8") as f:
                 json.dump(profile.dict(), f, indent=2, default=str)
 
             self._profiles_cache[profile.name] = profile
@@ -116,7 +116,7 @@ class ProfileManager:
                 logger.warning(f"Profile '{profile_name}' not found at {profile_path}")
                 return None
 
-            with open(profile_path, "r") as f:
+            with open(profile_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             profile = EquipmentProfile(**data)
@@ -148,7 +148,7 @@ class ProfileManager:
         try:
             for profile_file in self.profile_dir.glob("*.json"):
                 try:
-                    with open(profile_file, "r") as f:
+                    with open(profile_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     profile = EquipmentProfile(**data)
 

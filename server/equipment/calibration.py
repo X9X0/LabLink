@@ -495,7 +495,7 @@ class CalibrationManager:
         records_file = self.storage_path / "records.json"
         if records_file.exists():
             try:
-                with open(records_file, "r") as f:
+                with open(records_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 for equipment_id, records in data.items():
@@ -516,7 +516,7 @@ class CalibrationManager:
         # Load all records
         all_records = {}
         if records_file.exists():
-            with open(records_file, "r") as f:
+            with open(records_file, "r", encoding="utf-8") as f:
                 all_records = json.load(f)
 
         # Update records for this equipment
@@ -526,7 +526,7 @@ class CalibrationManager:
         ]
 
         # Save back
-        with open(records_file, "w") as f:
+        with open(records_file, "w", encoding="utf-8") as f:
             json.dump(all_records, f, indent=2, default=str)
 
     def _load_schedules(self):
@@ -534,7 +534,7 @@ class CalibrationManager:
         schedules_file = self.storage_path / "schedules.json"
         if schedules_file.exists():
             try:
-                with open(schedules_file, "r") as f:
+                with open(schedules_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 for equipment_id, schedule in data.items():
@@ -553,7 +553,7 @@ class CalibrationManager:
             for equipment_id, schedule in self._schedules.items()
         }
 
-        with open(schedules_file, "w") as f:
+        with open(schedules_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
 
 

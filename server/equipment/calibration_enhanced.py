@@ -530,21 +530,21 @@ class EnhancedCalibrationManager:
         """Save procedure to storage."""
         path = self.storage_path / "procedures" / f"{procedure_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.procedures[procedure_id].dict(), f, indent=2, default=str)
 
     def _save_execution(self, execution_id: str):
         """Save execution to storage."""
         path = self.storage_path / "executions" / f"{execution_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.executions[execution_id].dict(), f, indent=2, default=str)
 
     def _save_certificate(self, certificate_id: str):
         """Save certificate to storage."""
         path = self.storage_path / "certificates" / f"{certificate_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 self.certificates[certificate_id].dict(), f, indent=2, default=str
             )
@@ -553,7 +553,7 @@ class EnhancedCalibrationManager:
         """Save corrections to storage."""
         path = self.storage_path / "corrections" / f"{equipment_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             corrections_data = [c.dict() for c in self.corrections[equipment_id]]
             json.dump(corrections_data, f, indent=2, default=str)
 
@@ -561,7 +561,7 @@ class EnhancedCalibrationManager:
         """Save standard to storage."""
         path = self.storage_path / "standards" / f"{standard_id}.json"
         path.parent.mkdir(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.standards[standard_id].dict(), f, indent=2, default=str)
 
 

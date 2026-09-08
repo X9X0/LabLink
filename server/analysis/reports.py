@@ -85,7 +85,7 @@ class ReportGenerator:
 
         html += self._build_html_footer()
 
-        output_file.write_text(html)
+        output_file.write_text(html, encoding="utf-8")
         logger.info(f"Generated HTML report: {output_file}")
 
         return output_file
@@ -115,7 +115,7 @@ class ReportGenerator:
             for table in section.tables:
                 md += self._build_markdown_table(table)
 
-        output_file.write_text(md)
+        output_file.write_text(md, encoding="utf-8")
         logger.info(f"Generated Markdown report: {output_file}")
 
         return output_file
@@ -143,7 +143,7 @@ class ReportGenerator:
             ],
         }
 
-        output_file.write_text(json.dumps(report_data, indent=2))
+        output_file.write_text(json.dumps(report_data, indent=2), encoding="utf-8")
         logger.info(f"Generated JSON report: {output_file}")
 
         return output_file

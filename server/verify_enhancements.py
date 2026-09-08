@@ -3,6 +3,14 @@
 
 import ast
 from pathlib import Path
+import sys
+
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 print("=" * 70)
 print("LabLink Server Enhancements Verification")
@@ -24,7 +32,7 @@ def check_file_exists(filepath, description):
 def check_code_contains(filepath, search_terms, description):
     """Check if code contains specific terms."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
 
         found_all = all(term in content for term in search_terms)
@@ -43,7 +51,7 @@ def check_code_contains(filepath, search_terms, description):
 def count_functions(filepath):
     """Count functions/methods in a file."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         functions = sum(

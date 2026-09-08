@@ -22,6 +22,13 @@ from server.equipment.manager import EquipmentManager
 from server.equipment.mock_helper import MockEquipmentHelper, setup_demo_lab
 from shared.models.equipment import EquipmentType
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

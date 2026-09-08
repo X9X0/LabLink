@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Read version from VERSION file
 _version_file = Path(__file__).parent.parent.parent / "VERSION"
-__version__ = _version_file.read_text().strip() if _version_file.exists() else "0.27.0"
+__version__ = _version_file.read_text(encoding="utf-8").strip() if _version_file.exists() else "0.27.0"
 
 
 def get_version() -> str:

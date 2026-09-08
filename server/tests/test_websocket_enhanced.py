@@ -101,7 +101,7 @@ class TestStreamRecorder:
         recorder.stop_recording("jsonl_test")
 
         # Verify file content
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             lines = f.readlines()
             assert len(lines) == 3
             for i, line in enumerate(lines):
