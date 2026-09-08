@@ -27,9 +27,23 @@ Run with:
 
     pytest tests/hardware/test_live_pi.py -v
 
-These tests are read-only with respect to instruments: they discover,
+These tests send no command that changes instrument state: they discover,
 connect, query status/readings, and disconnect. Nothing sets an output, a
-voltage or a current, so a run cannot leave an instrument energised.
+voltage or a current.
+
+**They are not, however, without effect on the bench.** Disconnecting closes
+the serial port, and on a port with termios `hupcl` set -- the default -- that
+drops DTR/RTS, which a legacy B&K supply treats as a reset. A live output goes
+off. Confirmed on hardware twice, on two different units:
+
+    after enabling                 out=True  Vact= 11.98
+    --- disconnect (closes the port) ---
+    AFTER disconnect/reconnect     out=False Vact=  4.1   (capacitance
+                                                           discharging)
+
+So: read-only in the commands it sends, and not read-only in effect. **Running
+this suite against an instrument with a live output will switch that output
+off.** Do not run it against a bench mid-experiment. See issue #198.
 """
 
 import json

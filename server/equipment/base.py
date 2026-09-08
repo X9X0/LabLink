@@ -154,7 +154,15 @@ class BaseEquipment(ABC):
                 self._is_connecting = False
 
     async def disconnect(self):
-        """Disconnect from the equipment."""
+        """Close the transport. Sends nothing to the instrument.
+
+        This really is only `instrument.close()`. If you are looking for why a
+        supply's output went off on disconnect, it is not here: the decision
+        is made one layer up, in `EquipmentManager.disconnect_device`, which
+        applies the disconnect policy before calling this. See issue #198 --
+        the answer was mislocated in exactly this docstring's direction once
+        already.
+        """
         async with self._lock:
             if self.instrument:
                 try:

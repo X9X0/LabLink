@@ -703,6 +703,47 @@ class EquipmentPanel(QWidget):
             QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
 
     @qasync.asyncSlot()
+    async def _choose_disconnect_state(self, equipment_id: str):
+        """What should the instrument be left doing? Ask only if it matters.
+
+        Disconnecting turns a live output off by default, which used to happen
+        with nothing on screen to say so -- the operator found out at the
+        bench. The question is only worth asking when there is something to
+        lose, so an instrument that is already off disconnects silently.
+
+        Returns "off", "hold", or None if the operator cancelled.
+        """
+        try:
+            readings = await call_blocking(self.client.get_readings, equipment_id)
+            output_live = bool(readings.get("output_enabled"))
+        except Exception as e:
+            # Not knowing is a reason to ask, not a reason to assume.
+            logger.warning(f"Could not read output state before disconnect: {e}")
+            output_live = True
+
+        if not output_live:
+            return "off"
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Disconnect equipment")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("This instrument's output is on.")
+        box.setInformativeText(
+            "Turn it off as part of disconnecting, or leave it running?\n\n"
+            "Leaving it running means LabLink sends no command. The instrument "
+            "keeps its output until something else changes it."
+        )
+        turn_off = box.addButton("Turn output off", QMessageBox.ButtonRole.AcceptRole)
+        leave_on = box.addButton("Leave it running", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(turn_off)
+
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel:
+            return None
+        return "hold" if clicked is leave_on else "off"
+
     async def disconnect_equipment(self):
         """Disconnect from selected equipment."""
         if not self.selected_equipment or not self.client:
@@ -715,7 +756,13 @@ class EquipmentPanel(QWidget):
             if equipment_id in self.streaming_equipment:
                 asyncio.create_task(self._stop_equipment_stream(equipment_id))
 
-            result = await call_blocking(self.client.disconnect_equipment, equipment_id)
+            on_disconnect = await self._choose_disconnect_state(equipment_id)
+            if on_disconnect is None:
+                return          # operator cancelled
+
+            result = await call_blocking(
+                self.client.disconnect_equipment, equipment_id, on_disconnect
+            )
 
             # Server returns {"equipment_id": "...", "status": "disconnected"}
             if result.get("status") == "disconnected":

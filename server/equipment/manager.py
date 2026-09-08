@@ -44,10 +44,31 @@ class EquipmentManager:
             logger.error(f"Failed to initialize equipment manager: {e}")
 
     async def shutdown(self):
-        """Shutdown and cleanup all equipment connections."""
+        """Shut down, applying the disconnect policy to every instrument.
+
+        This used to call `equipment.disconnect()` directly, which closes the
+        port and sends nothing -- so an explicit disconnect through the API
+        disabled a supply's output while stopping the server left it live.
+        The same policy now governs both, because "what happens to the bench
+        when LabLink goes away" should not depend on how it went away.
+        """
+        policy = self.default_disconnect_policy()
         async with self._lock:
             for equipment_id, equipment in self.equipment.items():
                 try:
+                    if policy == "off":
+                        try:
+                            if hasattr(equipment, "set_output"):
+                                await equipment.set_output(False)
+                            elif hasattr(equipment, "set_input"):
+                                await equipment.set_input(False)
+                            logger.info(f"Safe state applied to {equipment_id}")
+                        except Exception as e:
+                            # A shutdown must still shut down.
+                            logger.error(
+                                f"Error putting {equipment_id} into safe state: {e}"
+                            )
+
                     await equipment.disconnect()
                     logger.info(f"Disconnected {equipment_id}")
                 except Exception as e:
@@ -284,16 +305,48 @@ class EquipmentManager:
         )
         return driver(self.resource_manager, resource_string, model=model)
 
-    async def disconnect_device(self, equipment_id: str):
-        """Disconnect a device."""
+    # What to leave an instrument doing when LabLink lets go of it.
+    #
+    # "off" disables the output; "hold" leaves the instrument exactly as it is.
+    # The default comes from settings.safe_state_on_disconnect, which has
+    # always meant "off" -- this only gives the operator a way to say otherwise
+    # for one disconnect, without changing the server's default for everyone.
+    DISCONNECT_POLICIES = ("off", "hold")
+
+    def default_disconnect_policy(self) -> str:
+        """The policy used when a caller does not name one."""
+        from server.config.settings import settings
+
+        return "off" if settings.safe_state_on_disconnect else "hold"
+
+    async def disconnect_device(self, equipment_id: str, policy: Optional[str] = None):
+        """Disconnect a device, leaving it in the requested state.
+
+        Args:
+            equipment_id: the device to disconnect
+            policy: "off" to disable the output first, "hold" to leave the
+                instrument as it is. Defaults to the server's configured
+                behaviour.
+
+        Note that "hold" asks LabLink to send nothing. It is not a promise
+        about the instrument: a supply whose serial port has `hupcl` set may
+        still see DTR drop when the port closes. What this controls is whether
+        LabLink itself turns the output off, which -- contrary to issue #198 --
+        is what was actually happening.
+        """
+        if policy is None:
+            policy = self.default_disconnect_policy()
+        if policy not in self.DISCONNECT_POLICIES:
+            raise ValueError(
+                f"Unknown disconnect policy {policy!r}; "
+                f"expected one of {', '.join(self.DISCONNECT_POLICIES)}"
+            )
+
         async with self._lock:
             if equipment_id in self.equipment:
                 equipment = self.equipment[equipment_id]
 
-                # Safe state on disconnect - disable outputs
-                from server.config.settings import settings
-
-                if settings.safe_state_on_disconnect:
+                if policy == "off":
                     try:
                         logger.info(
                             f"Putting {equipment_id} into safe state before disconnect"
@@ -313,6 +366,13 @@ class EquipmentManager:
                         logger.error(
                             f"Error putting {equipment_id} into safe state: {e}"
                         )
+                else:
+                    # Worth a line of its own: "the output was still on when we
+                    # let go" is exactly the thing someone reads the log for.
+                    logger.info(
+                        f"Leaving {equipment_id} as it is on disconnect "
+                        f"(policy 'hold'); its output state is unchanged"
+                    )
 
                 await equipment.disconnect()
                 del self.equipment[equipment_id]

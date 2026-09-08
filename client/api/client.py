@@ -499,17 +499,24 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
-    def disconnect_equipment(self, equipment_id: str) -> Dict[str, Any]:
+    def disconnect_equipment(
+        self, equipment_id: str, on_disconnect: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Disconnect from equipment.
 
         Args:
             equipment_id: Equipment ID
+            on_disconnect: "off" to disable the output first, "hold" to leave
+                the instrument as it is. None uses the server's default, which
+                is "off".
 
         Returns:
-            Response dictionary
+            Response dictionary, including the `on_disconnect` policy applied
         """
+        params = {"on_disconnect": on_disconnect} if on_disconnect else None
         response = self._session.post(
-            f"{self.api_base_url}/equipment/disconnect/{equipment_id}"
+            f"{self.api_base_url}/equipment/disconnect/{equipment_id}",
+            params=params,
         )
         response.raise_for_status()
         return response.json()
