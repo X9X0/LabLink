@@ -1201,12 +1201,43 @@ class IssueDetailsDialog(QDialog):
         self.setLayout(layout)
 
 
+class GitBranchWorker(QThread):
+    """Looks up the checked-out branch and commit without blocking the UI."""
+
+    detected = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from client.utils.git_operations import (get_current_commit_hash,
+                                                     get_current_git_branch,
+                                                     is_git_checkout)
+        except Exception:
+            return          # no client package: version alone is still shown
+
+        if not is_git_checkout():
+            return          # a ZIP download or packaged install has no .git
+
+        branch = get_current_git_branch()
+        if not branch:
+            return          # detached HEAD, or git unavailable
+
+        commit = get_current_commit_hash()
+        self.detected.emit(f"{branch} ({commit})" if commit else branch)
+
+
 class LabLinkLauncher(QMainWindow):
     """Main LabLink launcher window."""
 
+    # Emitted from the git worker thread. A signal rather than
+    # QTimer.singleShot: a timer created off the GUI thread belongs to that
+    # thread, which has no event loop, so it never fires and dies with the
+    # thread. That is exactly why the client's branch indicator never appeared
+    # until #190.
+    branch_detected = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabLink Launcher")
+        self.setWindowTitle(f"LabLink Launcher {__version__}")
         self.setMinimumSize(800, 700)
 
         # Store check results
@@ -1228,8 +1259,36 @@ class LabLinkLauncher(QMainWindow):
         # Initialize UI
         self.init_ui()
 
+        # Say which LabLink this is, before anything else happens
+        self.branch_detected.connect(self._show_branch)
+        self._branch_worker = GitBranchWorker()
+        self._branch_worker.detected.connect(self.branch_detected.emit)
+        self._branch_worker.start()
+
         # Auto-check on startup
         QTimer.singleShot(500, self.check_all)
+
+    def _version_text(self) -> str:
+        """The version, shown immediately without waiting for git."""
+        return f"LabLink {__version__}"
+
+    def _show_branch(self, branch_info: str):
+        """Append branch and commit to the version label (GUI thread only).
+
+        Shown for main as well. Hiding it there is what the client used to do,
+        and it meant the common case displayed nothing at all about what was
+        running -- which is the question this exists to answer.
+        """
+        on_main = branch_info.startswith("main")
+        self.version_label.setText(f"{self._version_text()}  📍 {branch_info}")
+        self.version_label.setStyleSheet(
+            "color: gray;" if on_main else "color: #27ae60; font-weight: bold;"
+        )
+        self.version_label.setToolTip(
+            f"LabLink launcher {__version__}\n"
+            f"Running from branch {branch_info}\n\n"
+            "This is the code this launcher will start."
+        )
 
     def init_ui(self):
         """Initialize the user interface."""
@@ -1248,6 +1307,13 @@ class LabLinkLauncher(QMainWindow):
         self.header.setProperty("headerLabel", True)
         self.header.mousePressEvent = self._header_clicked
         main_layout.addWidget(self.header)
+
+        # Which LabLink is this? Permanently visible, matching the client's
+        # status bar so the two agree at a glance. __version__ was read from
+        # the VERSION file and then never used by anything until now.
+        self.version_label = QLabel(self._version_text())
+        self.version_label.setStyleSheet("color: gray;")
+        self.statusBar().addWidget(self.version_label)
 
         # Theme selector
         theme_layout = QHBoxLayout()

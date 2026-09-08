@@ -36,6 +36,38 @@ def is_git_checkout() -> bool:
     return (Path(repo_dir()) / ".git").exists()
 
 
+def get_current_commit_hash(short: bool = True) -> Optional[str]:
+    """The commit currently checked out.
+
+    A branch name alone does not identify the running code -- the branch moves,
+    and "which code is this?" is usually asked after a pull or a checkout. The
+    hash pins it.
+
+    Args:
+        short: abbreviated hash rather than the full 40 characters
+
+    Returns:
+        The hash, or None if this is not a checkout or git is unavailable.
+    """
+    command = ["git", "rev-parse"] + (["--short"] if short else []) + ["HEAD"]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+        return result.stdout.strip() or None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to get commit hash: {e.stderr}")
+        return None
+    except FileNotFoundError:
+        logger.error("git command not found")
+        return None
+
+
 def get_git_root() -> Optional[str]:
     """Get git repository root directory.
 
