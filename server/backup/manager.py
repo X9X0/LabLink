@@ -45,7 +45,7 @@ class BackupManager:
         """Load backup metadata from disk."""
         if self.metadata_file.exists():
             try:
-                with open(self.metadata_file, "r") as f:
+                with open(self.metadata_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for backup_id, meta_dict in data.items():
                         self.metadata[backup_id] = BackupMetadata(**meta_dict)
@@ -62,7 +62,7 @@ class BackupManager:
                 backup_id: meta.model_dump(mode="json")
                 for backup_id, meta in self.metadata.items()
             }
-            with open(self.metadata_file, "w") as f:
+            with open(self.metadata_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str)
         except Exception as e:
             logger.error(f"Failed to save backup metadata: {e}")
@@ -949,7 +949,7 @@ class BackupManager:
             # Try to get version from main.py
             main_file = Path(__file__).parent.parent / "main.py"
             if main_file.exists():
-                with open(main_file, "r") as f:
+                with open(main_file, "r", encoding="utf-8") as f:
                     for line in f:
                         if "version=" in line:
                             # Extract version from FastAPI app definition

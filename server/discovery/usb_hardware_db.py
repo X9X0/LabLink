@@ -305,9 +305,9 @@ def extract_usb_ids_from_serial_port(port_path: str) -> Optional[tuple[str, str]
         if os.path.exists(vid_path):
             pid_path = vid_path.replace("idVendor", "idProduct")
             try:
-                with open(vid_path, 'r') as f:
+                with open(vid_path, 'r', encoding="utf-8") as f:
                     vid = f.read().strip()
-                with open(pid_path, 'r') as f:
+                with open(pid_path, 'r', encoding="utf-8") as f:
                     pid = f.read().strip()
                 if vid and pid:
                     logger.info(f"Found USB IDs for {port_path}: {vid}:{pid}")

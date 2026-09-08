@@ -384,11 +384,11 @@ async def lifespan(app: FastAPI):
             secret_file = Path(settings.security_db_path).parent / ".jwt_secret"
             try:
                 if secret_file.exists():
-                    jwt_secret = secret_file.read_text().strip()
+                    jwt_secret = secret_file.read_text(encoding="utf-8").strip()
                 if not jwt_secret:
                     jwt_secret = generate_secure_secret_key()
                     secret_file.parent.mkdir(parents=True, exist_ok=True)
-                    secret_file.write_text(jwt_secret)
+                    secret_file.write_text(jwt_secret, encoding="utf-8")
                     secret_file.chmod(0o600)
                 logger.warning(
                     "LABLINK_JWT_SECRET_KEY is not set; using the generated secret at "

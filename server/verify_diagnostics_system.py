@@ -10,6 +10,13 @@ import sys
 from pathlib import Path
 from typing import List, Set
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 class DiagnosticsVerifier:
     """Verifies diagnostics system implementation."""
@@ -73,7 +80,7 @@ class DiagnosticsVerifier:
             self.errors.append("diagnostics/models.py not found")
             return False
 
-        with open(models_file) as f:
+        with open(models_file, encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
         # Required classes
@@ -125,7 +132,7 @@ class DiagnosticsVerifier:
             self.errors.append("diagnostics/manager.py not found")
             return False
 
-        with open(manager_file) as f:
+        with open(manager_file, encoding="utf-8") as f:
             content = f.read()
             tree = ast.parse(content)
 
@@ -185,7 +192,7 @@ class DiagnosticsVerifier:
             self.errors.append("api/diagnostics.py not found")
             return False
 
-        with open(api_file) as f:
+        with open(api_file, encoding="utf-8") as f:
             content = f.read()
             tree = ast.parse(content)
 
@@ -241,7 +248,7 @@ class DiagnosticsVerifier:
             self.errors.append("diagnostics/__init__.py not found")
             return False
 
-        with open(init_file) as f:
+        with open(init_file, encoding="utf-8") as f:
             content = f.read()
 
         required_exports = {
@@ -273,7 +280,7 @@ class DiagnosticsVerifier:
             self.errors.append("main.py not found")
             return False
 
-        with open(main_file) as f:
+        with open(main_file, encoding="utf-8") as f:
             content = f.read()
 
         # Check imports

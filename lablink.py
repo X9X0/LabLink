@@ -27,9 +27,16 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Read version from VERSION file (single source of truth)
 _version_file = Path(__file__).parent / "VERSION"
-__version__ = _version_file.read_text().strip() if _version_file.exists() else "1.2.0"
+__version__ = _version_file.read_text(encoding="utf-8").strip() if _version_file.exists() else "1.2.0"
 
 # Configure logging
 logging.basicConfig(
@@ -882,7 +889,7 @@ class CheckWorker(QThread):
     def _parse_requirements(self, req_file: Path) -> List[str]:
         """Parse requirements.txt file."""
         packages = []
-        for line in req_file.read_text().splitlines():
+        for line in req_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and not line.startswith('#'):
                 # Extract package name
