@@ -330,7 +330,7 @@ response = requests.post(f"http://localhost:8000/api/equipment/{equipment_id}/co
     "command_id": "cmd_002",
     "equipment_id": equipment_id,
     "action": "set_voltage",
-    "parameters": {"voltage": 150.0}  # Exceeds max (120V for BK9205B)
+    "parameters": {"voltage": 150.0}  # Exceeds max (60V for BK9205B)
 })
 
 # Response will contain error:

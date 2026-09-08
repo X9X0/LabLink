@@ -60,6 +60,9 @@ class BKSCPIBase(BaseEquipment):
         self.num_channels = self.info.channels if self.info else 1
         self.max_voltage = (self.info.max_voltage if self.info else None) or 60.0
         self.max_current = (self.info.max_current if self.info else None) or 5.0
+        # None where the registry has no rating: the generic per-category
+        # default is used then, rather than inventing an envelope.
+        self.max_power = self.info.max_power if self.info else None
         self.safety_validator: Optional[SafetyValidator] = None
         self._current_voltage = 0.0
         self._current_current = 0.0
@@ -148,6 +151,8 @@ class BKSCPIBase(BaseEquipment):
                     self.max_voltage = reported.max_voltage
                 if reported.max_current:
                     self.max_current = reported.max_current
+                if reported.max_power:
+                    self.max_power = reported.max_power
             # Prefer the SKU the instrument reports over the family key.
             self.model = parts[1]
         if len(parts) > 2:
@@ -196,7 +201,10 @@ class BKSCPIBase(BaseEquipment):
         limits = SafetyLimits(
             max_voltage=self.max_voltage,
             max_current=self.max_current,
-            max_power=defaults.max_power,
+            # The model's rated output power where the registry knows it. A
+            # multi-range supply is bounded by its envelope, not by the
+            # voltage and current maxima independently (issue #116).
+            max_power=self.max_power or defaults.max_power,
             voltage_slew_rate=(
                 defaults.voltage_slew_rate if settings.enforce_slew_rate else None
             ),

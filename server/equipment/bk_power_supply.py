@@ -280,7 +280,11 @@ class BKPowerSupplyBase(BaseEquipment):
         safety_limits = SafetyLimits(
             max_voltage=self.max_voltage,
             max_current=self.max_current,
-            max_power=default_limits.max_power,
+            # The instrument's own rating where it has one, not the generic
+            # power-supply default: that default is 300 W, which capped the
+            # 600 W 9205B at half its output while its voltage limit let
+            # through commands the supply could never satisfy (issue #116).
+            max_power=getattr(self, "max_power", None) or default_limits.max_power,
             voltage_slew_rate=(
                 default_limits.voltage_slew_rate if settings.enforce_slew_rate else None
             ),
@@ -525,9 +529,19 @@ class BK9205B(BaseEquipment):
         self.manufacturer = "BK Precision"
         self.model = "9205B"
         self.num_channels = 1
-        # Multi-range: 60V/10A or 120V/5A
-        self.max_voltage = 120.0
-        self.max_current = 10.0
+        # B&K rates the 9205B at 60 V, 25 A and 600 W. This said 120 V / 10 A,
+        # which is wrong in both directions at once: it permitted commanding
+        # twice the voltage the supply can produce, while refusing 60% of the
+        # current it can deliver (issue #116).
+        #
+        # It is multi-range, so 60 V and 25 A are not simultaneously available:
+        # any V/A pair is allowed whose product stays inside 600 W. The
+        # instrument recalculates its own maxima per setting and will report
+        # them -- SOUR:VOLT? MAX answered 48 with the setpoints at 12 V / 20 A
+        # -- which is why the power limit, not the pair, is what bounds it.
+        self.max_voltage = 60.0
+        self.max_current = 25.0
+        self.max_power = 600.0
 
         # Initialize safety validator
         self.safety_validator = None
@@ -613,7 +627,11 @@ class BK9205B(BaseEquipment):
         safety_limits = SafetyLimits(
             max_voltage=self.max_voltage,
             max_current=self.max_current,
-            max_power=default_limits.max_power,
+            # The instrument's own rating where it has one, not the generic
+            # power-supply default: that default is 300 W, which capped the
+            # 600 W 9205B at half its output while its voltage limit let
+            # through commands the supply could never satisfy (issue #116).
+            max_power=getattr(self, "max_power", None) or default_limits.max_power,
             voltage_slew_rate=(
                 default_limits.voltage_slew_rate if settings.enforce_slew_rate else None
             ),

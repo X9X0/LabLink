@@ -63,8 +63,10 @@ class TestBK9205B:
 
         assert status.connected is True
         assert status.firmware_version == "V1.0"
-        assert status.capabilities["max_voltage"] == 120.0
-        assert status.capabilities["max_current"] == 10.0
+        # B&K rates the 9205B at 60 V / 25 A / 600 W. This asserted
+        # 120 V / 10 A, the figures the driver carried before #116.
+        assert status.capabilities["max_voltage"] == 60.0
+        assert status.capabilities["max_current"] == 25.0
         assert status.capabilities["num_channels"] == 1
 
     @pytest.mark.asyncio
@@ -79,7 +81,7 @@ class TestBK9205B:
 
         # Test out of range
         with pytest.raises(ValueError):
-            await power_supply.set_voltage(150.0)  # Max is 120V
+            await power_supply.set_voltage(150.0)  # Max is 60 V
 
         with pytest.raises(ValueError):
             await power_supply.set_voltage(-1.0)
@@ -95,8 +97,11 @@ class TestBK9205B:
         mock_instrument.write.assert_called()
 
         # Test out of range
+        # 15 A used to be refused here, on a supply rated for 25 A.
+        await power_supply.set_current(15.0)
+
         with pytest.raises(ValueError):
-            await power_supply.set_current(15.0)  # Max is 10A
+            await power_supply.set_current(30.0)  # Max is 25 A
 
         with pytest.raises(ValueError):
             await power_supply.set_current(-1.0)
