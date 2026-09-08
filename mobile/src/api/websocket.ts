@@ -16,8 +16,12 @@ export class WebSocketManager {
   private ws: WebSocket | null = null;
   private wsUrl: string;
   private reconnectAttempts = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  // ReturnType<typeof setTimeout> rather than NodeJS.Timeout: this is React
+  // Native, where the timer handle is not Node's, and SDK 57's typings no
+  // longer supply the NodeJS namespace. Deriving the type from the function
+  // actually called is correct under both.
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private isManuallyDisconnected = false;
   private appState: AppStateStatus = AppState.currentState;
 
