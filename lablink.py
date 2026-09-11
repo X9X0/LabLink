@@ -27,6 +27,49 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
+# Windows: a child process inherits its parent's console, and when the parent
+# has none, Windows allocates a fresh one for the child and shows it.
+#
+# That is invisible when the launcher is started from a batch file -- there is
+# a console already, and every child quietly joins it. Start the launcher from
+# pythonw.exe instead, as the Start Menu shortcuts do, and each of the ~23
+# checks below strobes a terminal window across the screen instead.
+#
+# capture_output does not prevent this. It redirects the pipes; the window is
+# allocated either way. CREATE_NO_WINDOW is what suppresses it.
+#
+# But the flag also detaches the child from our console, so a child that
+# redirects nothing has its output discarded rather than printed. Ten of the
+# calls below are installs -- pip, venv, ensurepip -- that deliberately let
+# their progress through to whoever is watching. Setting the flag
+# unconditionally would trade strobing windows for a silent minute during a
+# pip install, which is a bad trade for anyone running this from a terminal.
+#
+# So ask whether there is a console to inherit. GetConsoleWindow() returns 0
+# exactly when this process has none, which is the pythonw.exe case and the
+# only case where Windows would allocate a fresh one. Started from a terminal
+# there is a console, the flag is not set, and output flows as it always did.
+#
+# Deliberate terminal launches -- "starting in a new terminal window", where
+# the user is meant to read the output -- never use this.
+def _no_window_flags() -> dict:
+    if sys.platform != "win32":
+        return {}
+    try:
+        import ctypes
+
+        if ctypes.windll.kernel32.GetConsoleWindow() == 0:
+            return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    except Exception:
+        # If we cannot tell, prefer visible output over a hidden window: a
+        # stray console is an annoyance, lost pip output is a support call.
+        pass
+    return {}
+
+
+#: Evaluated once: a process does not gain or lose its console while running.
+_NO_WINDOW = _no_window_flags()
+
 # A Windows console decodes as cp1252 by default, and this script prints
 # non-ASCII. Without this the first such print raises UnicodeEncodeError --
 # `bump_version.py --help` did exactly that. See issue #192.
@@ -62,7 +105,8 @@ def check_and_install_pip():
         [sys.executable, '-m', 'pip', '--version'],
         capture_output=True,
         text=True,
-        check=False
+        check=False,
+        **_NO_WINDOW,
     )
 
     if result.returncode != 0:
@@ -89,7 +133,31 @@ def get_venv_paths(venv_name: str = "venv") -> Dict[str, Path]:
     Returns:
         Dictionary with 'base', 'bin', 'python', and 'pip' paths
     """
-    venv_base = Path(venv_name)
+    # Which environment is "the" environment has a right answer, and it used to
+    # be guessed: Path(venv_name) is relative, so it resolved against whatever
+    # the working directory happened to be.
+    #
+    # That let the launcher audit one environment while the Start Menu
+    # shortcuts ran another. On a machine with both a legacy root venv and the
+    # installer's client\venv, the launcher probed the root one, found every
+    # package present, and reported all green -- while the Server shortcut died
+    # on a missing fastapi that really was absent from client\venv. The repair
+    # tool denied the failure the error dialog had just sent the user to it
+    # with.
+    #
+    # If this process is itself running inside a virtual environment, that is
+    # the environment, with no guessing required: the shortcuts start the
+    # launcher with client\venv's own pythonw.exe, so sys.prefix is already the
+    # answer. Only when running outside one is there anything to search for,
+    # and then it is anchored to the repo rather than to the caller's cwd.
+    if sys.prefix != sys.base_prefix:
+        venv_base = Path(sys.prefix)
+    else:
+        root = Path(__file__).resolve().parent
+        candidates = [root / venv_name, root / "client" / venv_name]
+        venv_base = next(
+            (path for path in candidates if path.exists()), candidates[0]
+        )
 
     if sys.platform == "win32":
         # Windows uses Scripts directory
@@ -146,7 +214,7 @@ except ImportError:
         if not venv_path.exists():
             try:
                 print(f"\nCreating virtual environment at {venv_path}...")
-                subprocess.check_call([sys.executable, "-m", "venv", "venv"])
+                subprocess.check_call([sys.executable, "-m", "venv", "venv"], **_NO_WINDOW)
                 print("✓ Virtual environment created")
             except subprocess.CalledProcessError as e:
                 print("\n" + "="*70)
@@ -165,7 +233,7 @@ except ImportError:
 
         try:
             print("\nInstalling PyQt6 in virtual environment...")
-            subprocess.check_call([str(venv_pip), "install", "PyQt6"])
+            subprocess.check_call([str(venv_pip), "install", "PyQt6"], **_NO_WINDOW)
             print("\n" + "="*70)
             print("✓ SUCCESS: Environment setup complete!")
             print("="*70)
@@ -195,7 +263,7 @@ except ImportError:
         # Try direct install (non-externally-managed system)
         try:
             print("\nInstalling PyQt6...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"], **_NO_WINDOW)
             print("\n" + "="*70)
             print("SUCCESS: PyQt6 installed successfully!")
             print("="*70)
@@ -389,7 +457,8 @@ class CheckWorker(QThread):
                 [sys.executable, '-m', 'pip', '--version'],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             if result.returncode == 0:
                 pip_version = result.stdout.split()[1]
@@ -779,7 +848,8 @@ class CheckWorker(QThread):
                 result = subprocess.run(
                     [str(venv_python), '-c', f'import {import_name}'],
                     capture_output=True,
-                    check=False
+                    check=False,
+                    **_NO_WINDOW,
                 )
                 if result.returncode == 0:
                     installed.append(pkg)
@@ -867,7 +937,8 @@ class CheckWorker(QThread):
                 ['which', command],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -880,7 +951,8 @@ class CheckWorker(QThread):
                 ['dpkg', '-s', lib_name],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -958,7 +1030,8 @@ class CheckWorker(QThread):
                 [str(venv_python), '-c', batch_check],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -1035,7 +1108,7 @@ class FixWorker(QThread):
             try:
                 if issue.fix_command == "ensurepip":
                     logger.info("Running ensurepip")
-                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
+                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'], **_NO_WINDOW)
 
                 elif issue.fix_command == "create_venv":
                     venv_paths = get_venv_paths()
@@ -1050,7 +1123,7 @@ class FixWorker(QThread):
 
                     if not venv_path.exists():
                         logger.info("Creating virtual environment...")
-                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'], **_NO_WINDOW)
                         logger.info("Virtual environment created successfully")
 
                         if not venv_pip.exists():
@@ -1068,11 +1141,11 @@ class FixWorker(QThread):
                         venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
-                            subprocess.check_call([str(venv_pip), 'install'] + packages)
+                            subprocess.check_call([str(venv_pip), 'install'] + packages, **_NO_WINDOW)
                             logger.info("Client utilities install completed successfully")
                         else:
                             logger.info("Using system pip")
-                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages)
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages, **_NO_WINDOW)
                             logger.info("Client utilities install completed successfully")
                     else:
                         # Standard requirements.txt installation
@@ -1083,11 +1156,11 @@ class FixWorker(QThread):
                         venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
-                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file], **_NO_WINDOW)
                             logger.info("Pip install completed successfully")
                         else:
                             logger.info("Using system pip")
-                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file], **_NO_WINDOW)
                             logger.info("Pip install completed successfully")
 
                 elif issue.fix_command.startswith("apt_install:"):
@@ -1102,7 +1175,8 @@ class FixWorker(QThread):
                     pkexec_check = subprocess.run(
                         ['which', 'pkexec'],
                         capture_output=True,
-                        check=False
+                        check=False,
+                        **_NO_WINDOW,
                     )
 
                     if pkexec_check.returncode == 0:
@@ -1112,7 +1186,8 @@ class FixWorker(QThread):
                             ['pkexec', 'apt', 'update'],
                             capture_output=True,
                             text=True,
-                            check=False
+                            check=False,
+                            **_NO_WINDOW,
                         )
 
                         if result.returncode != 0:
@@ -1128,7 +1203,8 @@ class FixWorker(QThread):
                             ['pkexec', 'apt', 'install', '-y'] + package_list,
                             capture_output=True,
                             text=True,
-                            check=False
+                            check=False,
+                            **_NO_WINDOW,
                         )
 
                         if result.returncode != 0:
@@ -1451,7 +1527,8 @@ class LabLinkLauncher(QMainWindow):
                 ['which', command],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -1828,7 +1905,8 @@ class LabLinkLauncher(QMainWindow):
                     ['pkexec', 'apt', 'update'],
                     check=False,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    **_NO_WINDOW,
                 )
 
                 if result.returncode == 0:
@@ -1837,7 +1915,8 @@ class LabLinkLauncher(QMainWindow):
                         ['pkexec', 'apt', 'install', '-y'] + packages.split(),
                         check=False,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        **_NO_WINDOW,
                     )
 
                     if result.returncode == 0:
@@ -1909,7 +1988,8 @@ class LabLinkLauncher(QMainWindow):
             result = subprocess.run(
                 ['which', command],
                 capture_output=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except Exception:
@@ -2015,7 +2095,8 @@ class LabLinkLauncher(QMainWindow):
 
             subprocess.Popen(
                 args,
-                cwd=str(lablink_root)
+                cwd=str(lablink_root),
+                **_NO_WINDOW,
             )
 
             self._show_auto_close_message(

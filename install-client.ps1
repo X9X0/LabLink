@@ -161,7 +161,17 @@ function Install-ClientDependencies {
     # Install requirements
     pip install -r requirements.txt
 
-    Write-Step "Dependencies installed"
+    Write-Step "Client dependencies installed"
+
+    # The Start Menu offers a Server entry, so the server's dependencies have
+    # to be here too -- a shortcut that opens nothing is worse than no
+    # shortcut. This is ~20 further packages (fastapi, uvicorn, pyvisa and so
+    # on) on top of the client's.
+    Write-Step "Installing server dependencies (for the Server shortcut)..."
+    pip install -r "$LablinkDir\shared\requirements.txt"
+    pip install -r "$LablinkDir\server\requirements.txt"
+
+    Write-Step "Server dependencies installed"
 }
 
 function Create-LauncherScript {
@@ -205,6 +215,47 @@ python lablink.py %*
     Write-Step "Launcher script created: $launcherPath"
 }
 
+function New-LabLinkShortcut {
+    param(
+        [string]$Path,
+        [string]$Target,
+        [string]$Description
+    )
+
+    # Point at pythonw.exe rather than a .bat file. Windows opens a console
+    # window for any batch file, and python.exe attaches one of its own, so
+    # either would leave a black window sitting behind the GUI for the whole
+    # session. pythonw.exe has no console at all.
+    #
+    # That is why lablink_launch.pyw exists: with no console there is nowhere
+    # for a traceback to go, so it catches startup failures and shows them in
+    # a message box instead of failing silently.
+    $pythonw = "$LablinkDir\client\venv\Scripts\pythonw.exe"
+    $launcher = "$LablinkDir\scripts\windows\lablink_launch.pyw"
+
+    # Never point a shortcut at something that is not there. Without a console
+    # there is nothing to print a "file not found" to, so a shortcut aimed at a
+    # missing shim does not fail -- it does nothing at all, which is the exact
+    # failure this whole design exists to prevent. Refusing loudly here is the
+    # only place that silence can still be turned back into a message.
+    foreach ($required in @($pythonw, $launcher)) {
+        if (-not (Test-Path $required)) {
+            throw ("Cannot create the '$Target' shortcut: $required is missing. " +
+                   "The installed copy of LabLink is missing files the shortcuts " +
+                   "need; re-run the installer against a complete checkout.")
+        }
+    }
+
+    $WScriptShell = New-Object -ComObject WScript.Shell
+    $shortcut = $WScriptShell.CreateShortcut($Path)
+    $shortcut.TargetPath = $pythonw
+    $shortcut.Arguments = "`"$launcher`" $Target"
+    $shortcut.WorkingDirectory = $LablinkDir
+    $shortcut.Description = $Description
+    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
+    $shortcut.Save()
+}
+
 function Create-DesktopShortcut {
     if (-not $CreateDesktopShortcut) {
         return
@@ -213,15 +264,8 @@ function Create-DesktopShortcut {
     Write-Step "Creating desktop shortcut..."
 
     $desktopPath = [Environment]::GetFolderPath("Desktop")
-    $shortcutPath = "$desktopPath\LabLink.lnk"
-
-    $WScriptShell = New-Object -ComObject WScript.Shell
-    $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
-    $shortcut.WorkingDirectory = $LablinkDir
-    $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
-    $shortcut.Save()
+    New-LabLinkShortcut -Path "$desktopPath\LabLink.lnk" -Target "client" `
+        -Description "LabLink - Laboratory Equipment Control"
 
     Write-Step "Desktop shortcut created"
 }
@@ -231,20 +275,31 @@ function Create-StartMenuShortcut {
         return
     }
 
-    Write-Step "Creating Start Menu shortcut..."
+    Write-Step "Creating Start Menu shortcuts..."
 
+    # A folder rather than three loose entries, so the Start Menu shows one
+    # "LabLink" group holding the client, the launcher and the server.
     $startMenuPath = [Environment]::GetFolderPath("Programs")
-    $shortcutPath = "$startMenuPath\LabLink.lnk"
+    $folder = "$startMenuPath\LabLink"
+    if (-not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
 
-    $WScriptShell = New-Object -ComObject WScript.Shell
-    $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
-    $shortcut.WorkingDirectory = $LablinkDir
-    $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
-    $shortcut.Save()
+    # The client is what a lab user wants; it is named plainly so it is what
+    # they find when they type "lablink".
+    New-LabLinkShortcut -Path "$folder\LabLink.lnk" -Target "client" `
+        -Description "LabLink - Laboratory Equipment Control"
 
-    Write-Step "Start Menu shortcut created"
+    # The launcher checks the installation and repairs dependencies. It is
+    # where the error message box sends people when something is wrong.
+    New-LabLinkShortcut -Path "$folder\LabLink Launcher.lnk" -Target "launcher" `
+        -Description "LabLink Launcher - environment checks and repair"
+
+    # Running the server on this machine rather than on a Pi.
+    New-LabLinkShortcut -Path "$folder\LabLink Server.lnk" -Target "server" `
+        -Description "LabLink Server - run the API server on this machine"
+
+    Write-Step "Start Menu shortcuts created (client, launcher, server)"
 }
 
 function Write-Success {
@@ -258,9 +313,19 @@ function Write-Success {
 
     Write-Host "Installation Directory: $LablinkDir"
     Write-Host ""
-    Write-Host "To start LabLink Client:"
-    Write-Host "  - Double-click the desktop shortcut"
-    Write-Host "  - Or run: $LablinkDir\lablink-client.bat"
+    Write-Host "Start Menu -> LabLink:"
+    Write-Host "  LabLink            the client. This is the one to use."
+    Write-Host "  LabLink Launcher   environment checks and dependency repair"
+    Write-Host "  LabLink Server     run the API server on this machine"
+    Write-Host ""
+    Write-Host "The desktop shortcut opens the client."
+    Write-Host "None of them open a console window."
+    Write-Host ""
+    Write-Host "If a shortcut appears to do nothing, open 'LabLink Launcher':"
+    Write-Host "it checks the installation and can repair it. Startup errors"
+    Write-Host "are also logged to $env:LOCALAPPDATA\LabLink\launch.log"
+    Write-Host ""
+    Write-Host "To remove LabLink: $LablinkDir\uninstall-client.bat"
     Write-Host ""
     Write-Host "For help and documentation: https://docs.lablink.io"
     Write-Host ""

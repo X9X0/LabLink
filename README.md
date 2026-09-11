@@ -87,9 +87,12 @@ The **LabLink Launcher** will:
    powershell -ExecutionPolicy Bypass -File .\install-client.ps1
    ```
    It installs Python 3.12 if you do not have it, sets up the client
-   environment, and creates a `lablink-client.bat` launcher along with desktop
-   and Start Menu shortcuts.
-3. Launch from the desktop shortcut, or run `.\lablink-client.bat`
+   environment with both the client and server dependencies, and creates a
+   desktop shortcut plus a **Start Menu → LabLink** folder holding three
+   entries: **LabLink** (the client), **LabLink Launcher** (environment checks
+   and repair) and **LabLink Server** (run the server on this machine).
+3. Launch from **Start Menu → LabLink**. None of the shortcuts open a console
+   window. To remove LabLink later, run `uninstall-client.bat`.
 
 **Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
 

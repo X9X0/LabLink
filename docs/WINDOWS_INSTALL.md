@@ -142,11 +142,50 @@ The `install-client.ps1` script will:
 2. **Optionally install Git** - Makes updates easier (you'll be prompted)
 3. **Download LabLink** - Clones repository or downloads ZIP
 4. **Create virtual environment** - Isolates Python dependencies
-5. **Install dependencies** - Installs PyQt6 and other required packages
-6. **Create launcher** - Makes a `lablink-client.bat` file
-7. **Create shortcuts** - Desktop and Start Menu shortcuts
+5. **Install dependencies** - Installs PyQt6 and the other client packages,
+   then the server packages, so the Server shortcut works too
+6. **Create launcher** - Makes a `lablink-client.bat` file. This is a fallback
+   for running the client *with* a console, which is useful when diagnosing a
+   startup problem; the shortcuts do not use it
+7. **Create shortcuts** - A desktop shortcut, and a **Start Menu → LabLink**
+   folder holding **LabLink** (client), **LabLink Launcher** and
+   **LabLink Server**. All target `pythonw.exe`, so none opens a console
 
 Installation typically takes 5-10 minutes depending on your internet connection.
+
+## Uninstalling
+
+Run `uninstall-client.bat` from the LabLink folder, or:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1
+```
+
+It removes the install directory, the desktop shortcut and the Start Menu
+folder, after asking for confirmation.
+
+Python and Git are left installed — the installer may have added them, but
+other software may depend on them by now, and that is not a decision a LabLink
+uninstaller should make.
+
+Saved credentials are kept unless you ask for them to go, since a reinstall
+cannot recreate them:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1 -RemoveSettings
+```
+
+Add `-Force` to skip the confirmation prompt, which is useful when scripting a
+wipe-and-reinstall test. `-Force` will still stop if the install directory is a
+git checkout with uncommitted work — that is the one case where the answer
+might genuinely have been no, and measurements under `data/`, saved `profiles/`
+and local `config/` all live inside that directory.
+
+You do not need to copy the uninstaller anywhere first. Windows will not delete
+a directory a running process is sitting in, so the script copies itself to
+`%TEMP%` and re-runs from there.
+
+If removal fails because a file is in use, close LabLink and run it again.
 
 ## Manual Installation (Alternative)
 
@@ -253,8 +292,20 @@ https://aka.ms/vs/17/release/vc_redist.x64.exe
 If the desktop shortcut doesn't launch LabLink:
 
 1. Right-click the shortcut → Properties
-2. Check that "Target" points to `lablink-client.bat`
+2. Check that "Target" points to `client\venv\Scripts\pythonw.exe`, and that
+   "Arguments" names `scripts\windows\lablink_launch.pyw` and one of
+   `client`, `launcher` or `server`
 3. Check that "Start in" points to your LabLink folder
+
+If a shortcut appears to do nothing at all, that is the console-free launch
+hiding an error. Check `%LOCALAPPDATA%\LabLink\launch.log`, which records any
+startup failure, and open **LabLink Launcher** to repair the installation.
+
+To check the whole install at once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\verify-install.ps1
+```
 
 ### ModuleNotFoundError: No module named 'client'
 
