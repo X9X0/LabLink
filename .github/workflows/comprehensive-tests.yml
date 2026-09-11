@@ -97,7 +97,11 @@ jobs:
           # tests/client/ covers the desktop client: the Pi image builder
           # and the SSH known-hosts handling. It was not run here at all, so
           # those suites were dead weight in CI.
-          xvfb-run -a pytest tests/unit/ tests/client/ \
+          # tests/gui/ was the same: collected by the guard above but never
+          # executed, so a panel test could fail for weeks without anyone
+          # hearing about it. The panels skip themselves when PyQt6 is
+          # missing, so adding them costs nothing where it is not installed.
+          xvfb-run -a pytest tests/unit/ tests/client/ tests/gui/ \
             -v \
             --cov=server \
             --cov=client \
