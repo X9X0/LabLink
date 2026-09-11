@@ -26,6 +26,12 @@ CONTROL_COMMANDS = {
     "set_voltage",
     "set_current",
     "set_output",
+    # Protection limits are control, not configuration: raising an OVP ceiling
+    # under another operator's session removes the guard on their experiment,
+    # and clearing a trip re-arms an output that latched off for a reason.
+    "set_ovp",
+    "set_ocp",
+    "clear_protection",
     "set_input",
     "set_mode",
     "set_range",

@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 from client.ui.widgets.power_chart_widget import PowerChartWidget
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,9 @@ class PowerSupplyPanel(QWidget):
         power_layout.addStretch()
         layout.addLayout(power_layout)
 
+        # Protection (OVP / OCP)
+        layout.addWidget(self._create_protection_group())
+
         # Output control
         output_layout = QHBoxLayout()
 
@@ -228,6 +231,162 @@ class PowerSupplyPanel(QWidget):
         layout.addStretch()
 
         return widget
+
+    def _create_protection_group(self) -> QGroupBox:
+        """Build the OVP/OCP controls.
+
+        These are trip *ceilings*, not setpoints, so they are deliberately kept
+        out of "Apply Settings": an operator arming a guard at 12.5 V should
+        not also push the output to whatever the voltage roller happens to be
+        showing. Each has its own Arm button and takes effect on its own.
+        """
+        group = QGroupBox("Protection")
+        layout = QVBoxLayout()
+
+        self.protection_note = QLabel()
+        self.protection_note.setWordWrap(True)
+        self.protection_note.setVisible(False)
+        layout.addWidget(self.protection_note)
+
+        form = QFormLayout()
+
+        # --- Over-voltage ------------------------------------------------
+        ovp_row = QHBoxLayout()
+        self.ovp_spin = QDoubleSpinBox()
+        self.ovp_spin.setRange(0, 60)
+        self.ovp_spin.setDecimals(3)
+        self.ovp_spin.setSuffix(" V")
+        self.ovp_spin.setSingleStep(0.1)
+        ovp_row.addWidget(self.ovp_spin)
+
+        self.ovp_enable = QCheckBox("Arm")
+        ovp_row.addWidget(self.ovp_enable)
+
+        self.ovp_apply_btn = QPushButton("Set OVP")
+        self.ovp_apply_btn.clicked.connect(self._on_apply_ovp)
+        ovp_row.addWidget(self.ovp_apply_btn)
+
+        self.ovp_indicator = QLabel("—")
+        self.ovp_indicator.setToolTip("Over-voltage protection status")
+        ovp_row.addWidget(self.ovp_indicator)
+
+        ovp_row.addStretch()
+        form.addRow("Over-voltage:", self._wrap(ovp_row))
+
+        # OVP slider, in millivolts like the voltage roller above it.
+        self.ovp_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ovp_slider.setRange(0, 60000)
+        self.ovp_slider.valueChanged.connect(self._on_ovp_slider_changed)
+        self.ovp_spin.valueChanged.connect(self._on_ovp_spin_changed)
+        form.addRow("", self.ovp_slider)
+
+        # --- Over-current ------------------------------------------------
+        ocp_row = QHBoxLayout()
+        self.ocp_spin = QDoubleSpinBox()
+        self.ocp_spin.setRange(0, 10)
+        self.ocp_spin.setDecimals(3)
+        self.ocp_spin.setSuffix(" A")
+        self.ocp_spin.setSingleStep(0.01)
+        ocp_row.addWidget(self.ocp_spin)
+
+        self.ocp_enable = QCheckBox("Arm")
+        ocp_row.addWidget(self.ocp_enable)
+
+        self.ocp_apply_btn = QPushButton("Set OCP")
+        self.ocp_apply_btn.clicked.connect(self._on_apply_ocp)
+        ocp_row.addWidget(self.ocp_apply_btn)
+
+        self.ocp_indicator = QLabel("—")
+        self.ocp_indicator.setToolTip("Over-current protection status")
+        ocp_row.addWidget(self.ocp_indicator)
+
+        ocp_row.addStretch()
+        form.addRow("Over-current:", self._wrap(ocp_row))
+
+        self.ocp_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ocp_slider.setRange(0, 10000)  # mA
+        self.ocp_slider.valueChanged.connect(self._on_ocp_slider_changed)
+        self.ocp_spin.valueChanged.connect(self._on_ocp_spin_changed)
+        form.addRow("", self.ocp_slider)
+
+        # A delay is what stops OCP firing on the inrush of a healthy
+        # capacitive load every time the output is enabled.
+        self.ocp_delay_spin = QDoubleSpinBox()
+        self.ocp_delay_spin.setRange(0, 10)
+        self.ocp_delay_spin.setDecimals(2)
+        self.ocp_delay_spin.setSuffix(" s")
+        self.ocp_delay_spin.setSingleStep(0.05)
+        self.ocp_delay_spin.setToolTip(
+            "Blanks the OCP trip for this long after the output is enabled, "
+            "so inrush into a capacitive load does not trip it"
+        )
+        form.addRow("OCP delay:", self.ocp_delay_spin)
+
+        layout.addLayout(form)
+
+        # --- Trip state --------------------------------------------------
+        trip_row = QHBoxLayout()
+
+        self.protection_status_label = QLabel("Protection: not read")
+        trip_row.addWidget(self.protection_status_label)
+
+        trip_row.addStretch()
+
+        self.refresh_protection_btn = QPushButton("Refresh")
+        self.refresh_protection_btn.clicked.connect(self._on_refresh_protection)
+        trip_row.addWidget(self.refresh_protection_btn)
+
+        self.clear_protection_btn = QPushButton("Clear Trip")
+        self.clear_protection_btn.setToolTip(
+            "A tripped supply stays latched off until the trip is cleared"
+        )
+        self.clear_protection_btn.clicked.connect(self._on_clear_protection)
+        trip_row.addWidget(self.clear_protection_btn)
+
+        layout.addLayout(trip_row)
+
+        group.setLayout(layout)
+        self.protection_group = group
+
+        # Nothing is connected yet, so nothing here can be driven.
+        self._set_protection_enabled(False)
+        return group
+
+    @staticmethod
+    def _spawn(coro) -> bool:
+        """Schedule a coroutine, tolerating there being no loop yet.
+
+        Button handlers always run under qasync, but `set_equipment` is called
+        from ordinary synchronous code that may not. Raising there would take
+        out the connection itself over a background refresh, so a missing loop
+        just means the read does not happen and the Refresh button is left to
+        do it.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            coro.close()
+            logger.debug("No running event loop; skipping background refresh")
+            return False
+        asyncio.create_task(coro)
+        return True
+
+    @staticmethod
+    def _wrap(inner_layout) -> QWidget:
+        """Put a layout in a widget so QFormLayout can take it as a field."""
+        holder = QWidget()
+        holder.setLayout(inner_layout)
+        return holder
+
+    def _set_protection_enabled(self, enabled: bool):
+        """Enable or disable every protection control as a unit."""
+        for control in (
+            self.ovp_spin, self.ovp_slider, self.ovp_enable, self.ovp_apply_btn,
+            self.ocp_spin, self.ocp_slider, self.ocp_enable, self.ocp_apply_btn,
+            self.ocp_delay_spin, self.refresh_protection_btn,
+            self.clear_protection_btn,
+        ):
+            control.setEnabled(enabled)
 
     def _create_monitor_tab(self) -> QWidget:
         """Create monitoring tab."""
@@ -288,18 +447,47 @@ class PowerSupplyPanel(QWidget):
         self.current_spin.setMaximum(max_current)
         self.current_slider.setMaximum(int(max_current * 1000))
 
+        # A trip ceiling is set above the working point, so the protection
+        # rollers share the supply's full range rather than the setpoint's.
+        self.ovp_spin.setMaximum(max_voltage)
+        self.ovp_slider.setMaximum(int(max_voltage * 1000))
+        self.ocp_spin.setMaximum(max_current)
+        self.ocp_slider.setMaximum(int(max_current * 1000))
+
         # Enable controls
         self.apply_btn.setEnabled(True)
         self.start_monitor_btn.setEnabled(True)
 
+        # Only offer protection where the driver implements it. Controls that
+        # silently do nothing are worse than controls that are visibly absent,
+        # and on a supply this one could be read as a guard that is armed.
+        supports_protection = capabilities.get("supports_protection", False)
+        self._set_protection_enabled(supports_protection)
+        self.protection_note.setVisible(not supports_protection)
+        if supports_protection:
+            self.protection_status_label.setText("Protection: not read")
+            self._spawn(self._refresh_protection_async())
+        else:
+            self.protection_note.setText(
+                f"<i>{manufacturer} {model} does not support remote OVP/OCP "
+                f"through LabLink. Set protection from the front panel.</i>"
+            )
+            self.protection_status_label.setText("Protection: not available")
+
         self.status_label.setText("Status: Connected")
 
-        logger.info(f"Equipment set: {equipment_id}, channels={num_channels}")
+        logger.info(
+            f"Equipment set: {equipment_id}, channels={num_channels}, "
+            f"protection={supports_protection}"
+        )
 
     def _on_channel_changed(self, channel: int):
         """Handle channel selection change."""
         logger.info(f"Channel changed: {channel}")
-        # Would fetch current settings for this channel
+        # Protection is per-channel on a multi-output supply, so what is on
+        # screen belongs to the channel that was selected a moment ago.
+        if self.client and self.equipment_id and self.ovp_spin.isEnabled():
+            self._spawn(self._refresh_protection_async())
 
     def _on_voltage_changed(self, value: float):
         """Handle voltage spinbox change."""
@@ -327,6 +515,210 @@ class PowerSupplyPanel(QWidget):
         self.current_spin.setValue(current)
         self.current_spin.blockSignals(False)
 
+    # ---- protection ------------------------------------------------------
+
+    def _on_ovp_spin_changed(self, value: float):
+        self.ovp_slider.blockSignals(True)
+        self.ovp_slider.setValue(int(value * 1000))
+        self.ovp_slider.blockSignals(False)
+
+    def _on_ovp_slider_changed(self, value: int):
+        self.ovp_spin.blockSignals(True)
+        self.ovp_spin.setValue(value / 1000.0)
+        self.ovp_spin.blockSignals(False)
+
+    def _on_ocp_spin_changed(self, value: float):
+        self.ocp_slider.blockSignals(True)
+        self.ocp_slider.setValue(int(value * 1000))
+        self.ocp_slider.blockSignals(False)
+
+    def _on_ocp_slider_changed(self, value: int):
+        self.ocp_spin.blockSignals(True)
+        self.ocp_spin.setValue(value / 1000.0)
+        self.ocp_spin.blockSignals(False)
+
+    def _on_apply_ovp(self):
+        if not self.client or not self.equipment_id:
+            return
+        self._spawn(
+            self._apply_ovp_async(
+                self.ovp_spin.value(),
+                self.ovp_enable.isChecked(),
+                self.channel_selector.value(),
+            )
+        )
+
+    async def _apply_ovp_async(self, voltage: float, enabled: bool, channel: int):
+        try:
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "set_ovp",
+                {"voltage": voltage, "enabled": enabled, "channel": channel},
+            )
+            state = "armed" if enabled else "disarmed"
+            self.status_label.setText(f"Status: OVP {state} at {voltage:.3f} V")
+            await self._refresh_protection_async()
+        except Exception as e:
+            self.status_label.setText(f"Status: OVP failed - {e}")
+            logger.error(f"Failed to set OVP: {e}")
+
+    def _on_apply_ocp(self):
+        if not self.client or not self.equipment_id:
+            return
+        self._spawn(
+            self._apply_ocp_async(
+                self.ocp_spin.value(),
+                self.ocp_enable.isChecked(),
+                self.ocp_delay_spin.value(),
+                self.channel_selector.value(),
+            )
+        )
+
+    async def _apply_ocp_async(
+        self, current: float, enabled: bool, delay: float, channel: int
+    ):
+        try:
+            parameters = {
+                "current": current, "enabled": enabled, "channel": channel,
+            }
+            # Zero means "no blanking"; send nothing rather than a 0 s delay,
+            # so a model without the delay command is not handed one.
+            if delay > 0:
+                parameters["delay"] = delay
+
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "set_ocp",
+                parameters,
+            )
+            state = "armed" if enabled else "disarmed"
+            self.status_label.setText(f"Status: OCP {state} at {current:.3f} A")
+            await self._refresh_protection_async()
+        except Exception as e:
+            self.status_label.setText(f"Status: OCP failed - {e}")
+            logger.error(f"Failed to set OCP: {e}")
+
+    def _on_refresh_protection(self):
+        if not self.client or not self.equipment_id:
+            return
+        self._spawn(self._refresh_protection_async())
+
+    async def _refresh_protection_async(self):
+        """Read protection state back and show it."""
+        try:
+            response = await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "get_protection",
+                {"channel": self.channel_selector.value()},
+            )
+        except Exception as e:
+            self.protection_status_label.setText(f"Protection: read failed - {e}")
+            logger.error(f"Failed to read protection state: {e}")
+            return
+
+        data = (response or {}).get("data") or {}
+        self._show_protection(data)
+
+    def _show_protection(self, data: dict):
+        """Reflect a protection readback into the controls and indicators.
+
+        Each field is optional: models differ in which protection queries they
+        answer. A value that came back as None is left showing "—" rather than
+        being rendered as a zero, which would read as a real, armed limit of
+        0 V — the most misleading thing this panel could display.
+        """
+        for level_key, spin, slider, scale in (
+            ("ovp_level", self.ovp_spin, self.ovp_slider, 1000),
+            ("ocp_level", self.ocp_spin, self.ocp_slider, 1000),
+        ):
+            level = data.get(level_key)
+            if level is None:
+                continue
+            spin.blockSignals(True)
+            slider.blockSignals(True)
+            spin.setValue(level)
+            slider.setValue(int(level * scale))
+            spin.blockSignals(False)
+            slider.blockSignals(False)
+
+        for enabled_key, checkbox in (
+            ("ovp_enabled", self.ovp_enable),
+            ("ocp_enabled", self.ocp_enable),
+        ):
+            enabled = data.get(enabled_key)
+            if enabled is None:
+                continue
+            checkbox.blockSignals(True)
+            checkbox.setChecked(bool(enabled))
+            checkbox.blockSignals(False)
+
+        delay = data.get("ocp_delay")
+        if delay is not None:
+            self.ocp_delay_spin.blockSignals(True)
+            self.ocp_delay_spin.setValue(delay)
+            self.ocp_delay_spin.blockSignals(False)
+
+        tripped = []
+        for trip_key, enabled_key, indicator, name in (
+            ("ovp_tripped", "ovp_enabled", self.ovp_indicator, "OVP"),
+            ("ocp_tripped", "ocp_enabled", self.ocp_indicator, "OCP"),
+        ):
+            self._set_indicator(
+                indicator, data.get(trip_key), data.get(enabled_key)
+            )
+            if data.get(trip_key):
+                tripped.append(name)
+
+        if tripped:
+            self.protection_status_label.setText(
+                f"<b>Protection: {' and '.join(tripped)} TRIPPED — "
+                f"output is latched off</b>"
+            )
+            self.protection_status_label.setStyleSheet("color: #C62828;")
+        else:
+            self.protection_status_label.setText("Protection: no trip")
+            self.protection_status_label.setStyleSheet("")
+
+    @staticmethod
+    def _set_indicator(label, tripped, enabled):
+        """Three states, not two: tripped, armed, and not-known."""
+        if tripped:
+            label.setText("TRIPPED")
+            label.setStyleSheet("color: #C62828; font-weight: bold;")
+        elif tripped is None:
+            # The model does not answer the trip query. Saying "OK" here would
+            # be an assertion nobody checked.
+            label.setText("—")
+            label.setStyleSheet("color: palette(mid);")
+        elif enabled:
+            label.setText("armed")
+            label.setStyleSheet("color: #2E7D32;")
+        else:
+            label.setText("off")
+            label.setStyleSheet("color: palette(mid);")
+
+    def _on_clear_protection(self):
+        if not self.client or not self.equipment_id:
+            return
+        self._spawn(self._clear_protection_async())
+
+    async def _clear_protection_async(self):
+        try:
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "clear_protection",
+                {"channel": self.channel_selector.value()},
+            )
+            self.status_label.setText("Status: protection trip cleared")
+            await self._refresh_protection_async()
+        except Exception as e:
+            self.status_label.setText(f"Status: clear failed - {e}")
+            logger.error(f"Failed to clear protection: {e}")
+
     def _on_output_changed(self, state: int):
         """Handle output checkbox change."""
         enabled = state == Qt.CheckState.Checked.value
@@ -346,7 +738,7 @@ class PowerSupplyPanel(QWidget):
             f"Applying: V={voltage}V, I={current}A, CH={channel}, OUT={output_enabled}"
         )
 
-        asyncio.create_task(
+        self._spawn(
             self._apply_settings_async(voltage, current, channel, output_enabled)
         )
 
@@ -355,25 +747,29 @@ class PowerSupplyPanel(QWidget):
     ):
         """Apply settings asynchronously."""
         try:
-            # Set voltage
-            await self.client.send_command(
-                equipment_id=self.equipment_id,
-                command="set_voltage",
-                parameters={"voltage": voltage, "channel": channel},
+            # LabLinkClient is synchronous, so each call goes through
+            # call_blocking: awaiting it directly raises TypeError on the dict
+            # it returns, and would freeze the GUI for the round trip if it
+            # did not.
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "set_voltage",
+                {"voltage": voltage, "channel": channel},
             )
 
-            # Set current
-            await self.client.send_command(
-                equipment_id=self.equipment_id,
-                command="set_current",
-                parameters={"current": current, "channel": channel},
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "set_current",
+                {"current": current, "channel": channel},
             )
 
-            # Set output
-            await self.client.send_command(
-                equipment_id=self.equipment_id,
-                command="set_output",
-                parameters={"enabled": output_enabled, "channel": channel},
+            await call_blocking(
+                self.client.send_command,
+                self.equipment_id,
+                "set_output",
+                {"enabled": output_enabled, "channel": channel},
             )
 
             self.status_label.setText("Status: Settings applied")

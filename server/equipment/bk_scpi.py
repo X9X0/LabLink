@@ -217,11 +217,18 @@ class BKSCPIBase(BaseEquipment):
         logger.info(f"Safety validator initialized for {equipment_id}")
 
     # -- info / status -----------------------------------------------------
+    #: Whether this driver implements the OVP/OCP command set. The legacy
+    #: fixed-width supplies do not, so a panel must ask rather than assume:
+    #: offering protection controls that silently do nothing is worse than
+    #: not offering them.
+    supports_protection = False
+
     def _capabilities(self) -> Dict[str, Any]:
         caps: Dict[str, Any] = {
             "num_channels": self.num_channels,
             "max_voltage": self.max_voltage,
             "max_current": self.max_current,
+            "supports_protection": self.supports_protection,
         }
         if self.info:
             caps.update({
@@ -284,6 +291,7 @@ class BKSCPIPowerSupply(BKSCPIBase):
 
     id_prefix = "ps_"
     equipment_type = EquipmentType.POWER_SUPPLY
+    supports_protection = True
 
     async def execute_command(self, command: str, parameters: dict) -> Any:
         handlers = {
@@ -294,6 +302,8 @@ class BKSCPIPowerSupply(BKSCPIBase):
             "get_setpoints": self.get_setpoints,
             "set_ovp": self.set_ovp,
             "set_ocp": self.set_ocp,
+            "get_protection": self.get_protection,
+            "clear_protection": self.clear_protection,
         }
         if command not in handlers:
             raise ValueError(f"Unknown command: {command}")
@@ -382,6 +392,75 @@ class BKSCPIPowerSupply(BKSCPIBase):
             await self._write(f"CURR:PROT:DEL {delay:g}")
         await self._write(f"CURR:PROT:STAT {'ON' if enabled else 'OFF'}")
         await self._after_write()
+
+    async def clear_protection(self, channel: int = 1):
+        """Clear a tripped protection and re-arm the output.
+
+        A tripped supply stays latched off until this is sent, so an operator
+        who does not know that reads the dead output as a broken instrument.
+        """
+        await self._select_channel(channel)
+        await self._write("OUTP:PROT:CLE")
+        await self._after_write()
+
+    async def _query_optional(self, command: str) -> Optional[str]:
+        """Query something a given model may not implement.
+
+        The protection subsystem is uneven across the line: every SCPI model
+        here takes VOLT:PROT, but the :TRIPped? queries are documented on some
+        and absent on others. A missing query is a fact about the model, not a
+        failure of the read, so it yields None and leaves the rest intact.
+        """
+        try:
+            return (await self._query(command)).strip()
+        except Exception as e:
+            logger.debug(f"{self.model} does not answer {command}: {e}")
+            return None
+
+    @staticmethod
+    def _as_bool(reply: Optional[str]) -> Optional[bool]:
+        if reply is None:
+            return None
+        return reply.strip().upper() in ("1", "ON", "TRUE")
+
+    @staticmethod
+    def _as_float(reply: Optional[str]) -> Optional[float]:
+        if reply is None:
+            return None
+        try:
+            return float(reply)
+        except ValueError:
+            return None
+
+    async def get_protection(self, channel: int = 1) -> Dict[str, Any]:
+        """Read the OVP and OCP levels, their arming, and whether either fired.
+
+        Every field is optional. Reading protection must not fail just because
+        a model omits one query — the panel needs whatever is available in
+        order to show the operator the state of the supply in front of them.
+        """
+        await self._select_channel(channel)
+
+        return {
+            "channel": channel,
+            "ovp_level": self._as_float(await self._query_optional("VOLT:PROT?")),
+            "ovp_enabled": self._as_bool(
+                await self._query_optional("VOLT:PROT:STAT?")
+            ),
+            "ovp_tripped": self._as_bool(
+                await self._query_optional("VOLT:PROT:TRIP?")
+            ),
+            "ocp_level": self._as_float(await self._query_optional("CURR:PROT?")),
+            "ocp_enabled": self._as_bool(
+                await self._query_optional("CURR:PROT:STAT?")
+            ),
+            "ocp_tripped": self._as_bool(
+                await self._query_optional("CURR:PROT:TRIP?")
+            ),
+            "ocp_delay": self._as_float(
+                await self._query_optional("CURR:PROT:DEL?")
+            ),
+        }
 
     async def get_setpoints(self, channel: int = 1) -> Dict[str, float]:
         await self._select_channel(channel)
