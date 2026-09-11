@@ -18,6 +18,7 @@ in. These cover that: the default is unchanged, "hold" sends nothing, and
 server shutdown behaves the same way an explicit disconnect does.
 """
 
+import ast
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -34,16 +35,24 @@ def supply(**kwargs):
     instrument = MagicMock()
     instrument.set_output = AsyncMock()
     instrument.disconnect = AsyncMock()
+    instrument.resource_string = "ASRL/dev/ttyUSB0::INSTR"
     for key, value in kwargs.items():
         setattr(instrument, key, value)
     return instrument
 
 
 def load():
-    """An electronic load: set_input rather than set_output."""
-    instrument = MagicMock(spec=["set_input", "disconnect"])
+    """An electronic load: set_input rather than set_output.
+
+    The spec is deliberately tight — it is what proves the manager reaches for
+    set_input and not set_output on a load. `resource_string` joins it because
+    disconnect_device now tells discovery the instrument has gone, and every
+    real BaseEquipment has carried that attribute since __init__.
+    """
+    instrument = MagicMock(spec=["set_input", "disconnect", "resource_string"])
     instrument.set_input = AsyncMock()
     instrument.disconnect = AsyncMock()
+    instrument.resource_string = "ASRL/dev/ttyUSB1::INSTR"
     return instrument
 
 
@@ -190,14 +199,36 @@ class TestBaseDisconnectStillSendsNothing:
     """The premise of the whole correction."""
 
     def test_it_only_closes_the_transport(self):
+        """Parse the method, rather than scraping the text around it.
+
+        This read the source as a string and split on the next "async def",
+        which swept up everything between the method and the one after it.
+        A later comment explaining the I/O lock used the words "set_output" in
+        prose, and the assertion fired on a mention in a comment — a failure
+        about nothing, in a file whose behaviour had not changed.
+
+        Walking the AST asks the question the test means: what does disconnect
+        actually call?
+        """
         source = (
             Path(__file__).resolve().parents[2] / "server" / "equipment" / "base.py"
         ).read_text(encoding="utf-8")
-        body = source.split("async def disconnect", 1)[1].split("\n    async def ", 1)[0]
 
-        assert "instrument.close()" in body
-        assert "set_output" not in body
-        assert "set_input" not in body
+        disconnect = next(
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "disconnect"
+        )
+
+        called = {
+            node.func.attr
+            for node in ast.walk(disconnect)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+
+        assert "close" in called, "disconnect must close the transport"
+        assert "set_output" not in called
+        assert "set_input" not in called
 
 
 class TestTheEndpointReportsFaultsHonestly:

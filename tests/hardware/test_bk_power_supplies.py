@@ -195,14 +195,26 @@ class TestBK1685B:
 
     @pytest.mark.asyncio
     async def test_get_status(self, power_supply, mock_instrument):
-        """Test getting power supply status."""
+        """Test getting power supply status.
+
+        The firmware version is deliberately absent. The fixed-width protocol
+        has no *IDN?, so there is nowhere for a version to come from; the
+        driver stopped asking in the health-monitor fix, because each attempt
+        held the serial port for a full timeout every 30 seconds and collided
+        with whatever the panel was doing.
+
+        This used to assert "V2.1" and passed only because a MagicMock
+        answered a command the instrument does not implement. Asserting None
+        keeps the real constraint visible: if a version ever appears here,
+        something is querying a header this protocol does not have.
+        """
         mock_instrument.query.return_value = "BK Precision,1685B,123456,V2.1"
 
         await power_supply.connect()
         status = await power_supply.get_status()
 
         assert status.connected is True
-        assert status.firmware_version == "V2.1"
+        assert status.firmware_version is None
         assert status.capabilities["max_voltage"] == 18.0
         assert status.capabilities["max_current"] == 5.0
         assert status.capabilities["num_channels"] == 1
