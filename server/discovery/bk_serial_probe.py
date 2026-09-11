@@ -22,7 +22,7 @@ import glob
 import logging
 import sys
 import time
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from server.equipment.bk_registry import (MANUFACTURER, PROTOCOL_FIXED,
                                    CATEGORY_LABELS,
@@ -43,6 +43,24 @@ DEFAULT_BAUDS = candidate_bauds()
 #: enough for a legacy supply to answer, short enough that sweeping six rates
 #: across a handful of ports stays quick.
 PROBE_TIMEOUT = 0.6
+
+
+def serial_port_from_resource(resource_name: Optional[str]) -> Optional[str]:
+    """The serial device behind an ASRL resource name, or None if it is not one.
+
+    pyvisa-py names Linux ports by path ("ASRL/dev/ttyUSB0::INSTR") and
+    Windows ports by number ("ASRL3::INSTR" is COM3). The probe works in
+    device names, so anything that wants to tell it about a port -- such as
+    the one a connected driver is holding -- has to translate first.
+    """
+    if not resource_name or not resource_name.upper().startswith("ASRL"):
+        return None
+    port = resource_name[len("ASRL"):].split("::", 1)[0]
+    if not port:
+        return None
+    if port.isdigit():
+        return f"COM{port}"
+    return port
 
 
 def find_serial_ports(usb_only: bool = True) -> List[str]:
@@ -245,13 +263,29 @@ async def probe_serial_ports(
     timeout: float = PROBE_TIMEOUT,
     max_concurrency: int = 4,
     usb_only: bool = True,
+    exclude: Optional[Iterable[str]] = None,
 ) -> List[DiscoveredDevice]:
     """Find B&K instruments on serial and USB-CDC ports.
 
     Ports are probed concurrently, but each port is held by exactly one probe
     at a time — two probes on the same port would read each other's replies.
+
+    ``exclude`` names ports not to touch: the ones a connected driver is
+    already using. A probe there competes with the driver for the port, and
+    both lose -- the driver's reply lands in the probe's buffer, the probe's
+    GMAX arrives while the driver is mid-read, and the supply the operator is
+    actively controlling comes back "unidentified".
     """
     ports = ports if ports is not None else find_serial_ports(usb_only=usb_only)
+    if exclude:
+        held = set(exclude)
+        skipped = [p for p in ports if p in held]
+        if skipped:
+            logger.info(
+                f"Not probing {', '.join(skipped)}: already connected, and the "
+                f"probe would compete with the driver for the port"
+            )
+            ports = [p for p in ports if p not in held]
     if not ports:
         logger.debug("No serial ports to probe for B&K instruments")
         return []

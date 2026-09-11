@@ -379,15 +379,17 @@ class TestDiagnosticsManager:
             assert conn_diag.response_time_ms is not None
             assert conn_diag.response_time_ms > 0
 
-            # Verify IDN query was made
-            mock_equipment.query.assert_called_with("*IDN?")
+            # The driver chooses the probe (*IDN? or GMAX); the check only
+            # asks for it to be run.
+            mock_equipment.health_probe.assert_awaited_once()
+            mock_equipment.query.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_check_connection_failure(
         self, diagnostics_manager, mock_equipment, mock_equipment_manager
     ):
         """Test connection diagnostics when equipment fails to respond."""
-        mock_equipment.query.side_effect = Exception("Connection timeout")
+        mock_equipment.health_probe.side_effect = Exception("Connection timeout")
 
         with patch("server.equipment.manager.equipment_manager", mock_equipment_manager):
             conn_diag = await diagnostics_manager._check_connection("test_scope_001")

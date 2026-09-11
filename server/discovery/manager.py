@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+from .bk_serial_probe import serial_port_from_resource
 from .history import ConnectionHistoryTracker
 from .mdns_scanner import MDNSScanner
 from .models import (ConnectionStatistics, ConnectionStatus, DeviceAlias,
@@ -256,6 +257,12 @@ class DiscoveryManager:
 
             discovered = []
 
+            # Instruments a driver already holds are described from the
+            # driver's record and left alone on the wire, by both the VISA
+            # scanner and the serial probe. See VISAScanner._describe_connected
+            # for what happened when they were not.
+            held = self._connected_resources()
+
             # VISA scan
             if DiscoveryMethod.VISA in methods and self.config.enable_visa_scan:
                 try:
@@ -264,7 +271,7 @@ class DiscoveryManager:
                         self._progress_callback(
                             "scan_started", {"method": "VISA", "stage": "starting"}
                         )
-                    visa_devices = await self.visa_scanner.scan()
+                    visa_devices = await self.visa_scanner.scan(connected=held)
                     discovered.extend(visa_devices)
                     result.visa_count = len(visa_devices)
                     logger.info(f"VISA scan found {len(visa_devices)} devices")
@@ -307,6 +314,10 @@ class DiscoveryManager:
                     serial_devices = await probe_serial_ports(
                         timeout=self.config.serial_probe_timeout_sec,
                         usb_only=self.config.serial_probe_usb_only,
+                        exclude=[
+                            port for port in map(serial_port_from_resource, held)
+                            if port
+                        ],
                     )
                     result.usb_count = self._merge_serial_probe_results(
                         discovered, serial_devices
@@ -381,6 +392,8 @@ class DiscoveryManager:
                 device.location = existing.location
                 device.tags = existing.tags
 
+                self._keep_stronger_identification(existing, device)
+
                 # Update device
                 self.devices[device_id] = device
                 updated_count += 1
@@ -395,6 +408,75 @@ class DiscoveryManager:
                 )
 
         return new_count, updated_count
+
+    @staticmethod
+    def _keep_stronger_identification(
+        existing: DiscoveredDevice, device: DiscoveredDevice
+    ) -> None:
+        """Do not let a scan that failed to identify an instrument erase one that did.
+
+        A scan can miss an instrument it identified last time -- the port was
+        busy, the instrument was mid-command, the probe lost a race -- and what
+        it reports then is "Unknown Serial Device, confidence 0.4". That
+        describes the scan, not the instrument. Overwriting a real
+        identification with it cost the operator the type, model and limits
+        until a later scan got lucky. So when the new entry is the less
+        confident one, the identity fields carry forward from the old; what
+        the new scan does know -- that the device is present, and whether it
+        is connected -- still comes from the new scan.
+        """
+        if device.confidence_score >= existing.confidence_score:
+            return
+        if existing.device_type == DeviceType.UNKNOWN:
+            return
+
+        weaker = f"{device.manufacturer} {device.model}"
+        for field in ("manufacturer", "model", "serial_number",
+                      "firmware_version", "device_type"):
+            value = getattr(existing, field)
+            if value is not None:
+                setattr(device, field, value)
+        device.confidence_score = existing.confidence_score
+        device.capabilities = list(dict.fromkeys(
+            existing.capabilities + device.capabilities
+        ))
+        # The old entry's notes and limits are worth more than the new one's
+        # "did not respond"; its equipment_id is not, since whether the device
+        # is connected now is the new scan's call.
+        carried = {k: v for k, v in existing.metadata.items() if k != "equipment_id"}
+        device.metadata = {**device.metadata, **carried}
+
+        logger.info(
+            f"Kept the earlier identification of {device.resource_name} as "
+            f"{device.manufacturer} {device.model}; this scan could only "
+            f"report it as {weaker}"
+        )
+
+    @staticmethod
+    def _connected_resources() -> Dict[str, object]:
+        """Resources the equipment manager holds open, by VISA resource name.
+
+        Each maps to the EquipmentInfo the driver produced on connect, or None
+        if it has none. Imported lazily because the equipment package imports
+        discovery. Anything going wrong here means "treat nothing as held",
+        which is the old behaviour rather than a failure.
+        """
+        try:
+            from server.equipment.manager import equipment_manager
+        except Exception as e:
+            logger.debug(f"Equipment manager not available to discovery: {e}")
+            return {}
+
+        held: Dict[str, object] = {}
+        for equipment in list(getattr(equipment_manager, "equipment", {}).values()):
+            info = getattr(equipment, "cached_info", None)
+            resource = (
+                getattr(info, "resource_string", None)
+                or getattr(equipment, "resource_string", None)
+            )
+            if resource:
+                held[resource] = info
+        return held
 
     def get_devices(
         self,
@@ -732,6 +814,28 @@ class DiscoveryManager:
             )
 
             logger.info(f"Device {device_id} marked as disconnected")
+
+    def _device_for_resource(self, resource_name: str) -> Optional[DiscoveredDevice]:
+        for device in self.devices.values():
+            if device.resource_name == resource_name:
+                return device
+        return None
+
+    def mark_connected_resource(self, resource_name: str, equipment_id: str):
+        """mark_connected, keyed the way the equipment manager keys things.
+
+        The equipment manager knows VISA resources, not discovery's device
+        ids, and it is the one that knows when a connection happens.
+        """
+        device = self._device_for_resource(resource_name)
+        if device:
+            self.mark_connected(device.device_id, equipment_id)
+
+    def mark_disconnected_resource(self, resource_name: str):
+        """mark_disconnected, keyed by VISA resource."""
+        device = self._device_for_resource(resource_name)
+        if device:
+            self.mark_disconnected(device.device_id)
 
     def cleanup(self):
         """Cleanup old devices and history."""

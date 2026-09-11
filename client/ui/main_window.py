@@ -103,6 +103,13 @@ class MainWindow(QMainWindow):
         self.control_panel = ControlPanel()
         self.tab_widget.addTab(self.control_panel, "Control")
 
+        # Connecting or disconnecting an instrument on the Equipment tab
+        # changes what the Control tab has to offer; it used to find out only
+        # when the operator pressed Refresh there.
+        self.equipment_panel.equipment_changed.connect(
+            self.control_panel.refresh_equipment_list
+        )
+
         # Data acquisition panel
         self.acquisition_panel = AcquisitionPanel()
         self.tab_widget.addTab(self.acquisition_panel, "Data Acquisition")

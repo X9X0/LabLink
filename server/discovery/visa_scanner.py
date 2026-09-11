@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pyvisa
 
@@ -13,6 +13,7 @@ from server.equipment.bk_registry import (CATEGORY_LABELS,
                                    is_bk_manufacturer, is_drivable,
                                    resolve_model)
 
+from .bk_serial_probe import serial_port_from_resource
 from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
                      DiscoveryConfig, DiscoveryMethod)
 from .usb_hardware_db import get_device_info_from_resource
@@ -40,6 +41,9 @@ class VISAScanner:
         self.visa_backend = visa_backend
         self.rm: Optional[pyvisa.ResourceManager] = None
         self.progress_callback = progress_callback
+        # Resources a driver currently holds open, by VISA name, for the
+        # duration of one scan. See _describe_connected.
+        self._connected: Dict[str, Any] = {}
 
     def _get_resource_manager(self) -> pyvisa.ResourceManager:
         """Get or create VISA resource manager.
@@ -57,8 +61,16 @@ class VISAScanner:
 
         return self.rm
 
-    async def scan(self) -> List[DiscoveredDevice]:
+    async def scan(
+        self, connected: Optional[Dict[str, Any]] = None
+    ) -> List[DiscoveredDevice]:
         """Scan for VISA resources asynchronously.
+
+        Args:
+            connected: resources LabLink already holds open, keyed by VISA
+                resource name, each mapped to the EquipmentInfo its driver
+                produced on connect (or None if it has none yet). These are
+                described from that record and not opened a second time.
 
         Returns:
             List of discovered devices
@@ -67,6 +79,7 @@ class VISAScanner:
             Exception: If scan fails
         """
         devices = []
+        self._connected = dict(connected or {})
 
         try:
             # Create resource manager for this scan
@@ -174,10 +187,12 @@ class VISAScanner:
                 )
             raise
 
-        finally:
-            # Close resource manager after scan to prevent file descriptor leaks
-            self.close()
-
+        # Deliberately no self.close() here. pyvisa hands out one ResourceManager
+        # per backend, shared with every connected driver, and closing it closes
+        # their sessions too: each scan used to knock every connected instrument
+        # offline mid-command until its driver noticed and reconnected. Each
+        # resource the scanner opens is closed as soon as it has been queried;
+        # the manager itself is closed once, at shutdown.
         return devices
 
     def _build_query_string(self) -> str:
@@ -236,6 +251,11 @@ class VISAScanner:
             return None
 
         logger.debug(f"Processing {interface_type} resource: {resource_name}")
+
+        if resource_name in self._connected:
+            return self._describe_connected(
+                resource_name, interface_type, self._connected[resource_name]
+            )
 
         # Log ASRL resources at INFO level for visibility
         if interface_type == "ASRL":
@@ -379,6 +399,55 @@ class VISAScanner:
                 f"status={device.status}, confidence={device.confidence_score}"
             )
 
+        return device
+
+    def _describe_connected(
+        self, resource_name: str, interface_type: str, info: Any
+    ) -> DiscoveredDevice:
+        """Describe an instrument a driver already holds, without opening it.
+
+        A second session on a connected instrument competes with its driver.
+        On a serial port the scanner's *IDN? and the driver's own traffic
+        interleave and both time out, so the supply the operator is actively
+        controlling came back from every scan as "Unknown Serial Device". The
+        driver identified the instrument when it connected; that record is a
+        better identification than anything a busy port will yield now, and
+        reading it costs the instrument nothing.
+        """
+        device = DiscoveredDevice(
+            device_id=self._generate_device_id(resource_name),
+            resource_name=resource_name,
+            discovery_method=DiscoveryMethod.VISA,
+            status=ConnectionStatus.CONNECTED,
+            is_connected=True,
+            manufacturer=getattr(info, "manufacturer", None),
+            model=getattr(info, "model", None),
+            serial_number=getattr(info, "serial_number", None),
+            confidence_score=0.95,
+        )
+
+        equipment_type = getattr(info, "type", None)
+        try:
+            device.device_type = DeviceType(
+                getattr(equipment_type, "value", equipment_type)
+            )
+        except ValueError:
+            device.device_type = DeviceType.UNKNOWN
+
+        equipment_id = getattr(info, "id", None)
+        if equipment_id:
+            device.metadata["equipment_id"] = equipment_id
+        device.metadata["identified_by"] = "connected driver"
+        if interface_type == "ASRL":
+            port = serial_port_from_resource(resource_name)
+            if port:
+                device.metadata["serial_port"] = port
+
+        self._apply_bk_registry(device)
+        logger.info(
+            f"{resource_name} is connected as {device.manufacturer} "
+            f"{device.model}; described from its driver, not re-queried"
+        )
         return device
 
     def _apply_bk_registry(self, device: DiscoveredDevice) -> None:

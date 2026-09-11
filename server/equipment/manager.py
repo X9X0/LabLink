@@ -176,6 +176,8 @@ class EquipmentManager:
                 from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_connection(equipment_id)
 
+                self._notify_discovery(resource_string, equipment_id, connected=True)
+
                 logger.info(
                     f"Connected to {model} at {resource_string} with ID {equipment_id}"
                 )
@@ -381,7 +383,32 @@ class EquipmentManager:
                 from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_disconnection(equipment_id)
 
+                self._notify_discovery(
+                    equipment.resource_string, equipment_id, connected=False
+                )
+
                 logger.info(f"Disconnected device {equipment_id}")
+
+    @staticmethod
+    def _notify_discovery(
+        resource_string: str, equipment_id: str, connected: bool
+    ) -> None:
+        """Tell discovery a resource changed hands, so its cache says so too.
+
+        Best effort: discovery is bookkeeping, and a connection must not fail
+        because the bookkeeping did (or because discovery is not running, as
+        in the unit tests).
+        """
+        try:
+            from server.discovery import get_discovery_manager
+
+            manager = get_discovery_manager()
+            if connected:
+                manager.mark_connected_resource(resource_string, equipment_id)
+            else:
+                manager.mark_disconnected_resource(resource_string)
+        except Exception as e:
+            logger.debug(f"Discovery not updated for {resource_string}: {e}")
 
     def get_equipment(self, equipment_id: str) -> Optional[BaseEquipment]:
         """Get equipment by ID."""

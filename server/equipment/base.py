@@ -32,8 +32,51 @@ def generate_equipment_id(resource_string: str, prefix: str) -> str:
     return f"{prefix}{hash_hex}"
 
 
+class _ReentrantAsyncLock:
+    """An asyncio lock that the task holding it may take again.
+
+    Instrument I/O has to be serialised per instrument: the health monitor's
+    poll, a client's readings timer and the operator's set_output all arrive
+    as separate coroutines, and a USBTMC device handed two interleaved
+    transfers stalls its bulk pipe and fails everything after that with
+    "[Errno 32] Pipe error", while a serial supply hands one caller the
+    other's reply. A plain asyncio.Lock would deadlock the reconnect path,
+    where _query() -> _ensure_connected() -> connect() -> _query() all run in
+    one task, so this one is re-entrant for the task that owns it.
+    """
+
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._owner: Optional[asyncio.Task] = None
+        self._depth = 0
+
+    async def __aenter__(self):
+        me = asyncio.current_task()
+        if self._owner is me:
+            self._depth += 1
+            return self
+        await self._lock.acquire()
+        self._owner = me
+        self._depth = 1
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self._depth -= 1
+        if self._depth == 0:
+            self._owner = None
+            self._lock.release()
+        return False
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+
 class BaseEquipment(ABC):
     """Base class for all lab equipment."""
+
+    #: Seconds to let a USB device re-enumerate after a reset before the
+    #: exchange that provoked the reset is retried.
+    USB_RESET_SETTLE_SEC = 1.0
 
     def __init__(self, resource_manager: ResourceManager, resource_string: str):
         """Initialize equipment."""
@@ -43,6 +86,8 @@ class BaseEquipment(ABC):
         self.connected = False
         self.cached_info: Optional[EquipmentInfo] = None
         self._lock = asyncio.Lock()
+        # Held for every exchange with the instrument; see _ReentrantAsyncLock.
+        self._io_lock = _ReentrantAsyncLock()
         self._is_connecting = False  # Flag to prevent recursion during connection
 
     def _is_instrument_valid(self) -> bool:
@@ -174,8 +219,102 @@ class BaseEquipment(ABC):
                     self.instrument = None
                     self.connected = False
 
+    # ==================== Instrument I/O ====================
+    #
+    # Every exchange with the instrument goes through _write, _query or
+    # _query_binary, and each holds self._io_lock for the whole exchange. The
+    # lock is what keeps the health monitor, a client's readings poll and a
+    # set_output from interleaving on the wire. A driver that talks to
+    # self.instrument directly has to take the same lock -- see
+    # BKPowerSupplyBase._bk_query.
+
+    async def query(self, command: str) -> str:
+        """Query the instrument. The public face of _query, for diagnostics."""
+        return await self._query(command)
+
+    async def write(self, command: str) -> None:
+        """Write to the instrument. The public face of _write, for diagnostics."""
+        await self._write(command)
+
+    async def health_probe(self) -> str:
+        """The cheapest exchange that proves the instrument is still there.
+
+        *IDN? by default, which every SCPI instrument answers. A driver for an
+        instrument with no *IDN? overrides this: asking a fixed-width B&K
+        supply for *IDN? costs a full timeout on every health poll and holds
+        the port against real traffic the whole time.
+        """
+        return await self._query("*IDN?")
+
+    @staticmethod
+    def _is_usb_pipe_error(error: BaseException) -> bool:
+        """EPIPE from pyusb: the device has stalled a bulk endpoint."""
+        return getattr(error, "errno", None) == 32 or "Pipe error" in str(error)
+
+    def _recover_usb_stall(self, error: BaseException) -> bool:
+        """Reset the USB device behind a pipe error. True if a retry is worth it.
+
+        pyvisa-py's USBTMC layer neither resets a device when it opens it nor
+        clears a halted endpoint, so once a 9205B's bulk pipe has stalled every
+        later transfer fails the same way until something resets the device.
+        The pyusb device is reachable through the pyvisa-py session: reset it,
+        drop our session, and let _ensure_connected() open a fresh one.
+        """
+        if not self._is_usb_pipe_error(error) or self.instrument is None:
+            return False
+        if not self.resource_string.upper().startswith("USB"):
+            return False
+
+        instrument, self.instrument, self.connected = self.instrument, None, False
+        reset = False
+        try:
+            session = instrument.visalib.sessions[instrument.session]
+            session.interface.usb_dev.reset()
+            reset = True
+            logger.warning(
+                f"Reset the stalled USB device behind {self.resource_string}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Could not reset the USB device behind {self.resource_string}: {e}"
+            )
+        finally:
+            try:
+                instrument.close()
+            except Exception:
+                pass
+        return reset
+
     async def _write(self, command: str):
         """Write a command to the instrument."""
+        async with self._io_lock:
+            try:
+                await self._write_unlocked(command)
+            except Exception as e:
+                if not self._recover_usb_stall(e):
+                    raise
+                logger.info(
+                    f"Retrying '{command}' on {self.resource_string} after USB reset"
+                )
+                await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
+                await self._write_unlocked(command)
+
+    async def _query(self, command: str) -> str:
+        """Query the instrument and return response."""
+        async with self._io_lock:
+            try:
+                return await self._query_unlocked(command)
+            except Exception as e:
+                if not self._recover_usb_stall(e):
+                    raise
+                logger.info(
+                    f"Retrying '{command}' on {self.resource_string} after USB reset"
+                )
+                await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
+                return await self._query_unlocked(command)
+
+    async def _write_unlocked(self, command: str):
+        """_write without the lock. Only _write should call this."""
         # Ensure we have a valid connection, reconnect if needed
         await self._ensure_connected()
 
@@ -212,8 +351,8 @@ class BaseEquipment(ABC):
                 # Don't let diagnostics recording interfere with operations
                 pass
 
-    async def _query(self, command: str) -> str:
-        """Query the instrument and return response."""
+    async def _query_unlocked(self, command: str) -> str:
+        """_query without the lock. Only _query should call this."""
         # Ensure we have a valid connection, reconnect if needed
         await self._ensure_connected()
 
@@ -255,21 +394,22 @@ class BaseEquipment(ABC):
 
     async def _query_binary(self, command: str) -> bytes:
         """Query the instrument and return binary response."""
-        # Ensure we have a valid connection, reconnect if needed
-        await self._ensure_connected()
+        async with self._io_lock:
+            # Ensure we have a valid connection, reconnect if needed
+            await self._ensure_connected()
 
-        if not self.instrument:
-            raise RuntimeError("Equipment not connected")
+            if not self.instrument:
+                raise RuntimeError("Equipment not connected")
 
-        try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, self.instrument.query_binary_values, command, datatype="B"
-            )
-            return bytes(response)
-        except Exception as e:
-            logger.error(f"Error querying binary '{command}': {e}")
-            raise
+            try:
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, self.instrument.query_binary_values, command, datatype="B"
+                )
+                return bytes(response)
+            except Exception as e:
+                logger.error(f"Error querying binary '{command}': {e}")
+                raise
 
     @abstractmethod
     async def get_info(self) -> EquipmentInfo:
