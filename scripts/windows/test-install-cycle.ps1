@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exercises install -> verify -> uninstall against a disposable directory.
 
@@ -116,12 +116,27 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Phase "2/3  Verify"
+# An exit code is not evidence that an install worked. The installer once
+# printed "Installed Successfully!" and returned 0 over a tree whose client
+# could not import a single package, and verify-install.ps1 was the only thing
+# in the chain that noticed. So the verify result, not the installer's own
+# opinion, decides whether the install phase passed.
 & powershell -ExecutionPolicy Bypass -File "$repoRoot\scripts\windows\verify-install.ps1" -InstallPath $TestPath
 $verifyCode = $LASTEXITCODE
-# Not fatal on its own: without -KeepShortcuts the shortcut checks are expected
-# to fail, because no shortcuts were asked for.
-if ($verifyCode -ne 0 -and $KeepShortcuts) {
-    Write-Host "Verification failed with shortcuts present - that is a real failure." -ForegroundColor Red
+
+# Without -KeepShortcuts the four shortcut checks are expected to fail, since
+# no shortcuts were asked for. The import and entry-point checks are not, and
+# they are the ones that catch a broken environment.
+$importsOk = $true
+$probe = "$TestPath\client\venv\Scripts\python.exe"
+if (Test-Path $probe) {
+    & $probe -c "import PyQt6, qasync, pyqtgraph" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $importsOk = $false; Write-Host "  client imports FAILED" -ForegroundColor Red }
+    & $probe -c "import fastapi, uvicorn, pyvisa" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $importsOk = $false; Write-Host "  server imports FAILED" -ForegroundColor Red }
+} else {
+    $importsOk = $false
+    Write-Host "  no interpreter at $probe" -ForegroundColor Red
 }
 
 if ($SkipUninstall) {
@@ -138,10 +153,18 @@ $uninstallCode = $LASTEXITCODE
 
 Write-Phase "Result"
 $leftover = Test-Path $TestPath
-Write-Host "  install   : ok"
+Write-Host "  install   : exit 0$(if (-not $importsOk) { '  -- but the environment cannot import' })"
+Write-Host "  imports   : $(if ($importsOk) { 'ok' } else { 'FAILED' })"
 Write-Host "  verify    : exit $verifyCode$(if (-not $KeepShortcuts) { '  (shortcut checks expected to fail: -NoShortcuts)' })"
 Write-Host "  uninstall : exit $uninstallCode"
 Write-Host "  directory removed : $(-not $leftover)"
+
+if (-not $importsOk) {
+    Write-Host ""
+    Write-Host "The installer reported success over an environment that cannot" -ForegroundColor Red
+    Write-Host "import its own dependencies. Exit code 0 is not evidence here." -ForegroundColor Red
+    exit 1
+}
 
 if ($uninstallCode -ne 0 -or $leftover) {
     Write-Host ""

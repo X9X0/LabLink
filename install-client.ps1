@@ -93,9 +93,28 @@ function Test-Administrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Invoke-Checked {
+    <#
+    Fail when the last external command failed.
+
+    There was not a single exit-code check in this script. pip would fail to
+    resolve a package, print ERROR, and the next line would announce
+    "dependencies installed" -- so an install where nothing installed reported
+    success and exited 0. A user told the install worked is worse off than one
+    told it failed.
+    #>
+    param([string]$What)
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$What failed (exit code $LASTEXITCODE). See the output above."
+    }
+}
+
 function Get-PythonVersion {
+    param([string]$Exe = "python")
+
     try {
-        $pythonVersion = python --version 2>&1
+        $pythonVersion = & $Exe --version 2>&1
         if ($pythonVersion -match "Python (\d+\.\d+\.\d+)") {
             return [Version]$Matches[1]
         }
@@ -103,6 +122,54 @@ function Get-PythonVersion {
     catch {
         return $null
     }
+    return $null
+}
+
+function Find-SuitablePython {
+    <#
+    Locate an interpreter new enough to install with, by asking each candidate
+    rather than trusting PATH order.
+
+    PATH is not reliable here. A machine-wide Python shadows a per-user one,
+    and the installer places its own per-user: it was possible to install 3.12,
+    report success, and then build the virtual environment with the 3.10 that
+    was still first on PATH -- which is how an install came to declare success
+    over a tree whose client could not import.
+
+    Returns the path to a suitable interpreter, or $null.
+    #>
+    $candidates = @()
+
+    # Where this script's own Install-Python puts it, checked first because it
+    # is the one we most recently guaranteed.
+    $candidates += "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+
+    # The launcher reports interpreters properly, newest first.
+    try {
+        $listed = & py -0p 2>$null
+        foreach ($line in $listed) {
+            if ($line -match "([A-Za-z]:\\[^\s].*python\.exe)") {
+                $candidates += $Matches[1]
+            }
+        }
+    }
+    catch { }
+
+    # Whatever PATH offers, last rather than first.
+    try {
+        $onPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+        if ($onPath) { $candidates += $onPath }
+    }
+    catch { }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (-not (Test-Path $candidate)) { continue }
+        $version = Get-PythonVersion -Exe $candidate
+        if ($version -and $version -ge $PythonMinVersion) {
+            return $candidate
+        }
+    }
+
     return $null
 }
 
@@ -120,10 +187,14 @@ function Install-Python {
 
     Remove-Item $installerPath
 
-    # Refresh PATH
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+    # Refresh PATH, user entries FIRST. InstallAllUsers=0 puts Python under
+    # %LOCALAPPDATA% and PrependPath=1 prepends it to the *user* path, so
+    # putting Machine first lets an older machine-wide Python shadow the one
+    # just installed. Callers should still prefer Find-SuitablePython, which
+    # does not depend on PATH order at all.
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','User') + ';' + [System.Environment]::GetEnvironmentVariable('Path','Machine')
 
-    Write-Step "Python installed"
+    Write-Step "Python installer finished"
 }
 
 function Install-Git {
@@ -191,21 +262,36 @@ function Install-ClientDependencies {
 
     Set-Location "$LablinkDir\client"
 
-    # Create virtual environment
+    # Build the environment with the interpreter we verified, not with whatever
+    # "python" resolves to. Those were not the same thing: a machine-wide 3.10
+    # shadowed the 3.12 this script had just installed, and the venv inherited
+    # the wrong one.
     if (-not (Test-Path "venv")) {
-        python -m venv venv
+        & $script:PythonExe -m venv venv
+        Invoke-Checked "Creating the virtual environment"
         Write-Step "Created Python virtual environment"
     }
 
-    # Activate virtual environment and install dependencies
-    & ".\venv\Scripts\Activate.ps1"
+    # Address the venv's own executables directly. Activate.ps1 edits PATH for
+    # the process, which works, but naming them leaves nothing to resolve.
+    $venvPython = "$LablinkDir\client\venv\Scripts\python.exe"
+    if (-not (Test-Path $venvPython)) {
+        throw "The virtual environment has no python.exe at $venvPython."
+    }
 
-    # Upgrade pip
-    python -m pip install --upgrade pip
+    $venvVersion = Get-PythonVersion -Exe $venvPython
+    if (-not $venvVersion -or $venvVersion -lt $PythonMinVersion) {
+        throw ("The virtual environment was built with Python $venvVersion, but " +
+               "$PythonMinVersion or newer is required. Delete " +
+               "$LablinkDir\client\venv and re-run this script.")
+    }
+    Write-Step "Virtual environment uses Python $venvVersion"
 
-    # Install requirements
-    pip install -r requirements.txt
+    & $venvPython -m pip install --upgrade pip
+    Invoke-Checked "Upgrading pip"
 
+    & $venvPython -m pip install -r requirements.txt
+    Invoke-Checked "Installing client dependencies"
     Write-Step "Client dependencies installed"
 
     # The Start Menu offers a Server entry, so the server's dependencies have
@@ -213,8 +299,11 @@ function Install-ClientDependencies {
     # shortcut. This is ~20 further packages (fastapi, uvicorn, pyvisa and so
     # on) on top of the client's.
     Write-Step "Installing server dependencies (for the Server shortcut)..."
-    pip install -r "$LablinkDir\shared\requirements.txt"
-    pip install -r "$LablinkDir\server\requirements.txt"
+    & $venvPython -m pip install -r "$LablinkDir\shared\requirements.txt"
+    Invoke-Checked "Installing shared dependencies"
+
+    & $venvPython -m pip install -r "$LablinkDir\server\requirements.txt"
+    Invoke-Checked "Installing server dependencies"
 
     Write-Step "Server dependencies installed"
 }
@@ -410,22 +499,27 @@ function Main {
 
     Write-Host ""
 
-    # Check Python
+    # Check Python. The result of installing it has to be checked: this used to
+    # call Install-Python, re-read the version, assign it, and never compare it
+    # -- so an install that changed nothing looked identical to one that
+    # worked, and the venv was then built with the old interpreter.
     Write-Step "Checking Python installation..."
-    $pythonVersion = Get-PythonVersion
+    $script:PythonExe = Find-SuitablePython
 
-    if ($null -eq $pythonVersion) {
+    if (-not $script:PythonExe) {
         Install-Python
-        $pythonVersion = Get-PythonVersion
+        $script:PythonExe = Find-SuitablePython
+
+        if (-not $script:PythonExe) {
+            throw ("Python $PythonMinVersion or newer is still not available after " +
+                   "installing it. If an older Python is installed machine-wide it " +
+                   "may be taking precedence; install Python 3.12 manually and " +
+                   "re-run this script.")
+        }
     }
-    elseif ($pythonVersion -lt $PythonMinVersion) {
-        Write-WarningMsg "Python version $pythonVersion is too old (need >= $PythonMinVersion)"
-        Install-Python
-        $pythonVersion = Get-PythonVersion
-    }
-    else {
-        Write-Step "Python $pythonVersion found"
-    }
+
+    $pythonVersion = Get-PythonVersion -Exe $script:PythonExe
+    Write-Step "Using Python $pythonVersion  ($script:PythonExe)"
 
     # Check Git (optional, but helpful)
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
