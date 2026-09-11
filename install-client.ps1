@@ -8,10 +8,62 @@
 
 # Requires -Version 5.1
 
+<#
+.SYNOPSIS
+    Installs the LabLink client on Windows.
+
+.DESCRIPTION
+    Installs Python and Git if missing, fetches LabLink, builds a virtual
+    environment with the client and server dependencies, and creates a desktop
+    shortcut plus a Start Menu folder holding the client, launcher and server.
+
+    Run with no arguments for the interactive install. The parameters exist so
+    the whole thing can be exercised against a throwaway directory: pointing
+    -InstallPath somewhere disposable means a test never goes near a real
+    install -- or near a development checkout that happens to share the default
+    location.
+
+.PARAMETER InstallPath
+    Where to install. Skips the interactive prompt when given.
+
+.PARAMETER NoShortcuts
+    Create no desktop or Start Menu shortcuts. For testing the install itself
+    without touching the user's Start Menu.
+
+.PARAMETER NoDesktopShortcut
+    Create the Start Menu entries but no desktop shortcut.
+
+.PARAMETER Unattended
+    Ask nothing. Takes the default for every prompt, including installing Git
+    when it is missing. Implies the answers, not the shortcuts: combine with
+    -NoShortcuts to leave the Start Menu alone.
+
+.PARAMETER ReplaceExistingShortcuts
+    Take over shortcuts that point at a different LabLink installation. Without
+    this, the install stops rather than overwriting them -- the Desktop and
+    Start Menu are machine-wide, so an install pointed somewhere harmless can
+    still clobber a real installation's entries.
+
+.EXAMPLE
+    .\install-client.ps1
+
+.EXAMPLE
+    # A disposable install, asking nothing and leaving the Start Menu alone
+    .\install-client.ps1 -InstallPath C:\LabLinkTest -NoShortcuts -Unattended
+#>
+
+param(
+    [string]$InstallPath,
+    [switch]$NoShortcuts,
+    [switch]$NoDesktopShortcut,
+    [switch]$Unattended,
+    [switch]$ReplaceExistingShortcuts
+)
+
 # Configuration
-$LablinkDir = "$env:USERPROFILE\LabLink"
-$CreateDesktopShortcut = $true
-$CreateStartMenuShortcut = $true
+$LablinkDir = if ($InstallPath) { $InstallPath } else { "$env:USERPROFILE\LabLink" }
+$CreateDesktopShortcut = -not ($NoShortcuts -or $NoDesktopShortcut)
+$CreateStartMenuShortcut = -not $NoShortcuts
 # LabLink 2.0 requires Python 3.12+: numpy 2.5 and scipy 1.18 both drop 3.11.
 $PythonMinVersion = [Version]"3.12.0"
 
@@ -48,9 +100,28 @@ function Test-Administrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Invoke-Checked {
+    <#
+    Fail when the last external command failed.
+
+    There was not a single exit-code check in this script. pip would fail to
+    resolve a package, print ERROR, and the next line would announce
+    "dependencies installed" -- so an install where nothing installed reported
+    success and exited 0. A user told the install worked is worse off than one
+    told it failed.
+    #>
+    param([string]$What)
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$What failed (exit code $LASTEXITCODE). See the output above."
+    }
+}
+
 function Get-PythonVersion {
+    param([string]$Exe = "python")
+
     try {
-        $pythonVersion = python --version 2>&1
+        $pythonVersion = & $Exe --version 2>&1
         if ($pythonVersion -match "Python (\d+\.\d+\.\d+)") {
             return [Version]$Matches[1]
         }
@@ -58,6 +129,54 @@ function Get-PythonVersion {
     catch {
         return $null
     }
+    return $null
+}
+
+function Find-SuitablePython {
+    <#
+    Locate an interpreter new enough to install with, by asking each candidate
+    rather than trusting PATH order.
+
+    PATH is not reliable here. A machine-wide Python shadows a per-user one,
+    and the installer places its own per-user: it was possible to install 3.12,
+    report success, and then build the virtual environment with the 3.10 that
+    was still first on PATH -- which is how an install came to declare success
+    over a tree whose client could not import.
+
+    Returns the path to a suitable interpreter, or $null.
+    #>
+    $candidates = @()
+
+    # Where this script's own Install-Python puts it, checked first because it
+    # is the one we most recently guaranteed.
+    $candidates += "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+
+    # The launcher reports interpreters properly, newest first.
+    try {
+        $listed = & py -0p 2>$null
+        foreach ($line in $listed) {
+            if ($line -match "([A-Za-z]:\\[^\s].*python\.exe)") {
+                $candidates += $Matches[1]
+            }
+        }
+    }
+    catch { }
+
+    # Whatever PATH offers, last rather than first.
+    try {
+        $onPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+        if ($onPath) { $candidates += $onPath }
+    }
+    catch { }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (-not (Test-Path $candidate)) { continue }
+        $version = Get-PythonVersion -Exe $candidate
+        if ($version -and $version -ge $PythonMinVersion) {
+            return $candidate
+        }
+    }
+
     return $null
 }
 
@@ -75,10 +194,14 @@ function Install-Python {
 
     Remove-Item $installerPath
 
-    # Refresh PATH
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+    # Refresh PATH, user entries FIRST. InstallAllUsers=0 puts Python under
+    # %LOCALAPPDATA% and PrependPath=1 prepends it to the *user* path, so
+    # putting Machine first lets an older machine-wide Python shadow the one
+    # just installed. Callers should still prefer Find-SuitablePython, which
+    # does not depend on PATH order at all.
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','User') + ';' + [System.Environment]::GetEnvironmentVariable('Path','Machine')
 
-    Write-Step "Python installed"
+    Write-Step "Python installer finished"
 }
 
 function Install-Git {
@@ -146,21 +269,36 @@ function Install-ClientDependencies {
 
     Set-Location "$LablinkDir\client"
 
-    # Create virtual environment
+    # Build the environment with the interpreter we verified, not with whatever
+    # "python" resolves to. Those were not the same thing: a machine-wide 3.10
+    # shadowed the 3.12 this script had just installed, and the venv inherited
+    # the wrong one.
     if (-not (Test-Path "venv")) {
-        python -m venv venv
+        & $script:PythonExe -m venv venv
+        Invoke-Checked "Creating the virtual environment"
         Write-Step "Created Python virtual environment"
     }
 
-    # Activate virtual environment and install dependencies
-    & ".\venv\Scripts\Activate.ps1"
+    # Address the venv's own executables directly. Activate.ps1 edits PATH for
+    # the process, which works, but naming them leaves nothing to resolve.
+    $venvPython = "$LablinkDir\client\venv\Scripts\python.exe"
+    if (-not (Test-Path $venvPython)) {
+        throw "The virtual environment has no python.exe at $venvPython."
+    }
 
-    # Upgrade pip
-    python -m pip install --upgrade pip
+    $venvVersion = Get-PythonVersion -Exe $venvPython
+    if (-not $venvVersion -or $venvVersion -lt $PythonMinVersion) {
+        throw ("The virtual environment was built with Python $venvVersion, but " +
+               "$PythonMinVersion or newer is required. Delete " +
+               "$LablinkDir\client\venv and re-run this script.")
+    }
+    Write-Step "Virtual environment uses Python $venvVersion"
 
-    # Install requirements
-    pip install -r requirements.txt
+    & $venvPython -m pip install --upgrade pip
+    Invoke-Checked "Upgrading pip"
 
+    & $venvPython -m pip install -r requirements.txt
+    Invoke-Checked "Installing client dependencies"
     Write-Step "Client dependencies installed"
 
     # The Start Menu offers a Server entry, so the server's dependencies have
@@ -168,8 +306,11 @@ function Install-ClientDependencies {
     # shortcut. This is ~20 further packages (fastapi, uvicorn, pyvisa and so
     # on) on top of the client's.
     Write-Step "Installing server dependencies (for the Server shortcut)..."
-    pip install -r "$LablinkDir\shared\requirements.txt"
-    pip install -r "$LablinkDir\server\requirements.txt"
+    & $venvPython -m pip install -r "$LablinkDir\shared\requirements.txt"
+    Invoke-Checked "Installing shared dependencies"
+
+    & $venvPython -m pip install -r "$LablinkDir\server\requirements.txt"
+    Invoke-Checked "Installing server dependencies"
 
     Write-Step "Server dependencies installed"
 }
@@ -243,6 +384,39 @@ function New-LabLinkShortcut {
             throw ("Cannot create the '$Target' shortcut: $required is missing. " +
                    "The installed copy of LabLink is missing files the shortcuts " +
                    "need; re-run the installer against a complete checkout.")
+        }
+    }
+
+    # The Desktop and Start Menu belong to the machine, not to this install, so
+    # -InstallPath cannot scope where a shortcut is written. An install pointed
+    # at a throwaway directory would still overwrite the real installation's
+    # desktop shortcut, and the uninstall would then correctly remove it as its
+    # own -- leaving the real install with no shortcut and nobody having been
+    # told.
+    #
+    # A shortcut already pointing somewhere else therefore belongs to another
+    # installation, and is not ours to replace silently.
+    if ((Test-Path $Path) -and -not $ReplaceExistingShortcuts) {
+        try {
+            $existing = (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+        }
+        catch {
+            $existing = $null
+        }
+
+        if ($existing) {
+            $normalizedExisting = [System.IO.Path]::GetFullPath($existing).TrimEnd('\')
+            $normalizedRoot = [System.IO.Path]::GetFullPath($LablinkDir).TrimEnd('\')
+            $belongsHere = $normalizedExisting.StartsWith(
+                $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase)
+
+            if (-not $belongsHere) {
+                throw ("$Path already exists and points at $existing, which is " +
+                       "outside $LablinkDir. It belongs to another LabLink " +
+                       "installation. Re-run with -ReplaceExistingShortcuts to " +
+                       "take it over, or with -NoShortcuts to leave it alone.")
+            }
         }
     }
 
@@ -340,41 +514,63 @@ function Main {
         Write-WarningMsg "Running as Administrator. This is not required."
     }
 
-    # Prompt for installation options
-    $response = Read-Host "Installation directory [$LablinkDir]"
-    if ($response) {
-        $LablinkDir = $response
+    # Prompt for installation options, unless they were supplied. A caller who
+    # named a path or asked for no shortcuts has already answered; asking again
+    # would make the switches useless for scripting.
+    if (-not $InstallPath -and -not $Unattended) {
+        $response = Read-Host "Installation directory [$LablinkDir]"
+        if ($response) {
+            $LablinkDir = $response
+        }
+    } else {
+        Write-Step "Installing to $LablinkDir"
     }
 
-    $response = Read-Host "Create desktop shortcut? (Y/n)"
-    if ($response -eq 'n' -or $response -eq 'N') {
-        $CreateDesktopShortcut = $false
+    if (-not $NoShortcuts -and -not $NoDesktopShortcut -and -not $Unattended) {
+        $response = Read-Host "Create desktop shortcut? (Y/n)"
+        if ($response -eq 'n' -or $response -eq 'N') {
+            $CreateDesktopShortcut = $false
+        }
+    }
+
+    if ($NoShortcuts) {
+        Write-Step "Shortcuts disabled (-NoShortcuts)"
     }
 
     Write-Host ""
 
-    # Check Python
+    # Check Python. The result of installing it has to be checked: this used to
+    # call Install-Python, re-read the version, assign it, and never compare it
+    # -- so an install that changed nothing looked identical to one that
+    # worked, and the venv was then built with the old interpreter.
     Write-Step "Checking Python installation..."
-    $pythonVersion = Get-PythonVersion
+    $script:PythonExe = Find-SuitablePython
 
-    if ($null -eq $pythonVersion) {
+    if (-not $script:PythonExe) {
         Install-Python
-        $pythonVersion = Get-PythonVersion
+        $script:PythonExe = Find-SuitablePython
+
+        if (-not $script:PythonExe) {
+            throw ("Python $PythonMinVersion or newer is still not available after " +
+                   "installing it. If an older Python is installed machine-wide it " +
+                   "may be taking precedence; install Python 3.12 manually and " +
+                   "re-run this script.")
+        }
     }
-    elseif ($pythonVersion -lt $PythonMinVersion) {
-        Write-WarningMsg "Python version $pythonVersion is too old (need >= $PythonMinVersion)"
-        Install-Python
-        $pythonVersion = Get-PythonVersion
-    }
-    else {
-        Write-Step "Python $pythonVersion found"
-    }
+
+    $pythonVersion = Get-PythonVersion -Exe $script:PythonExe
+    Write-Step "Using Python $pythonVersion  ($script:PythonExe)"
 
     # Check Git (optional, but helpful)
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
-        if ($response -ne 'n' -and $response -ne 'N') {
+        if ($Unattended) {
+            # The default answer is yes, and an unattended run takes defaults.
             Install-Git
+        } else {
+            $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
+            if ($response -ne 'n' -and $response -ne 'N') {
+                Install-Git
+            }
         }
     }
 

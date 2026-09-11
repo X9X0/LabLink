@@ -96,6 +96,71 @@ function Remove-IfPresent {
     return $true
 }
 
+function Get-NormalizedPath {
+    param([string]$Path)
+    if (-not $Path) { return "" }
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    }
+    catch {
+        return $Path.TrimEnd('\', '/')
+    }
+}
+
+function Test-ShortcutBelongsToInstall {
+    <#
+    Does this .lnk point into the installation we were told to remove?
+
+    Shortcuts live in the Start Menu and on the Desktop, which are properties of
+    the machine rather than of any one install, so -InstallPath cannot scope
+    them by location. Removing them unconditionally makes a scoped uninstall
+    delete shortcuts it did not create -- a second installation's uninstall
+    takes the first one's entries with it, and a test run against a throwaway
+    directory removes the shortcuts of the real install beside it.
+
+    The shortcut itself carries the answer: its target is the interpreter or
+    batch file inside the installation that created it.
+    #>
+    param([string]$ShortcutPath, [string]$InstallRoot)
+
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $target = $shell.CreateShortcut($ShortcutPath).TargetPath
+    }
+    catch {
+        # Unreadable: say so and leave it alone. Deleting something we cannot
+        # identify is exactly the failure this function exists to prevent.
+        Write-Skipped "Could not read $ShortcutPath - leaving it alone"
+        return $false
+    }
+
+    if (-not $target) { return $false }
+
+    $normalizedTarget = Get-NormalizedPath $target
+    $normalizedRoot = Get-NormalizedPath $InstallRoot
+
+    return $normalizedTarget.StartsWith(
+        $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [StringComparison]::OrdinalIgnoreCase
+    )
+}
+
+function Remove-OwnedShortcut {
+    param([string]$Path, [string]$Label, [string]$InstallRoot)
+
+    if (-not (Test-Path $Path)) {
+        Write-Skipped "$Label not present"
+        return $true
+    }
+
+    if (-not (Test-ShortcutBelongsToInstall -ShortcutPath $Path -InstallRoot $InstallRoot)) {
+        Write-Skipped "$Label belongs to a different installation - kept"
+        return $true
+    }
+
+    return Remove-IfPresent -Path $Path -Label $Label
+}
+
 Write-Host ""
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host " LabLink Client Uninstall" -ForegroundColor Cyan
@@ -186,10 +251,30 @@ if (-not $Force) {
 
 $allOk = $true
 
-Write-Step "Removing shortcuts..."
-if (-not (Remove-IfPresent -Path $startMenuFolder -Label "Start Menu folder")) { $allOk = $false }
-if (-not (Remove-IfPresent -Path $desktopShortcut -Label "Desktop shortcut"))  { $allOk = $false }
-if (-not (Remove-IfPresent -Path $legacyStartMenu -Label "Legacy Start Menu shortcut")) { $allOk = $false }
+Write-Step "Removing shortcuts belonging to $InstallPath..."
+
+# Each entry inside the Start Menu folder is checked on its own, so a folder
+# holding shortcuts from two installations loses only the ones being removed.
+if (Test-Path $startMenuFolder) {
+    foreach ($link in Get-ChildItem -Path $startMenuFolder -Filter "*.lnk" -ErrorAction SilentlyContinue) {
+        if (-not (Remove-OwnedShortcut -Path $link.FullName -Label "Start Menu: $($link.BaseName)" -InstallRoot $InstallPath)) {
+            $allOk = $false
+        }
+    }
+
+    # Only take the folder itself once nothing of anyone else's is left in it.
+    $remaining = @(Get-ChildItem -Path $startMenuFolder -ErrorAction SilentlyContinue)
+    if ($remaining.Count -eq 0) {
+        if (-not (Remove-IfPresent -Path $startMenuFolder -Label "Start Menu folder")) { $allOk = $false }
+    } else {
+        Write-Skipped "Start Menu folder kept - $($remaining.Count) item(s) belong elsewhere"
+    }
+} else {
+    Write-Skipped "Start Menu folder not present"
+}
+
+if (-not (Remove-OwnedShortcut -Path $desktopShortcut -Label "Desktop shortcut" -InstallRoot $InstallPath)) { $allOk = $false }
+if (-not (Remove-OwnedShortcut -Path $legacyStartMenu -Label "Legacy Start Menu shortcut" -InstallRoot $InstallPath)) { $allOk = $false }
 
 Write-Step "Removing install directory..."
 # Running from inside the directory about to be deleted would fail on Windows,

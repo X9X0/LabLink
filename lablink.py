@@ -16,6 +16,7 @@ License: MIT
 
 import sys
 import os
+import tempfile
 import subprocess
 import platform
 import json
@@ -81,16 +82,56 @@ for _stream in (sys.stdout, sys.stderr):
 _version_file = Path(__file__).parent / "VERSION"
 __version__ = _version_file.read_text(encoding="utf-8").strip() if _version_file.exists() else "1.2.0"
 
-# Configure logging
+# Configure logging.
+#
+# The log file used to be the bare relative name 'lablink_debug.log', resolved
+# against the working directory. That put a file wherever the caller happened
+# to be standing -- including directories that had just been deliberately
+# emptied -- and it is the same failure as the venv lookup above: a relative
+# path quietly depending on cwd.
+#
+# The worse half is that logging.FileHandler opens the file at import time. A
+# cwd that is read-only, or gone, raises before any of this module's error
+# handling exists. The launch shim catches that and reports it, but only
+# because it wraps the import; running lablink.py directly from such a
+# directory just dies.
+#
+# So write somewhere the user can always write, and fall back rather than
+# raise: losing the debug log is an inconvenience, failing to start over it is
+# not acceptable.
+def _log_file_handler() -> Optional[logging.Handler]:
+    candidates = []
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+    else:
+        base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    if base:
+        candidates.append(Path(base) / "LabLink")
+    candidates.append(Path(tempfile.gettempdir()) / "LabLink")
+
+    for directory in candidates:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            return logging.FileHandler(directory / "lablink_debug.log",
+                                       encoding="utf-8")
+        except OSError:
+            continue
+    return None
+
+
+_handlers = [logging.StreamHandler()]
+_file_handler = _log_file_handler()
+if _file_handler:
+    _handlers.insert(0, _file_handler)
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-    handlers=[
-        logging.FileHandler('lablink_debug.log'),
-        logging.StreamHandler()
-    ]
+    handlers=_handlers
 )
 logger = logging.getLogger(__name__)
+if not _file_handler:
+    logger.warning("No writable location for the debug log; console only")
 
 # Log startup
 logger.info("=" * 70)
@@ -812,9 +853,18 @@ class CheckWorker(QThread):
             'scp': 'SCP (secure copy) support',
         }
 
-        # Utilities for network discovery
+        # Utilities for network discovery.
+        #
+        # scapy is deliberately absent. It was removed from the project on
+        # 2025-12-06 over a pickle-deserialization RCE with no patch available
+        # in any version, having never been imported anywhere -- see
+        # docs/security/SECURITY_UPDATE_2025-12-06.md. It stayed in this list,
+        # so a correct install reported a missing "required" utility as an
+        # ERROR, which auto-opened the repair dialog and offered to install it
+        # again. The launcher was undoing a security fix on every clean
+        # install, at the user's confirmation and with no indication of what
+        # was being restored.
         discovery_utils = {
-            'scapy': 'Network packet manipulation and discovery',
             'zeroconf': 'mDNS/Bonjour service discovery',
         }
 
@@ -1135,7 +1185,9 @@ class FixWorker(QThread):
                     # Special handling for client utilities
                     if target == "client_utils":
                         logger.info("Installing client utilities packages")
-                        packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
+                        # Must match discovery_utils/deployment_utils above,
+                        # and must not reintroduce scapy.
+                        packages = ['paramiko', 'scp', 'zeroconf']
 
                         venv_paths = get_venv_paths()
                         venv_pip = venv_paths['pip']
