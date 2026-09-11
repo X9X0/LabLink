@@ -104,7 +104,18 @@ jobs:
           # executed, so a panel test could fail for weeks without anyone
           # hearing about it. The panels skip themselves when PyQt6 is
           # missing, so adding them costs nothing where it is not installed.
+          # tests/server/ and tests/hardware/ were run by no job at all --
+          # 386 tests, a fifth of the suite. PR #230 broke three of them and
+          # CI stayed green through two merges before anyone noticed. Despite
+          # the directory name, tests/hardware/ drives the drivers through
+          # mocks; the 29 tests that need a real Pi skip themselves unless
+          # LABLINK_PI_CREDS and LABLINK_PI_HOST are set, which CI never sets.
+          #
+          # This job is still named "Unit Tests" deliberately: renaming it
+          # would break any branch protection rule that requires the check by
+          # name. What it runs is broader than the name suggests.
           xvfb-run -a pytest tests/unit/ tests/client/ tests/gui/ \
+            tests/server/ tests/hardware/ \
             -v \
             --cov=server \
             --cov=client \
