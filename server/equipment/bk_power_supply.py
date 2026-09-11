@@ -344,6 +344,9 @@ class BKPowerSupplyBase(BaseEquipment):
             "num_channels": self.num_channels,
             "max_voltage": self.max_voltage,
             "max_current": self.max_current,
+            # The fixed-width protocol has no OVP/OCP commands at all, so the
+            # panel must not offer protection controls for these models.
+            "supports_protection": False,
         }
 
         return EquipmentStatus(
@@ -649,6 +652,10 @@ class BK9205B(BaseEquipment):
             "num_channels": self.num_channels,
             "max_voltage": self.max_voltage,
             "max_current": self.max_current,
+            # The hardware has OVP/OCP; this driver does not implement the
+            # commands yet. The flag describes what LabLink can drive, not
+            # what the supply is capable of.
+            "supports_protection": False,
         }
 
         return EquipmentStatus(
