@@ -153,6 +153,52 @@ The `install-client.ps1` script will:
 
 Installation typically takes 5-10 minutes depending on your internet connection.
 
+## Testing an install without risking the real one
+
+The installer and uninstaller are the two pieces that cannot be checked by
+reading them, and they are exactly the ones nobody wants to run against a
+working machine to find out. Both accept an install path, so the whole cycle
+can be exercised somewhere disposable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\test-install-cycle.ps1
+```
+
+That installs to `%TEMP%\LabLinkInstallTest`, verifies it, uninstalls it, and
+reports each step. It never touches `%USERPROFILE%\LabLink` and, by default,
+never touches the Start Menu. It refuses to run against a real install path or
+any directory containing a git checkout.
+
+Add `-KeepShortcuts` to create the desktop and Start Menu entries as well, so
+the one check no script can make — whether clicking a shortcut flashes a
+console window — can be done by hand. The uninstall step removes them again.
+
+The installer's own switches work standalone too:
+
+```powershell
+.\install-client.ps1 -InstallPath C:\LabLinkTest -NoShortcuts -Unattended
+```
+
+| Switch | Effect |
+|---|---|
+| `-InstallPath` | Where to install; skips the interactive prompt |
+| `-NoShortcuts` | Create no desktop or Start Menu entries |
+| `-NoDesktopShortcut` | Start Menu entries only |
+| `-Unattended` | Ask nothing; take the default for every prompt |
+
+### Keep development checkouts out of the install path
+
+If you work on LabLink, do not let your git clone live at
+`%USERPROFILE%\LabLink`. That is the installer's default target, so the same
+directory ends up being both a user installation and a working tree holding
+uncommitted measurements under `data/`, saved `profiles/` and local `config/`.
+
+The uninstaller warns and refuses `-Force` when it finds uncommitted work
+there, but the cleaner answer is to keep them apart: clone to somewhere like
+`C:\dev\LabLink` and leave `%USERPROFILE%\LabLink` for real installs. It also
+avoids ending up with two virtual environments of different Python versions in
+one tree.
+
 ## Uninstalling
 
 Run `uninstall-client.bat` from the LabLink folder, or:

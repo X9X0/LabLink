@@ -8,10 +8,55 @@
 
 # Requires -Version 5.1
 
+<#
+.SYNOPSIS
+    Installs the LabLink client on Windows.
+
+.DESCRIPTION
+    Installs Python and Git if missing, fetches LabLink, builds a virtual
+    environment with the client and server dependencies, and creates a desktop
+    shortcut plus a Start Menu folder holding the client, launcher and server.
+
+    Run with no arguments for the interactive install. The parameters exist so
+    the whole thing can be exercised against a throwaway directory: pointing
+    -InstallPath somewhere disposable means a test never goes near a real
+    install -- or near a development checkout that happens to share the default
+    location.
+
+.PARAMETER InstallPath
+    Where to install. Skips the interactive prompt when given.
+
+.PARAMETER NoShortcuts
+    Create no desktop or Start Menu shortcuts. For testing the install itself
+    without touching the user's Start Menu.
+
+.PARAMETER NoDesktopShortcut
+    Create the Start Menu entries but no desktop shortcut.
+
+.PARAMETER Unattended
+    Ask nothing. Takes the default for every prompt, including installing Git
+    when it is missing. Implies the answers, not the shortcuts: combine with
+    -NoShortcuts to leave the Start Menu alone.
+
+.EXAMPLE
+    .\install-client.ps1
+
+.EXAMPLE
+    # A disposable install, asking nothing and leaving the Start Menu alone
+    .\install-client.ps1 -InstallPath C:\LabLinkTest -NoShortcuts -Unattended
+#>
+
+param(
+    [string]$InstallPath,
+    [switch]$NoShortcuts,
+    [switch]$NoDesktopShortcut,
+    [switch]$Unattended
+)
+
 # Configuration
-$LablinkDir = "$env:USERPROFILE\LabLink"
-$CreateDesktopShortcut = $true
-$CreateStartMenuShortcut = $true
+$LablinkDir = if ($InstallPath) { $InstallPath } else { "$env:USERPROFILE\LabLink" }
+$CreateDesktopShortcut = -not ($NoShortcuts -or $NoDesktopShortcut)
+$CreateStartMenuShortcut = -not $NoShortcuts
 # LabLink 2.0 requires Python 3.12+: numpy 2.5 and scipy 1.18 both drop 3.11.
 $PythonMinVersion = [Version]"3.12.0"
 
@@ -340,15 +385,27 @@ function Main {
         Write-WarningMsg "Running as Administrator. This is not required."
     }
 
-    # Prompt for installation options
-    $response = Read-Host "Installation directory [$LablinkDir]"
-    if ($response) {
-        $LablinkDir = $response
+    # Prompt for installation options, unless they were supplied. A caller who
+    # named a path or asked for no shortcuts has already answered; asking again
+    # would make the switches useless for scripting.
+    if (-not $InstallPath -and -not $Unattended) {
+        $response = Read-Host "Installation directory [$LablinkDir]"
+        if ($response) {
+            $LablinkDir = $response
+        }
+    } else {
+        Write-Step "Installing to $LablinkDir"
     }
 
-    $response = Read-Host "Create desktop shortcut? (Y/n)"
-    if ($response -eq 'n' -or $response -eq 'N') {
-        $CreateDesktopShortcut = $false
+    if (-not $NoShortcuts -and -not $NoDesktopShortcut -and -not $Unattended) {
+        $response = Read-Host "Create desktop shortcut? (Y/n)"
+        if ($response -eq 'n' -or $response -eq 'N') {
+            $CreateDesktopShortcut = $false
+        }
+    }
+
+    if ($NoShortcuts) {
+        Write-Step "Shortcuts disabled (-NoShortcuts)"
     }
 
     Write-Host ""
@@ -372,9 +429,14 @@ function Main {
 
     # Check Git (optional, but helpful)
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
-        if ($response -ne 'n' -and $response -ne 'N') {
+        if ($Unattended) {
+            # The default answer is yes, and an unattended run takes defaults.
             Install-Git
+        } else {
+            $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
+            if ($response -ne 'n' -and $response -ne 'N') {
+                Install-Git
+            }
         }
     }
 
