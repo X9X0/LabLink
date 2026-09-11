@@ -9,9 +9,17 @@
     against a real machine to find out whether they work.
 
     This runs the whole cycle somewhere disposable. It never touches
-    %USERPROFILE%\LabLink, and with -NoShortcuts it never touches the Start
-    Menu, so the machine's real installation -- and any development checkout
-    sharing that default path -- is left alone.
+    %USERPROFILE%\LabLink, so the machine's real installation -- and any
+    development checkout sharing that default path -- is left alone.
+
+    Shortcuts need saying precisely, because an earlier version of this file
+    made a promise it could not keep. The Start Menu and Desktop belong to the
+    machine, not to any one installation, so -InstallPath cannot scope them by
+    location: the uninstaller used to delete every LabLink shortcut it found,
+    which meant a run against a throwaway directory removed the real install's
+    entries on the way out. It now reads each shortcut's target and removes
+    only those pointing into the directory it was given, so a cycle here
+    leaves other installations' shortcuts alone.
 
     What it cannot do is tell you whether a shortcut opens a console window.
     Nothing scriptable can. Use -KeepShortcuts and click them if you want that
@@ -53,16 +61,42 @@ function Write-Phase {
 # Refuse to point the cycle at anything that looks real. The whole value of
 # this script is that it cannot damage a working installation, and the default
 # install path is also where a development checkout tends to live.
-$realInstall = "$env:USERPROFILE\LabLink"
-if ($TestPath -eq $realInstall -or $TestPath -eq $repoRoot) {
-    Write-Host "Refusing to run against $TestPath - that is a real location." -ForegroundColor Red
-    Write-Host "Pass -TestPath somewhere disposable." -ForegroundColor Red
-    exit 2
+#
+# Compare resolved paths rather than the strings as typed: a trailing
+# separator, different casing, or a relative spelling all name the same
+# directory and would otherwise walk straight past the guard.
+function Resolve-ForComparison {
+    param([string]$Path)
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    }
+    catch {
+        return $Path.TrimEnd('\', '/')
+    }
 }
-if (Test-Path (Join-Path $TestPath ".git")) {
-    Write-Host "Refusing: $TestPath contains a git checkout." -ForegroundColor Red
-    Write-Host "This script deletes what it creates; point it somewhere empty." -ForegroundColor Red
-    exit 2
+
+$normalizedTest = Resolve-ForComparison $TestPath
+foreach ($forbidden in @("$env:USERPROFILE\LabLink", $repoRoot)) {
+    if ($normalizedTest -eq (Resolve-ForComparison $forbidden)) {
+        Write-Host "Refusing to run against $TestPath - that is a real location." -ForegroundColor Red
+        Write-Host "Pass -TestPath somewhere disposable." -ForegroundColor Red
+        exit 2
+    }
+}
+
+# Walk up to the drive root, not just the directory itself: a subdirectory of a
+# checkout is still inside somebody's working tree, and deleting it takes their
+# files with it.
+$ancestor = $normalizedTest
+while ($ancestor) {
+    if (Test-Path (Join-Path $ancestor ".git")) {
+        Write-Host "Refusing: $TestPath is inside the git checkout at $ancestor." -ForegroundColor Red
+        Write-Host "This script deletes what it creates; point it somewhere empty." -ForegroundColor Red
+        exit 2
+    }
+    $parent = Split-Path $ancestor -Parent
+    if (-not $parent -or $parent -eq $ancestor) { break }
+    $ancestor = $parent
 }
 
 Write-Host ""

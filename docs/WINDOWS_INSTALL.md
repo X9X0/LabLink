@@ -207,8 +207,11 @@ Run `uninstall-client.bat` from the LabLink folder, or:
 powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1
 ```
 
-It removes the install directory, the desktop shortcut and the Start Menu
-folder, after asking for confirmation.
+It removes the install directory, plus the desktop shortcut and Start Menu
+entries **that point into it**, after asking for confirmation. Shortcuts
+belonging to a different installation are left alone: the Start Menu and
+Desktop belong to the machine rather than to any one install, so the only way
+to scope them is to read each shortcut's target.
 
 Python and Git are left installed — the installer may have added them, but
 other software may depend on them by now, and that is not a decision a LabLink
