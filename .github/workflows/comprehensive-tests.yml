@@ -73,7 +73,10 @@ jobs:
           # Install additional runtime dependencies needed for tests
           pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
           # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
-          pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
+          # pyqtgraph comes with them: the equipment panels embed a chart
+          # widget that raises on construction without it, so the panel tests
+          # in tests/gui/ cannot build a panel at all if it is missing.
+          pip install PyQt6 PyQt6-Charts pyqtgraph || echo "PyQt6 installation failed (expected in headless CI)"
 
       - name: Collection must not modify tracked files
         run: |

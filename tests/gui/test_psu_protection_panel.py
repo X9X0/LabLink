@@ -19,16 +19,22 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 try:
+    # pyqtgraph belongs in the guard as much as PyQt6 does. The panel embeds a
+    # PowerChartWidget, which raises ImportError from its constructor rather
+    # than at import time, so importing the panel successfully does not mean a
+    # panel can be built. Checking it here turns that into a clean skip
+    # instead of an error at fixture setup.
+    import pyqtgraph  # noqa: F401
     from PyQt6.QtWidgets import QApplication
 
     from client.ui.equipment.power_supply_panel import PowerSupplyPanel
 
-    PYQT_AVAILABLE = True
+    GUI_AVAILABLE = True
 except ImportError:
-    PYQT_AVAILABLE = False
+    GUI_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(
-    not PYQT_AVAILABLE, reason="PyQt6 not installed"
+    not GUI_AVAILABLE, reason="PyQt6 and pyqtgraph are required for panel tests"
 )
 
 
