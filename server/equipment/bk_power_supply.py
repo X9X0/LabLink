@@ -160,13 +160,15 @@ class BKPowerSupplyBase(BaseEquipment):
         BK responses are formatted as: DATA\rOK\r
         We need to read the full response, not just until the first \r
 
-        Uses locking to ensure serial commands execute one at a time,
-        preventing collisions when multiple requests happen simultaneously.
+        Holds the same lock as every other exchange with this instrument, so a
+        health check's GMAX and a readings poll's GETD cannot interleave on the
+        port. It used to take a lock of its own, which serialised GETD against
+        GETS but not against the *IDN? the base class sent from get_status()
+        -- and that one held the port for a full timeout every 30 seconds.
+        The lock is re-entrant, which is what lets connect() call this.
         """
-        await self._ensure_connected()
-
-        # Lock to prevent concurrent serial port access
-        async with self._lock:
+        async with self._io_lock:
+            await self._ensure_connected()
             loop = asyncio.get_event_loop()
 
             # Flush input buffer to clear any junk from previous failed reads
@@ -332,18 +334,24 @@ class BKPowerSupplyBase(BaseEquipment):
             resource_string=self.resource_string,
         )
 
-    async def get_status(self) -> EquipmentStatus:
-        """Get power supply status."""
-        # Try to get firmware info from *IDN?, but don't fail if it doesn't work
-        firmware = None
-        try:
-            idn = await self._query("*IDN?")
-            parts = idn.split(",")
-            firmware = parts[3] if len(parts) > 3 else None
-        except Exception:
-            # *IDN? not supported or timed out, continue without firmware info
-            pass
+    async def health_probe(self) -> str:
+        """GMAX: read-only, always answered, and actually in this protocol.
 
+        The default probe is *IDN?, which the fixed-width supplies do not
+        have. Asking anyway meant a 2 second timeout, an ERROR line and a
+        port held against real traffic on every health poll.
+        """
+        return await self._bk_query("GMAX")
+
+    async def get_status(self) -> EquipmentStatus:
+        """Get power supply status.
+
+        No *IDN? here. The fixed-width protocol has no such command and the
+        health monitor calls this every 30 seconds: each attempt used to hold
+        the serial port for a full timeout, log an error, and collide with
+        whatever the control panel was asking at the time. The protocol
+        carries no firmware version, so that field is simply not available.
+        """
         capabilities = {
             "num_channels": self.num_channels,
             "max_voltage": self.max_voltage,
@@ -353,7 +361,7 @@ class BKPowerSupplyBase(BaseEquipment):
         return EquipmentStatus(
             id=self.cached_info.id if self.cached_info else "unknown",
             connected=self.connected,
-            firmware_version=firmware,
+            firmware_version=None,
             capabilities=capabilities,
         )
 

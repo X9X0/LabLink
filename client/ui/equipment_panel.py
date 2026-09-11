@@ -109,6 +109,9 @@ class EquipmentPanel(QWidget):
     """Panel for equipment control and monitoring."""
 
     equipment_selected = pyqtSignal(str)  # equipment_id
+    # The set of connected instruments changed: something was connected or
+    # disconnected here. Other tabs that list connected equipment listen.
+    equipment_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         """Initialize equipment panel."""
@@ -664,6 +667,7 @@ class EquipmentPanel(QWidget):
         if connect_dialog.exec() == QDialog.DialogCode.Accepted:
             # Device was connected, refresh the list
             self.refresh()
+            self.equipment_changed.emit()
         else:
             # User cancelled, still refresh in case something changed
             self.refresh()
@@ -687,6 +691,7 @@ class EquipmentPanel(QWidget):
                     self, "Success", "Equipment connected successfully"
                 )
                 self.refresh()
+                self.equipment_changed.emit()
                 self._on_equipment_selected()  # Refresh details
 
                 # Auto-start WebSocket streaming for connected equipment
@@ -780,6 +785,7 @@ class EquipmentPanel(QWidget):
                 self.resource_label.clear()
                 self.status_label.clear()
                 self.refresh()
+                self.equipment_changed.emit()
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Disconnection failed")

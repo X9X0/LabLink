@@ -181,8 +181,9 @@ class DiagnosticsManager:
         # Measure response time
         start = time.perf_counter()
         try:
-            # Simple query to test connection
-            await equipment.query("*IDN?")
+            # The driver picks the probe: *IDN? for SCPI instruments, GMAX for
+            # the fixed-width B&K supplies that have no *IDN? to answer.
+            await equipment.health_probe()
             response_time_ms = (time.perf_counter() - start) * 1000
             is_connected = True
         except Exception as e:
@@ -342,11 +343,11 @@ class DiagnosticsManager:
         if not equipment:
             return results
 
-        # Test 1: IDN query
+        # Test 1: identification, by whatever query this instrument answers
         result = await self._run_test(
             "IDN Query Test",
             equipment_id,
-            lambda: equipment.query("*IDN?"),
+            equipment.health_probe,
             expected="Equipment responds to identification query",
         )
         results.append(result)

@@ -395,3 +395,239 @@ class TestSerialProbeIntegration:
         result = await DiscoveryManager(config).scan()
         assert result.success
         assert result.usb_count == 0
+
+
+class TestSerialPortFromResource:
+    """Translating VISA's spelling of a port into the device the probe opens."""
+
+    @pytest.mark.parametrize("resource,port", [
+        ("ASRL/dev/ttyUSB0::INSTR", "/dev/ttyUSB0"),
+        ("ASRL3::INSTR", "COM3"),
+        ("USB0::11975::37376::800886011797210043::0::INSTR", None),
+        ("", None),
+        (None, None),
+    ])
+    def test_translation(self, resource, port):
+        from server.discovery.bk_serial_probe import serial_port_from_resource
+        assert serial_port_from_resource(resource) == port
+
+
+class TestConnectedInstrumentsAreLeftAlone:
+    """A scan must not open a second session to an instrument a driver holds.
+
+    The 1685B the operator was controlling came back from every scan as
+    "Unknown Serial Device": the scanner's *IDN? and the driver's own traffic
+    interleaved on the port and both timed out, and the probe's GMAX lost the
+    same race. The driver already knows what it is connected to.
+    """
+
+    RESOURCE = "ASRL/dev/ttyUSB0::INSTR"
+
+    def _held_1685b(self):
+        from shared.models.equipment import (ConnectionType, EquipmentInfo,
+                                             EquipmentType)
+        return EquipmentInfo(
+            id="ps_56fdd3df", type=EquipmentType.POWER_SUPPLY,
+            manufacturer="BK Precision", model="1685B", serial_number=None,
+            connection_type=ConnectionType.SERIAL, resource_string=self.RESOURCE,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_held_port_is_described_from_its_driver_not_queried(
+        self, scanner
+    ):
+        scanner._query_device_info = MagicMock(
+            side_effect=AssertionError("opened a port a driver is holding")
+        )
+        scanner._connected = {self.RESOURCE: self._held_1685b()}
+
+        device = await scanner._process_resource(self.RESOURCE)
+
+        scanner._query_device_info.assert_not_called()
+        assert device.manufacturer == "B&K Precision"  # registry-normalised
+        assert device.model == "1685B"
+        assert device.device_type == DeviceType.POWER_SUPPLY
+        assert device.is_connected is True
+        assert device.status == ConnectionStatus.CONNECTED
+        assert device.confidence_score >= 0.95
+        assert device.metadata["equipment_id"] == "ps_56fdd3df"
+        assert device.metadata["serial_port"] == "/dev/ttyUSB0"
+        assert device.metadata["bk_family"] == "1685B"
+
+    @pytest.mark.asyncio
+    async def test_a_driver_without_a_record_yet_still_keeps_the_scanner_off(
+        self, scanner
+    ):
+        scanner._query_device_info = MagicMock(
+            side_effect=AssertionError("opened a port a driver is holding")
+        )
+        scanner._connected = {self.RESOURCE: None}
+
+        device = await scanner._process_resource(self.RESOURCE)
+
+        assert device.is_connected is True
+        assert device.device_type == DeviceType.UNKNOWN
+
+    @pytest.mark.asyncio
+    async def test_a_port_nobody_holds_is_still_queried(self, scanner):
+        asked = []
+
+        async def fake_query(resource_name):
+            asked.append(resource_name)
+            return None
+
+        scanner._query_device_info = fake_query
+        scanner._connected = {}
+
+        await scanner._process_resource(self.RESOURCE)
+
+        assert asked == [self.RESOURCE]
+
+    @pytest.mark.asyncio
+    async def test_the_probe_skips_held_ports(self, monkeypatch):
+        from server.discovery import bk_serial_probe
+
+        monkeypatch.setattr(
+            bk_serial_probe, "_probe_port_blocking",
+            lambda *args, **kwargs: pytest.fail("probed a port a driver is holding"),
+        )
+        found = await bk_serial_probe.probe_serial_ports(
+            ports=["/dev/ttyUSB0"], exclude=["/dev/ttyUSB0"]
+        )
+        assert found == []
+
+    @pytest.mark.asyncio
+    async def test_scan_tells_both_scanners_what_is_held(self, monkeypatch):
+        from server.discovery.manager import DiscoveryManager
+
+        manager = DiscoveryManager(
+            DiscoveryConfig(enable_mdns=False, cache_discovered_devices=False)
+        )
+        monkeypatch.setattr(
+            manager, "_connected_resources",
+            lambda: {self.RESOURCE: self._held_1685b()},
+        )
+        seen = {}
+
+        async def fake_visa_scan(connected=None):
+            seen["visa"] = connected
+            return []
+
+        async def fake_probe(**kwargs):
+            seen["exclude"] = kwargs.get("exclude")
+            return []
+
+        monkeypatch.setattr(manager.visa_scanner, "scan", fake_visa_scan)
+        monkeypatch.setattr(
+            "server.discovery.bk_serial_probe.probe_serial_ports", fake_probe
+        )
+
+        result = await manager.scan()
+
+        assert result.success
+        assert self.RESOURCE in seen["visa"]
+        assert seen["exclude"] == ["/dev/ttyUSB0"]
+
+
+class TestTheScannerLeavesTheSharedResourceManagerOpen:
+    """pyvisa hands out one ResourceManager per backend, shared with every driver.
+
+    Closing it after each scan closed the drivers' sessions too: the log showed
+    every connected instrument reconnecting in the middle of every scan.
+    """
+
+    @pytest.mark.asyncio
+    async def test_scan_does_not_close_the_resource_manager(self, scanner):
+        rm = MagicMock()
+        rm.list_resources.return_value = ()
+        scanner.rm = rm
+
+        await scanner.scan()
+
+        rm.close.assert_not_called()
+        assert scanner.rm is rm
+
+
+class TestCacheKeepsTheStrongerIdentification:
+    """A rescan that could not identify a device must not erase one that did.
+
+    Seen live: a scan at 14:18 identified the 1685B as a B&K legacy supply
+    from its GMAX reply; a scan at 14:35, run while the driver held the port,
+    got nothing back and rewrote the entry as "Unknown Serial Device".
+    """
+
+    ID = "asrl_dev_ttyusb0_instr"
+    RESOURCE = "ASRL/dev/ttyUSB0::INSTR"
+
+    def _manager(self):
+        from server.discovery.manager import DiscoveryManager
+        return DiscoveryManager(DiscoveryConfig(enable_mdns=False))
+
+    def _entry(self, **kw):
+        fields = dict(device_id=self.ID, resource_name=self.RESOURCE,
+                      discovery_method=DiscoveryMethod.VISA)
+        fields.update(kw)
+        return DiscoveredDevice(**fields)
+
+    def _identified(self):
+        device = self._entry(
+            manufacturer="B&K Precision", model="Legacy fixed-width supply",
+            device_type=DeviceType.POWER_SUPPLY, confidence_score=0.6,
+        )
+        device.capabilities = ["RS-232", "USB-CDC"]
+        device.metadata.update({
+            "gmax": "605680", "max_voltage": 60.5,
+            "note": "Answered GMAX but not *IDN?",
+        })
+        return device
+
+    def _unidentified(self):
+        device = self._entry(
+            manufacturer="Unknown", model="Serial Device (ASRL)",
+            device_type=DeviceType.UNKNOWN, confidence_score=0.4,
+        )
+        device.metadata["note"] = "Does not respond to *IDN?"
+        return device
+
+    def test_an_unidentified_rescan_keeps_the_earlier_identification(self):
+        manager = self._manager()
+        manager._update_device_cache([self._identified()])
+        manager._update_device_cache([self._unidentified()])
+
+        kept = manager.devices[self.ID]
+        assert kept.manufacturer == "B&K Precision"
+        assert kept.model == "Legacy fixed-width supply"
+        assert kept.device_type == DeviceType.POWER_SUPPLY
+        assert kept.confidence_score == 0.6
+        assert kept.metadata["gmax"] == "605680"
+        assert kept.metadata["note"].startswith("Answered GMAX")
+        assert set(kept.capabilities) == {"RS-232", "USB-CDC"}
+
+    def test_a_stronger_identification_still_replaces_a_weaker_one(self):
+        manager = self._manager()
+        manager._update_device_cache([self._unidentified()])
+        manager._update_device_cache([self._identified()])
+
+        assert manager.devices[self.ID].model == "Legacy fixed-width supply"
+        assert manager.devices[self.ID].confidence_score == 0.6
+
+    def test_presence_and_connection_state_are_the_new_scans_call(self):
+        manager = self._manager()
+        connected = self._identified()
+        connected.is_connected = True
+        connected.status = ConnectionStatus.CONNECTED
+        connected.metadata["equipment_id"] = "ps_56fdd3df"
+        manager._update_device_cache([connected])
+        manager._update_device_cache([self._unidentified()])
+
+        kept = manager.devices[self.ID]
+        assert kept.model == "Legacy fixed-width supply"
+        assert kept.is_connected is False
+        assert kept.status == ConnectionStatus.AVAILABLE
+        assert "equipment_id" not in kept.metadata
+
+    def test_two_unknowns_in_a_row_stay_unknown(self):
+        manager = self._manager()
+        manager._update_device_cache([self._unidentified()])
+        manager._update_device_cache([self._unidentified()])
+        assert manager.devices[self.ID].device_type == DeviceType.UNKNOWN

@@ -961,7 +961,13 @@ class ControlPanel(QWidget):
             equipment_list = await call_blocking(self.client.list_equipment)
             self.equipment_list = [Equipment.from_api_dict(eq) for eq in equipment_list]
 
-            # Update list widget
+            # Update list widget. Repopulating clears the selection, and the
+            # list now refreshes on its own, so put the highlight back on the
+            # instrument being controlled rather than leave it looking idle.
+            selected_id = (
+                self.selected_equipment.equipment_id
+                if self.selected_equipment else None
+            )
             self.equipment_list_widget.clear()
             for equipment in self.equipment_list:
                 if equipment.connection_status == ConnectionStatus.CONNECTED:
@@ -970,9 +976,22 @@ class ControlPanel(QWidget):
                     )
                     item.setData(Qt.ItemDataRole.UserRole, equipment.equipment_id)
                     self.equipment_list_widget.addItem(item)
+                    if equipment.equipment_id == selected_id:
+                        self.equipment_list_widget.setCurrentItem(item)
 
         except Exception as e:
             logger.error(f"Error refreshing equipment list: {e}")
+
+    def showEvent(self, event):
+        """Bring the list up to date whenever this tab comes to the front.
+
+        Instruments are connected on the Equipment tab. This list only
+        changed when the operator pressed Refresh, so a supply connected a
+        moment ago was missing from the Control tab until they did.
+        """
+        super().showEvent(event)
+        if self.client:
+            self.refresh_equipment_list()
 
     def set_client(self, client: LabLinkClient):
         """Set the API client."""
