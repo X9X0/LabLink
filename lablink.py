@@ -812,9 +812,18 @@ class CheckWorker(QThread):
             'scp': 'SCP (secure copy) support',
         }
 
-        # Utilities for network discovery
+        # Utilities for network discovery.
+        #
+        # scapy is deliberately absent. It was removed from the project on
+        # 2025-12-06 over a pickle-deserialization RCE with no patch available
+        # in any version, having never been imported anywhere -- see
+        # docs/security/SECURITY_UPDATE_2025-12-06.md. It stayed in this list,
+        # so a correct install reported a missing "required" utility as an
+        # ERROR, which auto-opened the repair dialog and offered to install it
+        # again. The launcher was undoing a security fix on every clean
+        # install, at the user's confirmation and with no indication of what
+        # was being restored.
         discovery_utils = {
-            'scapy': 'Network packet manipulation and discovery',
             'zeroconf': 'mDNS/Bonjour service discovery',
         }
 
@@ -1135,7 +1144,9 @@ class FixWorker(QThread):
                     # Special handling for client utilities
                     if target == "client_utils":
                         logger.info("Installing client utilities packages")
-                        packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
+                        # Must match discovery_utils/deployment_utils above,
+                        # and must not reintroduce scapy.
+                        packages = ['paramiko', 'scp', 'zeroconf']
 
                         venv_paths = get_venv_paths()
                         venv_pip = venv_paths['pip']

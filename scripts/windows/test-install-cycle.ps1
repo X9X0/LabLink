@@ -21,9 +21,22 @@
     only those pointing into the directory it was given, so a cycle here
     leaves other installations' shortcuts alone.
 
-    What it cannot do is tell you whether a shortcut opens a console window.
-    Nothing scriptable can. Use -KeepShortcuts and click them if you want that
-    covered, and read scripts/windows/verify-install.ps1 for the rest.
+    -KeepShortcuts is the one option that reaches outside the test directory,
+    and it is worth being exact about why. The Desktop and Start Menu are
+    machine-wide: an install cannot be told to put its shortcuts somewhere
+    disposable. So -KeepShortcuts writes to the same places a real install
+    would, and an earlier version of this script overwrote a real
+    installation's desktop shortcut doing exactly that -- then removed it on
+    the way out, correctly, as an entry pointing into the test directory.
+
+    The installer now refuses to overwrite a shortcut pointing at a different
+    installation, so that cannot happen silently any more. It does mean
+    -KeepShortcuts will stop rather than proceed on a machine that already has
+    LabLink installed. Run it without -KeepShortcuts there, and do the console
+    check against the real install instead.
+
+    What no option can do is tell you whether a shortcut opens a console
+    window. Nothing scriptable can; it needs somebody watching the screen.
 
 .PARAMETER TestPath
     The disposable directory. Must not be an existing LabLink install.

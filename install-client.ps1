@@ -38,6 +38,12 @@
     when it is missing. Implies the answers, not the shortcuts: combine with
     -NoShortcuts to leave the Start Menu alone.
 
+.PARAMETER ReplaceExistingShortcuts
+    Take over shortcuts that point at a different LabLink installation. Without
+    this, the install stops rather than overwriting them -- the Desktop and
+    Start Menu are machine-wide, so an install pointed somewhere harmless can
+    still clobber a real installation's entries.
+
 .EXAMPLE
     .\install-client.ps1
 
@@ -50,7 +56,8 @@ param(
     [string]$InstallPath,
     [switch]$NoShortcuts,
     [switch]$NoDesktopShortcut,
-    [switch]$Unattended
+    [switch]$Unattended,
+    [switch]$ReplaceExistingShortcuts
 )
 
 # Configuration
@@ -377,6 +384,39 @@ function New-LabLinkShortcut {
             throw ("Cannot create the '$Target' shortcut: $required is missing. " +
                    "The installed copy of LabLink is missing files the shortcuts " +
                    "need; re-run the installer against a complete checkout.")
+        }
+    }
+
+    # The Desktop and Start Menu belong to the machine, not to this install, so
+    # -InstallPath cannot scope where a shortcut is written. An install pointed
+    # at a throwaway directory would still overwrite the real installation's
+    # desktop shortcut, and the uninstall would then correctly remove it as its
+    # own -- leaving the real install with no shortcut and nobody having been
+    # told.
+    #
+    # A shortcut already pointing somewhere else therefore belongs to another
+    # installation, and is not ours to replace silently.
+    if ((Test-Path $Path) -and -not $ReplaceExistingShortcuts) {
+        try {
+            $existing = (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+        }
+        catch {
+            $existing = $null
+        }
+
+        if ($existing) {
+            $normalizedExisting = [System.IO.Path]::GetFullPath($existing).TrimEnd('\')
+            $normalizedRoot = [System.IO.Path]::GetFullPath($LablinkDir).TrimEnd('\')
+            $belongsHere = $normalizedExisting.StartsWith(
+                $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase)
+
+            if (-not $belongsHere) {
+                throw ("$Path already exists and points at $existing, which is " +
+                       "outside $LablinkDir. It belongs to another LabLink " +
+                       "installation. Re-run with -ReplaceExistingShortcuts to " +
+                       "take it over, or with -NoShortcuts to leave it alone.")
+            }
         }
     }
 
