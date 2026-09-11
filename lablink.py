@@ -38,13 +38,37 @@ from enum import Enum
 # capture_output does not prevent this. It redirects the pipes; the window is
 # allocated either way. CREATE_NO_WINDOW is what suppresses it.
 #
+# But the flag also detaches the child from our console, so a child that
+# redirects nothing has its output discarded rather than printed. Ten of the
+# calls below are installs -- pip, venv, ensurepip -- that deliberately let
+# their progress through to whoever is watching. Setting the flag
+# unconditionally would trade strobing windows for a silent minute during a
+# pip install, which is a bad trade for anyone running this from a terminal.
+#
+# So ask whether there is a console to inherit. GetConsoleWindow() returns 0
+# exactly when this process has none, which is the pythonw.exe case and the
+# only case where Windows would allocate a fresh one. Started from a terminal
+# there is a console, the flag is not set, and output flows as it always did.
+#
 # Deliberate terminal launches -- "starting in a new terminal window", where
-# the user is meant to read the output -- do not use this.
-_NO_WINDOW = (
-    {"creationflags": subprocess.CREATE_NO_WINDOW}
-    if sys.platform == "win32"
-    else {}
-)
+# the user is meant to read the output -- never use this.
+def _no_window_flags() -> dict:
+    if sys.platform != "win32":
+        return {}
+    try:
+        import ctypes
+
+        if ctypes.windll.kernel32.GetConsoleWindow() == 0:
+            return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    except Exception:
+        # If we cannot tell, prefer visible output over a hidden window: a
+        # stray console is an annoyance, lost pip output is a support call.
+        pass
+    return {}
+
+
+#: Evaluated once: a process does not gain or lose its console while running.
+_NO_WINDOW = _no_window_flags()
 
 # A Windows console decodes as cp1252 by default, and this script prints
 # non-ASCII. Without this the first such print raises UnicodeEncodeError --
@@ -109,7 +133,31 @@ def get_venv_paths(venv_name: str = "venv") -> Dict[str, Path]:
     Returns:
         Dictionary with 'base', 'bin', 'python', and 'pip' paths
     """
-    venv_base = Path(venv_name)
+    # Which environment is "the" environment has a right answer, and it used to
+    # be guessed: Path(venv_name) is relative, so it resolved against whatever
+    # the working directory happened to be.
+    #
+    # That let the launcher audit one environment while the Start Menu
+    # shortcuts ran another. On a machine with both a legacy root venv and the
+    # installer's client\venv, the launcher probed the root one, found every
+    # package present, and reported all green -- while the Server shortcut died
+    # on a missing fastapi that really was absent from client\venv. The repair
+    # tool denied the failure the error dialog had just sent the user to it
+    # with.
+    #
+    # If this process is itself running inside a virtual environment, that is
+    # the environment, with no guessing required: the shortcuts start the
+    # launcher with client\venv's own pythonw.exe, so sys.prefix is already the
+    # answer. Only when running outside one is there anything to search for,
+    # and then it is anchored to the repo rather than to the caller's cwd.
+    if sys.prefix != sys.base_prefix:
+        venv_base = Path(sys.prefix)
+    else:
+        root = Path(__file__).resolve().parent
+        candidates = [root / venv_name, root / "client" / venv_name]
+        venv_base = next(
+            (path for path in candidates if path.exists()), candidates[0]
+        )
 
     if sys.platform == "win32":
         # Windows uses Scripts directory
