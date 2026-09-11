@@ -274,8 +274,32 @@ class TestBackupRestoration:
     """Test backup restoration functionality."""
 
     @pytest.fixture
-    def backup_manager(self):
-        """Create BackupManager for testing."""
+    def backup_manager(self, tmp_path, monkeypatch):
+        """A BackupManager with both ends of the backup isolated.
+
+        BackupManager reads its sources relative to the working directory, so
+        a test run from the repo root backs up the repo's own config/ and
+        profiles/. That made the restore test depend on whether an untracked
+        file happened to be present: config/ holds only update_config.json,
+        which is gitignored, so it exists on a developer's machine and not in
+        a fresh checkout. The test passed locally and failed on CI the first
+        time CI ever ran this directory.
+
+        Working from a temporary tree with a config file of its own makes the
+        outcome depend on the manager rather than on the checkout — and keeps
+        the backup from reaching into the real repo.
+        """
+        source = tmp_path / "workspace"
+        (source / "config").mkdir(parents=True)
+        (source / "config" / "settings.json").write_text(
+            '{"test": "config"}', encoding="utf-8"
+        )
+        (source / "profiles").mkdir()
+        (source / "profiles" / "example.json").write_text(
+            '{"name": "example"}', encoding="utf-8"
+        )
+        monkeypatch.chdir(source)
+
         with tempfile.TemporaryDirectory() as temp_dir:
             config = BackupConfig(
                 backup_dir=temp_dir,
