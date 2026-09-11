@@ -233,6 +233,19 @@ function New-LabLinkShortcut {
     $pythonw = "$LablinkDir\client\venv\Scripts\pythonw.exe"
     $launcher = "$LablinkDir\scripts\windows\lablink_launch.pyw"
 
+    # Never point a shortcut at something that is not there. Without a console
+    # there is nothing to print a "file not found" to, so a shortcut aimed at a
+    # missing shim does not fail -- it does nothing at all, which is the exact
+    # failure this whole design exists to prevent. Refusing loudly here is the
+    # only place that silence can still be turned back into a message.
+    foreach ($required in @($pythonw, $launcher)) {
+        if (-not (Test-Path $required)) {
+            throw ("Cannot create the '$Target' shortcut: $required is missing. " +
+                   "The installed copy of LabLink is missing files the shortcuts " +
+                   "need; re-run the installer against a complete checkout.")
+        }
+    }
+
     $WScriptShell = New-Object -ComObject WScript.Shell
     $shortcut = $WScriptShell.CreateShortcut($Path)
     $shortcut.TargetPath = $pythonw

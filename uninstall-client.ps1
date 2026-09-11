@@ -33,10 +33,42 @@
 param(
     [string]$InstallPath = "$env:USERPROFILE\LabLink",
     [switch]$RemoveSettings,
-    [switch]$Force
+    [switch]$Force,
+    # Set when this script has already copied itself to TEMP. Not for callers.
+    [switch]$Relocated
 )
 
 $ErrorActionPreference = "Stop"
+
+#: Set when the install directory is a git checkout with uncommitted work.
+$script:TreeIsDirty = $false
+
+# Windows will not remove a directory that a running process is sitting in, and
+# this script normally lives inside the directory it is about to delete. Rather
+# than asking the user to copy files out -- which fails anyway, because the .bat
+# wrapper resolves the .ps1 relative to itself -- relocate to TEMP and re-run
+# from there. -Relocated stops that recursing.
+if (-not $Relocated) {
+    $scriptPath = $MyInvocation.MyCommand.Path
+    if ($scriptPath -and $scriptPath.StartsWith($InstallPath, [StringComparison]::OrdinalIgnoreCase)) {
+        $tempCopy = Join-Path $env:TEMP "lablink-uninstall-$PID.ps1"
+        Copy-Item -Path $scriptPath -Destination $tempCopy -Force
+
+        $forward = @("-InstallPath", $InstallPath, "-Relocated")
+        if ($RemoveSettings) { $forward += "-RemoveSettings" }
+        if ($Force)          { $forward += "-Force" }
+
+        try {
+            & powershell -ExecutionPolicy Bypass -File $tempCopy @forward
+            $code = $LASTEXITCODE
+        }
+        finally {
+            # Best effort: the copy is in TEMP either way.
+            Remove-Item -Path $tempCopy -Force -ErrorAction SilentlyContinue
+        }
+        exit $code
+    }
+}
 
 function Write-Step    { param($m) Write-Host "[*] $m" -ForegroundColor Cyan }
 function Write-Removed { param($m) Write-Host "[-] $m" -ForegroundColor Yellow }
@@ -83,13 +115,67 @@ if ($RemoveSettings) {
     Write-Host "  - Saved settings and credentials" -ForegroundColor Yellow
 }
 Write-Host ""
+
+# An install directory that is also a git checkout is somebody's working copy,
+# and deleting it takes uncommitted work and local data with it: measurements
+# under data/, saved profiles/, logs/, config. The installer creates the
+# directory by cloning, so this is the normal case on a development machine
+# rather than an edge case -- and nothing about "uninstall the client" tells
+# the user their measurements are inside it.
+if (Test-Path (Join-Path $InstallPath ".git")) {
+    Write-Host "WARNING: $InstallPath is a git repository." -ForegroundColor Yellow
+
+    Push-Location $InstallPath
+    try {
+        $dirty = git status --porcelain 2>$null
+        if ($dirty) {
+            $script:TreeIsDirty = $true
+            $count = ($dirty | Measure-Object -Line).Lines
+            Write-Host "         It has $count uncommitted or untracked item(s)," -ForegroundColor Yellow
+            Write-Host "         which removing the directory would destroy:" -ForegroundColor Yellow
+            $dirty | Select-Object -First 12 | ForEach-Object {
+                Write-Host "           $_" -ForegroundColor DarkGray
+            }
+            if ($count -gt 12) {
+                Write-Host "           ... and $($count - 12) more" -ForegroundColor DarkGray
+            }
+            Write-Host "         Commit or copy anything you need first." -ForegroundColor Yellow
+        } else {
+            Write-Host "         The working tree is clean." -ForegroundColor DarkGray
+        }
+    }
+    catch {
+        Write-Host "         (Could not inspect it: $_)" -ForegroundColor DarkGray
+    }
+    finally {
+        Pop-Location
+    }
+    Write-Host ""
+}
+
 Write-Host "Python and Git are left installed." -ForegroundColor DarkGray
 if (-not $RemoveSettings) {
     Write-Host "Saved credentials are kept. Use -RemoveSettings to clear them." -ForegroundColor DarkGray
 }
 Write-Host ""
 
+# -Force means "do not ask the routine question", not "destroy uncommitted work
+# without telling anyone". A dirty tree is the one case where the answer might
+# genuinely have been no, so it stops even under -Force.
+if ($script:TreeIsDirty -and $Force) {
+    Write-ErrorMsg "Refusing to run with -Force: $InstallPath has uncommitted work."
+    Write-Host ""
+    Write-Host "Commit or copy what you need, then either:" -ForegroundColor Yellow
+    Write-Host "  - re-run without -Force, to confirm interactively, or" -ForegroundColor Yellow
+    Write-Host "  - re-run once the working tree is clean." -ForegroundColor Yellow
+    Write-Host ""
+    exit 2
+}
+
 if (-not $Force) {
+    if ($script:TreeIsDirty) {
+        Write-Host "This will destroy the uncommitted work listed above." -ForegroundColor Yellow
+    }
     $response = Read-Host "Continue? (y/N)"
     if ($response -ne 'y' -and $response -ne 'Y') {
         Write-Host "Cancelled. Nothing was removed." -ForegroundColor Yellow

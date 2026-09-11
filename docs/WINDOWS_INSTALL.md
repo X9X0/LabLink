@@ -176,7 +176,14 @@ powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1 -RemoveSettings
 ```
 
 Add `-Force` to skip the confirmation prompt, which is useful when scripting a
-wipe-and-reinstall test.
+wipe-and-reinstall test. `-Force` will still stop if the install directory is a
+git checkout with uncommitted work — that is the one case where the answer
+might genuinely have been no, and measurements under `data/`, saved `profiles/`
+and local `config/` all live inside that directory.
+
+You do not need to copy the uninstaller anywhere first. Windows will not delete
+a directory a running process is sitting in, so the script copies itself to
+`%TEMP%` and re-runs from there.
 
 If removal fails because a file is in use, close LabLink and run it again.
 
