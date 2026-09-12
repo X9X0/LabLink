@@ -192,6 +192,22 @@ if (Test-Path (Join-Path $InstallPath ".git")) {
 
     Push-Location $InstallPath
     try {
+        # git status --porcelain is deliberate, and deliberately blunt. It
+        # reports differences git diff considers no change at all -- notably
+        # line-ending-only ones, where git diff --quiet exits 0 while status
+        # still prints M. That has fired falsely once already, when the
+        # installer rewrote the tracked lablink-client.bat with line endings
+        # checkout had not produced (fixed in 27c765a, at the installer end).
+        #
+        # If it fires falsely again, find what is rewriting a tracked file.
+        # Do not make this quieter. The two failure directions are not
+        # symmetric: a false refusal costs somebody a confused minute, and a
+        # false proceed deletes uncommitted measurements under data/ that no
+        # reinstall brings back. Over-caution is the correct direction here.
+        #
+        # git diff --quiet would also have to be git diff --quiet HEAD to
+        # catch staged-but-uncommitted work -- exactly the subtlety not worth
+        # carrying in a guard on a destructive operation.
         $dirty = git status --porcelain 2>$null
         if ($dirty) {
             $script:TreeIsDirty = $true
