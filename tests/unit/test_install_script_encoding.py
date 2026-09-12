@@ -76,3 +76,38 @@ def test_readme_documents_the_one_liner():
         "README no longer documents the one-liner install. If it was removed "
         "deliberately, these encoding constraints can be relaxed too."
     )
+
+
+def _here_string_from_installer() -> str:
+    """The launcher batch text install-client.ps1 would write out."""
+    text = REMOTELY_EXECUTED.read_text(encoding="ascii")
+    start = text.index("$batchContent = @'")
+    body = text[text.index("\n", start) + 1 :]
+    return body[: body.index("'@")]
+
+
+def _normalised(text: str) -> str:
+    return text.replace("\r\n", "\n").rstrip("\n")
+
+
+def test_installer_launcher_matches_the_committed_one():
+    """The installer must not rewrite lablink-client.bat with different content.
+
+    lablink-client.bat is committed, so a clone already has it. The installer
+    also carries a copy as a here-string and used to write it out every run.
+    Set-Content does not reproduce the line endings checkout produced, so
+    `git status` reported a modified tracked file after every fresh install --
+    and uninstall-client.ps1 refuses -Force on a dirty tree, which is how it
+    avoids deleting uncommitted work. A redundant write was therefore breaking
+    the documented uninstall path with a difference that was not a real edit.
+
+    The installer now writes only when the content would actually change. That
+    is only safe while the two copies agree, which is what this pins: edit one
+    and you must edit the other, or installs start dirtying the clone again.
+    """
+    committed = (REPO_ROOT / "lablink-client.bat").read_text(encoding="ascii")
+    assert _normalised(_here_string_from_installer()) == _normalised(committed), (
+        "install-client.ps1's $batchContent has drifted from lablink-client.bat. "
+        "Update whichever is stale: while they differ, every install rewrites a "
+        "tracked file and leaves the clone dirty, which blocks uninstall -Force."
+    )

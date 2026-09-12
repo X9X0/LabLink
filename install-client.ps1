@@ -359,9 +359,36 @@ REM Run LabLink launcher from root directory
 python lablink.py %*
 '@
 
-    Set-Content -Path $launcherPath -Value $batchContent
+    # lablink-client.bat is committed to the repository, so a clone already has
+    # it. Rewriting it is not merely redundant: Set-Content does not reproduce
+    # the line endings checkout produced, so `git status` then reports a
+    # modified tracked file in every fresh install. The uninstaller refuses
+    # -Force on a dirty tree -- correctly, since that is how it avoids deleting
+    # somebody's uncommitted work -- so the installer was quietly breaking the
+    # documented uninstall path with a difference that is not a real edit.
+    #
+    # Compare content with line endings normalised, and write only when it
+    # would actually change something.
+    $normalised = {
+        param([string]$Text)
+        ($Text -replace "`r`n", "`n").TrimEnd("`n")
+    }
 
-    Write-Step "Launcher script created: $launcherPath"
+    $needsWrite = $true
+    if (Test-Path $launcherPath) {
+        $existing = Get-Content -Path $launcherPath -Raw
+        if ((& $normalised $existing) -eq (& $normalised $batchContent)) {
+            $needsWrite = $false
+        }
+    }
+
+    if ($needsWrite) {
+        Set-Content -Path $launcherPath -Value $batchContent
+        Write-Step "Launcher script written: $launcherPath"
+    }
+    else {
+        Write-Step "Launcher script already up to date: $launcherPath"
+    }
 }
 
 function New-LabLinkShortcut {
