@@ -2,33 +2,50 @@
 
 ## Quick Start (Recommended Method)
 
-The easiest way to install LabLink Client on Windows is using the provided PowerShell installation script:
+### Option 1: One Command, Nothing to Download (Easiest)
 
-### Option 1: Using the Batch File Wrapper (Easiest)
+Open PowerShell -- no admin rights needed -- and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+```
+
+The script fetches LabLink itself, so there is nothing to clone first. It asks
+where to install and whether you want a desktop shortcut; press Enter for the
+defaults.
+
+This form cannot take parameters, because `iex` runs the script as a string
+rather than as a file. To pass options, compile it explicitly instead:
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1).Content)) -InstallPath 'D:\LabLink' -Unattended
+```
+
+Neither form is subject to the execution policy, because that applies to script
+files on disk and not to commands run in an existing session. That is also why
+endpoint protection tends to look closely at `iwr ... | iex`: fetching code and
+running it from memory is the shape of a real attack as well as a convenience.
+If your environment flags it, use Option 2 or 3 instead -- they do the same
+work from a file it can inspect.
+
+### Option 2: Using the Batch File Wrapper
 
 1. Download or clone the LabLink repository
 2. Open the LabLink folder in File Explorer
 3. Double-click `install-client.bat`
 
-That's it! The batch file handles the PowerShell execution policy automatically.
+The batch file handles the PowerShell execution policy automatically.
 
-### Option 2: Using PowerShell Directly
+### Option 3: Using PowerShell Directly
 
-Open PowerShell (no admin rights needed) and run:
+Open PowerShell and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-client.ps1
 ```
 
-**Important:** You must use the `-ExecutionPolicy Bypass` flag because Windows blocks running PowerShell scripts by default for security reasons.
-
-### Option 3: Remote Installation (One Command)
-
-If you don't have the repository yet, you can install directly from GitHub:
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
-```
+**Important:** You must use the `-ExecutionPolicy Bypass` flag because Windows
+blocks running PowerShell scripts by default for security reasons.
 
 ## Upgrading to 2.0 from an earlier version
 
