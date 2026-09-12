@@ -1,10 +1,18 @@
-﻿# LabLink GUI Client - Windows Installation Script
+# LabLink GUI Client - Windows Installation Script
 # PowerShell Script for Windows 10/11
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File install-client.ps1
 #   OR
 #   iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+#
+# This file must stay pure ASCII and BOM-free. Piping it to iex parses it as
+# a string rather than loading it as a file, and a UTF-8 BOM survives that
+# trip: the mark fuses with the first '#' so PowerShell reads it as a command
+# name, the param() block below stops being recognised, and the whole thing
+# dies on line 1 with "The term '#' is not recognized". Loading the same
+# bytes from disk is fine, which is why this went unnoticed -- so if you add
+# a box-drawing character or an accent here, the one-liner is what breaks.
 
 # Requires -Version 5.1
 
@@ -85,12 +93,12 @@ function Write-WarningMsg {
 
 function Write-Header {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║                                                       ║" -ForegroundColor Blue
-    Write-Host "║           LabLink Client Installation                 ║" -ForegroundColor Blue
-    Write-Host "║            Desktop GUI Application                    ║" -ForegroundColor Blue
-    Write-Host "║                                                       ║" -ForegroundColor Blue
-    Write-Host "╚═══════════════════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host "+=======================================================+" -ForegroundColor Blue
+    Write-Host "|                                                       |" -ForegroundColor Blue
+    Write-Host "|           LabLink Client Installation                 |" -ForegroundColor Blue
+    Write-Host "|            Desktop GUI Application                    |" -ForegroundColor Blue
+    Write-Host "|                                                       |" -ForegroundColor Blue
+    Write-Host "+=======================================================+" -ForegroundColor Blue
     Write-Host ""
 }
 
@@ -478,11 +486,11 @@ function Create-StartMenuShortcut {
 
 function Write-Success {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║                                                       ║" -ForegroundColor Green
-    Write-Host "║        LabLink Client Installed Successfully!        ║" -ForegroundColor Green
-    Write-Host "║                                                       ║" -ForegroundColor Green
-    Write-Host "╚═══════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "+=======================================================+" -ForegroundColor Green
+    Write-Host "|                                                       |" -ForegroundColor Green
+    Write-Host "|        LabLink Client Installed Successfully!         |" -ForegroundColor Green
+    Write-Host "|                                                       |" -ForegroundColor Green
+    Write-Host "+=======================================================+" -ForegroundColor Green
     Write-Host ""
 
     Write-Host "Installation Directory: $LablinkDir"

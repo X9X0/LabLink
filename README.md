@@ -81,18 +81,43 @@ The **LabLink Launcher** will:
 
 **Windows Users** - Automated Installation:
 
-1. Download or clone the repository
-2. Double-click `install-client.bat` (or run in PowerShell):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\install-client.ps1
-   ```
-   It installs Python 3.12 if you do not have it, sets up the client
-   environment with both the client and server dependencies, and creates a
-   desktop shortcut plus a **Start Menu → LabLink** folder holding three
-   entries: **LabLink** (the client), **LabLink Launcher** (environment checks
-   and repair) and **LabLink Server** (run the server on this machine).
-3. Launch from **Start Menu → LabLink**. None of the shortcuts open a console
-   window. To remove LabLink later, run `uninstall-client.bat`.
+Open PowerShell and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+```
+
+There is nothing to download or clone first -- the script fetches LabLink
+itself. It installs Python 3.12 if you do not have it, sets up the client
+environment with both the client and server dependencies, and creates a desktop
+shortcut plus a **Start Menu → LabLink** folder holding three entries:
+**LabLink** (the client), **LabLink Launcher** (environment checks and repair)
+and **LabLink Server** (run the server on this machine).
+
+It asks where to install and whether you want a desktop shortcut; press Enter
+to accept the defaults.
+
+To pass options rather than answer prompts -- installing somewhere other than
+`%USERPROFILE%\LabLink`, or running unattended:
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1).Content)) -InstallPath 'D:\LabLink' -Unattended
+```
+
+<details>
+<summary>Already have the repository cloned?</summary>
+
+Double-click `install-client.bat`, or run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+Both do exactly what the one-liner does.
+</details>
+
+Then launch from **Start Menu → LabLink**. None of the shortcuts open a
+console window. To remove LabLink later, run `uninstall-client.bat`.
 
 **Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
 

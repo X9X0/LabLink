@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Exercises install -> verify -> uninstall against a disposable directory.
 
