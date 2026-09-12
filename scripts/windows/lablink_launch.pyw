@@ -60,16 +60,41 @@ def log_path() -> Path:
 
 
 def show_error(message: str) -> None:
-    """Put a message in front of the user without needing Qt or a console."""
+    """Put a message in front of the user without needing Qt or a console.
+
+    A message box is the right answer only when there is nowhere else for the
+    text to go. Under ``pythonw.exe`` there is not -- ``sys.stderr`` is None,
+    which is the whole reason this function exists. Under ``python.exe`` there
+    is, and a dialog is then actively wrong: ``MessageBoxW`` is modal and
+    blocks until somebody clicks OK, so any non-interactive caller hangs.
+
+    ``verify-install.ps1`` starts an unknown target on purpose, to check the
+    shim rejects it rather than starting something unexpected. That check sat
+    on an unattended dialog for ten minutes before anyone noticed, so stderr
+    is tried first and the dialog is kept for the case it was written for.
+
+    The old order had a latent bug too: its fallback called
+    ``sys.stderr.write`` under pythonw, where stderr is None.
+    """
+    stream = getattr(sys, "stderr", None)
+    if stream is not None:
+        try:
+            stream.write(message + "\n")
+            stream.flush()
+            return
+        except Exception:
+            # Closed or broken stream: fall through to the message box.
+            pass
+
     try:
         import ctypes
 
         # MB_ICONERROR | MB_SETFOREGROUND, so it cannot open behind everything.
         ctypes.windll.user32.MessageBoxW(None, message, TITLE, 0x10 | 0x10000)
     except Exception:
-        # Not Windows, or user32 unavailable. The log below is then the only
-        # record, which is better than losing the failure entirely.
-        sys.stderr.write(message + "\n")
+        # Not Windows, or user32 unavailable, and no stderr either. The log
+        # file is then the only record, which beats losing the failure.
+        pass
 
 
 def report(target: str, error: BaseException) -> None:
