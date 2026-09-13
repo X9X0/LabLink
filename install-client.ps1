@@ -14,7 +14,7 @@
 # bytes from disk is fine, which is why this went unnoticed -- so if you add
 # a box-drawing character or an accent here, the one-liner is what breaks.
 
-# Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -67,6 +67,16 @@ param(
     [switch]$Unattended,
     [switch]$ReplaceExistingShortcuts
 )
+
+# The #Requires directive above only binds when PowerShell loads this as a
+# file. The documented install pipes this script to iex, which parses it as a
+# string and ignores the directive entirely, so the version floor has to be
+# enforced at runtime as well or the one-liner path stays ungated.
+$MinPSVersion = [Version]"5.1"
+$CurrentPSVersion = [Version]"$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
+if ($CurrentPSVersion -lt $MinPSVersion) {
+    throw "LabLink requires PowerShell $MinPSVersion or later; this session is $($PSVersionTable.PSVersion). Windows 10 and 11 ship 5.1 as powershell.exe -- run the installer with that."
+}
 
 # Configuration
 $LablinkDir = if ($InstallPath) { $InstallPath } else { "$env:USERPROFILE\LabLink" }
