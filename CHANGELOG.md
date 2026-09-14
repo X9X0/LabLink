@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.3] - 2026-09-14
+
+Bench work. Everything here came from running the client against a real
+Raspberry Pi with a B&K Precision 1685B and 9205B attached, and most of it
+would not have been found any other way.
+
+### ✨ Added
+
+- **The bench survives a restart.** The equipment list lived only in memory, so
+  every container restart emptied it -- and an upgrade restarts containers. The
+  server now records what it has identified in `data/equipment_inventory.json`
+  on the docker volume, and lists those alongside the instruments it currently
+  holds open. Identity is remembered; connections are not, so nothing opens a
+  port at boot and an instrument someone else is using is listed rather than
+  seized. This matters most for a 1685B, which does not answer `*IDN?` at all:
+  rediscovery means inferring it from a USB serial bridge, and two bridges look
+  alike.
+- **Min/Max tracking on the Control tab**, which is how a transient the live
+  number skips past gets noticed. It prints to the resolution the instrument
+  actually reports.
+- **Auto Range** for the analog and graph modes. A 5 A supply sitting at 0.3 A
+  uses a sixteenth of the dial, where a 10 mA change moves the needle about a
+  pixel. The scale grows to fit what has been seen and holds there rather than
+  falling back as the reading drops, which made a steady supply look like a
+  climbing one.
+- **The update warns what it will interrupt**, naming the instruments that are
+  connected and will be dropped while the server restarts. An output left
+  enabled stays enabled with nothing watching it.
+- **The SSH host is offered from the connection**, with the SSH user remembered
+  per server once an update has worked.
+
+### 🐛 Fixed
+
+- **Selecting equipment silently dropped the reading rate to 1 Hz** while the
+  control still read 10 Hz. It restarted the timer at a hardcoded interval; a
+  display that disagrees with the behaviour is worse than either being wrong.
+  The rate is also remembered between sessions now.
+- **The version and branch pickers could not see anything new.** Both listed
+  only what the clone already had, so a release or a commit pushed five minutes
+  earlier never appeared however many times Refresh was pressed. They fetch on
+  the button now -- and only on the button: fetching on the five-second
+  refresh, which is what the first attempt did, hitched the window every few
+  seconds.
+- **Connecting to an instrument failed with `'Equipment' object has no
+  attribute 'resource_string'`.** The client model calls it `resource_name`;
+  the code asked for the server's spelling. It had been hidden behind a 404
+  storm that kept the connect task from ever being entered.
+- **The Control tab polled instruments the server had not opened**, 404ing at
+  the reading rate.
+- **A background refresh raised modal error dialogs** from a five-second timer,
+  interrupting the operator to report something unactionable -- and during an
+  update not even a fault, since the server is down because we asked it to be.
+
+### 📝 Changed
+
+- **The analog display is a panel meter now**, after a Simpson Model 29: a
+  shallow arc with the pivot low in the case, which spreads the scale over the
+  full width and gives far more travel per unit than a round dial in the same
+  box. It fills the window like the other two modes, where it used to sit at
+  its minimum with room to spare. The case follows the theme -- grey bezel in
+  both, cream card and black pointer in light, black card and green pointer in
+  dark -- with the graduations and lettering printed in the same ink as the
+  pointer.
+- **The update log fills the window** instead of staying ten lines tall with a
+  third of the screen empty beneath it.
+
+---
+
+
 ## [2.1.2] - 2026-09-14
 
 A deployed LabLink can now update itself. Until this release a Pi could not:
