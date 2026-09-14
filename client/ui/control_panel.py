@@ -480,6 +480,15 @@ class ControlPanel(QWidget):
         self._extremes = {"v_min": None, "v_max": None,
                           "i_min": None, "i_max": None}
 
+        # The top of scale auto-range has settled on. It only ever grows: a
+        # scale that shrank when the reading fell made the needle and the
+        # graph jump about, and the point of ranging is to hold the deflection
+        # for everything seen so far.
+        self._auto_range_top = {"v": None, "i": None}
+
+        #: The last readings as they arrived, before any clamping.
+        self._last_readings = (0.0, 0.0)
+
         self.voltage_decimals = 2
         self.current_decimals = 3
         self.equipment_list: List[Equipment] = []
@@ -799,6 +808,9 @@ class ControlPanel(QWidget):
         """Forget what has been seen and start again."""
         self._extremes = {"v_min": None, "v_max": None,
                           "i_min": None, "i_max": None}
+        # The held scale is a record of what has been seen too, so it goes
+        # with them; otherwise Reset would leave the dial stuck wide open.
+        self._auto_range_top = {"v": None, "i": None}
         self._update_minmax_label()
 
     def _on_minmax_toggled(self, enabled: bool):
@@ -819,6 +831,8 @@ class ControlPanel(QWidget):
             self.voltage_gauge.update()
             self.current_gauge.update()
         else:
+            # A fresh start: hold nothing from the previous session.
+            self._auto_range_top = {"v": None, "i": None}
             self._apply_auto_range()
 
     def _track_extremes(self, voltage: float, current: float):
@@ -867,15 +881,22 @@ class ControlPanel(QWidget):
 
         seen_v = self._extremes["v_max"]
         seen_i = self._extremes["i_max"]
-        # Fall back to the live readings when min/max tracking is off, so the
-        # two buttons are independent.
+        # Fall back to the last readings when min/max tracking is off, so the
+        # two buttons stay independent.
+        #
+        # The readings, not the gauges: set_value clamps to the current top of
+        # scale, so reading them back off the needle meant a 2.4 A reading on
+        # a 0.15 A scale came back as 0.15, and the range could only creep up
+        # one step per reading instead of jumping to fit.
         if seen_v is None:
-            seen_v = self.voltage_gauge.current_value
+            seen_v = self._last_readings[0]
         if seen_i is None:
-            seen_i = self.current_gauge.current_value
+            seen_i = self._last_readings[1]
 
-        v_range = self._nice_range(seen_v, self.instrument_max_voltage, floor=1.0)
-        i_range = self._nice_range(seen_i, self.instrument_max_current, floor=0.1)
+        v_range = self._latched("v", self._nice_range(
+            seen_v, self.instrument_max_voltage, floor=1.0))
+        i_range = self._latched("i", self._nice_range(
+            seen_i, self.instrument_max_current, floor=0.1))
 
         self.voltage_gauge.max_value = v_range
         self.current_gauge.max_value = i_range
@@ -883,6 +904,20 @@ class ControlPanel(QWidget):
         self.axis_y_current.setRange(0, i_range)
         self.voltage_gauge.update()
         self.current_gauge.update()
+
+    def _latched(self, key: str, candidate: float) -> float:
+        """The largest scale asked for so far, never a smaller one.
+
+        Auto-range recomputes on every reading. Letting it shrink meant the
+        needle and the graph rescaled as the value fell -- so a trace would
+        appear to climb while the supply was steady, which is worse than a
+        scale that is merely generous. Reset, or turning auto-range off and
+        on, starts the window again.
+        """
+        previous = self._auto_range_top.get(key)
+        top = candidate if previous is None else max(previous, candidate)
+        self._auto_range_top[key] = top
+        return top
 
     @staticmethod
     def _nice_range(seen: float, instrument_max: float, floor: float) -> float:
@@ -1217,6 +1252,9 @@ class ControlPanel(QWidget):
                     # Kept so auto-range has something to go back to.
                     self.instrument_max_voltage = max_voltage
                     self.instrument_max_current = max_current
+                    # Another instrument, another scale: holding the last
+                    # one would range a 5 A supply to a 25 A dial.
+                    self._auto_range_top = {"v": None, "i": None}
                     self.voltage_decimals = capabilities.get("voltage_decimals", 2)
                     self.current_decimals = capabilities.get("current_decimals", 3)
 
@@ -1551,6 +1589,7 @@ class ControlPanel(QWidget):
 
             # The graph carries the same two numbers across its top, so the
             # mode that shows the trend still shows the present value.
+            self._last_readings = (voltage_actual, current_actual)
             self._track_extremes(voltage_actual, current_actual)
             self._apply_auto_range()
 

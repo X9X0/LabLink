@@ -297,6 +297,45 @@ class TestMinMaxAndAutoRange:
         assert panel.current_gauge.max_value < 5.0, "the dial did not tighten"
         assert panel.current_gauge.max_value >= 0.30, "the reading would peg"
 
+    def test_the_scale_never_shrinks(self, panel):
+        """The reported glitch: a scale that fell as the reading fell made the
+        needle and the trace jump about, so a steady supply looked like a
+        climbing one. Ranging holds the deflection for everything seen."""
+        panel.autorange_button.setChecked(True)
+
+        tops = []
+        for reading in (0.30, 2.40, 0.30, 0.10, 3.90, 0.20):
+            panel._last_readings = (0.0, reading)
+            panel._apply_auto_range()
+            tops.append(panel.current_gauge.max_value)
+
+        assert tops == sorted(tops), f"the scale shrank: {tops}"
+
+    def test_it_jumps_straight_to_fit_a_step_change(self, panel):
+        """It used to read the value back off the gauge, which clamps to the
+        current top of scale -- so a 2.4 A reading on a 0.15 A scale came back
+        as 0.15 and the range crept up one step per reading."""
+        panel.autorange_button.setChecked(True)
+        panel._last_readings = (0.0, 2.40)
+        panel._apply_auto_range()
+
+        assert panel.current_gauge.max_value >= 2.40, (
+            "one reading was not enough to fit the value"
+        )
+
+    def test_reset_lets_the_scale_come_back_down(self, panel):
+        """Otherwise Reset would leave the dial stuck wide open."""
+        panel.autorange_button.setChecked(True)
+        panel._last_readings = (0.0, 3.90)
+        panel._apply_auto_range()
+        wide = panel.current_gauge.max_value
+
+        panel._reset_extremes()
+        panel._last_readings = (0.0, 0.30)
+        panel._apply_auto_range()
+
+        assert panel.current_gauge.max_value < wide
+
     def test_turning_it_off_restores_the_instrument_range(self, panel):
         panel.minmax_button.setChecked(True)
         panel._track_extremes(4.77, 0.30)
