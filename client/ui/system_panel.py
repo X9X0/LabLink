@@ -1672,6 +1672,7 @@ class SystemPanel(QWidget):
 
     def _update_client(self):
         """Update client by marking for update on next restart."""
+        from client.utils.git_operations import compare_ref_to_head
         from client.utils.self_update import mark_for_update
         import sys
 
@@ -1690,6 +1691,46 @@ class SystemPanel(QWidget):
                     "Please select a version or branch first."
                 )
                 return
+
+            # Say so before going backwards.
+            #
+            # The version list offers tags, and a tag is a fixed point: the
+            # only tag here, v2.0.0, is well behind main. Selecting it read as
+            # "update" and silently installed an older client. Going back on
+            # purpose is what the rollback button is for, so this asks rather
+            # than refuses -- but it asks with the number, and defaults to No.
+            position = compare_ref_to_head(ref)
+            if position and position["same"]:
+                QMessageBox.information(
+                    self,
+                    "Already Up To Date",
+                    f"The client is already running {ref}.\n\n"
+                    f"There is nothing to update."
+                )
+                return
+
+            if position and position["ahead"] == 0 and position["behind"] > 0:
+                behind = position["behind"]
+                plural = "s" if behind != 1 else ""
+                going_back = QMessageBox.warning(
+                    self,
+                    "This Is Older Than What You Are Running",
+                    f"{ref} is {behind} commit{plural} behind the code "
+                    f"you are running now.\n\n"
+                    f"Updating to it will replace your client with an older "
+                    f"build, losing anything added since.\n\n"
+                    f"To go back to an earlier version deliberately, use "
+                    f"Rollback instead.\n\n"
+                    f"Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if going_back != QMessageBox.StandardButton.Yes:
+                    self.logs_text.append(
+                        f"\nUpdate to {ref} cancelled: "
+                        f"{behind} commit{plural} behind HEAD"
+                    )
+                    return
 
             # Confirm with user
             reply = QMessageBox.question(

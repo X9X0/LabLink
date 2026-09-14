@@ -246,6 +246,61 @@ def get_current_git_branch() -> Optional[str]:
         return None
 
 
+def compare_ref_to_head(ref: str) -> Optional[dict]:
+    """How far ``ref`` sits ahead of and behind the checked-out HEAD.
+
+    The update UI offers tags and branches side by side, and a tag is a fixed
+    point in history: selecting the only tag in a repository whose main has
+    moved on is a downgrade wearing the word "update". That is not theoretical
+    -- picking ``v2.0.0`` from the version list checked out a commit 168 behind
+    main, silently, and the client came back as an older build.
+
+    Deliberately going backwards is what ``rollback`` is for. This exists so
+    the update path can say what it is about to do first.
+
+    Fetches, because a ref that has never been fetched cannot be compared, and
+    because a stale ``origin/main`` would answer the wrong question.
+
+    Args:
+        ref: tag or branch name, as offered in the update selectors
+
+    Returns:
+        ``{"ahead": int, "behind": int, "same": bool}`` -- ``ahead`` counts
+        commits ref has that HEAD does not, ``behind`` counts the reverse --
+        or None when the ref cannot be resolved or git is unavailable.
+    """
+    try:
+        subprocess.run(
+            ["git", "fetch", "--all", "--tags"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+
+        # HEAD...ref prints "<only in HEAD>	<only in ref>", which is
+        # how far ref is behind and ahead respectively.
+        result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"HEAD...{ref}"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+
+        behind_str, ahead_str = result.stdout.split()
+        behind, ahead = int(behind_str), int(ahead_str)
+        return {"ahead": ahead, "behind": behind, "same": ahead == 0 and behind == 0}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Could not compare {ref} with HEAD: {e.stderr}")
+        return None
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Could not compare {ref} with HEAD: {e}")
+        return None
+
+
 def checkout_git_ref(ref: str) -> bool:
     """Checkout a git tag or branch.
 
