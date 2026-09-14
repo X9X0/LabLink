@@ -36,10 +36,12 @@ class DiagnosticsPanel(QWidget):
 
         # Health table
         self.health_table = QTableWidget()
-        self.health_table.setColumnCount(6)
+        self.health_table.setColumnCount(8)
         self.health_table.setHorizontalHeaderLabels(
             [
                 "Equipment",
+                "Make",
+                "Model",
                 "Health Status",
                 "Score",
                 "Connection",
@@ -83,6 +85,34 @@ class DiagnosticsPanel(QWidget):
         """Set API client."""
         self.client = client
 
+    def _equipment_descriptions(self) -> dict:
+        """Make and model for each equipment id, for labelling health rows.
+
+        Best effort by design: a failure here costs the two descriptive
+        columns, and must not cost the health table, which is the thing the
+        operator actually came to read.
+
+        Returns:
+            ``{equipment_id: (manufacturer, model)}``, empty if unavailable.
+        """
+        try:
+            equipment = self.client.list_equipment()
+        except Exception as e:
+            logger.warning(f"Could not label health rows with make and model: {e}")
+            return {}
+
+        descriptions = {}
+        for item in equipment or []:
+            # The list endpoint calls it "id"; other endpoints say
+            # "equipment_id". Accept either rather than depending on which.
+            eq_id = item.get("id") or item.get("equipment_id")
+            if eq_id:
+                descriptions[eq_id] = (
+                    item.get("manufacturer") or "",
+                    item.get("model") or "",
+                )
+        return descriptions
+
     def refresh(self):
         """Refresh diagnostics data."""
         if not self.client:
@@ -92,9 +122,23 @@ class DiagnosticsPanel(QWidget):
             health_data = self.client.get_all_equipment_health()
             self.health_table.setRowCount(len(health_data))
 
+            # The health payload carries no make or model -- it is keyed by id
+            # and nothing else -- so rows read as "ps_56fdd3df" with no way to
+            # tell which instrument on the bench that is. The equipment list
+            # has both, so join here rather than widening the server's health
+            # model, which would mean every client needing a matching server.
+            descriptions = self._equipment_descriptions()
+
             row = 0
             for eq_id, health in health_data.items():
-                self.health_table.setItem(row, 0, QTableWidgetItem(eq_id))
+                make, model = descriptions.get(eq_id, ("", ""))
+
+                id_item = QTableWidgetItem(eq_id)
+                if make or model:
+                    id_item.setToolTip(f"{make} {model}".strip())
+                self.health_table.setItem(row, 0, id_item)
+                self.health_table.setItem(row, 1, QTableWidgetItem(make))
+                self.health_table.setItem(row, 2, QTableWidgetItem(model))
 
                 # Health status with color
                 status = health.get("health_status", "unknown")
@@ -105,21 +149,21 @@ class DiagnosticsPanel(QWidget):
                 # them at about 1.2:1 and "healthy" became unreadable.
                 apply_status_colors(status_item, status)
 
-                self.health_table.setItem(row, 1, status_item)
+                self.health_table.setItem(row, 3, status_item)
 
                 # Health score
                 score = health.get("health_score", 0)
-                self.health_table.setItem(row, 2, QTableWidgetItem(f"{score:.1f}"))
+                self.health_table.setItem(row, 4, QTableWidgetItem(f"{score:.1f}"))
 
                 # Component statuses
                 self.health_table.setItem(
-                    row, 3, QTableWidgetItem(health.get("connection_status", ""))
+                    row, 5, QTableWidgetItem(health.get("connection_status", ""))
                 )
                 self.health_table.setItem(
-                    row, 4, QTableWidgetItem(health.get("communication_status", ""))
+                    row, 6, QTableWidgetItem(health.get("communication_status", ""))
                 )
                 self.health_table.setItem(
-                    row, 5, QTableWidgetItem(health.get("performance_status", ""))
+                    row, 7, QTableWidgetItem(health.get("performance_status", ""))
                 )
 
                 row += 1
