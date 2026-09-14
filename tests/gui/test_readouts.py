@@ -12,6 +12,7 @@ what the instrument resolves, so a supply sending hundredths was displayed as
 The graph mode showed no present value at all: a trend with no reading.
 """
 
+import math
 import os
 import sys
 
@@ -233,6 +234,96 @@ class TestTheReadingRateIsHonoured:
 
         panel._on_refresh_changed(5.0)
         assert SettingsManager().get_reading_rate() == pytest.approx(5.0)
+
+
+class TestMinMaxAndAutoRange:
+    """Two bench tools that share the display stack.
+
+    Min/max catches a transient the live number misses. Auto-range exists
+    because a 5 A supply sitting at 0.3 A uses a sixteenth of the dial, where
+    a 10 mA change moves the needle about a pixel.
+    """
+
+    @pytest.fixture
+    def panel(self, qapp):
+        from client.ui.control_panel import ControlPanel
+
+        control = ControlPanel(client=None)
+        control._refresh_lock_status = lambda: None
+        control.instrument_max_voltage = 18.0
+        control.instrument_max_current = 5.0
+        control.voltage_decimals = 2
+        control.current_decimals = 2
+        return control
+
+    def test_the_tools_are_shared_by_every_display(self, panel):
+        """One row under the stack: only one display shows at a time."""
+        assert panel.minmax_button.isCheckable()
+        assert panel.autorange_button.isCheckable()
+
+    def test_nothing_is_tracked_until_asked(self, panel):
+        panel._track_extremes(4.0, 0.5)
+        assert panel.minmax_label.text() == ""
+
+    def test_it_tracks_both_ends(self, panel):
+        panel.minmax_button.setChecked(True)
+        for v, i in ((4.77, 0.30), (5.02, 0.28), (4.60, 0.35)):
+            panel._track_extremes(v, i)
+
+        shown = panel.minmax_label.text()
+        assert "4.60" in shown and "5.02" in shown
+        assert "0.28" in shown and "0.35" in shown
+
+    def test_reset_starts_again(self, panel):
+        panel.minmax_button.setChecked(True)
+        panel._track_extremes(4.0, 0.5)
+        panel._reset_extremes()
+
+        assert panel._extremes["v_min"] is None
+
+    def test_it_follows_the_instrument_resolution(self, panel):
+        """A supply that sends hundredths must not be shown thousandths."""
+        panel.current_decimals = 2
+        panel.minmax_button.setChecked(True)
+        panel._track_extremes(4.0, 0.3)
+
+        assert "0.30" in panel.minmax_label.text()
+
+    def test_auto_range_tightens_the_scale(self, panel):
+        panel.minmax_button.setChecked(True)
+        panel._track_extremes(4.77, 0.30)
+        panel.autorange_button.setChecked(True)
+
+        assert panel.current_gauge.max_value < 5.0, "the dial did not tighten"
+        assert panel.current_gauge.max_value >= 0.30, "the reading would peg"
+
+    def test_turning_it_off_restores_the_instrument_range(self, panel):
+        panel.minmax_button.setChecked(True)
+        panel._track_extremes(4.77, 0.30)
+        panel.autorange_button.setChecked(True)
+        panel.autorange_button.setChecked(False)
+
+        assert panel.current_gauge.max_value == 5.0
+        assert panel.voltage_gauge.max_value == 18.0
+
+    def test_it_never_scales_past_the_instrument(self, panel):
+        from client.ui.control_panel import ControlPanel
+
+        assert ControlPanel._nice_range(99.0, 5.0, 0.1) == 5.0
+
+    def test_a_reading_of_zero_still_gives_a_usable_scale(self, panel):
+        from client.ui.control_panel import ControlPanel
+
+        assert ControlPanel._nice_range(0.0, 5.0, 0.1) > 0
+
+    def test_the_scale_lands_on_readable_numbers(self, panel):
+        """Ten divisions of 3.7 volts each would be worse than not ranging."""
+        from client.ui.control_panel import ControlPanel
+
+        for reading in (0.3, 0.9, 2.2, 4.9):
+            top = ControlPanel._nice_range(reading, 5.0, 0.1)
+            mantissa = top / (10 ** math.floor(math.log10(top)))
+            assert mantissa in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10), top
 
 
 class TestTheChartCarriesTheReadings:

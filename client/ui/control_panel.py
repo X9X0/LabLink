@@ -325,6 +325,13 @@ class ControlPanel(QWidget):
         # to. A supply that sends hundredths printed as 0.300 A claims a digit
         # it never sent. The server reports this per model; these are the
         # fallbacks for one too old to say.
+        self.instrument_max_voltage = 60.0
+        self.instrument_max_current = 5.0
+
+        # Min/max tracking, reset by the button rather than by a reading.
+        self._extremes = {"v_min": None, "v_max": None,
+                          "i_min": None, "i_max": None}
+
         self.voltage_decimals = 2
         self.current_decimals = 3
         self.equipment_list: List[Equipment] = []
@@ -443,6 +450,10 @@ class ControlPanel(QWidget):
         # Initially show digital
         self.analog_display.hide()
         self.graph_display.hide()
+
+        # One row of tools under the stack: only one display is visible at a
+        # time, so these serve digital, analog and graph alike.
+        self.display_layout.addWidget(self._create_display_tools())
 
         layout.addWidget(self.display_stack)
 
@@ -596,6 +607,154 @@ class ControlPanel(QWidget):
         layout.addWidget(self.graph_radio)
 
         return group
+
+    def _create_display_tools(self) -> QWidget:
+        """Min/max tracking and auto-ranging, shared by all three displays."""
+        widget = QWidget()
+        row = QHBoxLayout(widget)
+        row.setContentsMargins(0, 4, 0, 0)
+
+        self.minmax_button = QPushButton("Min/Max")
+        self.minmax_button.setCheckable(True)
+        self.minmax_button.setToolTip(
+            "Track the highest and lowest readings seen.\n"
+            "Useful for catching a transient that the live number misses."
+        )
+        self.minmax_button.toggled.connect(self._on_minmax_toggled)
+        row.addWidget(self.minmax_button)
+
+        self.minmax_label = QLabel("")
+        self.minmax_label.setToolTip("Lowest and highest reading since tracking began")
+        row.addWidget(self.minmax_label, 1)
+
+        self.minmax_reset_button = QPushButton("Reset")
+        self.minmax_reset_button.setToolTip("Start tracking again from the next reading")
+        self.minmax_reset_button.clicked.connect(self._reset_extremes)
+        self.minmax_reset_button.setEnabled(False)
+        row.addWidget(self.minmax_reset_button)
+
+        self.autorange_button = QPushButton("Auto Range")
+        self.autorange_button.setCheckable(True)
+        self.autorange_button.setToolTip(
+            "Scale the gauges and the graph to the readings actually seen.\n"
+            "A 5 A supply sitting at 0.3 A uses a sixteenth of the dial "
+            "otherwise, and small changes are invisible."
+        )
+        self.autorange_button.toggled.connect(self._on_autorange_toggled)
+        row.addWidget(self.autorange_button)
+
+        return widget
+
+    # ==================== Min/max and auto-range ====================
+
+    def _reset_extremes(self):
+        """Forget what has been seen and start again."""
+        self._extremes = {"v_min": None, "v_max": None,
+                          "i_min": None, "i_max": None}
+        self._update_minmax_label()
+
+    def _on_minmax_toggled(self, enabled: bool):
+        self.minmax_reset_button.setEnabled(enabled)
+        if enabled:
+            self._reset_extremes()
+        else:
+            self.minmax_label.setText("")
+
+    def _on_autorange_toggled(self, enabled: bool):
+        if not enabled:
+            # Back to what the instrument can actually do, so the dial means
+            # the same thing again.
+            self.voltage_gauge.max_value = self.instrument_max_voltage
+            self.current_gauge.max_value = self.instrument_max_current
+            self.axis_y_voltage.setRange(0, self.instrument_max_voltage)
+            self.axis_y_current.setRange(0, self.instrument_max_current)
+            self.voltage_gauge.update()
+            self.current_gauge.update()
+        else:
+            self._apply_auto_range()
+
+    def _track_extremes(self, voltage: float, current: float):
+        """Record the highest and lowest readings seen."""
+        if not self.minmax_button.isChecked():
+            return
+
+        for key, value in (("v", voltage), ("i", current)):
+            low, high = self._extremes[f"{key}_min"], self._extremes[f"{key}_max"]
+            self._extremes[f"{key}_min"] = value if low is None else min(low, value)
+            self._extremes[f"{key}_max"] = value if high is None else max(high, value)
+
+        self._update_minmax_label()
+
+    def _update_minmax_label(self):
+        """Show the extremes to the resolution the instrument reports."""
+        extremes = self._extremes
+        v_min = extremes["v_min"]
+        if v_min is None:
+            self.minmax_label.setText("waiting for a reading...")
+            return
+
+        v_max = extremes["v_max"]
+        i_min = extremes["i_min"]
+        i_max = extremes["i_max"]
+        vd = self.voltage_decimals
+        cd = self.current_decimals
+        self.minmax_label.setText(
+            f"V  {v_min:.{vd}f} / {v_max:.{vd}f}       "
+            f"A  {i_min:.{cd}f} / {i_max:.{cd}f}"
+        )
+
+    def _apply_auto_range(self):
+        """Scale the gauges and graph to the readings actually seen.
+
+        A 5 A supply sitting at 0.3 A uses a sixteenth of the dial, and a
+        change of 10 mA moves the needle by a pixel. Ranging to the data is
+        what makes the analog and graph modes worth looking at.
+
+        Headroom above the maximum, so a rising reading does not immediately
+        peg; a floor, so a reading near zero does not produce a meaningless
+        scale; and never beyond what the instrument can do.
+        """
+        if not self.autorange_button.isChecked():
+            return
+
+        seen_v = self._extremes["v_max"]
+        seen_i = self._extremes["i_max"]
+        # Fall back to the live readings when min/max tracking is off, so the
+        # two buttons are independent.
+        if seen_v is None:
+            seen_v = self.voltage_gauge.current_value
+        if seen_i is None:
+            seen_i = self.current_gauge.current_value
+
+        v_range = self._nice_range(seen_v, self.instrument_max_voltage, floor=1.0)
+        i_range = self._nice_range(seen_i, self.instrument_max_current, floor=0.1)
+
+        self.voltage_gauge.max_value = v_range
+        self.current_gauge.max_value = i_range
+        self.axis_y_voltage.setRange(0, v_range)
+        self.axis_y_current.setRange(0, i_range)
+        self.voltage_gauge.update()
+        self.current_gauge.update()
+
+    @staticmethod
+    def _nice_range(seen: float, instrument_max: float, floor: float) -> float:
+        """A round-ish top of scale a little above `seen`."""
+        import math
+
+        target = max(abs(seen) * 1.25, floor)
+        if target >= instrument_max:
+            return instrument_max
+
+        # Round up to a readable multiple of a power of ten, so the gauge's
+        # ten divisions land on sensible numbers rather than 3.7 volts each.
+        # Finer than the usual 1/2/5 because the point here is resolution: on
+        # 1/2/5 a 5 V reading jumps to a 10 V scale and gains almost nothing.
+        exponent = math.floor(math.log10(target))
+        base = 10 ** exponent
+        for step in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
+            if target <= step * base:
+                return min(step * base, instrument_max)
+        return instrument_max
 
     def _create_digital_display(self) -> QWidget:
         """Create digital display mode.
@@ -900,6 +1059,9 @@ class ControlPanel(QWidget):
                     capabilities = status.get("capabilities", {})
                     max_voltage = capabilities.get("max_voltage", 60.0)
                     max_current = capabilities.get("max_current", 5.0)
+                    # Kept so auto-range has something to go back to.
+                    self.instrument_max_voltage = max_voltage
+                    self.instrument_max_current = max_current
                     self.voltage_decimals = capabilities.get("voltage_decimals", 2)
                     self.current_decimals = capabilities.get("current_decimals", 3)
 
@@ -1196,6 +1358,9 @@ class ControlPanel(QWidget):
 
             # The graph carries the same two numbers across its top, so the
             # mode that shows the trend still shows the present value.
+            self._track_extremes(voltage_actual, current_actual)
+            self._apply_auto_range()
+
             self.chart_view.set_readings(
                 voltage_actual, current_actual,
                 self.voltage_decimals, self.current_decimals,
