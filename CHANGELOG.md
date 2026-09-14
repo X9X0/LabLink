@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.2] - 2026-09-14
+
+A deployed LabLink can now update itself. Until this release a Pi could not:
+`/opt/lablink` was never a git checkout, so `lablink-update.sh` -- which
+already did exactly the right thing -- had nothing to fetch into, and the
+client's "Update Remote Server" button never touched the remote at all.
+
+### 🐛 Fixed
+
+- **"Update Remote Server" updated no remote.** It checked the ref out in the
+  *local* clone, then ran `docker compose` on the remote in a directory named
+  by the local git root -- so it moved the laptop's code and told the Pi to
+  `cd C:/LabLinkTest`, which fails on the first command. It now drives the
+  remote's own `lablink-update.sh` over SSH, takes the remote path as a field
+  defaulting to `/opt/lablink`, and leaves this machine's checkout alone.
+- **`lablink-update.sh` could not take a release.** It only handled branches,
+  and `git pull origin v2.1.1` is not a thing; it now pulls only when HEAD is
+  on a branch. It also prompted "Rebuild anyway?" with no way to answer over
+  SSH, hanging the run forever, and it rebuilt stale code when the checkout
+  failed while reporting success. It stops now.
+
+### 📝 Changed
+
+- **The image builder clones instead of unpacking a tarball**, and installs
+  git, which it never did. An image built the old way produced a server that
+  could only ever be reinstalled.
+- **The deploy wizard clones from GitHub by default.** The deployed server
+  gets a checkout and can update itself, and far less crosses the wire since
+  the remote pulls directly. Sending the working tree is still available for
+  testing uncommitted changes, now labelled as producing a server that cannot
+  update itself rather than leaving that a surprise.
+- **SSH is expected to work without a password.** The update runs with output
+  captured, so a password prompt could never be answered; it now fails
+  immediately and says so instead of blocking.
+
+---
+
+
 ## [2.1.1] - 2026-09-14
 
 The client self-update, finished. 2.1.0 shipped the pieces; running one on a
