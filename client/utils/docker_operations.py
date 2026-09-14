@@ -127,6 +127,76 @@ def rebuild_docker_local(project_dir: str, no_cache: bool = True) -> DockerRebui
         )
 
 
+def update_remote_server(host: str, remote_dir: str, ref: str,
+                         no_cache: bool = True) -> DockerRebuildResult:
+    """Update a remote LabLink and rebuild its containers, over SSH.
+
+    The Pi already ships the right procedure in ``lablink-update.sh``: fetch,
+    check the ref out, then compose down/build/up. Driving that rather than
+    sending a second copy of the same commands means a bench Pi updates the
+    same way whether somebody ssh'd in and ran it or pressed the button here,
+    and there is one place to fix when it is wrong.
+
+    It needs ``remote_dir`` to be a git checkout. The deploy wizard and the
+    image builder both used to strip ``.git``, which is why a Pi could not
+    update itself; the script says so plainly if it is missing.
+
+    Args:
+        host: ``user@hostname`` for ssh
+        remote_dir: the LabLink checkout on that host, e.g. ``/opt/lablink``
+        ref: tag or branch to put the remote on
+        no_cache: rebuild images from scratch
+
+    Returns:
+        DockerRebuildResult, with the remote's output either way.
+    """
+    quoted_dir = shlex.quote(remote_dir)
+    quoted_ref = shlex.quote(ref)
+
+    # The script is in the checkout, so run it from there by path rather than
+    # relying on it being installed anywhere.
+    command = (
+        f"cd {quoted_dir} && "
+        f"sudo bash ./lablink-update.sh {quoted_ref} --yes && "
+        f"echo '=== Resulting version ===' && "
+        f"(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD) && "
+        f"cat VERSION 2>/dev/null"
+    )
+
+    logger.info(f"Updating {host}:{remote_dir} to {ref}...")
+
+    try:
+        result = subprocess.run(
+            # BatchMode so a host without key auth fails immediately and says
+            # so, rather than blocking on a password prompt nobody can see:
+            # capture_output means the prompt would never reach the user.
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, command],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output = result.stdout + (f"\n=== Stderr ===\n{result.stderr}" if result.stderr else "")
+        logger.info(f"Remote update of {host} completed")
+        return DockerRebuildResult(success=True, output=output)
+
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or "").strip()
+        if "Permission denied" in detail or "Host key verification" in detail:
+            detail += (
+                "\n\nThis needs key-based SSH: the update runs without a "
+                "terminal, so a password prompt cannot be answered."
+            )
+        return DockerRebuildResult(
+            success=False,
+            output=(e.stdout or ""),
+            error=detail or f"ssh exited {e.returncode}",
+        )
+    except FileNotFoundError:
+        return DockerRebuildResult(
+            success=False, output="", error="ssh was not found on this machine"
+        )
+
+
 def rebuild_docker_ssh(host: str, project_dir: str, no_cache: bool = True) -> DockerRebuildResult:
     """Rebuild Docker containers via SSH.
 

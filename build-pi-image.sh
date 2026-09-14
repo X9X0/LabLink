@@ -707,6 +707,16 @@ else
     echo "[LabLink] WARNING: System update failed, continuing anyway..."
 fi
 
+# git is not optional: /opt/lablink is a checkout, and every update path --
+# lablink-update.sh, the diagnostics, the client's remote update -- needs one.
+echo "[LabLink] Installing git..."
+if apt-get install -y git; then
+    echo "[LabLink] git installed"
+else
+    echo "[LabLink] ERROR: git is required to install LabLink"
+    exit 1
+fi
+
 # Install Docker
 echo "[LabLink] Installing Docker..."
 if curl -fsSL https://get.docker.com | sh; then
@@ -725,14 +735,24 @@ echo "[LabLink] Downloading LabLink..."
 mkdir -p /opt/lablink
 cd /opt/lablink
 
-if curl -fL "https://github.com/X9X0/LabLink/archive/refs/heads/__LABLINK_BRANCH__.tar.gz" -o lablink.tar.gz; then
-    echo "[LabLink] Download successful, extracting..."
-    tar -xzf lablink.tar.gz --strip-components=1
-    rm lablink.tar.gz
+# Clone rather than unpack a tarball. A tarball has no .git, and without one
+# the Pi cannot update itself: lablink-update.sh, the diagnostics, and the
+# client's remote update all need a checkout to fetch into. An image built
+# from a tarball produced a server that could only ever be reinstalled.
+if git clone --branch "__LABLINK_BRANCH__" https://github.com/X9X0/LabLink.git /opt/lablink.tmp; then
+    echo "[LabLink] Clone successful"
+    # /opt/lablink already exists and may hold a previous .env; move the
+    # checkout into place around it rather than over it.
+    mv /opt/lablink.tmp/.git /opt/lablink/.git
+    rm -rf /opt/lablink.tmp
+    cd /opt/lablink
+    git reset --hard HEAD
+    echo "[LabLink] Checked out $(git describe --tags --always)"
 else
-    echo "[LabLink] ERROR: Failed to download LabLink"
+    echo "[LabLink] ERROR: Failed to clone LabLink"
     echo "[LabLink] Service will retry on next boot"
     echo "[LabLink] Or manually run: sudo /usr/local/bin/lablink-first-boot.sh"
+    rm -rf /opt/lablink.tmp
     exit 1
 fi
 

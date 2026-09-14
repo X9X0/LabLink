@@ -5,6 +5,7 @@ import base64
 import hashlib
 import logging
 import os
+import shlex
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -404,16 +405,25 @@ class DeploymentThread(QThread):
                 ssh.close()
                 return
 
-            # Copy server files using tar+ssh (much faster than SCP)
-            self.progress.emit(20, "Copying server files...")
+            # How the code gets there. Cloning is the default because it
+            # leaves a git checkout behind, which is what every later update
+            # needs; sending the working tree is for testing uncommitted work
+            # and produces a server that cannot update itself.
+            source_mode = self.config.get("source_mode", "clone")
 
             try:
-                source = Path(source_path)
-                if source.is_dir():
-                    # Use tar+ssh for fast transfer (10-20x faster than SCP)
-                    self._copy_files_tar(ssh, source, server_path, deployment_mode)
+                if source_mode == "clone":
+                    ref = self.config.get("ref", "main")
+                    self.progress.emit(20, f"Cloning {ref} on the remote...")
+                    described = self._clone_on_remote(ssh, server_path, ref)
+                    self.progress.emit(35, f"Remote is at {described}")
+                else:
+                    self.progress.emit(20, "Copying working tree (no git checkout)...")
+                    source = Path(source_path)
+                    if source.is_dir():
+                        self._copy_files_tar(ssh, source, server_path, deployment_mode)
             except Exception as e:
-                self.finished.emit(False, f"Failed to copy files: {e}")
+                self.finished.emit(False, f"Failed to place server files: {e}")
                 ssh.close()
                 return
 
@@ -465,6 +475,49 @@ class DeploymentThread(QThread):
         except Exception as e:
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
+
+    def _clone_on_remote(self, ssh, server_path, ref="main"):
+        """Put a git checkout of `ref` at `server_path` on the remote.
+
+        The wizard used to tar the local tree across with ``--exclude=.git``,
+        which is why a deployed Pi had no checkout -- and without one it can
+        never update itself: lablink-update.sh, the diagnostics and the
+        client's remote update all need something to fetch into. Cloning is
+        also far less to send, since the remote pulls from GitHub directly.
+
+        An existing ``.env`` is left alone: it is not in git, it holds the
+        JWT secret and the database password, and losing it would take the
+        server down with no way back.
+        """
+        quoted = shlex.quote(server_path)
+        quoted_ref = shlex.quote(ref)
+
+        script = (
+            f"set -e; "
+            f"if [ -d {quoted}/.git ]; then "
+            f"  cd {quoted} && sudo git fetch --all --tags --prune && "
+            f"  sudo git checkout {quoted_ref}; "
+            f"else "
+            f"  sudo mkdir -p {quoted}; "
+            f"  sudo git clone https://github.com/X9X0/LabLink.git /tmp/lablink-clone; "
+            f"  cd /tmp/lablink-clone && sudo git checkout {quoted_ref}; "
+            # Move the checkout in around whatever is already there, so a
+            # previous .env survives.
+            f"  sudo cp -a /tmp/lablink-clone/.git {quoted}/.git; "
+            f"  sudo rm -rf /tmp/lablink-clone; "
+            f"  cd {quoted} && sudo git reset --hard {quoted_ref}; "
+            f"fi; "
+            f"cd {quoted} && git describe --tags --always"
+        )
+
+        _, out, err = ssh.exec_command(script, timeout=300)
+        output = out.read().decode().strip()
+        error = err.read().decode().strip()
+        status = out.channel.recv_exit_status()
+        if status != 0:
+            raise RuntimeError(f"Remote clone failed: {error or output}")
+        return output
+
 
     def _copy_files_tar(self, ssh, source, server_path, deployment_mode):
         """Copy files using tar+ssh for fast transfer.
@@ -1479,6 +1532,50 @@ class DeploymentOptionsPage(QWizardPage):
         mode_group.setLayout(mode_layout)
         layout.addRow(mode_group)
 
+        # Where the code comes from. This decides whether the deployed server
+        # can ever update itself: the working-tree transfer excludes .git, and
+        # without a checkout lablink-update.sh and the client's remote update
+        # have nothing to fetch into.
+        source_group = QGroupBox("Source")
+        source_layout = QVBoxLayout()
+
+        self.source_button_group = QButtonGroup(self)
+
+        self.clone_radio = QRadioButton("Clone from GitHub (Recommended)")
+        self.clone_radio.setChecked(True)
+        self.source_button_group.addButton(self.clone_radio, 0)
+        source_layout.addWidget(self.clone_radio)
+
+        clone_desc = QLabel(
+            "  • The server gets a git checkout and can update itself\n"
+            "  • Far less to send: the remote pulls from GitHub directly"
+        )
+        clone_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        source_layout.addWidget(clone_desc)
+
+        ref_row = QHBoxLayout()
+        ref_row.addWidget(QLabel("  Version or branch:"))
+        self.ref_input = QLineEdit("main")
+        self.ref_input.setToolTip("A tag such as v2.1.1 pins the server to a release.")
+        ref_row.addWidget(self.ref_input)
+        source_layout.addLayout(ref_row)
+
+        self.worktree_radio = QRadioButton("Send this working tree (for testing)")
+        self.source_button_group.addButton(self.worktree_radio, 1)
+        source_layout.addWidget(self.worktree_radio)
+
+        worktree_desc = QLabel(
+            "  • Deploys uncommitted local changes\n"
+            "  • No git checkout, so this server CANNOT update itself"
+        )
+        worktree_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        source_layout.addWidget(worktree_desc)
+
+        self.clone_radio.toggled.connect(self.ref_input.setEnabled)
+
+        source_group.setLayout(source_layout)
+        layout.addRow(source_group)
+
         # Options
         options_group = QGroupBox("Installation Options")
         options_layout = QVBoxLayout()
@@ -1669,6 +1766,18 @@ class DeploymentProgressPage(QWizardPage):
             "source_path": str(wizard.field("source_path")),
             "server_path": str(wizard.field("server_path")),
             "deployment_mode": "docker" if wizard.page(1).docker_radio.isChecked() else "python",
+            # Clone unless the user explicitly asked to send the working tree.
+            # getattr, because an older page that has no such control should
+            # get the behaviour that leaves a usable server behind.
+            "source_mode": (
+                "worktree"
+                if getattr(wizard.page(1), "worktree_radio", None) is not None
+                and wizard.page(1).worktree_radio.isChecked()
+                else "clone"
+            ),
+            "ref": getattr(wizard.page(1), "ref_input", None).text().strip()
+            if getattr(wizard.page(1), "ref_input", None) is not None
+            else "main",
             "install_docker": wizard.field("install_docker"),
             "install_deps": wizard.field("install_deps"),
             "setup_service": wizard.field("setup_service"),

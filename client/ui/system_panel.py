@@ -398,6 +398,27 @@ class SystemPanel(QWidget):
         ssh_layout.addWidget(self.ssh_host_input)
         remote_layout.addLayout(ssh_layout)
 
+        # Where LabLink lives on that host. This used to be taken from the
+        # local checkout, so the update sent a Windows path to a Raspberry
+        # Pi and died on the first cd.
+        path_layout = QHBoxLayout()
+        path_label = QLabel("Path:")
+        path_label.setStyleSheet(
+            "background: transparent; border: none; font-size: 9px; font-weight: bold;"
+        )
+        path_layout.addWidget(path_label)
+
+        self.remote_path_input = QLineEdit()
+        self.remote_path_input.setText("/opt/lablink")
+        self.remote_path_input.setPlaceholderText("/opt/lablink")
+        self.remote_path_input.setToolTip(
+            "The LabLink checkout on the remote host.\n"
+            "It must be a git checkout; the image builder and the SSH "
+            "deploy wizard both create one."
+        )
+        path_layout.addWidget(self.remote_path_input)
+        remote_layout.addLayout(path_layout)
+
         # Checkbox for automatic rebuild (remote)
         self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild")
         self.auto_docker_rebuild_remote.setChecked(True)
@@ -1561,34 +1582,36 @@ class SystemPanel(QWidget):
             self.update_local_server_btn.setText("Update Local Server")
 
     def _update_remote_server(self):
-        """Update remote server by checking out git ref and rebuilding Docker via SSH."""
-        from client.utils.git_operations import (
-            checkout_git_ref, compare_ref_to_head, get_git_root,
-        )
-        from client.utils.docker_operations import (
-            rebuild_docker_ssh,
-            generate_rebuild_instructions
-        )
+        """Update a remote LabLink over SSH and rebuild its containers.
+
+        This used to check the ref out in the *local* clone and then run
+        docker compose on the remote in a directory named by the local git
+        root -- so it moved this machine's code and then told a Raspberry Pi
+        to "cd C:/LabLinkTest", which fails on the first command. Nothing ever
+        updated the remote's own code.
+
+        The remote already ships the right procedure in lablink-update.sh.
+        Driving that means a bench Pi updates identically whether somebody
+        ssh'd in and ran it or pressed this button.
+        """
+        from client.utils.docker_operations import update_remote_server
 
         try:
-            # Get SSH host
             ssh_host = self.ssh_host_input.text().strip()
             if not ssh_host:
                 QMessageBox.warning(
                     self,
                     "SSH Host Required",
-                    "Please enter an SSH host (e.g., user@hostname or user@ip-address)\n\n"
-                    "Example: pi@192.168.1.100"
+                    "Please enter an SSH host (e.g. user@hostname).\n\n"
+                    "Example: admin@192.168.91.191"
                 )
                 return
 
-            # Get selected ref (tag or branch)
-            mode = self.update_mode_combo.currentData()
-            if mode == "stable":
-                ref = self.version_selector.currentData()
-            else:  # development
-                ref = self.branch_combo.currentData()
+            remote_dir = self.remote_path_input.text().strip() or "/opt/lablink"
 
+            mode = self.update_mode_combo.currentData()
+            ref = (self.version_selector.currentData() if mode == "stable"
+                   else self.branch_combo.currentData())
             if not ref:
                 QMessageBox.warning(
                     self,
@@ -1597,148 +1620,72 @@ class SystemPanel(QWidget):
                 )
                 return
 
-            # Confirm with user
-            # The checkout below is this clone -- the one the client is
-            # running from -- so an older ref moves the client's own code
-            # backwards as a side effect of a remote update.
-            position = compare_ref_to_head(ref)
-            if position and position["ahead"] == 0 and position["behind"] > 0:
-                behind = position["behind"]
-                plural = "s" if behind != 1 else ""
-                going_back = QMessageBox.warning(
-                    self,
-                    "This Is Older Than What You Are Running",
-                    f"{ref} is {behind} commit{plural} behind the code this "
-                    f"client is running.\n\n"
-                    f"The checkout is shared, so this moves the client back to "
-                    f"it as well.\n\n"
-                    f"Continue anyway?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if going_back != QMessageBox.StandardButton.Yes:
-                    self.logs_text.append(
-                        f"\nRemote server update to {ref} "
-                        f"cancelled: {behind} commit{plural} behind HEAD"
-                    )
-                    return
-
             reply = QMessageBox.question(
                 self,
                 "Confirm Remote Server Update",
-                f"Update REMOTE server ({ssh_host}) to {ref}?\n\n"
-                f"This will:\n"
-                f"1. Checkout {ref} in this clone -- the one this client also\n"
-                f"   runs from, so the client's own code changes too\n"
-                f"2. Rebuild Docker containers on {ssh_host} via SSH\n"
-                f"3. Restart remote server\n\n"
-                f"This may take several minutes.\n"
-                f"You may be prompted for SSH password/key.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                f"Update {ssh_host}:{remote_dir} to {ref}?\n\n"
+                f"On that host this will:\n"
+                f"1. Fetch and check out {ref}\n"
+                f"2. Rebuild the containers\n"
+                f"3. Bring them back up\n\n"
+                f"This machine's own checkout is not touched.\n"
+                f"The remote must be a git checkout, and SSH must work "
+                f"without a password.\n\n"
+                f"This may take several minutes.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
-            # Disable button during update
+            # Something on screen before the SSH call, which is minutes long.
             self.update_remote_server_btn.setEnabled(False)
             self.update_remote_server_btn.setText("Updating...")
-
-            # Progress: 0% - Starting
-            self.update_status_label.setText(f"Update Status: Starting remote server update to {ref}")
-            self.progress_bar.setValue(0)
-
-            # Step 1: Checkout git ref
-            self.logs_text.append(f"\n🔄 Checking out {ref}...")
-            self.update_status_label.setText(f"Update Status: Checking out {ref}...")
+            self.logs_text.append(f"\nUpdating {ssh_host}:{remote_dir} to {ref}...")
+            self.update_status_label.setText(
+                f"Update Status: Updating {ssh_host} to {ref} (this takes minutes)"
+            )
             self.progress_bar.setValue(10)
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            QApplication.processEvents()
 
-            if not checkout_git_ref(ref):
-                raise Exception(f"Failed to checkout {ref}")
+            result = update_remote_server(ssh_host, remote_dir, ref)
 
-            self.logs_text.append(f"✅ Checked out {ref}")
-
-            # Progress: 25% - Git checkout complete
-            self.update_status_label.setText(f"Update Status: Git checkout complete")
-            self.progress_bar.setValue(25)
-
-            # Get project directory
-            project_dir = get_git_root()
-            if not project_dir:
-                raise Exception("Could not determine project root directory")
-
-            # Step 2: Docker rebuild via SSH (if auto-enabled)
-            if self.auto_docker_rebuild_remote.isChecked():
-                # Progress: 50% - Docker rebuild started
-                self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host} via SSH...")
-                self.update_status_label.setText(f"Update Status: Rebuilding Docker on {ssh_host} via SSH...")
-                self.progress_bar.setValue(50)
-
-                result = rebuild_docker_ssh(ssh_host, project_dir)
-
-                if result.success:
-                    # Progress: 100% - Complete
-                    self.progress_bar.setValue(100)
-                    self.update_status_label.setText(f"Update Status: Remote server updated successfully!")
-
-                    self.logs_text.append(f"✅ Docker rebuild successful on {ssh_host}!")
-                    self.logs_text.append(f"\nOutput:\n{result.output}")
-
-                    QMessageBox.information(
-                        self,
-                        "Remote Server Updated",
-                        f"Remote server ({ssh_host}) successfully updated to {ref} and rebuilt!\n\n"
-                        f"The remote server should now be running the new version."
-                    )
-
-                    # Optionally refresh if connected to this server
-                    # (Note: This only refreshes if currently connected to this remote server)
-                    try:
-                        self.refresh()
-                    except Exception:
-                        pass  # May not be connected to the updated server
-                else:
-                    # Rebuild failed - show manual instructions
-                    self.progress_bar.setValue(0)
-                    self.update_status_label.setText(f"Update Status: Docker rebuild failed on {ssh_host}")
-
-                    self.logs_text.append(f"❌ Docker rebuild failed on {ssh_host}: {result.error}")
-
-                    instructions = generate_rebuild_instructions(project_dir, ref)
-                    self.logs_text.append(f"\n📋 Manual Instructions for {ssh_host}:\n{instructions}")
-
-                    QMessageBox.warning(
-                        self,
-                        "Rebuild Failed",
-                        f"Git checkout succeeded but Docker rebuild failed on {ssh_host}.\n\n"
-                        f"{result.error}\n\n"
-                        f"SSH to {ssh_host} and run these commands:\n\n{instructions}"
-                    )
-            else:
-                # Manual rebuild - show instructions
-                self.progress_bar.setValue(25)
-                self.update_status_label.setText(f"Update Status: Git checkout complete - manual rebuild required on {ssh_host}")
-
-                instructions = generate_rebuild_instructions(project_dir, ref)
-
-                self.logs_text.append(f"\n📋 Manual rebuild required on {ssh_host}:\n{instructions}")
-
+            if result.success:
+                self.progress_bar.setValue(100)
+                self.update_status_label.setText("Update Status: Remote server updated")
+                self.logs_text.append(f"Remote update succeeded on {ssh_host}")
+                self.logs_text.append(result.output)
                 QMessageBox.information(
                     self,
-                    "Manual Rebuild Required",
-                    f"Git checkout complete. SSH to {ssh_host} and run:\n\n{instructions}"
+                    "Remote Server Updated",
+                    f"{ssh_host}:{remote_dir} is now on {ref}.\n\n"
+                    f"Its containers were rebuilt and restarted."
+                )
+            else:
+                self.progress_bar.setValue(0)
+                self.update_status_label.setText("Update Status: Remote update failed")
+                self.logs_text.append(f"Remote update failed: {result.error}")
+                if result.output:
+                    self.logs_text.append(result.output)
+                QMessageBox.critical(
+                    self,
+                    "Remote Update Failed",
+                    f"Updating {ssh_host} failed.\n\n{result.error}\n\n"
+                    f"To do it by hand:\n"
+                    f"  ssh {ssh_host}\n"
+                    f"  cd {remote_dir}\n"
+                    f"  sudo ./lablink-update.sh {ref} --yes"
                 )
 
         except Exception as e:
             logger.error(f"Error updating remote server: {e}")
-            self.logs_text.append(f"\n❌ Error: {str(e)}")
-            self.progress_bar.setValue(0)
-            self.update_status_label.setText(f"Update Status: Update failed")
+            self.logs_text.append(f"\nError: {str(e)}")
             QMessageBox.critical(
                 self, "Update Failed", f"Failed to update remote server:\n{str(e)}"
             )
-
         finally:
+            QApplication.restoreOverrideCursor()
             self.update_remote_server_btn.setEnabled(True)
             self.update_remote_server_btn.setText("Update Remote Server")
 

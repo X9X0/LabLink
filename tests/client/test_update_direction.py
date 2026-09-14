@@ -288,34 +288,50 @@ class TestTheUpdateButtonAsksFirst:
             "the hash must not leak into the value the checkout receives"
         )
 
-    def test_both_server_updates_check_the_direction_too(self):
-        """They check a ref out in the clone the client runs from, so an
-        older ref moves the client backwards as a side effect of a *server*
-        update. Updating the Pi did it as readily as updating localhost."""
+    def test_the_local_server_update_checks_the_direction(self):
+        """It checks a ref out in the clone the client runs from, so an older
+        ref would downgrade the running client as a side effect."""
         import inspect
 
         from client.ui.system_panel import SystemPanel
 
-        for handler in (SystemPanel._update_local_server,
-                        SystemPanel._update_remote_server):
-            body = inspect.getsource(handler)
-            assert "compare_ref_to_head" in body, handler.__name__
-            assert "StandardButton.No," in body, (
-                f"{handler.__name__} has no default button, "
-                f"so Yes is one keypress away"
-            )
+        body = inspect.getsource(SystemPanel._update_local_server)
+        assert "compare_ref_to_head" in body
+        assert "StandardButton.No," in body, "no default button on the warning"
+        assert "this clone" in body, "it must say the checkout is shared"
 
-    def test_both_say_the_checkout_is_shared(self):
-        """The old wording said "in local git", which reads as somewhere
-        else. It is the directory the client is running from."""
+    def test_the_remote_server_update_leaves_the_local_clone_alone(self):
+        """Updating a Pi has no business moving this machine's checkout.
+
+        It used to check the ref out locally and then run docker compose on
+        the remote in a directory named by the *local* git root -- so it
+        moved this machine's code and then told a Pi to "cd C:/LabLinkTest".
+        Nothing ever updated the remote's own code.
+        """
         import inspect
 
         from client.ui.system_panel import SystemPanel
 
-        for handler in (SystemPanel._update_local_server,
-                        SystemPanel._update_remote_server):
-            body = inspect.getsource(handler)
-            assert "this clone" in body, handler.__name__
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        assert "checkout_git_ref" not in body, (
+            "the remote update is checking something out locally again"
+        )
+        assert "get_git_root" not in body, (
+            "the local git root is being sent to the remote again"
+        )
+        assert "update_remote_server" in body, (
+            "it should drive the remote's own lablink-update.sh"
+        )
+
+    def test_the_remote_update_names_a_remote_path(self):
+        """A path on the Pi, not whatever this machine calls its checkout."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        assert "remote_path_input" in body
+        assert "/opt/lablink" in body, "there should be a sensible default"
 
     def test_an_unchanged_ref_is_reported_rather_than_reinstalled(self, source):
         assert "Already Up To Date" in source
