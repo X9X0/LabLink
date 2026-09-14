@@ -158,6 +158,52 @@ class TestTheVersionListCanSeeNewReleases:
         assert "get_git_tags(fetch=True)" in body
 
 
+class TestTheSshHostComesFromTheConnection:
+    """The client already knows which machine it is talking to.
+
+    Retyping the address invites a typo that points a rebuild at the wrong
+    Pi. Only the SSH user is unknown, so that is remembered per server.
+    """
+
+    def test_the_source_reads_the_connection(self):
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._prefill_ssh_from_connection)
+        assert 'getattr(self.client, "host", None)' in body
+
+    def test_it_never_overwrites_what_was_typed(self):
+        """Whatever the user put there wins."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._prefill_ssh_from_connection)
+        guard = body.index("if self.ssh_host_input.text().strip():")
+        setter = body.index("self.ssh_host_input.setText")
+        assert guard < setter, "it must bail out before writing"
+
+    def test_the_user_is_remembered_only_on_success(self):
+        """Storing a user that failed to connect would be worse than blank."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        remembered = body.index("_remember_ssh_user")
+        failed = body.index("Remote Update Failed")
+        assert remembered < failed, "it is being remembered on the failure path"
+
+    def test_remembering_cannot_fail_the_update(self):
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._remember_ssh_user)
+        assert "except Exception" in body
+
+
 class TestBranchHashes:
     """A branch name does not say which code it is.
 

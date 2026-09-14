@@ -670,7 +670,43 @@ class SystemPanel(QWidget):
     def set_client(self, client: LabLinkClient):
         """Set API client."""
         self.client = client
+        self._prefill_ssh_from_connection()
         self.refresh()
+
+    def _prefill_ssh_from_connection(self):
+        """Offer the connected server as the host to update.
+
+        The client already knows which machine it is talking to, so asking
+        the user to type the address again invites a typo that points the
+        update at the wrong Pi. The SSH user is remembered per server, since
+        it is the one part the API connection cannot tell us.
+
+        Only fills an empty field: whatever the user typed wins.
+        """
+        if self.ssh_host_input.text().strip():
+            return
+
+        host = getattr(self.client, "host", None)
+        if not host:
+            return
+
+        user = None
+        try:
+            from client.utils.server_manager import ServerManager
+
+            active = ServerManager().get_active_server()
+            if active and active.host == host:
+                user = getattr(active, "user", None)
+        except Exception as e:
+            logger.debug(f"Could not read the saved SSH user: {e}")
+
+        self.ssh_host_input.setText(f"{user}@{host}" if user else host)
+        if not user:
+            # A bare host would make ssh try the local Windows username.
+            self.ssh_host_input.setToolTip(
+                f"Add the SSH user for {host}, as user@{host}.\n"
+                "It is remembered for this server once the update succeeds."
+            )
 
     def refresh(self):
         """Refresh system information."""
@@ -1582,6 +1618,28 @@ class SystemPanel(QWidget):
             self.update_local_server_btn.setEnabled(True)
             self.update_local_server_btn.setText("Update Local Server")
 
+    def _remember_ssh_user(self, ssh_host: str):
+        """Store the SSH user against the server it worked for.
+
+        The API connection knows the host but never the SSH user, so without
+        this it is retyped every session -- and a typo points a rebuild at
+        the wrong machine.
+        """
+        if "@" not in ssh_host:
+            return
+        user, _, host = ssh_host.partition("@")
+        try:
+            from client.utils.server_manager import ServerManager
+
+            manager = ServerManager()
+            active = manager.get_active_server()
+            if active and active.host == host and getattr(active, "user", None) != user:
+                manager.update_server(active.name, user=user)
+                logger.info(f"Remembered SSH user {user} for {host}")
+        except Exception as e:
+            # Not worth failing an otherwise successful update over.
+            logger.debug(f"Could not remember the SSH user: {e}")
+
     def _update_remote_server(self):
         """Update a remote LabLink over SSH and rebuild its containers.
 
@@ -1653,6 +1711,7 @@ class SystemPanel(QWidget):
             result = update_remote_server(ssh_host, remote_dir, ref)
 
             if result.success:
+                self._remember_ssh_user(ssh_host)
                 self.progress_bar.setValue(100)
                 self.update_status_label.setText("Update Status: Remote server updated")
                 self.logs_text.append(f"Remote update succeeded on {ssh_host}")
