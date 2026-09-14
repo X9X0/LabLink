@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import threading
 import os
 import sys
 import uuid
@@ -42,11 +43,63 @@ _DEFAULT_TIMEOUT = 10  # seconds
 
 
 class _TimeoutSession(requests.Session):
-    """requests.Session that applies a default timeout to every request."""
+    """A session that applies a default timeout and renews an expired token.
+
+    Access tokens last 30 minutes by default; the refresh token lasts a week.
+    The client used to refresh only while connecting, and nothing watched for
+    a 401 afterwards, so half an hour into a session every authenticated call
+    began failing and nothing said why. The UI still showed a connection, the
+    reads that need no auth still worked, and the first symptom was a write
+    refused with "401 Unauthorized" -- for one user, an update-mode switch an
+    hour after connecting.
+
+    Renewing here rather than at each call site means every authenticated
+    request is covered, including ones added later.
+    """
+
+    #: Endpoints that must never trigger a refresh-and-retry. Refreshing in
+    #: response to one of these would recurse, and a failed login answering
+    #: 401 is the correct answer, not a stale token.
+    _NO_RETRY = ("/security/refresh", "/security/login", "/auth/login")
+
+    def __init__(self):
+        super().__init__()
+        #: Set by LabLinkClient; returns True when a new token was obtained.
+        self.renew_token = None
+        # Serialises renewal so a burst of parallel 401s asks once rather than
+        # once each. The panels call through call_blocking on worker threads,
+        # so this genuinely happens.
+        self._renewal_lock = threading.Lock()
 
     def request(self, method, url, **kwargs):
         kwargs.setdefault("timeout", _DEFAULT_TIMEOUT)
-        return super().request(method, url, **kwargs)
+        response = super().request(method, url, **kwargs)
+
+        if response.status_code != 401 or self.renew_token is None:
+            return response
+        if any(path in url for path in self._NO_RETRY):
+            return response
+
+        token_before = self.headers.get("Authorization")
+        with self._renewal_lock:
+            # Another thread may have renewed while this one waited, in which
+            # case the retry below simply uses the token it obtained.
+            if self.headers.get("Authorization") == token_before:
+                logger.info("Access token rejected; renewing and retrying once")
+                try:
+                    if not self.renew_token():
+                        logger.warning("Token renewal failed; sign-in required")
+                        return response
+                except Exception as e:
+                    logger.error(f"Token renewal raised: {e}")
+                    return response
+
+        # super(), so the retry cannot re-enter this method and loop: one
+        # renewal, one retry, then whatever the server says stands.
+        retried = super().request(method, url, **kwargs)
+        if retried.status_code == 401:
+            logger.warning(f"Still unauthorized after renewing: {url}")
+        return retried
 
 
 class LabLinkClient:
@@ -71,6 +124,8 @@ class LabLinkClient:
         self.api_base_url = f"http://{host}:{api_port}/api"
 
         self._session = _TimeoutSession()
+        # The session renews on a 401 and retries once; this is how it asks.
+        self._session.renew_token = self.refresh_access_token
 
         # Session ID for equipment lock management
         self.session_id = str(uuid.uuid4())
@@ -86,6 +141,10 @@ class LabLinkClient:
         # Note: WebSocket is on the same port as API, not a separate port
         if WebSocketManager:
             self.ws_manager = WebSocketManager(host=host, port=api_port)
+            # /ws is refused without the token, and the token changes when it
+            # is renewed, so hand over readers rather than a value.
+            self.ws_manager.token_provider = lambda: self.access_token
+            self.ws_manager.renew_token = self.refresh_access_token
         else:
             self.ws_manager = None
             logger.warning("WebSocket manager not available")
