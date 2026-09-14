@@ -221,6 +221,48 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
         return []
 
 
+def describe_head() -> Optional[str]:
+    """What HEAD is, in words, whether or not it is on a branch.
+
+    Checking out a tag detaches HEAD, and ``git branch --show-current`` then
+    prints nothing. Updating the local server does exactly that -- it checks a
+    ref out in this very clone -- so the status bar and the branch picker both
+    lost their answer to "which code is this?" at the moment it was most worth
+    asking.
+
+    Returns:
+        The branch name, or ``detached at <tag-or-hash>`` when there is none,
+        or None if this is not a checkout.
+    """
+    try:
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=True, **no_window_kwargs()
+        ).stdout.strip()
+        if branch:
+            return branch
+
+        # Detached: name the tag if one points here, else the commit.
+        tag = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=False, **no_window_kwargs()
+        ).stdout.strip()
+        if tag:
+            return f"detached at {tag}"
+
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=True, **no_window_kwargs()
+        ).stdout.strip()
+        return f"detached at {commit}" if commit else None
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Could not describe HEAD: {e}")
+        return None
+
+
 def get_branch_hashes() -> dict:
     """Short commit hash for every branch name the picker can offer.
 

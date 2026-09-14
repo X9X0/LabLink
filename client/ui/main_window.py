@@ -303,6 +303,15 @@ class MainWindow(QMainWindow):
             if branch_result.returncode == 0:
                 branch_name = branch_result.stdout.strip()
 
+                # Empty means a detached HEAD, which is what checking out a
+                # tag leaves behind -- and the local server update does that
+                # in this same clone. Saying nothing there is the worst time
+                # to say nothing, so name the tag or the commit instead.
+                if not branch_name:
+                    from client.utils.git_operations import describe_head
+
+                    branch_name = describe_head() or "detached"
+
                 # Get short commit hash
                 hash_result = subprocess.run(
                     ["git", "rev-parse", "--short", "HEAD"],

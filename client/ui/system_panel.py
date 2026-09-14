@@ -1388,7 +1388,9 @@ class SystemPanel(QWidget):
 
     def _update_local_server(self):
         """Update local server by checking out git ref and rebuilding Docker locally."""
-        from client.utils.git_operations import checkout_git_ref, get_git_root
+        from client.utils.git_operations import (
+            checkout_git_ref, compare_ref_to_head, get_git_root,
+        )
         from client.utils.docker_operations import (
             is_docker_available_locally,
             rebuild_docker_local,
@@ -1411,15 +1413,43 @@ class SystemPanel(QWidget):
                 )
                 return
 
+            # The checkout below is this clone -- the one the client is
+            # running from -- so an older ref moves the client's own code
+            # backwards as a side effect of a local update.
+            position = compare_ref_to_head(ref)
+            if position and position["ahead"] == 0 and position["behind"] > 0:
+                behind = position["behind"]
+                plural = "s" if behind != 1 else ""
+                going_back = QMessageBox.warning(
+                    self,
+                    "This Is Older Than What You Are Running",
+                    f"{ref} is {behind} commit{plural} behind the code this "
+                    f"client is running.\n\n"
+                    f"The checkout is shared, so this moves the client back to "
+                    f"it as well.\n\n"
+                    f"Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if going_back != QMessageBox.StandardButton.Yes:
+                    self.logs_text.append(
+                        f"\nLocal server update to {ref} "
+                        f"cancelled: {behind} commit{plural} behind HEAD"
+                    )
+                    return
+
             # Confirm with user
             reply = QMessageBox.question(
                 self,
                 "Confirm Local Server Update",
                 f"Update LOCAL server to {ref}?\n\n"
                 f"This will:\n"
-                f"1. Checkout {ref} in local git\n"
+                f"1. Checkout {ref} in this clone -- the one this client also\n"
+                f"   runs from, so the client's own code changes too\n"
                 f"2. Rebuild Docker containers on THIS MACHINE\n"
                 f"3. Restart local server\n\n"
+                f"A tag leaves the clone on no branch. Restart the client "
+                f"afterwards so it runs what is now checked out.\n\n"
                 f"This may take several minutes.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -1531,7 +1561,9 @@ class SystemPanel(QWidget):
 
     def _update_remote_server(self):
         """Update remote server by checking out git ref and rebuilding Docker via SSH."""
-        from client.utils.git_operations import checkout_git_ref, get_git_root
+        from client.utils.git_operations import (
+            checkout_git_ref, compare_ref_to_head, get_git_root,
+        )
         from client.utils.docker_operations import (
             rebuild_docker_ssh,
             generate_rebuild_instructions
@@ -1565,12 +1597,38 @@ class SystemPanel(QWidget):
                 return
 
             # Confirm with user
+            # The checkout below is this clone -- the one the client is
+            # running from -- so an older ref moves the client's own code
+            # backwards as a side effect of a remote update.
+            position = compare_ref_to_head(ref)
+            if position and position["ahead"] == 0 and position["behind"] > 0:
+                behind = position["behind"]
+                plural = "s" if behind != 1 else ""
+                going_back = QMessageBox.warning(
+                    self,
+                    "This Is Older Than What You Are Running",
+                    f"{ref} is {behind} commit{plural} behind the code this "
+                    f"client is running.\n\n"
+                    f"The checkout is shared, so this moves the client back to "
+                    f"it as well.\n\n"
+                    f"Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if going_back != QMessageBox.StandardButton.Yes:
+                    self.logs_text.append(
+                        f"\nRemote server update to {ref} "
+                        f"cancelled: {behind} commit{plural} behind HEAD"
+                    )
+                    return
+
             reply = QMessageBox.question(
                 self,
                 "Confirm Remote Server Update",
                 f"Update REMOTE server ({ssh_host}) to {ref}?\n\n"
                 f"This will:\n"
-                f"1. Checkout {ref} in local git\n"
+                f"1. Checkout {ref} in this clone -- the one this client also\n"
+                f"   runs from, so the client's own code changes too\n"
                 f"2. Rebuild Docker containers on {ssh_host} via SSH\n"
                 f"3. Restart remote server\n\n"
                 f"This may take several minutes.\n"

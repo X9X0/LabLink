@@ -195,6 +195,45 @@ class TestBranchHashes:
             assert get_branch_hashes() == {}
 
 
+class TestDescribeHead:
+    """Checking out a tag detaches HEAD and `git branch --show-current`
+    then prints nothing.
+
+    Both server updates check a ref out in this very clone, so that is
+    exactly when the status bar and the picker went blank -- at the moment
+    "which code is this?" was most worth asking.
+    """
+
+    def test_a_branch_is_reported_by_name(self):
+        from client.utils.git_operations import describe_head
+
+        with patch("subprocess.run", return_value=_git("main" + chr(10))):
+            assert describe_head() == "main"
+
+    def test_a_detached_head_names_the_tag(self):
+        from client.utils.git_operations import describe_head
+
+        with patch("subprocess.run", side_effect=[
+            _git(""), _git("v2.1.0" + chr(10)),
+        ]):
+            assert describe_head() == "detached at v2.1.0"
+
+    def test_a_detached_head_with_no_tag_names_the_commit(self):
+        from client.utils.git_operations import describe_head
+
+        with patch("subprocess.run", side_effect=[
+            _git(""), _git(""), _git("156bf31" + chr(10)),
+        ]):
+            assert describe_head() == "detached at 156bf31"
+
+    def test_it_never_returns_an_empty_answer(self):
+        """Blank is what the old code produced, and it said nothing."""
+        from client.utils.git_operations import describe_head
+
+        with patch("subprocess.run", side_effect=FileNotFoundError()):
+            assert describe_head() is None
+
+
 GUI = True
 try:
     import pyqtgraph  # noqa: F401
@@ -248,6 +287,35 @@ class TestTheUpdateButtonAsksFirst:
         assert "addItem(display_name, branch_name)" in picker, (
             "the hash must not leak into the value the checkout receives"
         )
+
+    def test_both_server_updates_check_the_direction_too(self):
+        """They check a ref out in the clone the client runs from, so an
+        older ref moves the client backwards as a side effect of a *server*
+        update. Updating the Pi did it as readily as updating localhost."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        for handler in (SystemPanel._update_local_server,
+                        SystemPanel._update_remote_server):
+            body = inspect.getsource(handler)
+            assert "compare_ref_to_head" in body, handler.__name__
+            assert "StandardButton.No," in body, (
+                f"{handler.__name__} has no default button, "
+                f"so Yes is one keypress away"
+            )
+
+    def test_both_say_the_checkout_is_shared(self):
+        """The old wording said "in local git", which reads as somewhere
+        else. It is the directory the client is running from."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        for handler in (SystemPanel._update_local_server,
+                        SystemPanel._update_remote_server):
+            body = inspect.getsource(handler)
+            assert "this clone" in body, handler.__name__
 
     def test_an_unchanged_ref_is_reported_rather_than_reinstalled(self, source):
         assert "Already Up To Date" in source
