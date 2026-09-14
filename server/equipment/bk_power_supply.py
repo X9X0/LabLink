@@ -12,6 +12,7 @@ the scaling is *not* uniform across the family. See :class:`FixedWidthDialect`.
 
 import asyncio
 import logging
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict
@@ -22,7 +23,7 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_registry import resolve_model
+from .bk_registry import MANUFACTURER, resolve_model
 from .bk_scpi import BK9130Series, BKSCPIPowerSupply
 from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
                      get_default_limits)
@@ -91,13 +92,25 @@ def dialect_for(model: str) -> FixedWidthDialect:
     return DIALECT_STANDARD
 
 
+def _decimals_for(divisor: float) -> int:
+    """Decimal places implied by a fixed-width reading divisor.
+
+    A divisor of 100 means the instrument sends hundredths, so two places is
+    the whole truth and a third would be invented.
+    """
+    try:
+        return max(0, round(math.log10(divisor)))
+    except (ValueError, TypeError):
+        return 2
+
+
 class BKPowerSupplyBase(BaseEquipment):
     """Base class for BK Precision power supplies."""
 
     def __init__(self, resource_manager, resource_string: str):
         """Initialize BK power supply."""
         super().__init__(resource_manager, resource_string)
-        self.manufacturer = "BK Precision"
+        self.manufacturer = MANUFACTURER
         self.model = "Unknown"
         self.num_channels = 1
         self.max_voltage = 60.0
@@ -359,6 +372,12 @@ class BKPowerSupplyBase(BaseEquipment):
             # The fixed-width protocol has no OVP/OCP commands at all, so the
             # panel must not offer protection controls for these models.
             "supports_protection": False,
+            # How many places a reading from this supply actually resolves to.
+            # GETD returns an integer that is divided by these divisors, so the
+            # divisor is the resolution: a 1685B reading is exact to 0.01 and
+            # printing it as 0.300 A claims a digit the instrument never sent.
+            "voltage_decimals": _decimals_for(self.dialect.reading_voltage_divisor),
+            "current_decimals": _decimals_for(self.dialect.reading_current_divisor),
         }
 
         return EquipmentStatus(
@@ -537,7 +556,7 @@ class BK9205B(BaseEquipment):
     def __init__(self, resource_manager, resource_string: str):
         """Initialize BK 9205B."""
         super().__init__(resource_manager, resource_string)
-        self.manufacturer = "BK Precision"
+        self.manufacturer = MANUFACTURER
         self.model = "9205B"
         self.num_channels = 1
         # B&K rates the 9205B at 60 V, 25 A and 600 W. This said 120 V / 10 A,
@@ -705,6 +724,11 @@ class BK9205B(BaseEquipment):
             # commands yet. The flag describes what LabLink can drive, not
             # what the supply is capable of.
             "supports_protection": False,
+            # MEAS:VOLT? / MEAS:CURR? return a float rather than a fixed-width
+            # field, so there is no divisor to read the resolution off. Three
+            # places matches what the 9205B reports.
+            "voltage_decimals": 3,
+            "current_decimals": 3,
         }
 
         return EquipmentStatus(

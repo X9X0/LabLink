@@ -27,6 +27,53 @@ def manager():
     return manager
 
 
+class TestOneSpellingOfTheManufacturer:
+    """The name reaches the user, so it cannot vary by driver.
+
+    The fixed-width supplies hardcoded "BK Precision" while everything else
+    used the registry's "B&K Precision". The Diagnostics table shows a
+    manufacturer column, so a 1685B and a 9205B sat one above the other
+    spelling their maker's name two different ways.
+    """
+
+    def test_the_registry_holds_the_canonical_spelling(self):
+        from server.equipment.bk_registry import MANUFACTURER
+
+        assert MANUFACTURER == "B&K Precision"
+
+    def test_no_driver_spells_it_its_own_way(self):
+        """Read on the source: the drivers need hardware to instantiate."""
+        import inspect
+        import re
+
+        from server.equipment import bk_power_supply, bk_scpi
+
+        for module in (bk_power_supply, bk_scpi):
+            source = inspect.getsource(module)
+            assigned = re.findall(
+                r"self\.manufacturer\s*=\s*[\"']([^\"']+)[\"']", source
+            )
+            assert not assigned, (
+                f"{module.__name__} hardcodes {assigned}; use MANUFACTURER so "
+                f"every driver reports the same name"
+            )
+
+    def test_the_decimals_reported_match_the_divisor(self):
+        """Capabilities carry reading resolution, so the UI stops inventing
+        digits the instrument never sent."""
+        from server.equipment.bk_power_supply import _decimals_for
+
+        assert _decimals_for(100.0) == 2
+        assert _decimals_for(10.0) == 1
+        assert _decimals_for(1000.0) == 3
+
+    def test_an_unusable_divisor_falls_back_rather_than_raising(self):
+        from server.equipment.bk_power_supply import _decimals_for
+
+        assert _decimals_for(0) == 2
+        assert _decimals_for(None) == 2
+
+
 class TestFixedWidthScaling:
     """Field scaling is not uniform across the fixed-width family."""
 
