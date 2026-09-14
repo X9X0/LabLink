@@ -532,18 +532,37 @@ function Write-Success {
 
     Write-Host "Installation Directory: $LablinkDir"
     Write-Host ""
-    Write-Host "Start Menu -> LabLink:"
-    Write-Host "  LabLink            the client. This is the one to use."
-    Write-Host "  LabLink Launcher   environment checks and dependency repair"
-    Write-Host "  LabLink Server     run the API server on this machine"
-    Write-Host ""
-    Write-Host "The desktop shortcut opens the client."
-    Write-Host "None of them open a console window."
-    Write-Host ""
-    Write-Host "If a shortcut appears to do nothing, open 'LabLink Launcher':"
-    Write-Host "it checks the installation and can repair it. Startup errors"
-    Write-Host "are also logged to $env:LOCALAPPDATA\LabLink\launch.log"
-    Write-Host ""
+    # Only name the entries that were actually created. This block used to list
+    # the Start Menu folder and the desktop shortcut unconditionally, so a
+    # -NoShortcuts install finished by telling the user to go and use shortcuts
+    # it had deliberately not made.
+    if ($CreateStartMenuShortcut) {
+        Write-Host "Start Menu -> LabLink:"
+        Write-Host "  LabLink            the client. This is the one to use."
+        Write-Host "  LabLink Launcher   environment checks and dependency repair"
+        Write-Host "  LabLink Server     run the API server on this machine"
+        Write-Host ""
+    }
+
+    if ($CreateDesktopShortcut) {
+        Write-Host "The desktop shortcut opens the client."
+    }
+
+    if ($CreateStartMenuShortcut -or $CreateDesktopShortcut) {
+        Write-Host "None of them open a console window."
+        Write-Host ""
+        Write-Host "If a shortcut appears to do nothing, open 'LabLink Launcher':"
+        Write-Host "it checks the installation and can repair it. Startup errors"
+        Write-Host "are also logged to $env:LOCALAPPDATA\LabLink\launch.log"
+        Write-Host ""
+    }
+    else {
+        Write-Host "No shortcuts were created. Start the client with:"
+        Write-Host "  $LablinkDir\lablink-client.bat"
+        Write-Host ""
+        Write-Host "Startup errors are logged to $env:LOCALAPPDATA\LabLink\launch.log"
+        Write-Host ""
+    }
     Write-Host "To remove LabLink: $LablinkDir\uninstall-client.bat"
     Write-Host ""
     Write-Host "For help and documentation: https://docs.lablink.io"
@@ -628,7 +647,14 @@ function Main {
     Write-Success
 }
 
-# Run main installation
+# Run main installation.
+#
+# Push-Location wraps the whole run because the install Set-Locations into the
+# installation directory, and the documented install pipes this script to iex,
+# which runs it in the caller's own session. Without this a successful install
+# leaves the user's shell sitting in <install>\client. It is a finally so the
+# location is restored on a failed install too, not just a clean one.
+Push-Location
 try {
     Main
 }
@@ -636,4 +662,7 @@ catch {
     Write-ErrorMsg "Installation failed: $_"
     Write-Host $_.ScriptStackTrace
     exit 1
+}
+finally {
+    Pop-Location
 }
