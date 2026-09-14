@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - 2026-09-14
+
+The client self-update, finished. 2.1.0 shipped the pieces; running one on a
+real install found the rest, and this is the first version whose update button
+takes you somewhere and brings you back.
+
+### 🐛 Fixed
+
+- **The update button closed the client and left it closed.** It marked the
+  update and called `sys.exit(0)`, on the theory that "the launcher should
+  detect the flag" -- nothing watches for it, so the update sat unapplied
+  until somebody started the client again by hand, while the dialog promised
+  the application would restart. It restarts now.
+- **The restart itself could not work from a shortcut.** The Start Menu and
+  desktop entries go through `lablink_launch.pyw`, which sets `sys.argv[0]` to
+  the module name `client.main` and hands it to `runpy`. The restart rebuilt
+  that as `python client.main`, which Python reads as a file path and refuses
+  with `can't open file`. A path is now run as a path and a module as
+  `-m <module>`, from the checkout directory so it resolves wherever the
+  shortcut started from.
+- **A server update moved the client's own code.** Both server updates call
+  `checkout_git_ref`, which operates on this clone -- the one the client runs
+  from -- so updating a server changed the client too, and an older version
+  downgraded the running client as a side effect. The remote path did it as
+  readily as the local one: updating the Pi over SSH checked a ref out on the
+  laptop first. Both now check the direction, warn with the commit count, and
+  default to No.
+- **A tag checkout left the UI unable to say what was running.**
+  `git branch --show-current` prints nothing on a detached HEAD, so the status
+  bar and the branch picker went blank at the moment the question mattered
+  most -- right after an update moved the code. `describe_head` names the
+  branch, or the tag, or the commit.
+
+### 📝 Changed
+
+- **The update button says something the instant it is pressed.** Checking the
+  update direction fetches first, which is seconds on a slow link, and until
+  it returned the button looked ignored -- so it got pressed again.
+- **The update dialog describes what you see.** It said the application would
+  close and reopen twice. It does restart twice, but the process in between
+  applies the checkout and re-execs before it builds a window, so what a user
+  sees is one close and one reopen. A test now pins that the update stays
+  ahead of the window, because the alternative is the old UI flashing up
+  mid-update.
+
+---
+
+
 ## [2.1.0] - 2026-09-14
 
 Everything since 2.0.0, which was 179 commits of work that never had a release
