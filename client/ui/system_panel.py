@@ -732,7 +732,9 @@ class SystemPanel(QWidget):
 
     def _refresh_branches(self):
         """Refresh the list of available branches (client-side)."""
-        from client.utils.git_operations import get_git_branches, get_current_git_branch
+        from client.utils.git_operations import (
+            get_branch_hashes, get_git_branches, get_current_git_branch,
+        )
 
         try:
             show_all = self.show_all_branches_checkbox.isChecked()
@@ -744,6 +746,11 @@ class SystemPanel(QWidget):
             # Get branches from local git with filtering
             branches = get_git_branches(show_all=show_all, sort_by_date=True)
             current_branch = get_current_git_branch()
+            # A branch name alone does not say which code it is. Two machines
+            # both "on main" can be a week apart, and after the update picker
+            # sent one install to a branch 30 commits behind there was nothing
+            # on screen that would have shown it.
+            hashes = get_branch_hashes()
 
             if branches:
                 # Update combo box
@@ -759,6 +766,12 @@ class SystemPanel(QWidget):
                     if is_current:
                         display_name += " (current)"
                         selected_index = i
+
+                    # The hash is display only; currentData stays the branch
+                    # name, which is what the checkout is given.
+                    short_hash = hashes.get(branch_name)
+                    if short_hash:
+                        display_name += f"  [{short_hash}]"
 
                     self.branch_combo.addItem(display_name, branch_name)
 

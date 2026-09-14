@@ -81,6 +81,68 @@ class TestCompareRefToHead:
             assert compare_ref_to_head("main") is None
 
 
+class TestBranchHashes:
+    """A branch name does not say which code it is.
+
+    Two installs both "on main" can be a week apart, and when the picker sent
+    one to a branch 30 commits behind, nothing on screen would have shown it.
+    """
+
+    def _for_each_ref(self, stdout):
+        return patch("subprocess.run", return_value=_git(stdout))
+
+    def test_a_remote_branch_is_listed_under_its_plain_name(self):
+        from client.utils.git_operations import get_branch_hashes
+
+        with self._for_each_ref("origin/main d2af428\n"):
+            assert get_branch_hashes() == {"main": "d2af428"}
+
+    def test_a_local_branch_wins_over_the_remote_of_the_same_name(self):
+        """git checkout <name> resolves locally, which is what the updater
+        does before it pulls."""
+        from client.utils.git_operations import get_branch_hashes
+
+        # refs/remotes/origin is asked for first, refs/heads second.
+        with self._for_each_ref("origin/main aaaaaaa\nmain bbbbbbb\n"):
+            assert get_branch_hashes()["main"] == "bbbbbbb"
+
+    def test_head_pointers_are_not_branches(self):
+        from client.utils.git_operations import get_branch_hashes
+
+        with self._for_each_ref("origin/HEAD d2af428\nmain d2af428\n"):
+            assert set(get_branch_hashes()) == {"main"}
+
+    def test_a_bare_remote_ref_is_not_a_branch(self):
+        """This repository carries a stray refs/remotes/origin."""
+        from client.utils.git_operations import get_branch_hashes
+
+        with self._for_each_ref("origin 231a4a3\nmain 231a4a3\n"):
+            assert set(get_branch_hashes()) == {"main"}
+
+    def test_malformed_lines_are_skipped_rather_than_crashing(self):
+        from client.utils.git_operations import get_branch_hashes
+
+        with self._for_each_ref("main d2af428\ngarbage\n\n"):
+            assert get_branch_hashes() == {"main": "d2af428"}
+
+    def test_it_asks_git_once_rather_than_once_per_branch(self):
+        """This runs on the UI thread every time the list is refreshed."""
+        from client.utils.git_operations import get_branch_hashes
+
+        with patch("subprocess.run", return_value=_git("main d2af428\n")) as run:
+            get_branch_hashes()
+
+        assert run.call_count == 1
+        assert "for-each-ref" in run.call_args[0][0]
+
+    def test_git_being_unavailable_is_not_fatal(self):
+        """Losing the hashes must not cost the branch list."""
+        from client.utils.git_operations import get_branch_hashes
+
+        with patch("subprocess.run", side_effect=FileNotFoundError()):
+            assert get_branch_hashes() == {}
+
+
 GUI = True
 try:
     import pyqtgraph  # noqa: F401
@@ -122,6 +184,18 @@ class TestTheUpdateButtonAsksFirst:
         first_branch = after.split("# Confirm with user", 1)[0]
         assert "return" in first_branch
         assert "mark_for_update" not in first_branch
+
+    def test_the_branch_picker_shows_the_hash(self):
+        """Display only: the checkout is still given the bare branch name."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        picker = inspect.getsource(SystemPanel._refresh_branches)
+        assert "get_branch_hashes" in picker
+        assert "addItem(display_name, branch_name)" in picker, (
+            "the hash must not leak into the value the checkout receives"
+        )
 
     def test_an_unchanged_ref_is_reported_rather_than_reinstalled(self, source):
         assert "Already Up To Date" in source

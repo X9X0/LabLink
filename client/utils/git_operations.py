@@ -221,6 +221,56 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
         return []
 
 
+def get_branch_hashes() -> dict:
+    """Short commit hash for every branch name the picker can offer.
+
+    One ``for-each-ref`` rather than a ``rev-parse`` per branch: the update
+    picker lists every branch in the repository, and this runs on the UI
+    thread each time that list is refreshed.
+
+    A local branch wins over the remote of the same name, because that is what
+    ``git checkout <name>`` resolves to -- which is what the updater does
+    before it pulls.
+
+    Returns:
+        ``{branch_name: short_hash}``, empty if git is unavailable.
+    """
+    hashes = {}
+    try:
+        result = subprocess.run(
+            [
+                "git", "for-each-ref",
+                "--format=%(refname:short) %(objectname:short)",
+                "refs/remotes/origin", "refs/heads",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Could not read branch hashes: {e}")
+        return {}
+
+    # refs/remotes/origin first, refs/heads second, so a local branch
+    # overwrites the remote entry of the same name.
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        name, short_hash = parts
+        if name.endswith("/HEAD"):
+            continue
+        if name.startswith("origin/"):
+            name = name[len("origin/"):]
+        if not name or name == "origin":
+            continue
+        hashes[name] = short_hash
+
+    return hashes
+
+
 def get_current_git_branch() -> Optional[str]:
     """Get currently checked out branch.
 
