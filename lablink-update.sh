@@ -41,6 +41,16 @@ fi
 
 cd /opt/lablink || exit 1
 
+# One update at a time. Two runs overlapping -- an operator pressing the
+# button while another is still going, or a person on the box at the same
+# time -- have each other's containers half torn down, and docker compose
+# reports "No such container: <id>" as one removes what the other just made.
+exec 9>/var/lock/lablink-update.lock
+if ! flock -n 9; then
+    echo "Another LabLink update is already running. Nothing to do."
+    exit 0
+fi
+
 echo "Step 1: Checking current version..."
 CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")

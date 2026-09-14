@@ -30,6 +30,40 @@ from client.ui.theme import dialog_palette
 logger = logging.getLogger(__name__)
 
 
+class RemoteUpdateWorker(QThread):
+    """Runs the remote update off the GUI thread, reporting as it goes.
+
+    The rebuild takes minutes. Running it inline froze the window for the
+    whole time with nothing on screen, so there was no way to tell a slow
+    update from a hung one.
+    """
+
+    line = pyqtSignal(str)
+    done = pyqtSignal(object)
+
+    def __init__(self, host, remote_dir, ref):
+        super().__init__()
+        self.host = host
+        self.remote_dir = remote_dir
+        self.ref = ref
+
+    def run(self):
+        from client.utils.docker_operations import update_remote_server
+
+        try:
+            result = update_remote_server(
+                self.host, self.remote_dir, self.ref,
+                # Queued across the thread boundary by Qt, so the log is
+                # only ever touched on the GUI thread.
+                on_output=self.line.emit,
+            )
+        except Exception as e:
+            from client.utils.docker_operations import DockerRebuildResult
+
+            result = DockerRebuildResult(success=False, output="", error=str(e))
+        self.done.emit(result)
+
+
 class AsyncWorker(QThread):
     """Worker thread for async operations to prevent GUI blocking."""
 
@@ -1773,16 +1807,43 @@ class SystemPanel(QWidget):
 
             if not self._ensure_passwordless_ssh(ssh_host):
                 self.logs_text.append("Remote update cancelled: no SSH access")
+                self._reset_remote_update_button()
                 return
 
-            result = update_remote_server(ssh_host, remote_dir, ref)
+            # Off the GUI thread, so the window stays alive and the log fills
+            # as the remote works.
+            self._remote_worker = RemoteUpdateWorker(ssh_host, remote_dir, ref)
+            self._remote_worker.line.connect(self.logs_text.append)
+            self._remote_worker.done.connect(
+                lambda res: self._on_remote_update_done(res, ssh_host, remote_dir, ref)
+            )
+            self._remote_worker.start()
+            return
 
+        except Exception as e:
+            logger.error(f"Error starting the remote update: {e}")
+            self.logs_text.append(f"\nError: {str(e)}")
+            QMessageBox.critical(
+                self, "Update Failed",
+                f"Failed to start the remote update:\n{str(e)}"
+            )
+            self._reset_remote_update_button()
+
+    def _reset_remote_update_button(self):
+        """Give the button back. Called on every way out, including the worker
+        finishing, which is why it is not a finally: the handler now returns
+        while the update is still running."""
+        QApplication.restoreOverrideCursor()
+        self.update_remote_server_btn.setEnabled(True)
+        self.update_remote_server_btn.setText("Update Remote Server")
+
+    def _on_remote_update_done(self, result, ssh_host, remote_dir, ref):
+        """Report what the remote said, back on the GUI thread."""
+        try:
             if result.success:
                 self._remember_ssh_user(ssh_host)
                 self.progress_bar.setValue(100)
                 self.update_status_label.setText("Update Status: Remote server updated")
-                self.logs_text.append(f"Remote update succeeded on {ssh_host}")
-                self.logs_text.append(result.output)
                 QMessageBox.information(
                     self,
                     "Remote Server Updated",
@@ -1793,8 +1854,6 @@ class SystemPanel(QWidget):
                 self.progress_bar.setValue(0)
                 self.update_status_label.setText("Update Status: Remote update failed")
                 self.logs_text.append(f"Remote update failed: {result.error}")
-                if result.output:
-                    self.logs_text.append(result.output)
                 QMessageBox.critical(
                     self,
                     "Remote Update Failed",
@@ -1804,155 +1863,8 @@ class SystemPanel(QWidget):
                     f"  cd {remote_dir}\n"
                     f"  sudo ./lablink-update.sh {ref} --yes"
                 )
-
-        except Exception as e:
-            logger.error(f"Error updating remote server: {e}")
-            self.logs_text.append(f"\nError: {str(e)}")
-            QMessageBox.critical(
-                self, "Update Failed", f"Failed to update remote server:\n{str(e)}"
-            )
         finally:
-            QApplication.restoreOverrideCursor()
-            self.update_remote_server_btn.setEnabled(True)
-            self.update_remote_server_btn.setText("Update Remote Server")
-
-    def _update_client(self):
-        """Update client by marking for update on next restart."""
-        from client.utils.git_operations import compare_ref_to_head
-        from client.utils.self_update import mark_for_update
-        import sys
-
-        try:
-            # Get selected ref (tag or branch)
-            mode = self.update_mode_combo.currentData()
-            if mode == "stable":
-                ref = self.version_selector.currentData()
-            else:  # development
-                ref = self.branch_combo.currentData()
-
-            if not ref:
-                QMessageBox.warning(
-                    self,
-                    "No Version Selected",
-                    "Please select a version or branch first."
-                )
-                return
-
-            # Something on screen the instant the button is pressed. The
-            # direction check fetches, which is seconds on a slow link, and
-            # until it returned the button looked ignored -- so it got
-            # pressed again.
-            self.update_client_btn.setEnabled(False)
-            self.update_client_btn.setText("Checking...")
-            self.logs_text.append(
-                f"\nChecking {ref} against the running client..."
-            )
-            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
-            QApplication.processEvents()
-
-            # Say so before going backwards.
-            #
-            # The version list offers tags, and a tag is a fixed point: the
-            # only tag here, v2.0.0, is well behind main. Selecting it read as
-            # "update" and silently installed an older client. Going back on
-            # purpose is what the rollback button is for, so this asks rather
-            # than refuses -- but it asks with the number, and defaults to No.
-            position = compare_ref_to_head(ref)
-            if position and position["same"]:
-                QMessageBox.information(
-                    self,
-                    "Already Up To Date",
-                    f"The client is already running {ref}.\n\n"
-                    f"There is nothing to update."
-                )
-                return
-
-            if position and position["ahead"] == 0 and position["behind"] > 0:
-                behind = position["behind"]
-                plural = "s" if behind != 1 else ""
-                going_back = QMessageBox.warning(
-                    self,
-                    "This Is Older Than What You Are Running",
-                    f"{ref} is {behind} commit{plural} behind the code "
-                    f"you are running now.\n\n"
-                    f"Updating to it will replace your client with an older "
-                    f"build, losing anything added since.\n\n"
-                    f"To go back to an earlier version deliberately, use "
-                    f"Rollback instead.\n\n"
-                    f"Continue anyway?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if going_back != QMessageBox.StandardButton.Yes:
-                    self.logs_text.append(
-                        f"\nUpdate to {ref} cancelled: "
-                        f"{behind} commit{plural} behind HEAD"
-                    )
-                    return
-
-            # Confirm with user
-            reply = QMessageBox.question(
-                self,
-                "Confirm Client Update",
-                f"Update client to {ref}?\n\n"
-                f"This will:\n"
-                f"1. Mark the client for update to {ref}\n"
-                f"2. Restart the client application\n"
-                f"3. On restart, checkout {ref} and launch\n\n"
-                f"Do you want to proceed?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-            # Mark for update
-            self.logs_text.append(f"\n🔄 Marking client for update to {ref}...")
-
-            if mark_for_update(ref, mode):
-                self.logs_text.append(f"✅ Client marked for update")
-
-                QMessageBox.information(
-                    self,
-                    "Client Update Scheduled",
-                    f"Client has been marked for update to {ref}.\n\n"
-                    f"LabLink will close and reopen once. The update is "
-                    f"applied in between, before any window appears."
-                )
-
-                # Actually restart, rather than exiting and hoping.
-                #
-                # This called sys.exit(0) on the theory that "the launcher
-                # should detect the flag" -- but nothing watches for it, so
-                # the client just closed and the update sat there until
-                # somebody started it by hand, while the dialog above
-                # promised the application would restart.
-                self.logs_text.append("🔄 Restarting application...")
-                from client.main import _restart_client
-
-                _restart_client()
-
-            else:
-                self.logs_text.append(f"❌ Failed to mark client for update")
-                QMessageBox.critical(
-                    self,
-                    "Update Failed",
-                    "Failed to mark client for update.\n\nCheck logs for details."
-                )
-
-        except Exception as e:
-            logger.error(f"Error updating client: {e}")
-            self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Update Failed", f"Failed to update client:\n{str(e)}"
-            )
-
-        finally:
-            # Also runs on the SystemExit the relaunch raises, which costs
-            # nothing and keeps the button usable on every other path.
-            QApplication.restoreOverrideCursor()
-            self.update_client_btn.setEnabled(True)
-            self.update_client_btn.setText("Update Client")
+            self._reset_remote_update_button()
 
     def closeEvent(self, event):
         """Handle widget close event."""

@@ -7,6 +7,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
+from client.utils.proc import no_window_kwargs
+
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +130,8 @@ def rebuild_docker_local(project_dir: str, no_cache: bool = True) -> DockerRebui
 
 
 def update_remote_server(host: str, remote_dir: str, ref: str,
-                         no_cache: bool = True) -> DockerRebuildResult:
+                         no_cache: bool = True,
+                         on_output=None) -> DockerRebuildResult:
     """Update a remote LabLink and rebuild its containers, over SSH.
 
     The Pi already ships the right procedure in ``lablink-update.sh``: fetch,
@@ -159,23 +162,62 @@ def update_remote_server(host: str, remote_dir: str, ref: str,
         f"cd {quoted_dir} && "
         f"sudo bash ./lablink-update.sh {quoted_ref} --yes && "
         f"echo '=== Resulting version ===' && "
-        f"(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD) && "
+        # sudo, because the checkout is root-owned: a plain git here fails
+        # with "detected dubious ownership", and being in an && chain that
+        # turned a finished update into a reported failure.
+        f"(sudo git describe --tags --exact-match 2>/dev/null || "
+        f"sudo git rev-parse --short HEAD) && "
         f"cat VERSION 2>/dev/null"
     )
 
     logger.info(f"Updating {host}:{remote_dir} to {ref}...")
 
     try:
-        result = subprocess.run(
-            # BatchMode so a host without key auth fails immediately and says
-            # so, rather than blocking on a password prompt nobody can see:
-            # capture_output means the prompt would never reach the user.
+        # Popen and read as it goes. A rebuild takes minutes, and run() hands
+        # back the whole transcript at the end -- so the operator watched a
+        # frozen window with no sign anything was happening.
+        #
+        # BatchMode so a host without key auth fails immediately rather than
+        # blocking on a password prompt nobody can see. no_window_kwargs, or
+        # Windows flashes up a console for ssh; every other subprocess in the
+        # client already passes it and this module passed it nowhere.
+        process = subprocess.Popen(
             ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, command],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            check=True,
+            # The remote script prints box drawing and check marks. text=True
+            # on Windows decodes as cp1252, which dies on the first one --
+            # exactly the locale-dependent I/O #192 was about.
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            **no_window_kwargs()
         )
-        output = result.stdout + (f"\n=== Stderr ===\n{result.stderr}" if result.stderr else "")
+
+        lines_out = []
+        for line in process.stdout:
+            line = line.rstrip()
+            lines_out.append(line)
+            if on_output is not None and line:
+                on_output(line)
+        process.wait()
+
+        output = chr(10).join(lines_out)
+        if process.returncode != 0:
+            tail = output.strip().splitlines()
+            detail = tail[-1] if tail else ""
+            if "Permission denied" in output or "Host key verification" in output:
+                detail += (
+                    chr(10) + chr(10) + "This needs key-based SSH: the update "
+                    "runs without a terminal, so a password prompt cannot be "
+                    "answered."
+                )
+            return DockerRebuildResult(
+                success=False, output=output,
+                error=detail or f"ssh exited {process.returncode}",
+            )
+
         logger.info(f"Remote update of {host} completed")
         return DockerRebuildResult(success=True, output=output)
 
@@ -237,7 +279,8 @@ def rebuild_docker_ssh(host: str, project_dir: str, no_cache: bool = True) -> Do
             ["ssh", host, commands],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            **no_window_kwargs()
         )
 
         output_lines.append(f"=== SSH Output from {host} ===")
