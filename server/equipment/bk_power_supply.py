@@ -23,7 +23,7 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_registry import MANUFACTURER, resolve_model
+from .bk_registry import MANUFACTURER, is_bk_manufacturer, resolve_model
 from .bk_scpi import BK9130Series, BKSCPIPowerSupply
 from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
                      get_default_limits)
@@ -681,6 +681,12 @@ class BK9205B(BaseEquipment):
             # *IDN? returns: B&K Precision, 9205B, SERIAL, FIRMWARE
             parts = idn.split(",")
             manufacturer = parts[0].strip() if len(parts) > 0 else self.manufacturer
+            # B&K spell their own name several ways across *IDN?, and the
+            # Diagnostics table shows a manufacturer column, so two of
+            # their supplies sat one above the other spelling it
+            # differently. Report the one name for any of their forms.
+            if is_bk_manufacturer(manufacturer):
+                manufacturer = MANUFACTURER
             model = parts[1].strip() if len(parts) > 1 else self.model
             serial = parts[2].strip() if len(parts) > 2 else None
         except Exception as e:

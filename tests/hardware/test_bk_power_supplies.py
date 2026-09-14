@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import sys
 sys.path.append("..")
 from server.equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.bk_registry import MANUFACTURER
 
 
 class TestBK9205B:
@@ -48,7 +49,7 @@ class TestBK9205B:
         await power_supply.connect()
         info = await power_supply.get_info()
 
-        assert info.manufacturer == "BK Precision"
+        assert info.manufacturer == MANUFACTURER
         assert info.model == "9205B"
         assert info.serial_number == "123456"
         assert "ps_" in info.id
@@ -187,7 +188,7 @@ class TestBK1685B:
         await power_supply.connect()
         info = await power_supply.get_info()
 
-        assert info.manufacturer == "BK Precision"
+        assert info.manufacturer == MANUFACTURER
         assert info.model == "1685B"
         # The 1685B does not support *IDN?, so the driver reports no serial.
         assert info.serial_number is None

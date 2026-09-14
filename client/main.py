@@ -70,7 +70,11 @@ def _relaunch_command(argv):
 
     # A path is run as a path; anything else is the module name runpy was
     # given, and has to go back in as one.
-    if entry.endswith(".py") or Path(entry).exists():
+    # os.path, not pathlib: Path() chooses its flavour from os.name, so
+    # under a test that patches os.name to "nt" on Linux it raises
+    # "cannot instantiate WindowsPath on your system" before doing
+    # anything useful. os.path.exists is flavour-agnostic.
+    if entry.endswith(".py") or os.path.exists(entry):
         return [sys.executable, entry] + rest
     return [sys.executable, "-m", entry] + rest
 
@@ -120,7 +124,10 @@ def _restart_client(drop_easter_egg=False):
 
         # cwd is the checkout, so "-m client.main" resolves wherever the
         # shortcut happened to start us from.
-        subprocess.Popen(command, cwd=str(Path(__file__).resolve().parent.parent))
+        subprocess.Popen(
+            command,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
         sys.exit(0)
 
     os.execv(sys.executable, command)
