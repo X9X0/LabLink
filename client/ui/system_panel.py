@@ -5,7 +5,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication, QInputDialog,
+    QApplication, QInputDialog, QSizePolicy,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -688,15 +688,25 @@ class SystemPanel(QWidget):
 
         self.logs_text = QTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setMaximumHeight(200)
-        logs_layout.addWidget(self.logs_text)
+        # Grow into whatever room the window has. This was capped at 200px,
+        # so on a maximised window the log stayed ten lines tall with a third
+        # of the screen empty beneath it -- while streaming a build log that
+        # is the one thing worth reading at that moment.
+        self.logs_text.setMinimumHeight(160)
+        self.logs_text.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        logs_layout.addWidget(self.logs_text, 1)
 
         clear_logs_btn = QPushButton("Clear Logs")
         clear_logs_btn.clicked.connect(self.logs_text.clear)
         logs_layout.addWidget(clear_logs_btn)
 
         logs_group.setLayout(logs_layout)
-        layout.addWidget(logs_group)
+        # The stretch factor is what actually hands the spare height over;
+        # an Expanding policy alone does nothing if every sibling has an
+        # equal claim on it.
+        layout.addWidget(logs_group, 1)
 
         # Stretch to fill remaining space
         layout.addStretch()
