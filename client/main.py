@@ -49,6 +49,32 @@ def setup_logging(debug=False):
     )
 
 
+def _relaunch_command(argv):
+    """The command that starts this client again, however it was started.
+
+    The shortcuts run the client through the launcher, which sets
+    ``sys.argv[0]`` to the module name ``client.main`` and hands it to
+    ``runpy``. Rebuilding the command as ``[sys.executable] + argv`` then
+    produces ``python client.main``, which Python reads as a *file* path and
+    refuses: "can't open file 'client.main'". So a self-update applied its
+    checkout and then failed to come back, on the only launch path most users
+    have.
+
+    Args:
+        argv: ``sys.argv`` as the restart should reproduce it.
+
+    Returns:
+        An argument list for subprocess/execv.
+    """
+    entry, rest = argv[0], list(argv[1:])
+
+    # A path is run as a path; anything else is the module name runpy was
+    # given, and has to go back in as one.
+    if entry.endswith(".py") or Path(entry).exists():
+        return [sys.executable, entry] + rest
+    return [sys.executable, "-m", entry] + rest
+
+
 def _restart_client(drop_easter_egg=False):
     """Restart this client so newly checked-out code is actually loaded.
 
@@ -68,6 +94,8 @@ def _restart_client(drop_easter_egg=False):
     argv = list(sys.argv)
     if drop_easter_egg:
         argv = [a for a in argv if a != "--easter-egg"]
+
+    command = _relaunch_command(argv)
 
     print("🔄 Restarting to load the updated code...\n")
 
@@ -90,10 +118,12 @@ def _restart_client(drop_easter_egg=False):
         # that loses its output, so spawn a replacement and exit instead.
         import subprocess
 
-        subprocess.Popen([sys.executable] + argv)
+        # cwd is the checkout, so "-m client.main" resolves wherever the
+        # shortcut happened to start us from.
+        subprocess.Popen(command, cwd=str(Path(__file__).resolve().parent.parent))
         sys.exit(0)
 
-    os.execv(sys.executable, [sys.executable] + argv)
+    os.execv(sys.executable, command)
 
 
 def main():

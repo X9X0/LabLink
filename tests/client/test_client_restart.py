@@ -49,7 +49,9 @@ class TestRestartClient:
                 pytest.raises(SystemExit) as exit_info:
             _restart_client()
 
-        popen.assert_called_once_with([sys.executable, "client/main.py"])
+        assert popen.call_args[0][0] == [sys.executable, "client/main.py"]
+        # cwd is the checkout, so a module relaunch resolves from anywhere.
+        assert "cwd" in popen.call_args.kwargs
         assert exit_info.value.code == 0
 
     def test_easter_egg_flag_is_dropped(self):
@@ -100,7 +102,9 @@ class TestRestartWithoutAConsole:
         with patch.object(sys, "argv", ["client/main.py"]),                 patch.object(sys, "stdout", None),                 patch.object(os, "name", "nt"),                 patch("subprocess.Popen") as popen,                 pytest.raises(SystemExit) as exit_info:
             _restart_client()
 
-        popen.assert_called_once_with([sys.executable, "client/main.py"])
+        assert popen.call_args[0][0] == [sys.executable, "client/main.py"]
+        # cwd is the checkout, so a module relaunch resolves from anywhere.
+        assert "cwd" in popen.call_args.kwargs
         assert exit_info.value.code == 0, "the replacement was never spawned"
 
     def test_restart_survives_a_closed_stdout(self):
@@ -132,6 +136,40 @@ class TestRestartWithoutAConsole:
             _restart_client()
 
         assert flushed == [True]
+
+
+class TestRelaunchCommand:
+    """The shortcuts start the client as a module, not a file.
+
+    lablink_launch.pyw sets sys.argv[0] to "client.main" and hands it to
+    runpy. Rebuilding the command as [sys.executable] + argv then produced
+    "python client.main", which Python reads as a file path and refuses with
+    "can't open file". A self-update applied its checkout and then failed to
+    come back, on the only launch path most users have.
+    """
+
+    def test_a_module_name_is_relaunched_with_dash_m(self):
+        from client.main import _relaunch_command
+
+        command = _relaunch_command(["client.main", "--debug"])
+        assert command == [sys.executable, "-m", "client.main", "--debug"]
+
+    def test_a_script_path_is_relaunched_as_a_path(self):
+        from client.main import _relaunch_command
+
+        command = _relaunch_command(["client/main.py", "--debug"])
+        assert command == [sys.executable, "client/main.py", "--debug"]
+
+    def test_the_module_form_is_what_the_restart_spawns(self):
+        """End of the chain: the command actually handed to Popen."""
+        with (patch.object(sys, "argv", ["client.main"]),
+              patch.object(os, "name", "nt"),
+              patch("subprocess.Popen") as popen,
+              pytest.raises(SystemExit)):
+            _restart_client()
+
+        spawned = popen.call_args[0][0]
+        assert spawned == [sys.executable, "-m", "client.main"], spawned
 
 
 class TestBothInvocationsCanImportEverything:

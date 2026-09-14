@@ -5,6 +5,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -1763,6 +1764,18 @@ class SystemPanel(QWidget):
                 )
                 return
 
+            # Something on screen the instant the button is pressed. The
+            # direction check fetches, which is seconds on a slow link, and
+            # until it returned the button looked ignored -- so it got
+            # pressed again.
+            self.update_client_btn.setEnabled(False)
+            self.update_client_btn.setText("Checking...")
+            self.logs_text.append(
+                f"\nChecking {ref} against the running client..."
+            )
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            QApplication.processEvents()
+
             # Say so before going backwards.
             #
             # The version list offers tags, and a tag is a fixed point: the
@@ -1829,13 +1842,21 @@ class SystemPanel(QWidget):
                     self,
                     "Client Update Scheduled",
                     f"Client has been marked for update to {ref}.\n\n"
-                    f"The application will now restart and apply the update."
+                    f"LabLink will close and reopen twice: once to apply "
+                    f"the update, and once more to start running it."
                 )
 
-                # Exit application to trigger restart
-                # The launcher should detect the flag and perform the update
-                self.logs_text.append(f"🔄 Restarting application...")
-                sys.exit(0)
+                # Actually restart, rather than exiting and hoping.
+                #
+                # This called sys.exit(0) on the theory that "the launcher
+                # should detect the flag" -- but nothing watches for it, so
+                # the client just closed and the update sat there until
+                # somebody started it by hand, while the dialog above
+                # promised the application would restart.
+                self.logs_text.append("🔄 Restarting application...")
+                from client.main import _restart_client
+
+                _restart_client()
 
             else:
                 self.logs_text.append(f"❌ Failed to mark client for update")
@@ -1851,6 +1872,13 @@ class SystemPanel(QWidget):
             QMessageBox.critical(
                 self, "Update Failed", f"Failed to update client:\n{str(e)}"
             )
+
+        finally:
+            # Also runs on the SystemExit the relaunch raises, which costs
+            # nothing and keeps the button usable on every other path.
+            QApplication.restoreOverrideCursor()
+            self.update_client_btn.setEnabled(True)
+            self.update_client_btn.setText("Update Client")
 
     def closeEvent(self, event):
         """Handle widget close event."""
