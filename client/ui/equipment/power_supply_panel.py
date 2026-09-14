@@ -440,19 +440,45 @@ class PowerSupplyPanel(QWidget):
         self.num_channels = num_channels
         self.channel_selector.setMaximum(num_channels)
 
-        # Update ranges
-        self.voltage_spin.setMaximum(max_voltage)
-        self.voltage_slider.setMaximum(int(max_voltage * 1000))
+        # Re-range without disturbing the fields.
+        #
+        # setMaximum() clamps a value that no longer fits, and Qt emits
+        # valueChanged for that clamp. This panel commands nothing from those
+        # signals -- it sends only on Apply -- but the clamped number is the
+        # previously selected supply's setpoint wearing this one's ceiling,
+        # and Apply would then send it as if it had been chosen. Block the
+        # widgets for the re-range, then show what this supply reports.
+        ranged_widgets = (
+            self.voltage_spin,
+            self.voltage_slider,
+            self.current_spin,
+            self.current_slider,
+            self.ovp_spin,
+            self.ovp_slider,
+            self.ocp_spin,
+            self.ocp_slider,
+        )
+        for widget in ranged_widgets:
+            widget.blockSignals(True)
+        try:
+            # Update ranges
+            self.voltage_spin.setMaximum(max_voltage)
+            self.voltage_slider.setMaximum(int(max_voltage * 1000))
 
-        self.current_spin.setMaximum(max_current)
-        self.current_slider.setMaximum(int(max_current * 1000))
+            self.current_spin.setMaximum(max_current)
+            self.current_slider.setMaximum(int(max_current * 1000))
 
-        # A trip ceiling is set above the working point, so the protection
-        # rollers share the supply's full range rather than the setpoint's.
-        self.ovp_spin.setMaximum(max_voltage)
-        self.ovp_slider.setMaximum(int(max_voltage * 1000))
-        self.ocp_spin.setMaximum(max_current)
-        self.ocp_slider.setMaximum(int(max_current * 1000))
+            # A trip ceiling is set above the working point, so the protection
+            # rollers share the supply's full range rather than the setpoint's.
+            self.ovp_spin.setMaximum(max_voltage)
+            self.ovp_slider.setMaximum(int(max_voltage * 1000))
+            self.ocp_spin.setMaximum(max_current)
+            self.ocp_slider.setMaximum(int(max_current * 1000))
+
+            self._show_setpoints(equipment_id)
+        finally:
+            for widget in ranged_widgets:
+                widget.blockSignals(False)
 
         # Enable controls
         self.apply_btn.setEnabled(True)
@@ -488,6 +514,43 @@ class PowerSupplyPanel(QWidget):
         # screen belongs to the channel that was selected a moment ago.
         if self.client and self.equipment_id and self.ovp_spin.isEnabled():
             self._spawn(self._refresh_protection_async())
+
+    def _show_setpoints(self, equipment_id: str):
+        """Show this supply's own setpoints on the controls.
+
+        Called with the range widgets' signals already blocked. Without it the
+        fields keep the previously selected supply's numbers, clamped into this
+        one's range, and Apply would send them back as though the user had
+        chosen them.
+        """
+        if not self.client:
+            return
+
+        try:
+            result = self.client.send_command(
+                equipment_id,
+                "get_setpoints",
+                {"channel": self.channel_selector.value()},
+            )
+            if not result.get("success"):
+                raise RuntimeError(result.get("error") or "command failed")
+            setpoints = result.get("data") or {}
+        except Exception as e:
+            logger.warning(
+                f"Could not read setpoints from {equipment_id}; the panel may "
+                f"show a stale setpoint until it is next changed: {e}"
+            )
+            return
+
+        voltage = setpoints.get("voltage")
+        current = setpoints.get("current")
+
+        if voltage is not None:
+            self.voltage_spin.setValue(voltage)
+            self.voltage_slider.setValue(int(voltage * 1000))
+        if current is not None:
+            self.current_spin.setValue(current)
+            self.current_slider.setValue(int(current * 1000))
 
     def _on_voltage_changed(self, value: float):
         """Handle voltage spinbox change."""

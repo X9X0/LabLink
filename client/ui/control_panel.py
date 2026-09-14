@@ -676,15 +676,41 @@ class ControlPanel(QWidget):
                     max_voltage = capabilities.get("max_voltage", 60.0)
                     max_current = capabilities.get("max_current", 5.0)
 
-                    # Update voltage controls
-                    self.voltage_dial.setMaximum(int(max_voltage * 10))
-                    self.voltage_spinbox.setMaximum(max_voltage)
-                    self.voltage_gauge.max_value = max_voltage
+                    # Re-range the controls without commanding the instrument.
+                    #
+                    # setMaximum() clamps a value that no longer fits, and Qt
+                    # emits valueChanged for that clamp. Those signals are
+                    # wired to _send_voltage_command / _send_current_command,
+                    # so lowering a ceiling on a device switch used to command
+                    # the instrument that had just been selected: picking the
+                    # 5 A 1685B after the 25 A 9205B clamped the carried-over
+                    # setpoint to 5.0 and sent it as set_current -- the
+                    # 1685B's full scale, from a value the user never typed.
+                    # Block the widgets across the whole re-range, then show
+                    # what the instrument itself reports.
+                    ranged_widgets = (
+                        self.voltage_dial,
+                        self.voltage_spinbox,
+                        self.current_dial,
+                        self.current_spinbox,
+                    )
+                    for widget in ranged_widgets:
+                        widget.blockSignals(True)
+                    try:
+                        # Update voltage controls
+                        self.voltage_dial.setMaximum(int(max_voltage * 10))
+                        self.voltage_spinbox.setMaximum(max_voltage)
+                        self.voltage_gauge.max_value = max_voltage
 
-                    # Update current controls
-                    self.current_dial.setMaximum(int(max_current * 10))
-                    self.current_spinbox.setMaximum(max_current)
-                    self.current_gauge.max_value = max_current
+                        # Update current controls
+                        self.current_dial.setMaximum(int(max_current * 10))
+                        self.current_spinbox.setMaximum(max_current)
+                        self.current_gauge.max_value = max_current
+
+                        self._show_setpoints(equipment_id)
+                    finally:
+                        for widget in ranged_widgets:
+                            widget.blockSignals(False)
 
                     logger.info(f"Configured controls for {equipment.name}: "
                                 f"max_voltage={max_voltage}V, max_current={max_current}A")
@@ -697,6 +723,43 @@ class ControlPanel(QWidget):
                 # Start reading data
                 self._start_data_acquisition()
                 break
+
+    def _show_setpoints(self, equipment_id: str):
+        """Show the instrument's own setpoints on the controls.
+
+        Called with the range widgets' signals already blocked. Without it the
+        panel keeps whatever the previously selected instrument was set to,
+        clamped into the new one's range, which reads like a measurement from
+        the new instrument but is not one.
+        """
+        if not self.client:
+            return
+
+        try:
+            result = self.client.send_command(
+                equipment_id, "get_setpoints", {"channel": 1}
+            )
+            if not result.get("success"):
+                raise RuntimeError(result.get("error") or "command failed")
+            setpoints = result.get("data") or {}
+        except Exception as e:
+            # Not fatal. The caller still has the widgets blocked, so the panel
+            # commands nothing either way; it just keeps showing the old number.
+            logger.warning(
+                f"Could not read setpoints from {equipment_id}; the panel may "
+                f"show a stale setpoint until it is next changed: {e}"
+            )
+            return
+
+        voltage = setpoints.get("voltage")
+        current = setpoints.get("current")
+
+        if voltage is not None:
+            self.voltage_spinbox.setValue(voltage)
+            self.voltage_dial.setValue(int(voltage * 10))
+        if current is not None:
+            self.current_spinbox.setValue(current)
+            self.current_dial.setValue(int(current * 10))
 
     def _on_voltage_dial_changed(self, value):
         """Handle voltage dial change."""
