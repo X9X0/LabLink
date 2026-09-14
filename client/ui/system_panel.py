@@ -5,7 +5,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
+    QApplication, QInputDialog,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -1618,6 +1618,69 @@ class SystemPanel(QWidget):
             self.update_local_server_btn.setEnabled(True)
             self.update_local_server_btn.setText("Update Local Server")
 
+    def _ensure_passwordless_ssh(self, ssh_host: str) -> bool:
+        """Make sure we can reach `ssh_host` without a password, setting it up
+        if this is the first time.
+
+        The update runs with its output captured, so a password prompt could
+        never be answered and would hang. Requiring the user to arrange keys
+        beforehand only works for people who already know how; everyone else
+        met "Permission denied" with nothing to do about it. So ask once,
+        install a key, and never ask again.
+        """
+        from client.utils.ssh_access import (
+            install_public_key, key_access_works, split_host,
+        )
+
+        if key_access_works(ssh_host):
+            return True
+
+        user, host = split_host(ssh_host)
+        if not user:
+            QMessageBox.warning(
+                self,
+                "SSH User Needed",
+                f"Enter the host as user@{host}.\n\n"
+                f"The server's SSH username is the one thing the connection "
+                f"cannot tell us."
+            )
+            return False
+
+        answer = QMessageBox.question(
+            self,
+            "Set Up Passwordless Access",
+            f"{ssh_host} still asks for a password.\n\n"
+            f"LabLink can set up a key so it never asks again. You will be "
+            f"asked for the SSH password once; it is used to install the key "
+            f"and is not saved.\n\n"
+            f"Set it up now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+
+        password, ok = QInputDialog.getText(
+            self,
+            "SSH Password",
+            f"Password for {ssh_host}:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not password:
+            return False
+
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        try:
+            worked, message = install_public_key(ssh_host, password)
+        finally:
+            QApplication.restoreOverrideCursor()
+            del password
+
+        self.logs_text.append(message)
+        if not worked:
+            QMessageBox.critical(self, "Could Not Set Up SSH Access", message)
+        return worked
+
     def _remember_ssh_user(self, ssh_host: str):
         """Store the SSH user against the server it worked for.
 
@@ -1707,6 +1770,10 @@ class SystemPanel(QWidget):
             self.progress_bar.setValue(10)
             QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
             QApplication.processEvents()
+
+            if not self._ensure_passwordless_ssh(ssh_host):
+                self.logs_text.append("Remote update cancelled: no SSH access")
+                return
 
             result = update_remote_server(ssh_host, remote_dir, ref)
 

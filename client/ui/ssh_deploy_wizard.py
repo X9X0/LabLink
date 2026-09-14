@@ -375,6 +375,31 @@ class DeploymentThread(QThread):
 
             self.progress.emit(10, "Connected successfully")
 
+            # Leave the server reachable without a password. We are already
+            # authenticated here, so this is the one moment it costs nothing;
+            # afterwards the remote update can run with its output captured,
+            # where a password prompt could never be answered. Failing to
+            # install it is not worth failing a deployment over -- the update
+            # will offer to set it up later.
+            try:
+                from client.utils.ssh_access import public_key_text
+
+                pub = public_key_text()
+                if pub:
+                    quoted = shlex.quote(pub)
+                    _, out, _ = ssh.exec_command(
+                        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+                        "touch ~/.ssh/authorized_keys && "
+                        "chmod 600 ~/.ssh/authorized_keys && "
+                        f"grep -qxF {quoted} ~/.ssh/authorized_keys || "
+                        f"echo {quoted} >> ~/.ssh/authorized_keys",
+                        timeout=30,
+                    )
+                    if out.channel.recv_exit_status() == 0:
+                        self.progress.emit(12, "Passwordless access set up")
+            except Exception as e:
+                logger.warning(f"Could not install the SSH key: {e}")
+
             # Fetch initial system stats
             try:
                 stats = self._fetch_system_stats(ssh)

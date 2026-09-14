@@ -204,6 +204,66 @@ class TestTheSshHostComesFromTheConnection:
         assert "except Exception" in body
 
 
+class TestPasswordlessSshIsSetUpForYou:
+    """A user who has never made an SSH key must still be able to update a Pi.
+
+    The update runs with output captured, so a password prompt can never be
+    answered and would hang -- which made key access mandatory. Leaving the
+    user to arrange that works only for people who already know how; everyone
+    else met "Permission denied" with nothing to do about it.
+    """
+
+    def test_a_bare_host_is_rejected_with_an_explanation(self):
+        """The remote username cannot be guessed from the API connection."""
+        from client.utils.ssh_access import split_host
+
+        assert split_host("192.168.91.191") == (None, "192.168.91.191")
+        assert split_host("admin@192.168.91.191") == ("admin", "192.168.91.191")
+
+    def test_the_key_is_ed25519(self):
+        """A Pi on current OpenSSH refuses SHA-1 ssh-rsa outright, which is a
+        common reason key auth fails for no visible reason."""
+        from client.utils.ssh_access import KEY_PATH
+
+        assert KEY_PATH.name == "id_ed25519"
+
+    def test_the_password_is_never_stored(self):
+        """It installs a key; it does not save a credential."""
+        import inspect
+
+        from client.utils import ssh_access
+
+        source = inspect.getsource(ssh_access)
+        for leak in ("json.dump", "keyring", "QSettings", "write_text(password"):
+            assert leak not in source, f"{leak} suggests the password is kept"
+
+    def test_installing_is_idempotent(self):
+        """Running it twice must not append the key twice."""
+        import inspect
+
+        from client.utils.ssh_access import install_public_key
+
+        assert "grep -qxF" in inspect.getsource(install_public_key)
+
+    def test_the_update_checks_access_before_running(self):
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        checked = body.index("_ensure_passwordless_ssh")
+        ran = body.index("update_remote_server(ssh_host")
+        assert checked < ran, "it runs the update before checking it can connect"
+
+    def test_the_deploy_wizard_leaves_a_reachable_server(self):
+        """It has the password at that moment, so the key costs nothing then."""
+        import inspect
+
+        from client.ui import ssh_deploy_wizard
+
+        assert "public_key_text" in inspect.getsource(ssh_deploy_wizard)
+
+
 class TestBranchHashes:
     """A branch name does not say which code it is.
 
