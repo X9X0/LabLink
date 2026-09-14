@@ -612,6 +612,10 @@ class ControlPanel(QWidget):
         # continuous face rather than as two boxes with a seam between them.
         panel.setStyleSheet(
             "QWidget#digitalPanel { background-color: black; border-radius: 6px; }"
+            # Inset from the top and bottom so the rule reads as a separator
+            # between the two readings rather than as a border cutting the
+            # panel into halves.
+            "QWidget#digitalDivider { background-color: #3f4a3f; margin: 16px 0; }"
         )
 
         readings = QHBoxLayout(panel)
@@ -620,6 +624,17 @@ class ControlPanel(QWidget):
 
         self.voltage_display = FittedReadout("0.000 V")
         readings.addWidget(self.voltage_display, 1)
+
+        # A plain widget rather than a QFrame VLine: a frame draws itself from
+        # the palette, which the dark sheet supplies, and the result is all
+        # but invisible on black. A background colour is under our control.
+        self.digital_divider = QWidget()
+        self.digital_divider.setObjectName("digitalDivider")
+        self.digital_divider.setFixedWidth(2)
+        self.digital_divider.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+        )
+        readings.addWidget(self.digital_divider)
 
         self.current_display = FittedReadout("0.000 A")
         readings.addWidget(self.current_display, 1)

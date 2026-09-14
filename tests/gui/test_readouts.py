@@ -114,6 +114,62 @@ class TestItFillsTheBox:
         assert advance <= readout.width()
 
 
+class TestTheDigitalPanelSeparatesTheTwoReadings:
+    """One black face carrying two numbers needs a rule between them, or at a
+    glance it reads as one long reading."""
+
+    @pytest.fixture
+    def panel(self, qapp):
+        from client.ui.control_panel import ControlPanel
+
+        control = ControlPanel(client=None)
+        control._refresh_lock_status = lambda: None
+        control.resize(1300, 820)
+        control.show()
+        control._on_display_mode_changed("digital")
+        for _ in range(4):
+            control.layout().activate()
+            qapp.processEvents()
+        return control
+
+    def test_the_divider_sits_between_the_readings(self, panel):
+        volts, divider, amps = (
+            panel.voltage_display, panel.digital_divider, panel.current_display
+        )
+        assert volts.x() + volts.width() <= divider.x()
+        assert divider.x() + divider.width() <= amps.x()
+
+    def test_it_is_a_rule_not_a_column(self, panel):
+        """It must not take space the digits need."""
+        assert panel.digital_divider.width() <= 4
+
+    def test_it_is_actually_painted(self, panel, qapp):
+        """A QFrame VLine draws from the palette and vanishes on black, which
+        is why this is a plain widget with a background colour."""
+        divider = panel.digital_divider
+        image = panel.digital_display.grab().toImage()
+
+        middle = image.pixelColor(
+            divider.x() + divider.width() // 2,
+            divider.y() + divider.height() // 2,
+        ).name()
+        assert middle != "#000000", "the divider is invisible against the panel"
+
+    def test_it_is_inset_from_the_top_and_bottom(self, panel):
+        """Full height would read as a border cutting the panel in two."""
+        divider = panel.digital_divider
+        image = panel.digital_display.grab().toImage()
+        x = divider.x() + divider.width() // 2
+
+        top = image.pixelColor(x, divider.y() + 1).name()
+        middle = image.pixelColor(x, divider.y() + divider.height() // 2).name()
+        bottom = image.pixelColor(x, divider.y() + divider.height() - 2).name()
+
+        assert middle != "#000000"
+        assert top == "#000000", "the rule reaches the top edge"
+        assert bottom == "#000000", "the rule reaches the bottom edge"
+
+
 class TestTheChartCarriesTheReadings:
     @pytest.fixture
     def view(self, qapp):
