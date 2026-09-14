@@ -679,10 +679,15 @@ class EquipmentPanel(QWidget):
             return
 
         try:
+            # The client model calls these resource_name and
+            # equipment_type; the server payload calls them
+            # resource_string and type. Asking the dataclass for the
+            # server names raised AttributeError, which surfaced as
+            # "Connection failed" with no indication it was our own bug.
             result = await call_blocking(
                 self.client.connect_equipment,
-                self.selected_equipment.resource_string,
-                self.selected_equipment.type,
+                self.selected_equipment.resource_name,
+                self.selected_equipment.equipment_type,
                 self.selected_equipment.model,
             )
 

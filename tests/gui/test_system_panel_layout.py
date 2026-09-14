@@ -137,3 +137,52 @@ class TestItNamesWhatAnUpdateWillInterrupt:
         panel = SystemPanel()
         panel.client = Broken()
         assert panel._instruments_in_use() == []
+
+class TestConnectingUsesTheModelsOwnFieldNames:
+    """The client model and the server payload name things differently.
+
+    The dataclass has resource_name and equipment_type; the JSON has
+    resource_string and type. Asking the dataclass for the server names
+    raised AttributeError, which the UI reported as "Connection failed:
+    'Equipment' object has no attribute 'resource_string'" -- a message that
+    reads like the instrument refused, not like our own bug.
+
+    It stayed hidden while a 404 storm on the readings timer kept the connect
+    task from ever being entered.
+    """
+
+    def test_the_attributes_asked_for_exist(self):
+        """Every attribute connect_equipment reads must be on the model."""
+        import inspect
+        import re
+
+        from client.models.equipment import Equipment
+        from client.ui.equipment_panel import EquipmentPanel
+
+        body = inspect.getsource(EquipmentPanel.connect_equipment)
+        asked = set(re.findall(r"self\.selected_equipment\.(\w+)", body))
+        available = set(Equipment.__dataclass_fields__)
+
+        missing = asked - available
+        assert not missing, (
+            f"connect_equipment reads {sorted(missing)}, which Equipment does "
+            f"not have; it has {sorted(available)}"
+        )
+
+    def test_a_remembered_instrument_can_be_connected(self):
+        """The whole point of remembering one is being able to open it."""
+        from client.models.equipment import Equipment
+
+        remembered = Equipment.from_api_dict({
+            "id": "ps_36509eb5",
+            "manufacturer": "B&K Precision",
+            "model": "9205B",
+            "type": "power_supply",
+            "resource_string": "USB0::11975::37376::800886011797210043::0::INSTR",
+            "connected": False,
+        })
+
+        # These three are what the connect call passes on.
+        assert remembered.resource_name.startswith("USB0::")
+        assert remembered.equipment_type is not None
+        assert remembered.model == "9205B"
