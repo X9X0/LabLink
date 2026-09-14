@@ -777,10 +777,23 @@ class SystemPanel(QWidget):
                 pass
 
         except Exception as e:
-            logger.error(f"Error refreshing system info: {e}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to refresh system info:\n{str(e)}"
-            )
+            # This runs on a five-second timer. A modal dialog here
+            # interrupts whatever the operator is doing to report
+            # something they cannot act on -- and during a server update
+            # it is not even a fault: the containers are down because we
+            # asked them to be. Say it where it belongs instead.
+            logger.warning(f"Could not refresh system info: {e}")
+            if self._remote_update_running():
+                self.status_label.setText(
+                    "Status: server restarting as part of the update"
+                )
+            else:
+                self.status_label.setText("Status: not reachable")
+
+    def _remote_update_running(self) -> bool:
+        """Whether we are the reason the server is unreachable."""
+        worker = getattr(self, "_remote_worker", None)
+        return bool(worker is not None and worker.isRunning())
 
     def _on_mode_changed(self, index: int):
         """Handle update mode selection change."""
@@ -1904,6 +1917,34 @@ class SystemPanel(QWidget):
             self.update_client_btn.setEnabled(True)
             self.update_client_btn.setText("Update Client")
 
+    def _instruments_in_use(self) -> list:
+        """Instruments the server currently holds open, by name.
+
+        Updating stops the containers, so anything connected is dropped and
+        any output left on stays on with nothing watching it. That is worth
+        saying before starting, not discovering afterwards.
+        """
+        if not self.client:
+            return []
+        try:
+            listed = self.client.list_equipment() or []
+        except Exception as e:
+            logger.debug(f"Could not check what is connected: {e}")
+            return []
+
+        names = []
+        for item in listed:
+            # Remembered-but-closed instruments are not in use; only the ones
+            # the server actually holds open will be interrupted.
+            if not item.get("connected", True):
+                continue
+            label = " ".join(
+                part for part in (item.get("manufacturer"), item.get("model"))
+                if part
+            )
+            names.append(label or item.get("id", "unknown"))
+        return names
+
     def _update_remote_server(self):
         """Update a remote LabLink over SSH and rebuild its containers.
 
@@ -1943,6 +1984,19 @@ class SystemPanel(QWidget):
                 )
                 return
 
+            in_use = self._instruments_in_use()
+            if in_use:
+                listed = "".join(f"  - {name}\n" for name in in_use)
+                in_use_warning = (
+                    f"\n\n{len(in_use)} instrument(s) are connected and will "
+                    f"be disconnected while the server restarts:\n"
+                    f"{listed}"
+                    f"\nAn output left enabled stays enabled, with nothing "
+                    f"watching it.\n"
+                )
+            else:
+                in_use_warning = ""
+
             reply = QMessageBox.question(
                 self,
                 "Confirm Remote Server Update",
@@ -1952,6 +2006,7 @@ class SystemPanel(QWidget):
                 f"2. Rebuild the containers\n"
                 f"3. Bring them back up\n\n"
                 f"This machine's own checkout is not touched.\n"
+                f"{in_use_warning}"
                 f"The remote must be a git checkout, and SSH must work "
                 f"without a password.\n\n"
                 f"This may take several minutes.",

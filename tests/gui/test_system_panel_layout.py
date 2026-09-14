@@ -96,3 +96,44 @@ class TestTheUpdateLogFillsTheWindow:
         assert "layout.addWidget(logs_group, 1)" in source, (
             "the logs group has no stretch factor, so it cannot claim the space"
         )
+
+
+class TestItNamesWhatAnUpdateWillInterrupt:
+    """An output left enabled stays enabled with nothing watching it, which
+    on a bench is worth saying before starting rather than after."""
+
+    def _panel(self, qapp, items):
+        class Client:
+            host = "192.168.91.191"
+
+            def list_equipment(self):
+                return items
+
+        panel = SystemPanel()
+        panel.client = Client()
+        return panel
+
+    def test_open_instruments_are_named(self, qapp):
+        panel = self._panel(qapp, [
+            {"id": "a", "manufacturer": "B&K", "model": "1685B", "connected": True},
+        ])
+        assert panel._instruments_in_use() == ["B&K 1685B"]
+
+    def test_remembered_but_closed_ones_are_not_in_use(self, qapp):
+        """They are listed for convenience; no port is held open."""
+        panel = self._panel(qapp, [
+            {"id": "a", "manufacturer": "B&K", "model": "1685B", "connected": False},
+        ])
+        assert panel._instruments_in_use() == []
+
+    def test_an_unreachable_server_is_not_fatal(self, qapp):
+        """Not knowing must not block the update that would fix it."""
+        class Broken:
+            host = "x"
+
+            def list_equipment(self):
+                raise RuntimeError("server down")
+
+        panel = SystemPanel()
+        panel.client = Broken()
+        assert panel._instruments_in_use() == []

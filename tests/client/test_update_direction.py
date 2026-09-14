@@ -402,3 +402,29 @@ class TestTheUpdateButtonAsksFirst:
         """
         assert "if position and" in source, \
             "the guard must be conditional on having a position at all"
+
+
+class TestTheUpdateWarnsBeforeInterrupting:
+    """Updating stops the containers, so anything connected is dropped."""
+
+    def test_the_warning_reaches_the_confirmation(self):
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        assert "_instruments_in_use" in body
+        assert "in_use_warning" in body
+
+    def test_a_background_refresh_never_raises_a_dialog(self):
+        """It runs on a five-second timer, and during an update the server is
+        down because we asked it to be."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel.refresh)
+        tail = body.split("except Exception")[-1]
+        assert "QMessageBox" not in tail, (
+            "the periodic refresh interrupts with a modal dialog again"
+        )

@@ -326,6 +326,75 @@ class TestMinMaxAndAutoRange:
             assert mantissa in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10), top
 
 
+class TestARememberedInstrumentIsNotPolled:
+    """The list now includes instruments the server remembers but has not
+    opened. Polling one 404s at the reading rate, and that churn was enough
+    to stop the connect task ever being entered:
+
+        RuntimeError: Cannot enter into task ControlPanel._update_readings()
+        while another task EquipmentPanel.connect_equipment() is executing
+
+    So the symptom was not "readings fail" but "Connect does nothing".
+    """
+
+    @pytest.fixture
+    def panel(self, qapp):
+        from client.ui.control_panel import ControlPanel
+
+        control = ControlPanel(client=None)
+        control._refresh_lock_status = lambda: None
+        return control
+
+    def _equipment(self, status):
+        from client.models.equipment import Equipment, EquipmentType
+
+        return Equipment(
+            equipment_id="ps_x", name="1685B",
+            equipment_type=EquipmentType.POWER_SUPPLY,
+            manufacturer="B&K", model="1685B", resource_name="ASRL::x",
+            connection_status=status,
+        )
+
+    def _settle(self, qapp):
+        for _ in range(80):        # the timer start is delayed 500ms
+            qapp.processEvents()
+            qapp.thread().msleep(10)
+
+    def test_a_disconnected_instrument_is_not_polled(self, panel, qapp):
+        from client.models.equipment import ConnectionStatus
+
+        panel.selected_equipment = self._equipment(ConnectionStatus.DISCONNECTED)
+        panel._start_data_acquisition()
+        self._settle(qapp)
+
+        assert not panel.readings_timer.isActive(), (
+            "polling a closed instrument blocks the connect task"
+        )
+
+    def test_it_says_so_rather_than_showing_stale_numbers(self, panel, qapp):
+        from client.models.equipment import ConnectionStatus
+
+        panel.voltage_display.setText("4.77 V")
+        panel.selected_equipment = self._equipment(ConnectionStatus.DISCONNECTED)
+        panel._start_data_acquisition()
+
+        assert panel.voltage_display.text() == "--"
+
+    def test_a_connected_instrument_is_polled(self, panel, qapp):
+        from client.models.equipment import ConnectionStatus
+
+        panel.selected_equipment = self._equipment(ConnectionStatus.CONNECTED)
+        panel._start_data_acquisition()
+        self._settle(qapp)
+
+        assert panel.readings_timer.isActive()
+
+    def test_an_older_server_sending_no_status_still_works(self, panel):
+        """It lists only what is open, so absence means connected."""
+        panel.selected_equipment = self._equipment(None)
+        assert panel._selected_is_connected()
+
+
 class TestTheChartCarriesTheReadings:
     @pytest.fixture
     def view(self, qapp):

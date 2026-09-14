@@ -1283,6 +1283,16 @@ class ControlPanel(QWidget):
         if not self.selected_equipment:
             return
 
+        # The list now includes instruments the server remembers but has
+        # not opened. Polling one 404s at the reading rate, and that churn
+        # was enough to stop the connect task ever being entered:
+        # "Cannot enter into task ... while another task is being
+        # executed". So the tab that cannot read it also must not try.
+        if not self._selected_is_connected():
+            self._stop_data_acquisition()
+            self._show_not_connected()
+            return
+
         # Delay starting the timer to give the equipment time to settle after lock acquisition
         # This helps prevent empty serial responses from the BK power supply.
         #
@@ -1299,6 +1309,26 @@ class ControlPanel(QWidget):
         # look alive. It matters mostly for noticing control being taken away.
         self.lock_timer.start(5000)
 
+    def _selected_is_connected(self) -> bool:
+        """Whether the server currently holds the selected instrument open."""
+        equipment = self.selected_equipment
+        if not equipment:
+            return False
+        status = getattr(equipment, "connection_status", None)
+        # An older server sends no status at all and only lists what is open,
+        # so treat the absence as connected rather than refusing to work.
+        return status is None or status == ConnectionStatus.CONNECTED
+
+    def _show_not_connected(self):
+        """Say why there are no readings, rather than showing stale ones."""
+        self.voltage_display.setText("--")
+        self.current_display.setText("--")
+        self.voltage_gauge.set_value(0)
+        self.current_gauge.set_value(0)
+        self.status_message.emit(
+            "Not connected. Connect it on the Equipment tab to read it."
+        )
+
     def _stop_data_acquisition(self):
         """Stop acquiring data."""
         self.readings_timer.stop()
@@ -1312,6 +1342,14 @@ class ControlPanel(QWidget):
         preventing serial port overload from multiple simultaneous commands.
         """
         if not self.selected_equipment or not self.client:
+            return
+
+        # Belt and braces: the timer should already be stopped for an
+        # instrument the server has not opened, but a tick in flight when
+        # the selection changed would otherwise 404 and, worse, keep the
+        # loop too busy for the connect task to start.
+        if not self._selected_is_connected():
+            self._stop_data_acquisition()
             return
 
         # The 1 Hz timer can outpace a slow server, so skip ticks while a

@@ -291,6 +291,12 @@ class TestControlPanelWiring:
         equipment = MagicMock()
         equipment.equipment_id = "ps_1"
         equipment.name = "B&K 1902B"
+        # Connected, since these are about a panel that is driving an
+        # instrument. A bare mock reads as "not connected" now that the
+        # list also carries remembered-but-closed ones.
+        from client.models.equipment import ConnectionStatus
+
+        equipment.connection_status = ConnectionStatus.CONNECTED
         panel.selected_equipment = equipment
         yield panel, client
         panel.lock_timer.stop()
