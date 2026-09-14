@@ -62,6 +62,12 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
     and light-mode styling, but to feed them colours that follow the theme.
     Format a stylesheet with ``**dialog_palette()``.
 
+    ``accent``/``accent_hover`` are the application sheet's own button blue.
+    A panel that must style a control the application sheet does not reach --
+    a QCheckBox indicator, say -- takes the colour from here instead of
+    choosing its own, which is how the app came to show two different blues.
+    A control the application sheet already styles needs no stylesheet at all.
+
     ``auto`` resolves to the light values, matching ``_get_auto_stylesheet``.
     """
     if theme is None:
@@ -78,6 +84,8 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
             "field_bg": "#3c3c3c",
             "warn_bg": "#4a3f1f",
             "warn_text": "#ffd479",
+            "accent": "#2196F3",
+            "accent_hover": "#42A5F5",
         }
 
     return {
@@ -90,6 +98,8 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
         "field_bg": "white",
         "warn_bg": "#fff3cd",
         "warn_text": "#856404",
+        "accent": "#2196F3",
+        "accent_hover": "#1976D2",
     }
 
 

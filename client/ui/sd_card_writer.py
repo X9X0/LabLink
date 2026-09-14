@@ -1095,25 +1095,6 @@ class SDCardWriter(QDialog):
                 border: 1px solid {panel_border};
                 border-radius: 4px;
             }}
-            QPushButton {{
-                background-color: #3498db;
-                color: white;
-                border: 2px solid #2471a3;
-                border-radius: 6px;
-                padding: 8px 15px;
-                min-height: 30px;
-            }}
-            QPushButton:hover {{
-                background-color: #2e86c1;
-                border: 2px solid #1f618d;
-            }}
-            QPushButton:pressed {{
-                background-color: #2471a3;
-            }}
-            QPushButton:disabled {{
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }}
         """.format(**_c))
 
         self._setup_ui()

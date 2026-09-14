@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from client.api.client import LabLinkClient
+from client.ui.theme import dialog_palette
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class UpdateDialog(QDialog):
     def __init__(self, parent=None):
         """Initialize update dialog."""
         super().__init__(parent)
+        _c = dialog_palette()
         self.setWindowTitle("Server Update Configuration")
         self.setModal(True)
         self.resize(400, 200)
@@ -89,7 +91,7 @@ class UpdateDialog(QDialog):
             "⚠️ WARNING: This will pull latest code from git.\n"
             "In Docker environments, a rebuild and restart will be required."
         )
-        warning.setStyleSheet("color: orange; padding: 10px;")
+        warning.setStyleSheet("color: {warn_text}; padding: 10px;".format(**_c))
         warning.setWordWrap(True)
         layout.addWidget(warning)
 
@@ -127,6 +129,8 @@ class SystemPanel(QWidget):
 
     def _setup_ui(self):
         """Set up user interface."""
+        _c = dialog_palette()
+
         layout = QVBoxLayout(self)
 
         # Header
@@ -136,9 +140,7 @@ class SystemPanel(QWidget):
         # Update notification banner (hidden by default)
         self.notification_banner = QLabel()
         self.notification_banner.setWordWrap(True)
-        self.notification_banner.setStyleSheet(
-            "background-color: #FFA500; color: white; padding: 10px; border-radius: 5px; font-weight: bold;"
-        )
+        self.notification_banner.setStyleSheet("background-color: {warn_bg}; color: {warn_text}; padding: 10px; border-radius: 5px; font-weight: bold;".format(**_c))
         self.notification_banner.hide()
         layout.addWidget(self.notification_banner)
 
@@ -170,7 +172,7 @@ class SystemPanel(QWidget):
 
         mode_info = QLabel("ℹ️ Stable tracks version releases, Development tracks all commits")
         mode_info.setWordWrap(True)
-        mode_info.setStyleSheet("color: gray; font-size: 10px;")
+        mode_info.setStyleSheet("color: {muted_text}; font-size: 10px;".format(**_c))
 
         update_layout.addLayout(mode_layout)
         update_layout.addWidget(mode_info)
@@ -219,24 +221,24 @@ class SystemPanel(QWidget):
         branch_row2 = QHBoxLayout()
         self.show_all_branches_checkbox = QCheckBox("Show all branches (including inactive)")
         self.show_all_branches_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-size: 9px;
-                color: gray;
-            }
-            QCheckBox::indicator {
+                color: {muted_text};
+            }}
+            QCheckBox::indicator {{
                 width: 14px;
                 height: 14px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+        """.format(**_c))
         self.show_all_branches_checkbox.setToolTip(
             "When unchecked, only shows current and active branches (with commits in last 6 months).\n"
             "When checked, shows all branches sorted by most recent."
@@ -287,7 +289,7 @@ class SystemPanel(QWidget):
 
         # Separator
         separator1 = QLabel("─" * 120)
-        separator1.setStyleSheet("color: #bdc3c7;")
+        separator1.setStyleSheet("color: {panel_border};".format(**_c))
         update_layout.addWidget(separator1)
 
         # Side-by-side layout for Local and Remote sections
@@ -297,12 +299,12 @@ class SystemPanel(QWidget):
         # ========== Local Server Section ==========
         local_section = QWidget()
         local_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -321,26 +323,26 @@ class SystemPanel(QWidget):
             "If disabled or if automatic fails, manual instructions will be shown."
         )
         self.auto_docker_rebuild_local.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         local_layout.addWidget(self.auto_docker_rebuild_local)
 
         # Push button to bottom
@@ -352,36 +354,23 @@ class SystemPanel(QWidget):
         self.update_local_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on this machine"
         )
-        self.update_local_server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         local_layout.addWidget(self.update_local_server_btn)
 
         # ========== Vertical Separator ==========
         separator_frame = QFrame()
         separator_frame.setFrameShape(QFrame.Shape.VLine)
         separator_frame.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame.setStyleSheet("color: #bdc3c7;")
+        separator_frame.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Remote Server Section ==========
         remote_section = QWidget()
         remote_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         remote_layout = QVBoxLayout(remote_section)
         remote_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -405,7 +394,6 @@ class SystemPanel(QWidget):
             "Format: username@hostname or username@ip-address\n"
             "Example: pi@192.168.1.100"
         )
-        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
         ssh_layout.addWidget(self.ssh_host_input)
         remote_layout.addLayout(ssh_layout)
 
@@ -417,26 +405,26 @@ class SystemPanel(QWidget):
             "If disabled or if automatic fails, manual instructions will be shown."
         )
         self.auto_docker_rebuild_remote.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
         # Push button to bottom
@@ -448,19 +436,6 @@ class SystemPanel(QWidget):
         self.update_remote_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on remote host via SSH"
         )
-        self.update_remote_server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         remote_layout.addWidget(self.update_remote_server_btn)
 
         # Add sections to side-by-side layout with equal stretch
@@ -486,12 +461,12 @@ class SystemPanel(QWidget):
         # ========== Client Self-Update Section ==========
         client_section = QWidget()
         client_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         client_layout = QVBoxLayout(client_section)
         client_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -507,36 +482,23 @@ class SystemPanel(QWidget):
         self.update_client_btn = QPushButton("Update Client")
         self.update_client_btn.clicked.connect(self._update_client)
         self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
-        self.update_client_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         client_layout.addWidget(self.update_client_btn)
 
         # ========== Vertical Separator 1 ==========
         separator_frame1 = QFrame()
         separator_frame1.setFrameShape(QFrame.Shape.VLine)
         separator_frame1.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame1.setStyleSheet("color: #bdc3c7;")
+        separator_frame1.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Auto-Rebuild Section ==========
         auto_rebuild_section = QWidget()
         auto_rebuild_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         auto_rebuild_layout = QVBoxLayout(auto_rebuild_section)
         auto_rebuild_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -548,26 +510,26 @@ class SystemPanel(QWidget):
 
         self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
         self.auto_rebuild_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
@@ -576,36 +538,23 @@ class SystemPanel(QWidget):
 
         self.configure_rebuild_btn = QPushButton("Configure")
         self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
-        self.configure_rebuild_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         auto_rebuild_layout.addWidget(self.configure_rebuild_btn)
 
         # ========== Vertical Separator 2 ==========
         separator_frame2 = QFrame()
         separator_frame2.setFrameShape(QFrame.Shape.VLine)
         separator_frame2.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame2.setStyleSheet("color: #bdc3c7;")
+        separator_frame2.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Scheduled Checks Section ==========
         scheduled_section = QWidget()
         scheduled_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         scheduled_layout = QVBoxLayout(scheduled_section)
         scheduled_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -619,26 +568,26 @@ class SystemPanel(QWidget):
         checkbox_interval_layout = QHBoxLayout()
         self.scheduled_checkbox = QCheckBox("Enable")
         self.scheduled_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         self.scheduled_checkbox.setToolTip("Enable automatic update checking")
         checkbox_interval_layout.addWidget(self.scheduled_checkbox)
 
@@ -650,7 +599,6 @@ class SystemPanel(QWidget):
         self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
         self.interval_spinbox.setValue(24)
         self.interval_spinbox.setFixedWidth(50)
-        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
         checkbox_interval_layout.addWidget(self.interval_spinbox)
 
         hours_label = QLabel("hrs")
@@ -665,19 +613,6 @@ class SystemPanel(QWidget):
 
         self.configure_scheduled_btn = QPushButton("Configure")
         self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
-        self.configure_scheduled_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         scheduled_layout.addWidget(self.configure_scheduled_btn)
 
         # Add sections to side-by-side layout with equal stretch
