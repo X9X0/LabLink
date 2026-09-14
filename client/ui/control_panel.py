@@ -16,7 +16,11 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QPushButton, QRadioButton, QSizePolicy,
     QSplitter, QVBoxLayout, QWidget
 )
-from PyQt6.QtGui import QFont, QFontMetrics, QPalette, QColor, QPainter
+import math
+
+from PyQt6.QtCore import QPoint, QPointF, QRect
+from PyQt6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPalette,
+                         QPen, QPolygonF)
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from client.api.client import LabLinkClient, call_blocking
@@ -189,7 +193,31 @@ class ChartWithReadouts(QChartView):
 
 
 class AnalogGauge(QWidget):
-    """Custom analog gauge widget for voltage/current display."""
+    """A panel meter in the manner of a Simpson Model 29.
+
+    The shape is doing work, not decoration. A moving-coil meter puts a
+    shallow arc across the top and pivots the needle from low down, which
+    spreads the scale over the full width of the case and gives far more
+    travel per unit than a round dial squeezed into the same box. The fine
+    minor ticks are what let you read between the numbers, which is the whole
+    reason to watch a needle rather than a number.
+
+    It draws to whatever rectangle it is given, so the meter grows with the
+    window the way the digital and graph modes do.
+    """
+
+    #: The arc, in degrees as QPainter measures them: zero at three o-clock,
+    #: counter-clockwise positive. A shallow sweep across the top.
+    START_ANGLE = 155
+    SWEEP = 130
+
+    #: Fallbacks only. The real colours come from the theme at paint time, so
+    #: switching theme restyles the meter without rebuilding the panel.
+    BEZEL = QColor("#6e6e6e")
+    FACE = QColor("#f2efe6")
+    INK = QColor("#141414")
+    NEEDLE = QColor("#101010")
+    DANGER = QColor("#8c1c13")
 
     def __init__(self, title="", min_value=0, max_value=100, unit="", parent=None):
         """Initialize analog gauge.
@@ -208,99 +236,219 @@ class AnalogGauge(QWidget):
         self.unit = unit
         self.current_value = 0.0
 
-        self.setMinimumSize(200, 200)
+        self.setMinimumSize(220, 170)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_value(self, value: float):
         """Set the current value and update display."""
         self.current_value = max(self.min_value, min(self.max_value, value))
         self.update()
 
+    # -- geometry ---------------------------------------------------------
+
+    def _face_rect(self):
+        """The card inside the bezel."""
+        margin = max(6, int(min(self.width(), self.height()) * 0.05))
+        return self.rect().adjusted(margin, margin, -margin, -margin)
+
+    def _pivot_and_radius(self, face):
+        """Where the needle turns, and how far the scale sits from it.
+
+        The pivot sits low so the arc rides high in the case, as it does on
+        the real instrument.
+        """
+        pivot_x = face.center().x()
+        pivot_y = face.bottom() - int(face.height() * 0.16)
+        radius = min(face.width() * 0.46, face.height() * 0.80)
+        return pivot_x, pivot_y, radius
+
+    def _angle_for(self, value):
+        span = self.max_value - self.min_value
+        fraction = 0.0 if span <= 0 else (value - self.min_value) / span
+        fraction = max(0.0, min(1.0, fraction))
+        return self.START_ANGLE - fraction * self.SWEEP
+
+    def _load_theme(self):
+        """Take the case colours from the palette.
+
+        A panel meter is a physical object, so it keeps its own case rather
+        than dissolving into the panel: a grey bezel in both themes, with a
+        cream card and a black pointer in light, and a black card and a green
+        pointer in dark.
+        """
+        try:
+            from client.ui.theme import dialog_palette
+
+            palette = dialog_palette()
+        except Exception:
+            return  # the class fallbacks are already sensible
+
+        self.BEZEL = QColor(palette.get("meter_bezel", self.BEZEL))
+        self.FACE = QColor(palette.get("meter_face", self.FACE))
+        self.NEEDLE = QColor(palette.get("meter_needle", self.NEEDLE))
+        self.DANGER = QColor(palette.get("meter_danger", self.DANGER))
+
+        # Graduations, numerals and lettering are printed in the same ink as
+        # the pointer, so it is one value rather than two that have to be kept
+        # agreeing with each other.
+        self.INK = QColor(self.NEEDLE)
+
     def paintEvent(self, event):
-        """Paint the gauge."""
-        from PyQt6.QtGui import QPainter, QPen, QBrush, QConicalGradient
-        from PyQt6.QtCore import QPointF, QRectF
-        import math
+        self._load_theme()
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Get dimensions
-        width = self.width()
-        height = self.height()
-        size = min(width, height) - 20
-        center_x = width / 2
-        center_y = height / 2
+        self._draw_case(painter)
+        face = self._face_rect()
+        pivot_x, pivot_y, radius = self._pivot_and_radius(face)
 
-        # Draw gauge background
-        painter.setPen(QPen(Qt.GlobalColor.gray, 2))
-        painter.setBrush(QBrush(Qt.GlobalColor.lightGray))
-        painter.drawEllipse(QPointF(center_x, center_y), size / 2, size / 2)
+        self._draw_scale(painter, pivot_x, pivot_y, radius)
+        self._draw_legends(painter, face, pivot_x, pivot_y, radius)
+        self._draw_needle(painter, pivot_x, pivot_y, radius)
+        painter.end()
 
-        # Draw tick marks (short radial lines at each graduation)
-        painter.setPen(QPen(Qt.GlobalColor.black, 2))
-        tick_inner_radius = size / 2 - 20
-        tick_outer_radius = size / 2 - 10
-        for i in range(11):
-            angle = 225 - (i * 27)  # 270 degrees range
-            rad = math.radians(angle)
-            x1 = center_x + tick_inner_radius * math.cos(rad)
-            y1 = center_y - tick_inner_radius * math.sin(rad)
-            x2 = center_x + tick_outer_radius * math.cos(rad)
-            y2 = center_y - tick_outer_radius * math.sin(rad)
-            painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+    # -- the parts --------------------------------------------------------
 
-        # Draw value labels (variable radius: outer at top, inner at bottom edges)
-        painter.setFont(QFont("Arial", 8))
-        base_radius = size / 2 - 8  # Perfect at 12 o'clock
-        for i in range(11):
-            value = self.min_value + (self.max_value - self.min_value) * i / 10
-            angle = 225 - (i * 27)
-            rad = math.radians(angle)
+    def _draw_case(self, painter):
+        """Bezel, then the card inside it, then the two bezel screws."""
+        corner = max(8, int(min(self.width(), self.height()) * 0.07))
+        painter.setPen(QPen(self.BEZEL.lighter(135), 2))
+        painter.setBrush(self.BEZEL)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), corner, corner)
 
-            # Vary radius: full at top (90°), reduced at bottom edges (225° and -45°)
-            # Distance from top: 0 at 90°, max at 225° and -45°
-            angle_from_top = abs(angle - 90)
-            radius_reduction = (angle_from_top / 135) * 30  # Reduce up to 30px at extremes
-            label_radius = base_radius - radius_reduction
+        face = self._face_rect()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self.FACE)
+        painter.drawRoundedRect(face, corner // 2, corner // 2)
 
-            x = center_x + label_radius * math.cos(rad)
-            y = center_y - label_radius * math.sin(rad)
-            painter.drawText(int(x - 15), int(y + 5), 30, 20, Qt.AlignmentFlag.AlignCenter, f"{value:.1f}")
+        # The screws are most of what makes this read as a panel meter rather
+        # than a rounded rectangle.
+        screw = max(2, int(face.width() * 0.012))
+        # The screws are hardware, not print, so they take the case colour
+        # rather than the ink -- otherwise they turn green in dark mode.
+        painter.setBrush(self.BEZEL.lighter(150))
+        for x in (face.left() + int(face.width() * 0.16),
+                  face.right() - int(face.width() * 0.16)):
+            painter.drawEllipse(QPoint(x, face.top() + int(face.height() * 0.10)),
+                                screw, screw)
 
-        # Draw needle
-        value_ratio = (self.current_value - self.min_value) / (self.max_value - self.min_value)
-        needle_angle = 225 - (value_ratio * 270)
-        rad = math.radians(needle_angle)
-        needle_length = size / 2 - 40
+    def _draw_scale(self, painter, pivot_x, pivot_y, radius):
+        """Major ticks with numbers, and the minor ticks you read between."""
+        majors = 6
+        minors_per_major = 5
+        total = majors * minors_per_major
 
-        painter.setPen(QPen(Qt.GlobalColor.red, 3))
-        x_end = center_x + needle_length * math.cos(rad)
-        y_end = center_y - needle_length * math.sin(rad)
-        painter.drawLine(int(center_x), int(center_y), int(x_end), int(y_end))
+        number_size = max(6, int(radius * 0.085))
+        painter.setFont(QFont("Arial", number_size))
 
-        # Draw center dot
-        painter.setBrush(QBrush(Qt.GlobalColor.red))
-        painter.drawEllipse(QPointF(center_x, center_y), 5, 5)
+        for step in range(total + 1):
+            fraction = step / total
+            angle = math.radians(self.START_ANGLE - fraction * self.SWEEP)
+            is_major = step % minors_per_major == 0
 
-        # Draw unit label at top center (like a real power supply meter)
-        painter.setPen(QPen(Qt.GlobalColor.black))
-        painter.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        painter.drawText(0, int(center_y - size / 2 + 30), width, 30, Qt.AlignmentFlag.AlignCenter, self.unit)
+            outer = radius
+            inner = radius - (radius * (0.11 if is_major else 0.06))
+            width = max(1, int(radius * (0.016 if is_major else 0.008)))
 
-        # Draw title below the unit
-        painter.setFont(QFont("Arial", 10))
-        painter.drawText(0, int(center_y - size / 2 + 55), width, 20, Qt.AlignmentFlag.AlignCenter, self.title)
+            # The top of the scale is where a supply is working hardest, so
+            # the last fifth is marked the way the instrument marks it.
+            over = fraction > 0.8
+            painter.setPen(QPen(self.DANGER if over else self.INK, width))
+            painter.drawLine(
+                int(pivot_x + inner * math.cos(angle)),
+                int(pivot_y - inner * math.sin(angle)),
+                int(pivot_x + outer * math.cos(angle)),
+                int(pivot_y - outer * math.sin(angle)),
+            )
 
-        # Draw current value in the center
-        painter.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        value_text = f"{self.current_value:.2f}"
-        painter.drawText(0, int(center_y - 10), width, 30, Qt.AlignmentFlag.AlignCenter, value_text)
+            if is_major:
+                value = self.min_value + (self.max_value - self.min_value) * fraction
+                label_radius = radius - radius * 0.22
+                x = pivot_x + label_radius * math.cos(angle)
+                y = pivot_y - label_radius * math.sin(angle)
+                painter.setPen(self.INK)
+                text = f"{value:g}" if value == int(value) else f"{value:.1f}"
+                box = int(radius * 0.32)
+                painter.drawText(
+                    int(x - box / 2), int(y - number_size), box, number_size * 2,
+                    Qt.AlignmentFlag.AlignCenter, text,
+                )
 
-        # Draw "LabLink" branding at bottom (subtle)
-        painter.setPen(QPen(QColor(100, 100, 100)))  # Gray color for subtlety
-        painter.setFont(QFont("Arial", 8, QFont.Weight.Normal))
-        painter.drawText(0, int(center_y + size / 2 - 20), width, 20, Qt.AlignmentFlag.AlignCenter, "LabLink")
+        painter.setPen(QPen(self.INK, max(1, int(radius * 0.010))))
+        arc_box = QRect(int(pivot_x - radius), int(pivot_y - radius),
+                        int(radius * 2), int(radius * 2))
+        painter.drawArc(arc_box, int((self.START_ANGLE - self.SWEEP) * 16),
+                        int(self.SWEEP * 16))
 
+    def _draw_legends(self, painter, face, pivot_x, pivot_y, radius):
+        """DIRECT CURRENT above, the unit below, and the maker mark."""
+        painter.setPen(self.INK)
+
+        small = max(5, int(radius * 0.065))
+        painter.setFont(QFont("Arial", small))
+        painter.drawText(
+            face.adjusted(0, int(face.height() * 0.06), 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "DIRECT CURRENT",
+        )
+
+        unit_size = max(7, int(radius * 0.13))
+        painter.setFont(QFont("Arial", unit_size, QFont.Weight.Bold))
+        painter.drawText(
+            QRect(face.left(), pivot_y - int(radius * 0.36), face.width(),
+                  unit_size * 2),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            self._unit_caption(),
+        )
+
+        script = QFont("Segoe Script", max(6, int(radius * 0.085)))
+        script.setItalic(True)
+        painter.setFont(script)
+        painter.drawText(
+            QRect(face.left(), pivot_y - int(radius * 0.17), face.width(),
+                  int(radius * 0.24)),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "LabLink",
+        )
+
+        tiny = max(4, int(radius * 0.055))
+        painter.setFont(QFont("Arial", tiny))
+        painter.drawText(
+            face.adjusted(int(face.width() * 0.06), 0, 0,
+                          -int(face.height() * 0.06)),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+            "MODEL 29",
+        )
+
+    def _unit_caption(self):
+        """VOLTS and AMPS, spelled out as the instrument spells them."""
+        spelled = {"V": "VOLTS", "A": "AMPS", "W": "WATTS"}
+        return spelled.get(self.unit, (self.title or self.unit).upper())
+
+    def _draw_needle(self, painter, pivot_x, pivot_y, radius):
+        """A tapered pointer, with the counterweight stub behind the pivot."""
+        angle = math.radians(self._angle_for(self.current_value))
+        length = radius * 0.94
+        half_width = max(1.5, radius * 0.018)
+
+        tip = QPointF(pivot_x + length * math.cos(angle),
+                      pivot_y - length * math.sin(angle))
+        across = angle + math.pi / 2
+        left = QPointF(pivot_x + half_width * math.cos(across),
+                       pivot_y - half_width * math.sin(across))
+        right = QPointF(pivot_x - half_width * math.cos(across),
+                        pivot_y + half_width * math.sin(across))
+        tail = QPointF(pivot_x - radius * 0.10 * math.cos(angle),
+                       pivot_y + radius * 0.10 * math.sin(angle))
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self.NEEDLE)
+        painter.drawPolygon(QPolygonF([tip, left, tail, right]))
+
+        hub = max(3, int(radius * 0.045))
+        painter.setBrush(self.NEEDLE.darker(140))
+        painter.drawEllipse(QPoint(int(pivot_x), int(pivot_y)), hub, hub)
 
 class ControlPanel(QWidget):
     """Advanced equipment control panel with visualization."""
@@ -807,15 +955,22 @@ class ControlPanel(QWidget):
         return widget
 
     def _create_analog_display(self) -> QWidget:
-        """Create analog gauge display mode."""
+        """Create analog gauge display mode.
+
+        Expanding, like the digital and graph modes: the meters were pinned to
+        their minimum while the window had room to spare, which on a panel
+        meter costs real resolution -- the needle travel is the reading.
+        """
         widget = QWidget()
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.voltage_gauge = AnalogGauge("Voltage", 0, 60, "V")
-        layout.addWidget(self.voltage_gauge)
+        layout.addWidget(self.voltage_gauge, 1)
 
         self.current_gauge = AnalogGauge("Current", 0, 16, "A")
-        layout.addWidget(self.current_gauge)
+        layout.addWidget(self.current_gauge, 1)
 
         return widget
 

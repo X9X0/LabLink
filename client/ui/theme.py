@@ -91,6 +91,13 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
             # single pair of hues reads on both: these are the dark card's.
             "chart_voltage": "#64B5F6",
             "chart_current": "#9CCC65",
+            # The analog meter. A panel meter is a physical object, so it keeps
+            # its own case colours rather than dissolving into the panel: a grey
+            # bezel either way, with the card and pointer inverted for dark.
+            "meter_bezel": "#4a4a4a",
+            "meter_face": "#0d0d0d",
+            "meter_needle": "#3ddc6b",
+            "meter_danger": "#ef5350",
         }
 
     return {
@@ -107,6 +114,10 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
         "accent_hover": "#1976D2",
         "chart_voltage": "#1565C0",
         "chart_current": "#33691E",
+        "meter_bezel": "#6e6e6e",
+        "meter_face": "#f2efe6",
+        "meter_needle": "#101010",
+        "meter_danger": "#8c1c13",
     }
 
 
