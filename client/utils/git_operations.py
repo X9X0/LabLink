@@ -228,14 +228,14 @@ def get_branch_hashes() -> dict:
     picker lists every branch in the repository, and this runs on the UI
     thread each time that list is refreshed.
 
-    A local branch wins over the remote of the same name, because that is what
-    ``git checkout <name>`` resolves to -- which is what the updater does
-    before it pulls.
+    The remote wins over a local branch of the same name, because the hash
+    shown is what selecting that entry would land on: the updater checks the
+    branch out and then pulls, so origin's tip is the destination. Where you
+    are now is already on the status bar.
 
     Returns:
         ``{branch_name: short_hash}``, empty if git is unavailable.
     """
-    hashes = {}
     try:
         result = subprocess.run(
             [
@@ -253,8 +253,12 @@ def get_branch_hashes() -> dict:
         logger.warning(f"Could not read branch hashes: {e}")
         return {}
 
-    # refs/remotes/origin first, refs/heads second, so a local branch
-    # overwrites the remote entry of the same name.
+    # Sorted into local and remote first, then merged with the remote on top.
+    # Relying on the order git prints them in would be relying on an accident:
+    # for-each-ref sorts by refname regardless of the order the patterns were
+    # given, so refs/heads always precedes refs/remotes and the preference
+    # would be whichever way that happened to fall.
+    local, remote = {}, {}
     for line in result.stdout.splitlines():
         parts = line.split()
         if len(parts) != 2:
@@ -264,10 +268,15 @@ def get_branch_hashes() -> dict:
             continue
         if name.startswith("origin/"):
             name = name[len("origin/"):]
+            target = remote
+        else:
+            target = local
         if not name or name == "origin":
             continue
-        hashes[name] = short_hash
+        target[name] = short_hash
 
+    hashes = dict(local)
+    hashes.update(remote)
     return hashes
 
 
@@ -329,10 +338,29 @@ def compare_ref_to_head(ref: str) -> Optional[dict]:
             **no_window_kwargs()
         )
 
-        # HEAD...ref prints "<only in HEAD>	<only in ref>", which is
-        # how far ref is behind and ahead respectively.
+        # Compare against what the update would actually land on. Fetching
+        # moves origin/<branch>; it never moves the local branch ref, so
+        # comparing against the local one said "already up to date" while
+        # origin was a commit ahead -- and the guard then refused a real
+        # update. The updater checks the branch out and pulls, so origin's
+        # tip is the destination. A tag has no remote-tracking ref and falls
+        # through to itself.
+        target = ref
+        probe = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{ref}"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=False,
+            **no_window_kwargs()
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            target = f"origin/{ref}"
+
+        # HEAD...target prints "<only in HEAD>	<only in target>", which is
+        # how far target is behind and ahead respectively.
         result = subprocess.run(
-            ["git", "rev-list", "--left-right", "--count", f"HEAD...{ref}"],
+            ["git", "rev-list", "--left-right", "--count", f"HEAD...{target}"],
             capture_output=True,
             text=True,
             cwd=repo_dir(),

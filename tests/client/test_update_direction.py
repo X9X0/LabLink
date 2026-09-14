@@ -21,47 +21,85 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from client.utils.git_operations import compare_ref_to_head  # noqa: E402
 
 
-def _git(stdout):
+def _git(stdout, returncode=0):
     """A completed subprocess carrying `stdout`."""
     result = MagicMock()
     result.stdout = stdout
-    result.returncode = 0
+    result.returncode = returncode
     return result
+
+
+def _compare_calls(counts, remote_exists=True):
+    """The three calls compare_ref_to_head makes, in order.
+
+    fetch, then a rev-parse probing for origin/<ref>, then the rev-list. The
+    probe is what decides whether the comparison targets origin's tip or the
+    ref as given.
+    """
+    probe = _git("abc123\n") if remote_exists else _git("", returncode=1)
+    return [_git(""), probe, _git(counts)]
 
 
 class TestCompareRefToHead:
     """`git rev-list --left-right --count HEAD...ref` prints "behind ahead"."""
 
     def test_a_ref_behind_head_is_reported_as_behind(self):
-        with patch("subprocess.run", side_effect=[_git(""), _git("169\t0\n")]):
+        with patch("subprocess.run", side_effect=_compare_calls("169\t0\n")):
             assert compare_ref_to_head("v2.0.0") == {
                 "ahead": 0, "behind": 169, "same": False
             }
 
     def test_a_ref_ahead_of_head_is_reported_as_ahead(self):
-        with patch("subprocess.run", side_effect=[_git(""), _git("0\t4\n")]):
+        with patch("subprocess.run", side_effect=_compare_calls("0\t4\n")):
             assert compare_ref_to_head("main") == {
                 "ahead": 4, "behind": 0, "same": False
             }
 
     def test_the_same_commit_is_reported_as_same(self):
-        with patch("subprocess.run", side_effect=[_git(""), _git("0\t0\n")]):
+        with patch("subprocess.run", side_effect=_compare_calls("0\t0\n")):
             assert compare_ref_to_head("main")["same"] is True
 
     def test_diverged_is_neither_purely_ahead_nor_behind(self):
         """A rebased branch: the guard must not call this a downgrade."""
-        with patch("subprocess.run", side_effect=[_git(""), _git("3\t7\n")]):
+        with patch("subprocess.run", side_effect=_compare_calls("3\t7\n")):
             position = compare_ref_to_head("feature")
         assert position == {"ahead": 7, "behind": 3, "same": False}
         assert not (position["ahead"] == 0 and position["behind"] > 0)
 
     def test_it_fetches_before_comparing(self):
         """An unfetched tag cannot be compared, and a stale one lies."""
-        with patch("subprocess.run", side_effect=[_git(""), _git("0\t0\n")]) as run:
+        with patch("subprocess.run", side_effect=_compare_calls("0\t0\n")) as run:
             compare_ref_to_head("v2.0.0")
 
         first = run.call_args_list[0][0][0]
         assert first[:2] == ["git", "fetch"], f"did not fetch first: {first}"
+
+    def test_a_branch_is_compared_against_the_remote_not_the_local_ref(self):
+        """The regression that blocked a real update.
+
+        Fetching moves origin/<branch>; it never moves the local branch
+        ref. Comparing against the local one therefore reported "already
+        up to date" while origin was a commit ahead, and the guard then
+        refused the update it exists to explain.
+        """
+        from client.utils.git_operations import compare_ref_to_head
+
+        with patch("subprocess.run", side_effect=_compare_calls("0\t1\n")) as run:
+            assert compare_ref_to_head("main")["ahead"] == 1
+
+        rev_list = run.call_args_list[-1][0][0]
+        assert "HEAD...origin/main" in rev_list, rev_list
+
+    def test_a_tag_is_compared_against_itself(self):
+        """A tag has no remote-tracking ref to fall back to."""
+        from client.utils.git_operations import compare_ref_to_head
+
+        with patch("subprocess.run",
+                   side_effect=_compare_calls("177\t0\n", remote_exists=False)) as run:
+            assert compare_ref_to_head("v2.0.0")["behind"] == 177
+
+        rev_list = run.call_args_list[-1][0][0]
+        assert "HEAD...v2.0.0" in rev_list, rev_list
 
     def test_an_unknown_ref_returns_none_rather_than_guessing(self):
         import subprocess
@@ -73,7 +111,7 @@ class TestCompareRefToHead:
 
     def test_unparsable_output_returns_none(self):
         """None means "cannot tell", and the caller then asks nothing."""
-        with patch("subprocess.run", side_effect=[_git(""), _git("garbage\n")]):
+        with patch("subprocess.run", side_effect=_compare_calls("garbage\n")):
             assert compare_ref_to_head("main") is None
 
     def test_missing_git_returns_none(self):
@@ -97,14 +135,28 @@ class TestBranchHashes:
         with self._for_each_ref("origin/main d2af428\n"):
             assert get_branch_hashes() == {"main": "d2af428"}
 
-    def test_a_local_branch_wins_over_the_remote_of_the_same_name(self):
-        """git checkout <name> resolves locally, which is what the updater
-        does before it pulls."""
+    def test_the_remote_wins_over_a_local_branch_of_the_same_name(self):
+        """The hash shown is the destination, not where you are.
+
+        Selecting an entry checks the branch out and pulls, so origin's
+        tip is what you land on, and the status bar already says where
+        you are. This was first documented the other way round, and the
+        test passed only because it fed the mock in the order that suited
+        the claim: git sorts for-each-ref by refname, so refs/heads always
+        comes first and the remote always won regardless.
+        """
         from client.utils.git_operations import get_branch_hashes
 
-        # refs/remotes/origin is asked for first, refs/heads second.
+        # As git actually prints it: refs/heads sorts before refs/remotes.
+        with self._for_each_ref("main bbbbbbb\norigin/main aaaaaaa\n"):
+            assert get_branch_hashes()["main"] == "aaaaaaa"
+
+    def test_the_preference_does_not_depend_on_the_order_git_prints(self):
+        """Whichever way the lines arrive, the remote is the answer."""
+        from client.utils.git_operations import get_branch_hashes
+
         with self._for_each_ref("origin/main aaaaaaa\nmain bbbbbbb\n"):
-            assert get_branch_hashes()["main"] == "bbbbbbb"
+            assert get_branch_hashes()["main"] == "aaaaaaa"
 
     def test_head_pointers_are_not_branches(self):
         from client.utils.git_operations import get_branch_hashes
