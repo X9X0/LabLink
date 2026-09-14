@@ -70,7 +70,20 @@ def _restart_client(drop_easter_egg=False):
         argv = [a for a in argv if a != "--easter-egg"]
 
     print("🔄 Restarting to load the updated code...\n")
-    sys.stdout.flush()
+
+    # The Start Menu and desktop shortcuts run this under pythonw.exe, which
+    # has no console: sys.stdout is None. print() survives that -- CPython
+    # returns silently when there is no stdout -- but flushing it does not,
+    # and the AttributeError killed the restart *after* a self-update had
+    # already checked the new code out. The update applied, the flag was
+    # cleared, and the client simply never came back. Same guard as
+    # lablink_launch.show_error, which learned this the same way.
+    stream = getattr(sys, "stdout", None)
+    if stream is not None:
+        try:
+            stream.flush()
+        except (ValueError, OSError):
+            pass
 
     if os.name == "nt":
         # os.execv on Windows detaches the child from the console in a way

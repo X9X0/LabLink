@@ -82,6 +82,58 @@ class TestRestartClient:
                 _restart_client()
 
 
+class TestRestartWithoutAConsole:
+    """The shortcuts launch the client under pythonw.exe, where there is no
+    console and ``sys.stdout`` is None.
+
+    The restart used to flush stdout unconditionally. Under the shortcuts that
+    raised ``AttributeError: 'NoneType' object has no attribute 'flush'`` --
+    and it raised *after* the self-update had checked the new code out and
+    cleared its flag, so the update applied and the client never came back.
+    The user saw an app that promised to restart and then simply vanished.
+
+    print() is deliberately left unguarded: CPython returns silently when
+    sys.stdout is None, so it is already safe.
+    """
+
+    def test_restart_survives_a_missing_stdout(self):
+        with patch.object(sys, "argv", ["client/main.py"]),                 patch.object(sys, "stdout", None),                 patch.object(os, "name", "nt"),                 patch("subprocess.Popen") as popen,                 pytest.raises(SystemExit) as exit_info:
+            _restart_client()
+
+        popen.assert_called_once_with([sys.executable, "client/main.py"])
+        assert exit_info.value.code == 0, "the replacement was never spawned"
+
+    def test_restart_survives_a_closed_stdout(self):
+        """A detached stream raises ValueError rather than AttributeError."""
+        class Closed:
+            def write(self, _):
+                pass
+
+            def flush(self):
+                raise ValueError("I/O operation on closed file")
+
+        with patch.object(sys, "argv", ["client/main.py"]),                 patch.object(sys, "stdout", Closed()),                 patch.object(os, "name", "posix"),                 patch.object(os, "execv") as execv:
+            _restart_client()
+
+        execv.assert_called_once()
+
+    def test_a_real_stdout_is_still_flushed(self):
+        """The guard must not have quietly stopped flushing altogether."""
+        flushed = []
+
+        class Stream:
+            def write(self, _):
+                pass
+
+            def flush(self):
+                flushed.append(True)
+
+        with patch.object(sys, "argv", ["client/main.py"]),                 patch.object(sys, "stdout", Stream()),                 patch.object(os, "name", "posix"),                 patch.object(os, "execv"):
+            _restart_client()
+
+        assert flushed == [True]
+
+
 class TestBothInvocationsCanImportEverything:
     """`python client/main.py` and `python -m client.main` must both work.
 
