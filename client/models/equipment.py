@@ -60,8 +60,16 @@ class Equipment:
         # Use nickname as name if available, otherwise use model
         name = data.get("nickname") or data.get("name") or data.get("model", "Unknown")
 
-        # Assume connected status based on presence in list (equipment list only returns connected devices)
-        connection_status = data.get("connection_status", "connected")
+        # The list now carries instruments the server remembers from an
+        # earlier session as well as the ones it currently holds open, so
+        # presence no longer implies connected. Older servers send no flag
+        # and only list what is open, which is why the default is True.
+        if "connection_status" in data:
+            connection_status = data["connection_status"]
+        else:
+            connection_status = (
+                "connected" if data.get("connected", True) else "disconnected"
+            )
 
         return cls(
             equipment_id=equipment_id,

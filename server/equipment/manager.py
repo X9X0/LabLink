@@ -31,6 +31,14 @@ class EquipmentManager:
     def __init__(self):
         """Initialize equipment manager."""
         self.equipment: Dict[str, BaseEquipment] = {}
+
+        # What this server has identified before. Held on the data volume,
+        # so it survives the container restart an upgrade performs -- the
+        # list used to be emptied by every one of those, and rediscovering
+        # a 1685B means inferring it from a USB bridge again.
+        from server.equipment.inventory import EquipmentInventory
+
+        self.inventory = EquipmentInventory()
         self.resource_manager: Optional[ResourceManager] = None
         self._lock = asyncio.Lock()
 
@@ -171,6 +179,9 @@ class EquipmentManager:
 
                 # Store equipment
                 self.equipment[equipment_id] = equipment
+
+                # Remember what it is, so a restart does not lose the bench.
+                self.inventory.remember(info)
 
                 # Record connection event for diagnostics
                 from server.diagnostics import diagnostics_manager
@@ -415,13 +426,36 @@ class EquipmentManager:
         return self.equipment.get(equipment_id)
 
     async def get_connected_devices(self) -> List[EquipmentInfo]:
-        """Get list of all connected devices."""
+        """Every instrument this server knows, open or merely remembered.
+
+        Remembered ones carry connected=False. They are listed so an
+        operator can reconnect a bench that was identified in an earlier
+        session instead of rediscovering it -- no port is opened by
+        appearing here.
+        """
         async with self._lock:
-            return [
-                equipment.cached_info
-                for equipment in self.equipment.values()
-                if equipment.cached_info
-            ]
+            devices = []
+            open_ids = set()
+            for equipment in self.equipment.values():
+                if equipment.cached_info:
+                    info = equipment.cached_info.model_copy(
+                        update={"connected": True}
+                    )
+                    devices.append(info)
+                    open_ids.add(info.id)
+
+            for entry in self.inventory.entries():
+                if entry.get("id") in open_ids:
+                    continue
+                try:
+                    devices.append(EquipmentInfo(**{**entry, "connected": False}))
+                except Exception as e:
+                    # A remembered entry that no longer fits the model is
+                    # not worth failing the whole list for.
+                    equipment_id = entry.get("id")
+                    logger.warning(f"Skipping remembered {equipment_id}: {e}")
+
+            return devices
 
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""

@@ -39,6 +39,14 @@ class EquipmentInfo(BaseModel):
         ..., description="VISA resource string or connection info"
     )
     nickname: Optional[str] = Field(None, description="User-defined nickname")
+    connected: bool = Field(
+        True,
+        description=(
+            "Whether the server currently holds this instrument open. "
+            "False means it is remembered from a previous session and "
+            "can be connected without rediscovering it."
+        ),
+    )
 
 
 class EquipmentStatus(BaseModel):
