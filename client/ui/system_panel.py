@@ -867,7 +867,10 @@ class SystemPanel(QWidget):
             # both "on main" can be a week apart, and after the update picker
             # sent one install to a branch 30 commits behind there was nothing
             # on screen that would have shown it.
-            hashes = get_branch_hashes()
+            # The user pressed Refresh Branches, so go and look. The
+            # branch list is also rebuilt on mode changes, which is why
+            # the fetch is opt-in rather than automatic.
+            hashes = get_branch_hashes(fetch=True)
 
             if branches:
                 # Update combo box

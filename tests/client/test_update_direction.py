@@ -244,6 +244,38 @@ class TestBranchHashes:
         assert run.call_count == 1
         assert "for-each-ref" in run.call_args[0][0]
 
+    def test_it_does_not_fetch_by_default(self):
+        """The branch list is rebuilt on mode changes too, so the fetch is
+        opt-in rather than something that happens on a timer."""
+        from client.utils.git_operations import get_branch_hashes
+
+        with patch("subprocess.run", return_value=_git("main abc1234" + chr(10))) as run:
+            get_branch_hashes()
+
+        assert run.call_count == 1
+        assert "fetch" not in run.call_args[0][0]
+
+    def test_refreshing_branches_fetches(self):
+        """for-each-ref reads only what this clone has, so without a fetch a
+        branch that moved still shows its old commit however many times
+        Refresh Branches is pressed."""
+        from client.utils.git_operations import get_branch_hashes
+
+        with patch("subprocess.run",
+                   side_effect=[_git(""), _git("main abc1234" + chr(10))]) as run:
+            get_branch_hashes(fetch=True)
+
+        first = run.call_args_list[0][0][0]
+        assert first[:2] == ["git", "fetch"], first
+
+    def test_the_branch_refresh_button_asks_for_one(self):
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._refresh_branches)
+        assert "get_branch_hashes(fetch=True)" in body
+
     def test_git_being_unavailable_is_not_fatal(self):
         """Losing the hashes must not cost the branch list."""
         from client.utils.git_operations import get_branch_hashes

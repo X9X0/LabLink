@@ -277,7 +277,7 @@ def describe_head() -> Optional[str]:
         return None
 
 
-def get_branch_hashes() -> dict:
+def get_branch_hashes(fetch: bool = False) -> dict:
     """Short commit hash for every branch name the picker can offer.
 
     One ``for-each-ref`` rather than a ``rev-parse`` per branch: the update
@@ -292,6 +292,19 @@ def get_branch_hashes() -> dict:
     Returns:
         ``{branch_name: short_hash}``, empty if git is unavailable.
     """
+    if fetch:
+        # for-each-ref reads only what this clone already has, so without
+        # this a branch that moved five minutes ago still shows its old
+        # commit however many times Refresh Branches is pressed.
+        try:
+            subprocess.run(
+                ["git", "fetch", "--all", "--prune"],
+                capture_output=True, text=True, cwd=repo_dir(),
+                check=False, **no_window_kwargs()
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"Could not fetch before listing branches: {e}")
+
     try:
         result = subprocess.run(
             [
