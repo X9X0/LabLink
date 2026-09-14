@@ -1251,7 +1251,8 @@ class SystemPanel(QWidget):
             self.refresh_versions_btn.setEnabled(False)
             self.refresh_versions_btn.setText("Loading...")
 
-            tags = get_git_tags()
+            # The user pressed Refresh, so actually go and look.
+            tags = get_git_tags(fetch=True)
 
             if tags:
                 # Update combo box

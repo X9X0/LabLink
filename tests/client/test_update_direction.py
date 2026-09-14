@@ -119,6 +119,45 @@ class TestCompareRefToHead:
             assert compare_ref_to_head("main") is None
 
 
+class TestTheVersionListCanSeeNewReleases:
+    """"git tag" lists only what this clone already knows.
+
+    Nothing in the version picker fetched, so a release cut five minutes ago
+    could never appear however many times Refresh Versions was pressed -- and
+    the log line said "Fetching git tags" while it did no such thing.
+    """
+
+    def test_it_does_not_fetch_by_default(self):
+        """It is called on a timer as well as by the button."""
+        from client.utils.git_operations import get_git_tags
+
+        with patch("subprocess.run", return_value=_git("v2.1.2" + chr(10))) as run:
+            get_git_tags()
+
+        assert run.call_count == 1
+        assert "fetch" not in run.call_args[0][0]
+
+    def test_it_fetches_when_asked(self):
+        from client.utils.git_operations import get_git_tags
+
+        with patch("subprocess.run", side_effect=[_git(""), _git("v2.1.2" + chr(10))]) as run:
+            tags = get_git_tags(fetch=True)
+
+        first = run.call_args_list[0][0][0]
+        assert first[:2] == ["git", "fetch"], first
+        assert "--tags" in first
+        assert tags == ["v2.1.2"]
+
+    def test_the_refresh_button_asks_for_a_fetch(self):
+        """Otherwise pressing it can only ever redisplay the same list."""
+        import inspect
+
+        from client.ui.system_panel import SystemPanel
+
+        body = inspect.getsource(SystemPanel._populate_versions)
+        assert "get_git_tags(fetch=True)" in body
+
+
 class TestBranchHashes:
     """A branch name does not say which code it is.
 

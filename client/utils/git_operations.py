@@ -92,13 +92,27 @@ def get_git_root() -> Optional[str]:
         return None
 
 
-def get_git_tags() -> List[str]:
+def get_git_tags(fetch: bool = False) -> List[str]:
     """Get list of git tags sorted by version (newest first).
 
     Returns:
         List of tag names, e.g., ["v0.28.0", "v0.27.0", ...]
     """
     try:
+        if fetch:
+            # "git tag" only ever lists what this clone already knows.
+            # Without this a new release could never appear in the
+            # version picker, no matter how many times Refresh Versions
+            # was pressed -- and the log line said "Fetching git tags".
+            subprocess.run(
+                ["git", "fetch", "--tags", "--prune"],
+                capture_output=True,
+                text=True,
+                cwd=repo_dir(),
+                check=False,
+                **no_window_kwargs()
+            )
+
         result = subprocess.run(
             ["git", "tag", "--sort=-version:refname"],
             capture_output=True,
