@@ -200,8 +200,11 @@ def git_commit_and_tag(new_version: str, no_commit: bool = False, no_tag: bool =
     result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
     if result.stdout.strip() and not dry_run:
         # Stage VERSION, README, CHANGELOG, and Dockerfile
-        print("📝 Staging VERSION, README.md, CHANGELOG.md, and Dockerfile.server...")
-        subprocess.run(["git", "add", "VERSION", "README.md", "CHANGELOG.md", "docker/Dockerfile.server"], check=False)
+        print("📝 Staging VERSION, README.md, CHANGELOG.md, and both Dockerfiles...")
+        subprocess.run([
+            "git", "add", "VERSION", "README.md", "CHANGELOG.md",
+            "docker/Dockerfile.server", "docker/Dockerfile.web",
+        ], check=False)
 
     if not no_commit:
         commit_msg = f"chore: Bump version to {new_version}"
@@ -266,6 +269,10 @@ def main():
     readme_file = repo_root / "README.md"
     changelog_file = repo_root / "CHANGELOG.md"
     dockerfile_server = repo_root / "docker" / "Dockerfile.server"
+    # Both images carry the label. Only the server one was updated, so
+    # Dockerfile.web still read 2.0.0 after the 2.1.0 bump -- a stale
+    # label on a shipped image, from the tool whose job is to prevent it.
+    dockerfile_web = repo_root / "docker" / "Dockerfile.web"
 
     print("=" * 70)
     print("LabLink Version Bump Tool")
@@ -301,8 +308,9 @@ def main():
     # Update CHANGELOG
     update_changelog(changelog_file, new_version, args.dry_run)
 
-    # Update Dockerfile
+    # Update Dockerfiles
     update_dockerfile(dockerfile_server, new_version, args.dry_run)
+    update_dockerfile(dockerfile_web, new_version, args.dry_run)
 
     # Git operations
     if not args.dry_run:

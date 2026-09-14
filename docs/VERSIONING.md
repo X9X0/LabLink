@@ -4,7 +4,11 @@
 
 LabLink uses **single-source versioning** where all components (server, client, launcher, Docker) read from a central `VERSION` file. This ensures version consistency across the entire system.
 
-## Current Version: 1.2.0
+## Current Version
+
+Whatever `VERSION` says. This document deliberately does not repeat it: it
+was left at 1.2.0 through both the 2.0.0 and 2.1.0 releases, which is what a
+second copy of a single source of truth does.
 
 ## Version File Location
 

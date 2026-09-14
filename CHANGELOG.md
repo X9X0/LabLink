@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-09-14
+
+Everything since 2.0.0, which was 179 commits of work that never had a release
+to sit in. The bulk of it is the Windows installer, the desktop client's
+self-update, and a set of instrument-control faults found by running the client
+against a real bench: a B&K Precision 1685B and a 9205B on one Raspberry Pi.
+
+No breaking changes. Upgrading is a pull.
+
+### ✨ Added
+
+- **Console-free Windows launch.** Three Start Menu entries (client, launcher,
+  server) plus a desktop shortcut, none of which flash a console window, and an
+  uninstaller.
+- **A scriptable installer.** `install-client.ps1` takes `-InstallPath`,
+  `-NoShortcuts`, `-NoDesktopShortcut`, `-Unattended` and
+  `-ReplaceExistingShortcuts`, so an install can be exercised against a
+  throwaway directory instead of a real one.
+- **OVP and OCP controls** for supplies whose drivers implement them, and
+  visibly absent for the fixed-width models that have no such commands (#117).
+- **Equipment locks are visible and attributable.** The holder is named, taking
+  control is deliberate rather than automatic, and the strip stays live so an
+  operator is told when control is taken away.
+- **The operator chooses what an instrument is left doing** on disconnect
+  rather than inheriting a default (#198).
+- **A native Pi image builder and SD card writer on Windows**, including
+  identifying a card by inserting it, and accepting a new host key after a Pi
+  is reimaged.
+- **USB diagnostics that actually inspect the bus.**
+- **The launcher says which LabLink it is about to start** — version and branch
+  (#191).
+- **Make and Model columns on the Diagnostics health table.** Rows read as
+  `ps_56fdd3df` before, which on a bench with two supplies identified nothing.
+- **Live voltage and current across the top of the graph**, so the mode showing
+  the trend also shows the present value.
+- **Commit hashes in the update picker.** A branch name does not say which code
+  it is; two installs both "on main" can be a week apart.
+
+### 🐛 Fixed
+
+- **Selecting an instrument could command it.** Re-ranging the controls for a
+  newly selected supply clamped the previous one's setpoint into the new range,
+  and Qt emits `valueChanged` for that clamp — straight into `set_current`.
+  Choosing the 5 A 1685B after the 25 A 9205B sent the 1685B its full-scale
+  current, from a number nobody typed.
+- **Readings claimed precision the instrument never sent.** A supply resolving
+  to 0.01 A was displayed as `0.300 A`. Capabilities now carry the resolution
+  and the client prints to it.
+- **The digital readout rendered at 12px while the code asked for 48pt.** A Qt
+  stylesheet beats `setFont`, and the application sheet sets
+  `QWidget { font-size: 9pt }`. The readouts now fill their panel.
+- **Status colours made the status unreadable.** Pale fills with no text colour
+  left the dark theme's own pale text on them at about 1.2:1; "healthy" was
+  effectively invisible. Every pair now clears WCAG AA.
+- **The client self-update never came back.** It flushed `sys.stdout` while
+  running under `pythonw.exe`, where there is no console and `sys.stdout` is
+  `None` — after the new code was checked out and the flag cleared.
+- **An "update" could silently install an older client.** The picker offers
+  tags beside branches, and selecting the only tag moved an install 174 commits
+  backwards without a word. It now says so, with the count, defaulting to No.
+- **The WebSocket never authenticated.** The server closes `/ws` with 4001
+  unless the token is a query parameter, and the client never sent one, so on a
+  secured server the socket retried every five seconds indefinitely.
+- **Sessions went quietly unauthorized.** Access tokens last 30 minutes and
+  nothing refreshed them mid-session, so half an hour in every authenticated
+  call began failing while the window still showed a connection.
+- **The advertised one-liner install could never have worked**, and a UTF-8 BOM
+  would have broken it again.
+- **Every install dirtied the clone**, which then blocked `uninstall -Force`.
+- **The installer declared success over an environment that could not import.**
+- **`verify-install` hung forever on a message box nobody could see.**
+- **A scoped uninstall removed shortcuts it did not create.**
+- **The 9205B carried another model's limits** (#116).
+- **Discovery and the health monitor fought connected instruments for the
+  wire** (#166).
+- **Locale-dependent file and console I/O broke on Windows** (#192).
+- **Two unreachable alarm endpoints**, found by making their tests real.
+- **Default profiles reset on every boot** instead of seeding once.
+- **Three code paths reported success for work they had not done.**
+
+### 📝 Changed
+
+- **One blue.** Panels that styled their own buttons used a different blue from
+  the application sheet; those local rules are gone, so the accent is defined
+  once.
+- **The system panel follows the theme.** It carried 46 colour literals and no
+  theme import, so in dark mode its section boxes stayed near-white with pale
+  text over them. The login dialog had the same fault.
+- **The chart follows the theme** instead of rendering a white card inside a
+  dark application.
+- **One spelling of the manufacturer.** The fixed-width drivers said
+  "BK Precision" where the registry says "B&K Precision", which became visible
+  once the health table gained a manufacturer column.
+- **`#Requires -Version 5.1` is armed.** It had a space after the `#`, making it
+  a comment, so nothing checked the PowerShell version at all.
+
+---
+
+
 ## [2.0.0] - 2026-09-01
 
 A deliberate compatibility break. It exists to move the entire dependency stack
