@@ -323,7 +323,7 @@ function Install-ClientDependencies {
     # to be here too -- a shortcut that opens nothing is worse than no
     # shortcut. This is ~20 further packages (fastapi, uvicorn, pyvisa and so
     # on) on top of the client's.
-    Write-Step "Installing server dependencies (for the Server shortcut)..."
+    Write-Step "Installing server dependencies (to run the server on this machine)..."
     & $venvPython -m pip install -r "$LablinkDir\shared\requirements.txt"
     Invoke-Checked "Installing shared dependencies"
 
