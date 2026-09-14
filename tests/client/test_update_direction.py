@@ -190,7 +190,9 @@ class TestTheSshHostComesFromTheConnection:
 
         from client.ui.system_panel import SystemPanel
 
-        body = inspect.getsource(SystemPanel._update_remote_server)
+        # The update is asynchronous now, so this lives in the completion
+        # handler rather than inline.
+        body = inspect.getsource(SystemPanel._on_remote_update_done)
         remembered = body.index("_remember_ssh_user")
         failed = body.index("Remote Update Failed")
         assert remembered < failed, "it is being remembered on the failure path"
@@ -246,14 +248,28 @@ class TestPasswordlessSshIsSetUpForYou:
         assert "grep -qxF" in inspect.getsource(install_public_key)
 
     def test_the_update_checks_access_before_running(self):
+        """No point starting a minutes-long job we cannot authenticate for."""
         import inspect
 
         from client.ui.system_panel import SystemPanel
 
         body = inspect.getsource(SystemPanel._update_remote_server)
         checked = body.index("_ensure_passwordless_ssh")
-        ran = body.index("update_remote_server(ssh_host")
-        assert checked < ran, "it runs the update before checking it can connect"
+        started = body.index("RemoteUpdateWorker")
+        assert checked < started, "the worker starts before access is checked"
+
+    def test_the_update_does_not_block_the_window(self):
+        """A rebuild takes minutes; inline it froze the UI with nothing on it."""
+        import inspect
+
+        from client.ui.system_panel import RemoteUpdateWorker, SystemPanel
+
+        assert issubclass(RemoteUpdateWorker, QThread)
+        body = inspect.getsource(SystemPanel._update_remote_server)
+        assert "RemoteUpdateWorker(" in body
+        assert "update_remote_server(ssh_host" not in body, (
+            "it is calling the blocking form on the GUI thread again"
+        )
 
     def test_the_deploy_wizard_leaves_a_reachable_server(self):
         """It has the password at that moment, so the key costs nothing then."""
@@ -381,6 +397,7 @@ class TestDescribeHead:
 
 GUI = True
 try:
+    from PyQt6.QtCore import QThread
     import pyqtgraph  # noqa: F401
     from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: F401
 except ImportError:
