@@ -1842,8 +1842,8 @@ class SystemPanel(QWidget):
                     self,
                     "Client Update Scheduled",
                     f"Client has been marked for update to {ref}.\n\n"
-                    f"LabLink will close and reopen twice: once to apply "
-                    f"the update, and once more to start running it."
+                    f"LabLink will close and reopen once. The update is "
+                    f"applied in between, before any window appears."
                 )
 
                 # Actually restart, rather than exiting and hoping.

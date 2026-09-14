@@ -138,6 +138,41 @@ class TestRestartWithoutAConsole:
         assert flushed == [True]
 
 
+class TestTheUpdateIsAppliedBeforeAnyWindow:
+    """The middle restart must stay invisible.
+
+    A self-update restarts twice: once to leave the running code, once to
+    load what was checked out. The user should see one close and one reopen,
+    because the process in between applies the update and re-execs before it
+    ever builds a QApplication. Move the update block below the window and
+    the old UI would flash up mid-update, and the dialog that promises a
+    single reopen would start lying."
+    """
+
+    def test_the_update_runs_before_the_qapplication(self):
+        import inspect
+
+        import client.main as main_module
+
+        body = inspect.getsource(main_module.main)
+        applied = body.index("perform_client_update(ref)")
+        app_built = body.index("QApplication(")
+        assert applied < app_built, (
+            "the update now runs after the app is built, so the old UI would "
+            "appear in the middle of updating"
+        )
+
+    def test_the_restart_runs_before_the_qapplication_too(self):
+        import inspect
+
+        import client.main as main_module
+
+        body = inspect.getsource(main_module.main)
+        restarted = body.index("_restart_client()")
+        app_built = body.index("QApplication(")
+        assert restarted < app_built
+
+
 class TestRelaunchCommand:
     """The shortcuts start the client as a module, not a file.
 
