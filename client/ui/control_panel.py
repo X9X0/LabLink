@@ -630,7 +630,7 @@ class ControlPanel(QWidget):
         # but invisible on black. A background colour is under our control.
         self.digital_divider = QWidget()
         self.digital_divider.setObjectName("digitalDivider")
-        self.digital_divider.setFixedWidth(2)
+        self.digital_divider.setFixedWidth(8)
         self.digital_divider.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
         )

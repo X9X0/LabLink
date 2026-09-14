@@ -140,8 +140,13 @@ class TestTheDigitalPanelSeparatesTheTwoReadings:
         assert divider.x() + divider.width() <= amps.x()
 
     def test_it_is_a_rule_not_a_column(self, panel):
-        """It must not take space the digits need."""
-        assert panel.digital_divider.width() <= 4
+        """It must not take space the digits need.
+
+        The bound is generous because the width is a matter of taste, but a
+        divider that grew into a third column would be a bug.
+        """
+        assert panel.digital_divider.width() <= 16
+        assert panel.digital_divider.width() < panel.voltage_display.width() / 10
 
     def test_it_is_actually_painted(self, panel, qapp):
         """A QFrame VLine draws from the palette and vanishes on black, which
