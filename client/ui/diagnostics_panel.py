@@ -4,7 +4,8 @@ import logging
 from typing import Optional
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+
+from client.ui.theme import apply_status_colors
 from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                              QPushButton, QTableWidget, QTableWidgetItem,
                              QVBoxLayout, QWidget)
@@ -99,14 +100,10 @@ class DiagnosticsPanel(QWidget):
                 status = health.get("health_status", "unknown")
                 status_item = QTableWidgetItem(status)
 
-                if status == "healthy":
-                    status_item.setBackground(QColor(200, 255, 200))
-                elif status == "degraded":
-                    status_item.setBackground(QColor(255, 255, 200))
-                elif status == "warning":
-                    status_item.setBackground(QColor(255, 230, 200))
-                elif status == "critical":
-                    status_item.setBackground(QColor(255, 200, 200))
+                # Background and text together: the fills are pale, so setting
+                # only the background left the dark sheet's own pale text on
+                # them at about 1.2:1 and "healthy" became unreadable.
+                apply_status_colors(status_item, status)
 
                 self.health_table.setItem(row, 1, status_item)
 

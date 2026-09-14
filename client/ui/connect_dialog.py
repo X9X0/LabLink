@@ -15,10 +15,10 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QDialogButtonBox,
 )
-from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtCore import Qt
 
 from client.api.client import LabLinkClient
+from client.ui.theme import apply_status_colors
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,10 @@ class ConnectDeviceDialog(QDialog):
 
             # Highlight devices with high confidence (proper identification)
             if confidence >= 0.8 and manufacturer and model:
-                item.setBackground(QBrush(QColor(230, 255, 230)))  # Light green
+                apply_status_colors(item, "healthy")
                 item.setToolTip("Device properly identified via *IDN? query")
             elif confidence >= 0.6:
-                item.setBackground(QBrush(QColor(255, 255, 230)))  # Light yellow
+                apply_status_colors(item, "degraded")
                 item.setToolTip("Device partially identified via USB hardware database")
 
             self.resource_list.addItem(item)

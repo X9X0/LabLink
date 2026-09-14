@@ -6,12 +6,12 @@ from typing import Dict, Optional, Set
 
 import qasync
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QPushButton,
                              QTableWidget, QTableWidgetItem, QVBoxLayout,
                              QWidget)
 
 from client.api.client import LabLinkClient
+from client.ui.theme import apply_status_colors
 
 logger = logging.getLogger(__name__)
 
@@ -183,12 +183,14 @@ class AlarmPanel(QWidget):
                 severity_item = QTableWidgetItem(severity)
 
                 # Color code by severity
-                if severity == "critical":
-                    severity_item.setBackground(QColor(255, 200, 200))
-                elif severity == "error":
-                    severity_item.setBackground(QColor(255, 230, 200))
-                elif severity == "warning":
-                    severity_item.setBackground(QColor(255, 255, 200))
+                # Alarm severities onto the shared status levels, which is
+                # the mapping the old fills already implied: an error wore the
+                # warning fill and a warning wore the degraded one.
+                apply_status_colors(
+                    severity_item,
+                    {"critical": "critical", "error": "warning",
+                     "warning": "degraded"}.get(severity, ""),
+                )
 
                 self.alarms_table.setItem(row, 2, severity_item)
                 self.alarms_table.setItem(

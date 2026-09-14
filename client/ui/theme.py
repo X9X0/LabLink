@@ -103,6 +103,75 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
     }
 
 
+#: Canonical severity levels for table cells, worst last.
+STATUS_LEVELS = ("healthy", "degraded", "warning", "critical")
+
+
+def status_palette(theme: ThemeMode = None) -> dict:
+    """Background and foreground pairs for status cells in tables.
+
+    Cells used to set a background and no foreground. The fills are pale by
+    design -- pale green for healthy, pale yellow for degraded -- so under the
+    dark application sheet its #e0e0e0 text landed on them at a contrast ratio
+    of about 1.2:1. "healthy" on pale green was effectively invisible; the
+    colour that was meant to convey the status destroyed the word carrying it.
+
+    A background is therefore never set without the matching foreground, and
+    both come from here. Every pair clears WCAG AA (4.5:1), which the tests
+    assert rather than trust.
+
+    Returns:
+        ``{level: (background_hex, foreground_hex)}`` for STATUS_LEVELS.
+    """
+    if theme is None:
+        theme = get_theme_setting()
+
+    if theme == "dark":
+        # Muted fills, so a table of statuses does not glow against the dark
+        # sheet, with the hue carried by the text instead.
+        return {
+            "healthy": ("#1e3a24", "#8fe39d"),
+            "degraded": ("#3a361a", "#e6d76b"),
+            "warning": ("#3d2f1c", "#f3b169"),
+            "critical": ("#3d2020", "#f59a9a"),
+        }
+
+    # The fills light mode always had, now with text dark enough to read.
+    return {
+        "healthy": ("#c8ffc8", "#14532d"),
+        "degraded": ("#ffffc8", "#544a07"),
+        "warning": ("#ffe6c8", "#5c3a0a"),
+        "critical": ("#ffc8c8", "#6b1111"),
+    }
+
+
+def apply_status_colors(item, level: str, theme: ThemeMode = None) -> bool:
+    """Colour a table or list item for `level`, background and text together.
+
+    Qt is imported inside the function so this module stays importable without
+    a GUI, which the settings helpers above rely on.
+
+    Args:
+        item: a QTableWidgetItem or QListWidgetItem
+        level: one of STATUS_LEVELS; anything else leaves the item alone, so an
+            unrecognised status keeps the table's own readable colours rather
+            than getting a fill with no matching text colour.
+
+    Returns:
+        Whether the level was recognised and applied.
+    """
+    from PyQt6.QtGui import QBrush, QColor
+
+    pair = status_palette(theme).get(level)
+    if pair is None:
+        return False
+
+    background, foreground = pair
+    item.setBackground(QBrush(QColor(background)))
+    item.setForeground(QBrush(QColor(foreground)))
+    return True
+
+
 def get_app_stylesheet(theme: ThemeMode = "light") -> str:
     """
     Get the application stylesheet for the specified theme.
