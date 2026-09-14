@@ -86,6 +86,11 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
             "warn_text": "#ffd479",
             "accent": "#2196F3",
             "accent_hover": "#42A5F5",
+            # Readings drawn on the chart's own card. The card is near-black
+            # under the dark chart theme and white under the light one, so no
+            # single pair of hues reads on both: these are the dark card's.
+            "chart_voltage": "#64B5F6",
+            "chart_current": "#9CCC65",
         }
 
     return {
@@ -100,6 +105,8 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
         "warn_text": "#856404",
         "accent": "#2196F3",
         "accent_hover": "#1976D2",
+        "chart_voltage": "#1565C0",
+        "chart_current": "#33691E",
     }
 
 

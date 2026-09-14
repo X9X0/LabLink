@@ -8,19 +8,184 @@ from datetime import datetime
 from typing import Dict, Optional
 
 import qasync
+from client.ui.theme import dialog_palette, get_theme_setting
 from client.models.equipment import ConnectionStatus, Equipment
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QDial, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel,
-    QListWidget, QListWidgetItem, QPushButton, QRadioButton, QSplitter,
-    QVBoxLayout, QWidget
+    QListWidget, QListWidgetItem, QPushButton, QRadioButton, QSizePolicy,
+    QSplitter, QVBoxLayout, QWidget
 )
-from PyQt6.QtGui import QFont, QPalette, QColor, QPainter
+from PyQt6.QtGui import QFont, QFontMetrics, QPalette, QColor, QPainter
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from client.api.client import LabLinkClient, call_blocking
 
 logger = logging.getLogger(__name__)
+
+
+class FittedReadout(QLabel):
+    """A readout whose text is sized to fill the box it is given.
+
+    Two things made the digital display unreadable. The obvious one is that it
+    was two short bars while the analog and graph modes filled the panel. The
+    other is that ``setFont(QFont("Arial", 48))`` never took effect at all: a
+    Qt stylesheet beats setFont, and the application sheet sets
+    ``QWidget { font-size: 9pt }``, so the readout rendered at 12px while the
+    code said 48pt. Anything that sets a size here has to do it through this
+    widget's own stylesheet, which is what ``_apply_font_size`` does.
+
+    Sizing on every resize, rather than at one fixed point size, is what makes
+    "fills the box" true at more than one window size.
+    """
+
+    #: Fraction of the box height one line of digits should occupy.
+    HEIGHT_RATIO = 0.62
+
+    #: Never grow past this, or a maximised window turns the reading into
+    #: wallpaper and the decimals stop being scannable at a glance.
+    MAX_POINT_SIZE = 200
+
+    MIN_POINT_SIZE = 8
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._point_size = None
+        self._apply_font_size(self.MIN_POINT_SIZE)
+
+    def _apply_font_size(self, point_size: int):
+        if point_size == self._point_size:
+            return
+        self._point_size = point_size
+        # Colours stay with the panel; only the size is this widget's business.
+        self.setStyleSheet(
+            f"QLabel {{ background-color: transparent; color: #39FF14; "
+            f"font-family: Arial; font-weight: bold; "
+            f"font-size: {point_size}pt; }}"
+        )
+
+    def _fit(self):
+        """Largest point size whose text fits the current box, both ways."""
+        text = self.text() or "0"
+        available_h = max(self.height() - 8, 1)
+        available_w = max(self.width() - 16, 1)
+
+        target = int(available_h * self.HEIGHT_RATIO)
+        size = max(self.MIN_POINT_SIZE, min(self.MAX_POINT_SIZE, target))
+
+        # Point size sets the line height; the string still has to fit across.
+        # Shrink until it does rather than letting Qt elide or clip it.
+        while size > self.MIN_POINT_SIZE:
+            font = QFont("Arial", size, QFont.Weight.Bold)
+            if QFontMetrics(font).horizontalAdvance(text) <= available_w:
+                break
+            size -= 1
+
+        self._apply_font_size(size)
+
+    def setText(self, text):
+        super().setText(text)
+        self._fit()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+
+class ChartWithReadouts(QChartView):
+    """A chart view carrying a live voltage and current reading across its top.
+
+    The numbers are children of the view rather than a row above it, so they
+    sit on the chart's own face where the reading belongs -- next to the trace
+    it describes, not on the panel behind it. Qt lays out children only when
+    something asks it to, so the positions are recomputed on every resize.
+    """
+
+    #: Horizontal placement, as a fraction of the view's width. A quarter in
+    #: from each edge keeps both clear of the chart title in the middle.
+    LEFT_FRACTION = 0.25
+    RIGHT_FRACTION = 0.75
+
+    #: Down from the top, as a fraction of height -- level with the title.
+    TOP_FRACTION = 0.07
+
+    #: Point size when there is room for it, and the floor when there is not.
+    #: A reading is never elided to fit: half a number looks like a whole one
+    #: and would be misread, so the text shrinks instead.
+    POINT_SIZE = 16
+    MIN_POINT_SIZE = 7
+
+    def __init__(self, chart, parent=None):
+        super().__init__(chart, parent)
+
+        self.voltage_readout = QLabel("Volts: 0.000", self)
+        self.current_readout = QLabel("Amps: 0.000", self)
+
+        _c = dialog_palette()
+        for readout, colour in (
+            # Close to the series colours, so each number reads as belonging
+            # to its trace, but chosen against the card the chart theme paints
+            # rather than copied from the line: the series blue sits at 4.3:1
+            # on the dark card, which is below what is comfortably readable.
+            (self.voltage_readout, _c["chart_voltage"]),
+            (self.current_readout, _c["chart_current"]),
+        ):
+            readout.setProperty("colour", colour)
+            self._set_point_size(readout, self.POINT_SIZE)
+            readout.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            readout.adjustSize()
+
+    def _set_point_size(self, readout, point_size):
+        if readout.property("pointSize") == point_size:
+            return
+        readout.setProperty("pointSize", point_size)
+        colour = readout.property("colour")
+        readout.setStyleSheet(
+            f"QLabel {{ background-color: transparent; color: {colour}; "
+            f"font-family: Arial; font-weight: bold; "
+            f"font-size: {point_size}pt; }}"
+        )
+
+    def _fit(self, readout):
+        """Shrink until the reading fits its half of the view."""
+        available = max(self.width() // 2 - 16, 1)
+        size = self.POINT_SIZE
+        while size > self.MIN_POINT_SIZE:
+            self._set_point_size(readout, size)
+            readout.adjustSize()
+            if readout.width() <= available:
+                break
+            size -= 1
+        else:
+            self._set_point_size(readout, self.MIN_POINT_SIZE)
+            readout.adjustSize()
+
+    def _place(self):
+        top = int(self.height() * self.TOP_FRACTION)
+
+        for readout, fraction in (
+            (self.voltage_readout, self.LEFT_FRACTION),
+            (self.current_readout, self.RIGHT_FRACTION),
+        ):
+            self._fit(readout)
+            # Centred on the fraction, then clamped so a long reading cannot
+            # slide off either edge of the view.
+            x = int(self.width() * fraction) - readout.width() // 2
+            x = max(4, min(x, self.width() - readout.width() - 4))
+            readout.move(x, top)
+            readout.raise_()
+
+    def set_readings(self, voltage: float, current: float,
+                     voltage_decimals: int = 3, current_decimals: int = 3):
+        self.voltage_readout.setText(f"Volts: {voltage:.{voltage_decimals}f}")
+        self.current_readout.setText(f"Amps: {current:.{current_decimals}f}")
+        self._place()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place()
 
 
 class AnalogGauge(QWidget):
@@ -155,6 +320,13 @@ class ControlPanel(QWidget):
         super().__init__(parent)
         self.client = client
         self.selected_equipment: Optional[Equipment] = None
+
+        # How many places the selected instrument's readings actually resolve
+        # to. A supply that sends hundredths printed as 0.300 A claims a digit
+        # it never sent. The server reports this per model; these are the
+        # fallbacks for one too old to say.
+        self.voltage_decimals = 2
+        self.current_decimals = 3
         self.equipment_list: List[Equipment] = []
 
         # Data storage for graphs
@@ -421,23 +593,38 @@ class ControlPanel(QWidget):
         return group
 
     def _create_digital_display(self) -> QWidget:
-        """Create digital display mode."""
+        """Create digital display mode.
+
+        One panel with the two readings side by side, filling the same space
+        the analog gauges and the graph get. It was two short bars stacked in
+        a tall panel, so the digital mode used a fraction of the room the other
+        two modes used, and the numbers were small in an otherwise empty box.
+        """
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        outer = QVBoxLayout(widget)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        # Large digital readouts
-        self.voltage_display = QLabel("0.00 V")
-        self.voltage_display.setFont(QFont("Arial", 48, QFont.Weight.Bold))
-        self.voltage_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.voltage_display.setStyleSheet("QLabel { background-color: black; color: lime; padding: 20px; }")
-        layout.addWidget(self.voltage_display)
+        panel = QWidget()
+        panel.setObjectName("digitalPanel")
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # The black ground belongs to the panel, so the two readouts sit on one
+        # continuous face rather than as two boxes with a seam between them.
+        panel.setStyleSheet(
+            "QWidget#digitalPanel { background-color: black; border-radius: 6px; }"
+        )
 
-        self.current_display = QLabel("0.000 A")
-        self.current_display.setFont(QFont("Arial", 48, QFont.Weight.Bold))
-        self.current_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.current_display.setStyleSheet("QLabel { background-color: black; color: lime; padding: 20px; }")
-        layout.addWidget(self.current_display)
+        readings = QHBoxLayout(panel)
+        readings.setContentsMargins(12, 12, 12, 12)
+        readings.setSpacing(12)
 
+        self.voltage_display = FittedReadout("0.000 V")
+        readings.addWidget(self.voltage_display, 1)
+
+        self.current_display = FittedReadout("0.000 A")
+        readings.addWidget(self.current_display, 1)
+
+        outer.addWidget(panel)
         return widget
 
     def _create_analog_display(self) -> QWidget:
@@ -462,6 +649,14 @@ class ControlPanel(QWidget):
         self.chart = QChart()
         self.chart.setTitle("Voltage and Current vs Time")
         self.chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
+        # QChart defaults to a white card, which sat as a bright rectangle in
+        # the middle of the dark application. Its built-in dark theme colours
+        # the plot area, the gridlines and the legend together; the title and
+        # axis text it does not reach, so those are set from the palette.
+        self.chart.setTheme(
+            QChart.ChartTheme.ChartThemeDark if get_theme_setting() == "dark"
+            else QChart.ChartTheme.ChartThemeLight
+        )
 
         # Create series
         self.voltage_series = QLineSeries()
@@ -488,16 +683,26 @@ class ControlPanel(QWidget):
         self.axis_y_current.setRange(0, 16)
         self.chart.addAxis(self.axis_y_current, Qt.AlignmentFlag.AlignRight)
 
+        # The theme leaves the title and the axis labels at their default
+        # colour, which is near-black and unreadable on the dark card.
+        _c = dialog_palette()
+        self.chart.setTitleBrush(QColor(_c["text"]))
+        if self.chart.legend():
+            self.chart.legend().setLabelColor(QColor(_c["text"]))
+        for axis in (self.axis_x, self.axis_y_voltage, self.axis_y_current):
+            axis.setLabelsColor(QColor(_c["text"]))
+            axis.setTitleBrush(QColor(_c["text"]))
+
         # Attach series to axes
         self.voltage_series.attachAxis(self.axis_x)
         self.voltage_series.attachAxis(self.axis_y_voltage)
         self.current_series.attachAxis(self.axis_x)
         self.current_series.attachAxis(self.axis_y_current)
 
-        # Create chart view
-        chart_view = QChartView(self.chart)
-        chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        layout.addWidget(chart_view)
+        # Create chart view, with the live readings across its top
+        self.chart_view = ChartWithReadouts(self.chart)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        layout.addWidget(self.chart_view)
 
         # Add clear button at bottom right
         button_layout = QHBoxLayout()
@@ -675,6 +880,8 @@ class ControlPanel(QWidget):
                     capabilities = status.get("capabilities", {})
                     max_voltage = capabilities.get("max_voltage", 60.0)
                     max_current = capabilities.get("max_current", 5.0)
+                    self.voltage_decimals = capabilities.get("voltage_decimals", 2)
+                    self.current_decimals = capabilities.get("current_decimals", 3)
 
                     # Re-range the controls without commanding the instrument.
                     #
@@ -932,7 +1139,7 @@ class ControlPanel(QWidget):
             self.voltage_spinbox.blockSignals(False)
 
             # Update voltage displays with actual measured values
-            self.voltage_display.setText(f"{voltage_actual:.2f} V")
+            self.voltage_display.setText(f"{voltage_actual:.{self.voltage_decimals}f} V")
             self.voltage_gauge.set_value(voltage_actual)
 
             # Update current control knobs to show setpoint (without triggering callbacks)
@@ -944,8 +1151,15 @@ class ControlPanel(QWidget):
             self.current_spinbox.blockSignals(False)
 
             # Update current displays with actual measured values
-            self.current_display.setText(f"{current_actual:.3f} A")
+            self.current_display.setText(f"{current_actual:.{self.current_decimals}f} A")
             self.current_gauge.set_value(current_actual)
+
+            # The graph carries the same two numbers across its top, so the
+            # mode that shows the trend still shows the present value.
+            self.chart_view.set_readings(
+                voltage_actual, current_actual,
+                self.voltage_decimals, self.current_decimals,
+            )
 
             # Update graph data
             timestamp = len(self.voltage_data)
