@@ -185,6 +185,20 @@ class SettingsManager:
         """
         self.settings.setValue("connection/auto_connect", enabled)
 
+    # ==================== Control Panel ====================
+
+    def get_reading_rate(self, default: float = 1.0) -> float:
+        """How often the Control tab queries readings, in Hz."""
+        return self.settings.value("control/reading_rate_hz", default, type=float)
+
+    def set_reading_rate(self, rate: float):
+        """Remember the reading rate across sessions.
+
+        It is a bench preference -- how closely somebody is watching a supply
+        -- not something to re-choose every launch.
+        """
+        self.settings.setValue("control/reading_rate_hz", float(rate))
+
     # ==================== Window Settings ====================
 
     def get_window_geometry(self) -> Optional[bytes]:

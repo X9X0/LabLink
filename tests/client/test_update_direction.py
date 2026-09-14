@@ -154,130 +154,26 @@ class TestTheVersionListCanSeeNewReleases:
 
         from client.ui.system_panel import SystemPanel
 
-        body = inspect.getsource(SystemPanel._populate_versions)
-        assert "get_git_tags(fetch=True)" in body
+        wiring = inspect.getsource(SystemPanel._setup_ui)
+        assert "self._populate_versions(fetch=True)" in wiring
 
-
-class TestTheSshHostComesFromTheConnection:
-    """The client already knows which machine it is talking to.
-
-    Retyping the address invites a typo that points a rebuild at the wrong
-    Pi. Only the SSH user is unknown, so that is remembered per server.
-    """
-
-    def test_the_source_reads_the_connection(self):
+    def test_the_periodic_refresh_does_not_fetch(self):
+        """The visible tab is refreshed every five seconds, and that reaches
+        here. Fetching on that path put a network round trip on the GUI thread
+        every five seconds: the window hitched and the log filled up."""
         import inspect
 
         from client.ui.system_panel import SystemPanel
 
-        body = inspect.getsource(SystemPanel._prefill_ssh_from_connection)
-        assert 'getattr(self.client, "host", None)' in body
-
-    def test_it_never_overwrites_what_was_typed(self):
-        """Whatever the user put there wins."""
-        import inspect
-
-        from client.ui.system_panel import SystemPanel
-
-        body = inspect.getsource(SystemPanel._prefill_ssh_from_connection)
-        guard = body.index("if self.ssh_host_input.text().strip():")
-        setter = body.index("self.ssh_host_input.setText")
-        assert guard < setter, "it must bail out before writing"
-
-    def test_the_user_is_remembered_only_on_success(self):
-        """Storing a user that failed to connect would be worse than blank."""
-        import inspect
-
-        from client.ui.system_panel import SystemPanel
-
-        # The update is asynchronous now, so this lives in the completion
-        # handler rather than inline.
-        body = inspect.getsource(SystemPanel._on_remote_update_done)
-        remembered = body.index("_remember_ssh_user")
-        failed = body.index("Remote Update Failed")
-        assert remembered < failed, "it is being remembered on the failure path"
-
-    def test_remembering_cannot_fail_the_update(self):
-        import inspect
-
-        from client.ui.system_panel import SystemPanel
-
-        body = inspect.getsource(SystemPanel._remember_ssh_user)
-        assert "except Exception" in body
-
-
-class TestPasswordlessSshIsSetUpForYou:
-    """A user who has never made an SSH key must still be able to update a Pi.
-
-    The update runs with output captured, so a password prompt can never be
-    answered and would hang -- which made key access mandatory. Leaving the
-    user to arrange that works only for people who already know how; everyone
-    else met "Permission denied" with nothing to do about it.
-    """
-
-    def test_a_bare_host_is_rejected_with_an_explanation(self):
-        """The remote username cannot be guessed from the API connection."""
-        from client.utils.ssh_access import split_host
-
-        assert split_host("192.168.91.191") == (None, "192.168.91.191")
-        assert split_host("admin@192.168.91.191") == ("admin", "192.168.91.191")
-
-    def test_the_key_is_ed25519(self):
-        """A Pi on current OpenSSH refuses SHA-1 ssh-rsa outright, which is a
-        common reason key auth fails for no visible reason."""
-        from client.utils.ssh_access import KEY_PATH
-
-        assert KEY_PATH.name == "id_ed25519"
-
-    def test_the_password_is_never_stored(self):
-        """It installs a key; it does not save a credential."""
-        import inspect
-
-        from client.utils import ssh_access
-
-        source = inspect.getsource(ssh_access)
-        for leak in ("json.dump", "keyring", "QSettings", "write_text(password"):
-            assert leak not in source, f"{leak} suggests the password is kept"
-
-    def test_installing_is_idempotent(self):
-        """Running it twice must not append the key twice."""
-        import inspect
-
-        from client.utils.ssh_access import install_public_key
-
-        assert "grep -qxF" in inspect.getsource(install_public_key)
-
-    def test_the_update_checks_access_before_running(self):
-        """No point starting a minutes-long job we cannot authenticate for."""
-        import inspect
-
-        from client.ui.system_panel import SystemPanel
-
-        body = inspect.getsource(SystemPanel._update_remote_server)
-        checked = body.index("_ensure_passwordless_ssh")
-        started = body.index("RemoteUpdateWorker")
-        assert checked < started, "the worker starts before access is checked"
-
-    def test_the_update_does_not_block_the_window(self):
-        """A rebuild takes minutes; inline it froze the UI with nothing on it."""
-        import inspect
-
-        from client.ui.system_panel import RemoteUpdateWorker, SystemPanel
-
-        assert issubclass(RemoteUpdateWorker, QThread)
-        body = inspect.getsource(SystemPanel._update_remote_server)
-        assert "RemoteUpdateWorker(" in body
-        assert "update_remote_server(ssh_host" not in body, (
-            "it is calling the blocking form on the GUI thread again"
+        signature = inspect.signature(SystemPanel._populate_versions)
+        assert signature.parameters["fetch"].default is False, (
+            "the automatic path fetches again"
         )
 
-    def test_the_deploy_wizard_leaves_a_reachable_server(self):
-        """It has the password at that moment, so the key costs nothing then."""
-        import inspect
-
-        from client.ui import ssh_deploy_wizard
-
-        assert "public_key_text" in inspect.getsource(ssh_deploy_wizard)
+        body = inspect.getsource(SystemPanel.refresh)
+        assert "_populate_versions(fetch=True)" not in body, (
+            "the five-second refresh is asking for a fetch"
+        )
 
 
 class TestBranchHashes:

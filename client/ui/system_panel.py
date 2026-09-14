@@ -223,7 +223,9 @@ class SystemPanel(QWidget):
         version_selector_layout.addWidget(self.version_selector)
 
         self.refresh_versions_btn = QPushButton("Refresh Versions")
-        self.refresh_versions_btn.clicked.connect(self._populate_versions)
+        self.refresh_versions_btn.clicked.connect(
+            lambda: self._populate_versions(fetch=True)
+        )
         version_selector_layout.addWidget(self.refresh_versions_btn)
 
         version_selector_layout.addStretch()
@@ -1322,17 +1324,28 @@ class SystemPanel(QWidget):
                 self, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
             )
 
-    def _populate_versions(self):
-        """Populate version selector with git tags (client-side)."""
+    def _populate_versions(self, fetch: bool = False):
+        """Populate the version selector with git tags.
+
+        The visible tab is refreshed every five seconds, and this runs on
+        that path. Fetching here made every one of those a network round
+        trip on the GUI thread -- the window hitched every few seconds and
+        the log filled with "Fetching git tags..." over and over.
+
+        So only the Refresh Versions button fetches. The periodic pass
+        re-reads local tags, which is cheap, and says nothing unless the
+        list actually changed.
+        """
         from client.utils.git_operations import get_git_tags
 
         try:
-            self.logs_text.append("\n🏷️  Fetching git tags...")
-            self.refresh_versions_btn.setEnabled(False)
-            self.refresh_versions_btn.setText("Loading...")
+            if fetch:
+                self.logs_text.append("\nFetching git tags...")
+                self.refresh_versions_btn.setEnabled(False)
+                self.refresh_versions_btn.setText("Loading...")
+                QApplication.processEvents()
 
-            # The user pressed Refresh, so actually go and look.
-            tags = get_git_tags(fetch=True)
+            tags = get_git_tags(fetch=fetch)
 
             if tags:
                 # Update combo box
@@ -1344,9 +1357,15 @@ class SystemPanel(QWidget):
 
                 self.version_selector.blockSignals(False)
 
-                self.logs_text.append(f"✅ Found {len(tags)} versions")
+                # Only worth saying when the user asked, or when the list
+                # actually moved. Said every five seconds it is noise that
+                # buries the update output it shares a box with.
+                if fetch or len(tags) != getattr(self, "_known_tag_count", None):
+                    self.logs_text.append(f"Found {len(tags)} versions")
+                self._known_tag_count = len(tags)
             else:
-                self.logs_text.append("⚠️  No git tags found")
+                if fetch:
+                    self.logs_text.append("No git tags found")
                 QMessageBox.warning(
                     self,
                     "No Versions Found",

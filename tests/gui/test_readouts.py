@@ -175,6 +175,66 @@ class TestTheDigitalPanelSeparatesTheTwoReadings:
         assert bottom == "#000000", "the rule reaches the bottom edge"
 
 
+class TestTheReadingRateIsHonoured:
+    """The rate on screen has to be the rate being used.
+
+    Selecting equipment restarted the readings timer at a hardcoded 1000 ms,
+    so every switch between instruments quietly dropped 10 Hz to 1 Hz while
+    the spinbox still read 10. A display that disagrees with the behaviour is
+    worse than either being wrong, because nothing looks amiss.
+    """
+
+    @pytest.fixture
+    def panel(self, qapp):
+        from client.ui.control_panel import ControlPanel
+
+        control = ControlPanel(client=None)
+        control._refresh_lock_status = lambda: None
+        return control
+
+    def test_the_interval_follows_the_control(self, panel):
+        panel.refresh_spinbox.setValue(10.0)
+        assert panel._readings_interval_ms() == 100
+
+        panel.refresh_spinbox.setValue(1.0)
+        assert panel._readings_interval_ms() == 1000
+
+    def test_switching_equipment_keeps_the_chosen_rate(self, panel, qapp):
+        """The regression, stated directly."""
+        from client.models.equipment import (
+            ConnectionStatus, Equipment, EquipmentType,
+        )
+
+        panel.refresh_spinbox.setValue(10.0)
+        panel.selected_equipment = Equipment(
+            equipment_id="ps_x", name="1685B",
+            equipment_type=EquipmentType.POWER_SUPPLY,
+            manufacturer="B&K", model="1685B", resource_name="ASRL::x",
+            connection_status=ConnectionStatus.CONNECTED,
+        )
+        panel._start_data_acquisition()
+        for _ in range(80):        # the start is delayed 500ms on purpose
+            qapp.processEvents()
+            qapp.thread().msleep(10)
+
+        assert panel.readings_timer.interval() == 100, (
+            f"switching dropped the rate to "
+            f"{1000 / panel.readings_timer.interval():.0f} Hz"
+        )
+
+    def test_a_rate_of_zero_cannot_be_asked_for(self, panel):
+        """An interval of 0 would spin the event loop."""
+        panel.refresh_spinbox.setValue(panel.refresh_spinbox.minimum())
+        assert panel._readings_interval_ms() > 0
+
+    def test_the_rate_is_remembered(self, panel):
+        """A bench preference, not something to re-choose every launch."""
+        from client.utils.settings import SettingsManager
+
+        panel._on_refresh_changed(5.0)
+        assert SettingsManager().get_reading_rate() == pytest.approx(5.0)
+
+
 class TestTheChartCarriesTheReadings:
     @pytest.fixture
     def view(self, qapp):

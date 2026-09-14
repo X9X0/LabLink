@@ -554,7 +554,12 @@ class ControlPanel(QWidget):
         self.refresh_spinbox = QDoubleSpinBox()
         self.refresh_spinbox.setMinimum(0.1)
         self.refresh_spinbox.setMaximum(10.0)
-        self.refresh_spinbox.setValue(1.0)
+        try:
+            from client.utils.settings import SettingsManager
+
+            self.refresh_spinbox.setValue(SettingsManager().get_reading_rate(1.0))
+        except Exception:
+            self.refresh_spinbox.setValue(1.0)
         self.refresh_spinbox.setDecimals(1)
         self.refresh_spinbox.setSingleStep(0.1)
         self.refresh_spinbox.setToolTip("How often to query voltage and current readings from the equipment")
@@ -1022,14 +1027,27 @@ class ControlPanel(QWidget):
             self.output_button.setText("Output: OFF")
             self._send_output_command(False)
 
+    def _readings_interval_ms(self) -> int:
+        """The selected rate as a timer interval, never zero."""
+        rate = max(self.refresh_spinbox.value(), 0.1)
+        return int(1000 / rate)
+
     def _on_refresh_changed(self, value):
         """Handle refresh rate change.
 
         Updates how often voltage and current readings are queried from
         the equipment. All readings are fetched together in a single call.
         """
-        interval = int(1000 / value)  # Convert Hz to ms
-        self.readings_timer.setInterval(interval)
+        self.readings_timer.setInterval(self._readings_interval_ms())
+
+        # Remembered, because it is a bench preference rather than
+        # something to re-choose every launch.
+        try:
+            from client.utils.settings import SettingsManager
+
+            SettingsManager().set_reading_rate(value)
+        except Exception as e:
+            logger.debug(f"Could not save the reading rate: {e}")
 
     def _on_display_mode_changed(self, mode):
         """Handle display mode change."""
@@ -1104,8 +1122,15 @@ class ControlPanel(QWidget):
             return
 
         # Delay starting the timer to give the equipment time to settle after lock acquisition
-        # This helps prevent empty serial responses from the BK power supply
-        QTimer.singleShot(500, lambda: self.readings_timer.start(1000))  # 500ms delay, then 1 Hz
+        # This helps prevent empty serial responses from the BK power supply.
+        #
+        # Start at the rate that is actually selected. This passed 1000 ms
+        # flat, so every equipment switch quietly dropped the readings to
+        # 1 Hz while the spinbox still said 10 -- the display and the
+        # behaviour disagreeing, which is worse than either being wrong.
+        QTimer.singleShot(500, lambda: self.readings_timer.start(
+            self._readings_interval_ms()
+        ))
 
         # Poll the lock at 5s. Slower than the readings on purpose: it is a
         # server query rather than a serial one, and the countdown only has to
