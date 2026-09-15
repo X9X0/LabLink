@@ -9,6 +9,7 @@ Complete documentation for the LabLink laboratory equipment control system.
 - **[User Guide](USER_GUIDE.md)** - Complete guide for using LabLink
 - **[Getting Started](GETTING_STARTED.md)** - Quick start guide
 - **[Equipment Panels](EQUIPMENT_PANELS.md)** - Equipment-specific control panels
+- **[Instrument Panels](INSTRUMENT_PANELS.md)** - The Control tab's per-instrument panel contract, registry and polling rules
 - **[mDNS Discovery](MDNS_DISCOVERY.md)** - Automatic server discovery
 
 ### For Developers

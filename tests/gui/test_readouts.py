@@ -121,10 +121,9 @@ class TestTheDigitalPanelSeparatesTheTwoReadings:
 
     @pytest.fixture
     def panel(self, qapp):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        control = ControlPanel(client=None)
-        control._refresh_lock_status = lambda: None
+        control = PowerSupplyPanel()
         control.resize(1300, 820)
         control.show()
         control._on_display_mode_changed("digital")
@@ -187,10 +186,9 @@ class TestTheReadingRateIsHonoured:
 
     @pytest.fixture
     def panel(self, qapp):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        control = ControlPanel(client=None)
-        control._refresh_lock_status = lambda: None
+        control = PowerSupplyPanel()
         return control
 
     def test_the_interval_follows_the_control(self, panel):
@@ -246,10 +244,9 @@ class TestMinMaxAndAutoRange:
 
     @pytest.fixture
     def panel(self, qapp):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        control = ControlPanel(client=None)
-        control._refresh_lock_status = lambda: None
+        control = PowerSupplyPanel()
         control.instrument_max_voltage = 18.0
         control.instrument_max_current = 5.0
         control.voltage_decimals = 2
@@ -346,21 +343,21 @@ class TestMinMaxAndAutoRange:
         assert panel.voltage_gauge.max_value == 18.0
 
     def test_it_never_scales_past_the_instrument(self, panel):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        assert ControlPanel._nice_range(99.0, 5.0, 0.1) == 5.0
+        assert PowerSupplyPanel._nice_range(99.0, 5.0, 0.1) == 5.0
 
     def test_a_reading_of_zero_still_gives_a_usable_scale(self, panel):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        assert ControlPanel._nice_range(0.0, 5.0, 0.1) > 0
+        assert PowerSupplyPanel._nice_range(0.0, 5.0, 0.1) > 0
 
     def test_the_scale_lands_on_readable_numbers(self, panel):
         """Ten divisions of 3.7 volts each would be worse than not ranging."""
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
         for reading in (0.3, 0.9, 2.2, 4.9):
-            top = ControlPanel._nice_range(reading, 5.0, 0.1)
+            top = PowerSupplyPanel._nice_range(reading, 5.0, 0.1)
             mantissa = top / (10 ** math.floor(math.log10(top)))
             assert mantissa in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10), top
 
@@ -370,7 +367,7 @@ class TestARememberedInstrumentIsNotPolled:
     opened. Polling one 404s at the reading rate, and that churn was enough
     to stop the connect task ever being entered:
 
-        RuntimeError: Cannot enter into task ControlPanel._update_readings()
+        RuntimeError: Cannot enter into task ControlPanel._update_readings()  (now PowerSupplyPanel._poll)
         while another task EquipmentPanel.connect_equipment() is executing
 
     So the symptom was not "readings fail" but "Connect does nothing".
@@ -378,10 +375,9 @@ class TestARememberedInstrumentIsNotPolled:
 
     @pytest.fixture
     def panel(self, qapp):
-        from client.ui.control_panel import ControlPanel
+        from client.ui.instruments import PowerSupplyPanel
 
-        control = ControlPanel(client=None)
-        control._refresh_lock_status = lambda: None
+        control = PowerSupplyPanel()
         return control
 
     def _equipment(self, status):

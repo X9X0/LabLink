@@ -134,21 +134,23 @@ def _equipment(equipment_id, model):
 def control_panel(qapp):
     """A ControlPanel wired to a FakeClient, with both supplies listed.
 
-    `_send_*_command` are replaced with plain recorders: they are asyncSlots
-    that would need a running qasync loop, and what the tests care about is
-    only whether re-ranging reached them at all.
+    The supply controls now live on the power-supply panel the shell hosts;
+    its `_send_*_command` are replaced with plain recorders: they are
+    asyncSlots that would need a running qasync loop, and what the tests care
+    about is only whether re-ranging reached them at all.
     """
     client = FakeClient()
     panel = ControlPanel(client=client)
 
+    supply = panel.panel_for(_equipment("ps_9205b", "9205B"))
     panel.sent = []
-    panel._send_voltage_command = lambda v: panel.sent.append(("voltage", v))
-    panel._send_current_command = lambda v: panel.sent.append(("current", v))
+    supply._send_voltage_command = lambda v: panel.sent.append(("voltage", v))
+    supply._send_current_command = lambda v: panel.sent.append(("current", v))
 
     # Neither is part of what is under test, and both would otherwise want a
     # timer or an event loop.
     panel._refresh_lock_status = lambda: None
-    panel._start_data_acquisition = lambda: None
+    supply.start = lambda: None
 
     panel.equipment_list = [
         _equipment("ps_9205b", "9205B"),
@@ -168,6 +170,7 @@ def control_panel(qapp):
 def _select(panel, row):
     panel.equipment_list_widget.setCurrentRow(row)
     panel._on_equipment_selected()
+    return panel.current_panel
 
 
 class TestControlPanelSwitching:
@@ -177,8 +180,8 @@ class TestControlPanelSwitching:
         Selecting the 1685B used to clamp the 9205B's carried-over setpoint to
         5.0 and send it as set_current -- the 1685B's full scale.
         """
-        _select(control_panel, 0)
-        control_panel.current_spinbox.setValue(8.0)   # a real operator edit
+        supply = _select(control_panel, 0)
+        supply.current_spinbox.setValue(8.0)   # a real operator edit
         control_panel.sent.clear()
 
         _select(control_panel, 1)                     # 25 A -> 5 A
@@ -187,30 +190,37 @@ class TestControlPanelSwitching:
 
     def test_the_operator_edit_itself_still_commands(self, control_panel):
         """The guard must not have muted the controls for real edits."""
-        _select(control_panel, 0)
+        supply = _select(control_panel, 0)
         control_panel.sent.clear()
 
-        control_panel.current_spinbox.setValue(7.5)
+        supply.current_spinbox.setValue(7.5)
 
         assert ("current", 7.5) in control_panel.sent
 
     def test_the_new_supply_s_own_setpoint_is_shown(self, control_panel):
         """Not the ceiling, and not the previous instrument's number."""
-        _select(control_panel, 0)
-        control_panel.current_spinbox.setValue(8.0)
+        supply = _select(control_panel, 0)
+        supply.current_spinbox.setValue(8.0)
 
-        _select(control_panel, 1)
+        supply = _select(control_panel, 1)
 
-        assert control_panel.current_spinbox.value() == pytest.approx(1.2)
-        assert control_panel.voltage_spinbox.value() == pytest.approx(3.3)
+        assert supply.current_spinbox.value() == pytest.approx(1.2)
+        assert supply.voltage_spinbox.value() == pytest.approx(3.3)
 
     def test_the_ceiling_still_follows_the_supply(self, control_panel):
         """Blocking the signals must not have skipped the re-ranging."""
-        _select(control_panel, 0)
-        assert control_panel.current_spinbox.maximum() == pytest.approx(25.0)
+        supply = _select(control_panel, 0)
+        assert supply.current_spinbox.maximum() == pytest.approx(25.0)
 
-        _select(control_panel, 1)
-        assert control_panel.current_spinbox.maximum() == pytest.approx(5.0)
+        supply = _select(control_panel, 1)
+        assert supply.current_spinbox.maximum() == pytest.approx(5.0)
+
+    def test_both_supplies_share_one_panel(self, control_panel):
+        """One instance per panel class, so switching keeps the graph history
+        and does not leak a widget per selection."""
+        first = _select(control_panel, 0)
+        second = _select(control_panel, 1)
+        assert first is second
 
     def test_a_supply_that_cannot_report_setpoints_still_commands_nothing(
         self, control_panel
@@ -225,8 +235,8 @@ class TestControlPanelSwitching:
                 return {"success": False, "error": "unsupported"}
             return {"success": True, "data": None}
 
-        _select(control_panel, 0)
-        control_panel.current_spinbox.setValue(8.0)
+        supply = _select(control_panel, 0)
+        supply.current_spinbox.setValue(8.0)
         control_panel.client.send_command = refuse
         control_panel.sent.clear()
 

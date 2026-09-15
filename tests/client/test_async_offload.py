@@ -106,7 +106,8 @@ class TestPanelsUseOffloading:
     """
 
     HOT_PATHS = [
-        ("client/ui/control_panel.py", "_update_readings"),
+        ("client/ui/instruments/base.py", "_poll"),
+        ("client/ui/instruments/power_supply.py", "poll"),
         ("client/ui/control_panel.py", "refresh_equipment_list"),
         ("client/ui/acquisition_panel.py", "refresh_sessions"),
         ("client/ui/sync_panel.py", "refresh_groups"),

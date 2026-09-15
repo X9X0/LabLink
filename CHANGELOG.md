@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.0] - 2026-09-15
+
+Per-instrument control panels, phase 1: the shell and the contract.
+
+### ✨ Added
+
+- **The Control tab hosts one panel per instrument type.** `ControlPanel` is
+  now a shell -- equipment list, lock strip, selection, and the connection
+  resolution built for multi-server -- around a `QStackedWidget`. Which panel
+  appears is decided by a registry keyed on `EquipmentType`
+  (`client/ui/instruments/registry.py`); a type with no panel of its own gets
+  `GenericInstrumentPanel` (identity plus the driver's `get_state` snapshot),
+  and never the power-supply dials. A DS1054Z no longer sees voltage and
+  current controls it has no concept of.
+- **Each panel declares what it polls and how fast** (`InstrumentPanel.POLLS`,
+  `DEFAULT_INTERVAL_MS`) and owns its timer, started when it becomes current
+  and stopped when replaced. The refresh-rate control moved into the panel
+  and the operator's override is remembered per equipment type
+  (`SettingsManager.get_reading_rate_for`), so choosing 5 Hz for a supply does
+  not also drive a scope at 5 Hz.
+- **Permanent refusals stop polling in the base class.** A 404 means the
+  instrument is gone; 501 or 405 mean it cannot answer this panel's poll. Both
+  stop the timer; a 500, 503 or timeout does not. This is the contract that
+  replaces the fixes for the 2.1.4 (404) and 2.2.1 (501) storms, and
+  `tests/gui/test_instrument_panel_contract.py` is its regression guard.
+- `PowerSupplyPanel` (`client/ui/instruments/power_supply.py`): the existing
+  supply UI moved out of the shell unchanged in behaviour -- dials, output,
+  CV/CC, digital/analog/graph displays, min/max and auto-range.
+- `client/ui/instruments/widgets.py`: `FittedReadout`, `AnalogGauge`,
+  `ChartWithReadouts` and `nice_range` shared by every panel (still importable
+  from `client.ui.control_panel`).
+- `docs/INSTRUMENT_PANELS.md`: the contract and how to add a panel.
+
+### 🐛 Fixed
+
+- A panel's settle delay before the first poll was a `QTimer.singleShot` with
+  a lambda holding the panel, which could fire into a widget that had since
+  been deselected or destroyed. It is a child timer now, stopped by `stop()`
+  and gone with its parent.
+- `tests/unit/test_settings.py` constructed a second `QApplication` when GUI
+  tests earlier in the run had already made one, which is a segfault at the
+  next Qt call rather than an error. It reuses the existing instance.
+
+### 📝 Changed
+
+- The GUI tests that reached into `ControlPanel` for supply controls
+  (`test_readouts`, `test_panel_reranging`, `test_readings_stop_on_404`,
+  `test_analog_gauge`, `test_multi_server_equipment_list`,
+  `test_equipment_lock_ui`) now construct `PowerSupplyPanel` directly or go
+  through `ControlPanel.current_panel`.
+
+---
+
+
 ## [2.3.2] - 2026-09-15
 
 ### 🐛 Fixed

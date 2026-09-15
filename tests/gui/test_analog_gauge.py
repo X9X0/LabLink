@@ -24,7 +24,7 @@ try:
     from PyQt6.QtWidgets import QApplication, QSizePolicy
 
     import client.ui.theme as theme_module
-    from client.ui.control_panel import AnalogGauge, ControlPanel
+    from client.ui.instruments import AnalogGauge, PowerSupplyPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -75,8 +75,7 @@ class TestItGrowsWithTheWindow:
                 == QSizePolicy.Policy.Expanding)
 
     def test_a_bigger_window_gives_a_bigger_meter(self, qapp):
-        panel = ControlPanel(client=None)
-        panel._refresh_lock_status = lambda: None
+        panel = PowerSupplyPanel()
         panel._on_display_mode_changed("analog")
 
         sizes = []

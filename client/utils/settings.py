@@ -199,6 +199,26 @@ class SettingsManager:
         """
         self.settings.setValue("control/reading_rate_hz", float(rate))
 
+    def get_reading_rate_for(self, equipment_type: str, default: float) -> float:
+        """The reading rate chosen for one kind of instrument, in Hz.
+
+        Each panel declares its own cadence -- a supply at 10 Hz, a scope's
+        measurements at 2 Hz -- and an operator's override is remembered per
+        type so choosing 5 Hz for the supply does not also drive the scope at
+        5 Hz. Falls back to the panel's default when nothing was chosen.
+        """
+        key = f"control/reading_rate_hz/{equipment_type}"
+        return self.settings.value(key, default, type=float)
+
+    def set_reading_rate_for(self, equipment_type: str, rate: float):
+        """Remember the override for one kind of instrument."""
+        key = f"control/reading_rate_hz/{equipment_type}"
+        self.settings.setValue(key, float(rate))
+        # The power supply's rate is also the historical single setting, kept
+        # in step so an older client reading it still sees the bench choice.
+        if equipment_type == "power_supply":
+            self.set_reading_rate(rate)
+
     # ==================== Window Settings ====================
 
     def get_window_geometry(self) -> Optional[bytes]:

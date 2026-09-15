@@ -21,8 +21,13 @@ class TestSettingsManager:
 
     @pytest.fixture(scope="class")
     def app(self):
-        """Create QApplication instance."""
-        return QApplication([])
+        """The QApplication, shared with whatever created one first.
+
+        Qt allows one application object per process. Constructing a second
+        while GUI tests earlier in the run still hold widgets is a segfault
+        at the next Qt call, not an error message.
+        """
+        return QApplication.instance() or QApplication([])
 
     @pytest.fixture
     def settings(self, app, tmp_path):

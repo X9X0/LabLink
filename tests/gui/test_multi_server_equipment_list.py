@@ -123,6 +123,24 @@ def _rows(widget):
     return [widget.item(i).text() for i in range(widget.count())]
 
 
+def _writes(client):
+    """Commands that change the instrument, ignoring the setpoint read-back."""
+    return [c[1] for c in client.commands if c[1] != "get_setpoints"]
+
+
+def _bind(shell, equipment):
+    """Select an instrument the way the shell does, minus the lock dance.
+
+    The shell resolves the connection with ``_client_for`` and hands it to
+    the instrument's panel; that hand-over is what these tests are about.
+    """
+    shell.selected_equipment = equipment
+    panel = shell.panel_for(equipment)
+    shell._show_panel(panel)
+    panel.set_instrument(equipment, shell._client_for(equipment))
+    return panel
+
+
 class TestTheEquipmentTabSpansServers:
     def test_both_servers_appear_in_one_list(self, qapp, registry):
         registry({
@@ -244,11 +262,13 @@ class TestTheControlTabDrivesTheRightBench:
         on_bench = next(
             eq for eq in panel.equipment_list if eq.server_name == "Bench 2"
         )
-        panel.selected_equipment = on_bench
-        _run(panel, "_send_voltage_command", 12.0)
+        supply_panel = _bind(panel, on_bench)
+        _run(supply_panel, "_send_voltage_command", 12.0)
         _drain(qapp)
 
-        assert [c[1] for c in bench.commands] == ["set_voltage"]
+        # Binding the panel also reads the supply's setpoints -- from the same
+        # server, which is the point: nothing at all may reach the other one.
+        assert _writes(bench) == ["set_voltage"]
         assert lab.commands == [], "the command went to the wrong bench"
 
     def test_the_active_client_is_used_when_nothing_names_a_server(
@@ -262,11 +282,11 @@ class TestTheControlTabDrivesTheRightBench:
         _run(panel, "refresh_equipment_list")
         _drain(qapp)
 
-        panel.selected_equipment = panel.equipment_list[0]
-        _run(panel, "_send_voltage_command", 5.0)
+        supply_panel = _bind(panel, panel.equipment_list[0])
+        _run(supply_panel, "_send_voltage_command", 5.0)
         _drain(qapp)
 
-        assert [c[1] for c in lab.commands] == ["set_voltage"]
+        assert _writes(lab) == ["set_voltage"]
 
 
 class TestLockOwnershipFollowsTheInstrument:
@@ -293,23 +313,23 @@ class TestLockOwnershipFollowsTheInstrument:
 
     def test_a_lock_on_another_server_still_reads_as_mine(self, qapp, registry):
         panel, _, bench = self._panel(qapp, registry)
-        panel.selected_equipment = next(
+        supply_panel = _bind(panel, next(
             eq for eq in panel.equipment_list if eq.server_name == "Bench 2"
-        )
+        ))
 
         panel._apply_lock_status({"locked": True, "session_id": bench.session_id})
 
-        assert panel.voltage_spinbox.isEnabled(), (
+        assert supply_panel.voltage_spinbox.isEnabled(), (
             "controls greyed out for a lock this client does hold"
         )
 
     def test_a_lock_held_by_someone_else_still_disables(self, qapp, registry):
         """The guard must not have been loosened into always saying yes."""
         panel, _, _ = self._panel(qapp, registry)
-        panel.selected_equipment = next(
+        supply_panel = _bind(panel, next(
             eq for eq in panel.equipment_list if eq.server_name == "Bench 2"
-        )
+        ))
 
         panel._apply_lock_status({"locked": True, "session_id": "someone-else"})
 
-        assert not panel.voltage_spinbox.isEnabled()
+        assert not supply_panel.voltage_spinbox.isEnabled()

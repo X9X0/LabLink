@@ -24,7 +24,7 @@ try:
     from PyQt6.QtWidgets import QApplication
 
     from client.models.equipment import ConnectionStatus
-    from client.ui.control_panel import ControlPanel
+    from client.ui.instruments import InstrumentPanel, PowerSupplyPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -53,16 +53,16 @@ def qapp():
 
 class TestWhatCountsAsGone:
     def test_a_404_is_gone(self, qapp):
-        assert ControlPanel._equipment_is_gone(_http_error(404))
+        assert InstrumentPanel._equipment_is_gone(_http_error(404))
 
     @pytest.mark.parametrize("status", [500, 502, 503])
     def test_a_server_fault_is_not_gone(self, qapp, status):
         """The server is unwell, not missing the instrument -- keep reading."""
-        assert not ControlPanel._equipment_is_gone(_http_error(status))
+        assert not InstrumentPanel._equipment_is_gone(_http_error(status))
 
     def test_a_bare_exception_is_not_gone(self, qapp):
         """Timeouts and dropped sockets carry no response at all."""
-        assert not ControlPanel._equipment_is_gone(TimeoutError("read timed out"))
+        assert not InstrumentPanel._equipment_is_gone(TimeoutError("read timed out"))
 
 
 class TestTheCachedStatusIsCorrected:
@@ -72,8 +72,7 @@ class TestTheCachedStatusIsCorrected:
         ``_selected_is_connected`` reads the status the list was populated
         with, which after a server restart still says CONNECTED.
         """
-        panel = ControlPanel(client=None)
-        panel._refresh_lock_status = lambda: None
+        panel = PowerSupplyPanel()
 
         class _Equipment:
             equipment_id = "ps_36509eb5"
@@ -88,8 +87,7 @@ class TestTheCachedStatusIsCorrected:
         assert not panel._selected_is_connected()
 
     def test_no_selection_does_not_raise(self, qapp):
-        panel = ControlPanel(client=None)
-        panel._refresh_lock_status = lambda: None
+        panel = PowerSupplyPanel()
         panel.selected_equipment = None
         panel._mark_selection_disconnected()  # would raise if it assumed one
 
@@ -111,17 +109,17 @@ class TestAPermanentRefusalAlsoStops:
 
     @pytest.mark.parametrize("status", [501, 405])
     def test_a_permanent_refusal_is_recognised(self, qapp, status):
-        assert ControlPanel._readings_unsupported(_http_error(status))
+        assert InstrumentPanel._readings_unsupported(_http_error(status))
 
     @pytest.mark.parametrize("status", [500, 502, 503])
     def test_a_real_server_fault_is_not(self, qapp, status):
         """A supply must keep reading through a sick server."""
-        assert not ControlPanel._readings_unsupported(_http_error(status))
+        assert not InstrumentPanel._readings_unsupported(_http_error(status))
 
     def test_a_missing_instrument_is_not_a_refusal(self, qapp):
         """404 has its own handling: gone, rather than incapable."""
-        assert not ControlPanel._readings_unsupported(_http_error(404))
-        assert ControlPanel._equipment_is_gone(_http_error(404))
+        assert not InstrumentPanel._readings_unsupported(_http_error(404))
+        assert InstrumentPanel._equipment_is_gone(_http_error(404))
 
     def test_a_refusal_is_not_treated_as_the_instrument_vanishing(self, qapp):
         """The scope is connected and fine -- it just has no setpoints.
@@ -129,11 +127,10 @@ class TestAPermanentRefusalAlsoStops:
         Marking it disconnected would be a lie, and would make the Equipment
         tab show a connected instrument as gone.
         """
-        assert not ControlPanel._equipment_is_gone(_http_error(501))
+        assert not InstrumentPanel._equipment_is_gone(_http_error(501))
 
     def test_the_readouts_are_blanked_rather_than_left_stale(self, qapp):
-        panel = ControlPanel(client=None)
-        panel._refresh_lock_status = lambda: None
+        panel = PowerSupplyPanel()
         panel.voltage_display.setText("12.00 V")
         panel.current_display.setText("1.500 A")
 

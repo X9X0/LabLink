@@ -297,25 +297,30 @@ class TestControlPanelWiring:
         from client.models.equipment import ConnectionStatus
 
         equipment.connection_status = ConnectionStatus.CONNECTED
+        # A supply, so the shell hosts the power-supply panel whose dials the
+        # lock has to gate. The shell itself no longer owns any controls.
+        from client.models.equipment import EquipmentType
+
+        equipment.equipment_type = EquipmentType.POWER_SUPPLY
         panel.selected_equipment = equipment
+        panel._show_panel(panel.panel_for(equipment))
         yield panel, client
-        panel.lock_timer.stop()
-        panel.readings_timer.stop()
+        panel._stop_data_acquisition()
 
     def test_holding_the_lock_enables_the_controls(self, panel):
         p, _ = panel
         p._apply_lock_status(status(session_id="mine", username="me"))
 
-        assert p.voltage_dial.isEnabled()
-        assert p.output_button.isEnabled()
+        assert p.current_panel.voltage_dial.isEnabled()
+        assert p.current_panel.output_button.isEnabled()
         assert "You have control" in p.lock_status_widget.text_label.text()
 
     def test_someone_else_holding_it_disables_them(self, panel):
         p, _ = panel
         p._apply_lock_status(status())
 
-        assert not p.voltage_dial.isEnabled()
-        assert not p.output_button.isEnabled()
+        assert not p.current_panel.voltage_dial.isEnabled()
+        assert not p.current_panel.output_button.isEnabled()
         assert "alice" in p.lock_status_widget.text_label.text()
 
     def test_losing_control_is_announced(self, panel):
