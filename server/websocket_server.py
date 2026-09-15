@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+
+from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 from typing import Set
 
@@ -55,10 +57,22 @@ class StreamManager:
 
     async def broadcast(self, message: dict):
         """Broadcast a message to all connected clients."""
+        # Encode once, before touching any connection. send_json uses a plain
+        # json.dumps, which cannot encode the datetime every readings payload
+        # carries -- and because that raised inside the per-connection loop,
+        # a serialisation bug was being treated as that client hanging up and
+        # dropped the websocket. The encoding either works for everyone or
+        # for no one; it says nothing about any connection.
+        try:
+            payload = jsonable_encoder(message)
+        except Exception as e:
+            logger.error(f"Cannot encode broadcast message: {e}")
+            return
+
         disconnected = set()
         for connection in self.active_connections:
             try:
-                await connection.send_json(message)
+                await connection.send_json(payload)
             except Exception as e:
                 logger.error(f"Error broadcasting: {e}")
                 disconnected.add(connection)
@@ -144,6 +158,16 @@ class StreamManager:
             except asyncio.CancelledError:
                 logger.info(
                     f"Streaming task cancelled for {equipment_id}/{stream_type}"
+                )
+                break
+            except ValueError as e:
+                # The instrument does not have this command -- a scope asked
+                # for "get_readings", say. Every pass sends the identical
+                # command, so what failed once fails forever: retrying just
+                # fills the log twice a second and burns the interval.
+                logger.error(
+                    f"{equipment_id} cannot stream {stream_type}: {e}; "
+                    "stopping this stream"
                 )
                 break
             except Exception as e:

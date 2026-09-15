@@ -250,6 +250,25 @@ class EquipmentManager:
                 logger.error(f"Error discovering devices: {e2}")
                 return []
 
+    def _already_open(self, resource_string: str):
+        """The id of a live instrument on this resource, if there is one.
+
+        An entry that is present but no longer connected is dropped rather
+        than returned: the instrument was unplugged or the link died, and the
+        caller does want a fresh open in that case.
+        """
+        for equipment_id, equipment in list(self.equipment.items()):
+            if getattr(equipment, "resource_string", None) != resource_string:
+                continue
+            if getattr(equipment, "connected", False):
+                return equipment_id
+            logger.info(
+                "Dropping stale entry %s for %s before reconnecting",
+                equipment_id, resource_string,
+            )
+            self.equipment.pop(equipment_id, None)
+        return None
+
     async def connect_device(
         self, resource_string: str, equipment_type: EquipmentType, model: str
     ) -> str:
@@ -275,6 +294,24 @@ class EquipmentManager:
                             pass
                         self.resource_manager = ResourceManager("@py")
                         logger.info("Resource manager recreated")
+
+                # Already open? Opening the same resource twice is what
+                # produces "[Errno 16] Resource busy": the refusal comes from
+                # the server's own handle holding the USB interface, not from
+                # anything being wrong with the instrument. Connecting
+                # something that is already connected should hand back what is
+                # already there.
+                #
+                # This matters most right after a restart, when the bench is
+                # reconnected and the operator presses Connect on an
+                # instrument the server has already opened.
+                existing_id = self._already_open(resource_string)
+                if existing_id is not None:
+                    logger.info(
+                        "%s is already open as %s; returning it",
+                        resource_string, existing_id,
+                    )
+                    return existing_id
 
                 # Create appropriate equipment instance based on model
                 equipment = self._create_equipment_instance(
