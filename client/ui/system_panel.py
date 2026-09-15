@@ -3,8 +3,11 @@
 import logging
 from typing import Optional
 
+import sys
+
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -1737,8 +1740,7 @@ class SystemPanel(QWidget):
 
     def _update_client(self):
         """Update client by marking for update on next restart."""
-        from client.utils.self_update import mark_for_update
-        import sys
+        from client.utils.self_update import mark_for_update, relaunch_client
 
         try:
             # Get selected ref (tag or branch)
@@ -1785,10 +1787,24 @@ class SystemPanel(QWidget):
                     f"The application will now restart and apply the update."
                 )
 
-                # Exit application to trigger restart
-                # The launcher should detect the flag and perform the update
+                # Start a fresh client process; it applies the update on
+                # startup (client/main.py checks the flag before building the
+                # window). Only quit this one once the new one is running.
                 self.logs_text.append(f"🔄 Restarting application...")
-                sys.exit(0)
+                if relaunch_client():
+                    app = QApplication.instance()
+                    if app is not None:
+                        QTimer.singleShot(500, app.quit)
+                    else:
+                        sys.exit(0)
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Restart Failed",
+                        "The update is scheduled but the client could not restart "
+                        "itself.\n\nClose the client and start it again to apply "
+                        f"the update to {ref}.",
+                    )
 
             else:
                 self.logs_text.append(f"❌ Failed to mark client for update")

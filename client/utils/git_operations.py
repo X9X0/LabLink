@@ -7,6 +7,9 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+# All git commands run against the LabLink checkout, not the process cwd
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def get_git_root() -> Optional[str]:
     """Get git repository root directory.
@@ -17,6 +20,7 @@ def get_git_root() -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=True
@@ -39,6 +43,7 @@ def get_git_tags() -> List[str]:
     try:
         result = subprocess.run(
             ["git", "tag", "--sort=-version:refname"],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=True
@@ -73,6 +78,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
             # Use --sort=-committerdate to sort by most recent first
             result = subprocess.run(
                 ["git", "branch", "-a", "--sort=-committerdate"],
+            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
                 check=True
@@ -80,6 +86,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
         else:
             result = subprocess.run(
                 ["git", "branch", "-a"],
+            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
                 check=True
@@ -126,6 +133,7 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                     check_line = original_line if original_line.startswith('remotes/') else line
                     commit_check = subprocess.run(
                         ["git", "log", "-1", "--since=3.months.ago", "--format=%ci", check_line],
+            cwd=str(_REPO_ROOT),
                         capture_output=True,
                         text=True,
                         check=False
@@ -160,6 +168,7 @@ def get_current_git_branch() -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=True
@@ -188,6 +197,7 @@ def checkout_git_ref(ref: str) -> bool:
         logger.info(f"Fetching latest changes from origin...")
         subprocess.run(
             ["git", "fetch", "--all", "--tags"],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=True
@@ -197,6 +207,7 @@ def checkout_git_ref(ref: str) -> bool:
         logger.info(f"Checking out {ref}...")
         result = subprocess.run(
             ["git", "checkout", ref],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=True
@@ -205,6 +216,7 @@ def checkout_git_ref(ref: str) -> bool:
         # Check if it's a branch (not a tag) by checking if we're on a branch after checkout
         branch_check = subprocess.run(
             ["git", "symbolic-ref", "-q", "HEAD"],
+            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
             check=False
@@ -215,6 +227,7 @@ def checkout_git_ref(ref: str) -> bool:
             logger.info(f"Pulling latest changes for branch {ref}...")
             subprocess.run(
                 ["git", "pull", "origin", ref],
+            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
                 check=True
