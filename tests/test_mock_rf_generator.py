@@ -6,7 +6,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.mock.mock_rf_generator import MockRFGenerator  # noqa: E402
+from server.equipment.mock.mock_rf_generator import MockRFGenerator  # noqa: E402
 from shared.models.data import RFGeneratorData  # noqa: E402
 from shared.models.equipment import EquipmentType  # noqa: E402
 

@@ -12,7 +12,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_electronic_load import (DL3000_MODELS,  # noqa: E402
+from server.equipment.rigol_electronic_load import (DL3000_MODELS,  # noqa: E402
                                              RigolDL3000Base, RigolDL3021A,
                                              RigolDL3031A,
                                              lookup_dl3000_model)

@@ -14,7 +14,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_spectrum_analyzer import (  # noqa: E402
+from server.equipment.rigol_spectrum_analyzer import (  # noqa: E402
     MODEL_TABLE, RigolDSA800, RigolDSA1000, RigolRSA800, RigolRSA3000,
     RigolRSA5000, RigolRSA6000, compute_frequencies,
     lookup_model, parse_ascii_trace, parse_binary_trace, parse_number)

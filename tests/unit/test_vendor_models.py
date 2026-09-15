@@ -7,11 +7,11 @@ import pytest
 
 sys.path.append("..")
 
-from discovery.models import DeviceType  # noqa: E402
-from discovery.vendor_models import infer_rigol_device_type  # noqa: E402
-from discovery.visa_scanner import VISAScanner  # noqa: E402
-from equipment.manager import EquipmentManager  # noqa: E402
-from equipment.rigol_scope import RigolDS1104, RigolMSO2072A  # noqa: E402
+from server.discovery.models import DeviceType  # noqa: E402
+from server.discovery.vendor_models import infer_rigol_device_type  # noqa: E402
+from server.discovery.visa_scanner import VISAScanner  # noqa: E402
+from server.equipment.manager import EquipmentManager  # noqa: E402
+from server.equipment.rigol_scope import RigolDS1104, RigolMSO2072A  # noqa: E402
 from shared.models.equipment import EquipmentType  # noqa: E402
 
 
@@ -73,6 +73,6 @@ def test_manager_aliases_scope_families():
     for model in ("MSO2072A", "MSO2302A", "DS2202A", "DS2000A"):
         assert isinstance(make(model), RigolMSO2072A), model
     # 2-channel DS1202Z-E must not get the 4-channel driver
-    from equipment.rigol_modern_scope import RigolDS1000ZE
+    from server.equipment.rigol_modern_scope import RigolDS1000ZE
 
     assert isinstance(make("DS1202Z-E"), RigolDS1000ZE)

@@ -14,7 +14,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_vna import (MODEL_TABLE, RigolDNA6000,  # noqa: E402
+from server.equipment.rigol_vna import (MODEL_TABLE, RigolDNA6000,  # noqa: E402
                                  RigolRSAN, format_complex,
                                  normalize_format, normalize_sparam,
                                  parse_complex_list, parse_float_list)

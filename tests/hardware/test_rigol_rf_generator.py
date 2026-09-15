@@ -14,7 +14,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_rf_generator import (DSG_MODELS, RigolDSG800,  # noqa: E402
+from server.equipment.rigol_rf_generator import (DSG_MODELS, RigolDSG800,  # noqa: E402
                                           RigolDSG3000, RigolDSG5000,
                                           RigolDSGBase, level_to_dbm,
                                           lookup_dsg_model, parse_si)

@@ -268,7 +268,7 @@ if __name__ == "__main__":
 async def test_rigol_dm3058_and_dm3068():
     """Test Rigol DM3058 / DM3068 multimeter drivers with patched I/O."""
     from unittest.mock import patch
-    from equipment.rigol_multimeter import RigolDM3058, RigolDM3068
+    from server.equipment.rigol_multimeter import RigolDM3058, RigolDM3068
 
     for cls, model, digits in ((RigolDM3058, "DM3058", 5.5), (RigolDM3068, "DM3068", 6.5)):
         idn = f"Rigol Technologies,{model},DM3A020080808,01.01.00.02.00.00"
