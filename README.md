@@ -1,6 +1,6 @@
 # LabLink
 
-![Version](https://img.shields.io/badge/version-2.1.5-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Tests](https://img.shields.io/badge/tests-1436%20passing-brightgreen.svg)
@@ -498,7 +498,7 @@ For detailed setup instructions:
 
 ## Project Status
 
-**Current Version**: v2.1.5 (Production Ready) 🎉
+**Current Version**: v2.2.0 (Production Ready) 🎉
 
 **Release Date**: September 14, 2026
 

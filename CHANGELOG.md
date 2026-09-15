@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2026-09-14
+
+One client, several benches. Built and tested against two Raspberry Pis with a
+supply on each.
+
+### ✨ Added
+
+- **Connect to several servers at once.** The client held exactly one
+  connection: connecting to a second Pi replaced the first, and its
+  instruments vanished from the Equipment tab until you switched back. A test
+  spanning two benches meant working the dropdown. The Equipment and Control
+  tabs now fan out over every connected server and merge the results into one
+  list, with the bench named on each row -- and only once there is more than
+  one server, since on a single-Pi bench that suffix is noise on every row.
+- **Any instrument can be driven without touching the dropdown.** Every
+  reading, setpoint, lock and command resolves the connection from the
+  selected instrument. Routing by the dropdown instead is the difference
+  between setting 12 V on the supply you clicked and setting it on another
+  bench.
+
+### 🐛 Fixed
+
+- **Tokens were stored under fixed keys rather than per server**, so a second
+  login overwrote the first and the next start offered one server's token to
+  the other. Single-server use hides this completely. Tokens are now keyed by
+  host and port, and an existing unkeyed pair is adopted by the first server
+  that asks, so upgrading does not read as a logout.
+- **Equipment ids are only unique within a server.** Two Pis can mint the
+  same one -- both test Pis report a 1902B, and the rows are identical apart
+  from the bench. Selection and lookups now use a composite key, so the right
+  instrument is selected rather than whichever was listed first.
+- **One unreachable server no longer costs the others.** The fan-out is
+  concurrent, so three switched-off servers cost one connect timeout rather
+  than three; a server that does not answer contributes no rows and a
+  tooltip rather than a modal dialog; and a refresh will not start while the
+  previous one is still out, since a fan-out can outlast the five-second tab
+  refresh.
+
+### 📝 Changed
+
+- **Disconnecting a server disconnects that server**, rather than whichever
+  connection happened to be active.
+
+---
+
+
 ## [2.1.5] - 2026-09-14
 
 ### 🐛 Fixed
