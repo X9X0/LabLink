@@ -218,6 +218,19 @@ class EquipmentPanel(QWidget):
         info_layout.addWidget(QLabel("Status:"), 5, 0)
         info_layout.addWidget(self.status_label, 5, 1)
 
+        # Read this as a table, not as two columns pinned to opposite edges.
+        # With neither column given a stretch the grid split the slack evenly,
+        # which pushed every value to the far side of the panel and left the
+        # reader tracking across a hand's width of empty space to find out
+        # what "Model:" says. The label column takes its natural width and the
+        # value column absorbs the rest, so the two sit together.
+        info_layout.setColumnStretch(0, 0)
+        info_layout.setColumnStretch(1, 1)
+        for value in (self.name_label, self.type_label, self.manufacturer_label,
+                      self.model_label, self.resource_label, self.status_label):
+            value.setAlignment(Qt.AlignmentFlag.AlignLeft
+                               | Qt.AlignmentFlag.AlignVCenter)
+
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
 
@@ -712,7 +725,6 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error connecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
 
-    @qasync.asyncSlot()
     async def _choose_disconnect_state(self, equipment_id: str):
         """What should the instrument be left doing? Ask only if it matters.
 
@@ -754,8 +766,14 @@ class EquipmentPanel(QWidget):
             return None
         return "hold" if clicked is leave_on else "off"
 
+    @qasync.asyncSlot()
     async def disconnect_equipment(self):
-        """Disconnect from selected equipment."""
+        """Disconnect from selected equipment.
+
+        The decorator is load-bearing. ``clicked`` calling a bare coroutine
+        function just builds a coroutine object and discards it: no request,
+        no dialog, no error -- the button appears to do nothing at all.
+        """
         if not self.selected_equipment or not self.client:
             return
 
