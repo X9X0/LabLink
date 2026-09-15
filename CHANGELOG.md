@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.4] - 2026-09-14
+
+### 🐛 Fixed
+
+- **A client could not connect to an instrument after the server updated.**
+  The server issues a new equipment id each time it opens an instrument, so
+  restarting it -- which every update does -- invalidates the id the client is
+  still holding. The readings loop logged the resulting 404 and carried on,
+  asking for a dead id ten times a second. That storm is not just noise in the
+  log: it saturates the event loop and starves the connect task, so the
+  reconnect that would have cleared it appears to hang instead. The symptom is
+  an updated server, a healthy supply, and no way to reach it. A 404 now stops
+  the readings, drops the cached "connected" status that would otherwise
+  restart the timer on the next tick, and refreshes the equipment list.
+  Timeouts and server faults still retry, since one slow serial reply should
+  not stop a supply reading.
+
+---
+
+
 ## [2.1.3] - 2026-09-14
 
 Bench work. Everything here came from running the client against a real
