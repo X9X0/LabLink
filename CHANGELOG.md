@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.1] - 2026-09-15
+
+### 🐛 Fixed
+
+- **Selecting an oscilloscope on the Control tab stopped the other instruments
+  connecting.** The tab drives power supplies, so it polls for volts and amps;
+  a scope has no setpoints and the server answers 501 Not Implemented -- five
+  times a second, forever. That storm saturates the event loop and starves the
+  connect task, so the supplies on the same bench then fail to connect, which
+  looks like an unrelated fault and is how it was found. The 2.1.4 fix stopped
+  this for a missing instrument but treated every other status as transient,
+  on the reasoning that a 5xx means the server is unwell and a supply should
+  read through it. True of 500 and 503; not of 501, which is a permanent
+  statement about the instrument. The two stay separate: a missing instrument
+  is marked disconnected, while one that simply has no setpoints is left
+  connected and says so, since calling a healthy scope disconnected would be a
+  lie the Equipment tab repeats.
+
+---
+
+
 ## [2.2.0] - 2026-09-14
 
 One client, several benches. Built and tested against two Raspberry Pis with a
