@@ -269,6 +269,10 @@ class RigolM300(BaseEquipment):
         self._channel_config: Dict[str, Dict[str, Any]] = {}
         self._temp_units: Dict[str, str] = {}
         self._last_scan: Optional[DataAcquisitionData] = None
+        #: When the last scan landed, on the monotonic clock. A wall
+        #: clock steps under an NTP correction, so an age computed
+        #: from it can come out negative; on Windows it also resolves
+        #: only to the 15.6 ms tick, which is coarser than a scan.
         self._last_scan_time: float = 0.0
         self._consumed: set = set()
         # Serialises multi-command sequences; BaseEquipment on newer branches already
@@ -693,7 +697,7 @@ class RigolM300(BaseEquipment):
             values = parse_readings(await self._query_long("READ?"))
             data = self._build_data(values, chans)
             self._last_scan = data
-            self._last_scan_time = time.time()
+            self._last_scan_time = time.perf_counter()
             self._consumed.clear()
             return data
 
@@ -704,7 +708,7 @@ class RigolM300(BaseEquipment):
             values = parse_readings(await self._query_long("FETCh?"))
             data = self._build_data(values, chans)
             self._last_scan = data
-            self._last_scan_time = time.time()
+            self._last_scan_time = time.perf_counter()
             self._consumed.clear()
             return data
 
