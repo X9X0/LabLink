@@ -24,6 +24,7 @@ from PyQt6.QtGui import (QColor, QFont, QFontMetrics, QPainter, QPalette,
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from client.api.client import LabLinkClient, call_blocking
+from client.utils.server_manager import get_server_manager
 
 logger = logging.getLogger(__name__)
 
@@ -468,6 +469,8 @@ class ControlPanel(QWidget):
         super().__init__(parent)
         self.client = client
         self.selected_equipment: Optional[Equipment] = None
+        #: A fan-out over several servers can outlast the refresh interval.
+        self._list_refresh_in_flight = False
 
         # How many places the selected instrument's readings actually resolve
         # to. A supply that sends hundredths printed as 0.300 A claims a digit
@@ -1104,7 +1107,13 @@ class ControlPanel(QWidget):
             self._had_control = False
             return
 
-        mine = bool(self.client) and self.client.holds_lock(status)
+        # Judged by the connection that holds the instrument, not the active
+        # one. holds_lock compares the lock's session id against the client's
+        # own, and every server connection has a different session: asking the
+        # wrong client always answers "someone else has it", which greys out
+        # the controls for any instrument that is not on the selected server.
+        client = self._selected_client()
+        mine = bool(client) and client.holds_lock(status)
         self.lock_status_widget.update_status(status, is_mine=mine)
         self.manage_lock_button.setEnabled(True)
         self._set_controls_enabled(mine)
@@ -1126,14 +1135,15 @@ class ControlPanel(QWidget):
     @qasync.asyncSlot()
     async def _poll_lock_status(self):
         """Re-read the lock off the GUI thread."""
-        if not (self.client and self.selected_equipment):
+        client = self._selected_client()
+        if not (client and self.selected_equipment):
             return
         if self._lock_poll_in_flight:
             return
         self._lock_poll_in_flight = True
         try:
             status = await call_blocking(
-                self.client.get_lock_status, self.selected_equipment.equipment_id
+                client.get_lock_status, self.selected_equipment.equipment_id
             )
             self._apply_lock_status(status)
         except Exception as exc:
@@ -1143,19 +1153,20 @@ class ControlPanel(QWidget):
 
     def _refresh_lock_status(self):
         """Ask for a lock refresh now, without blocking the caller."""
-        if not (self.client and self.selected_equipment):
+        if not (self._selected_client() and self.selected_equipment):
             self._apply_lock_status(None)
             return
         self._poll_lock_status()
 
     def _show_lock_dialog(self):
         """Open the take/release/override dialog for the selected equipment."""
-        if not (self.client and self.selected_equipment):
+        client = self._selected_client()
+        if not (client and self.selected_equipment):
             return
         from client.ui.equipment_lock_dialog import EquipmentLockDialog
 
         dialog = EquipmentLockDialog(
-            self.client,
+            client,
             self.selected_equipment.equipment_id,
             getattr(self.selected_equipment, "name", ""),
             self,
@@ -1165,10 +1176,10 @@ class ControlPanel(QWidget):
         # The dialog may have taken or given up control.
         self._refresh_lock_status()
         try:
-            status = self.client.get_lock_status(
+            status = client.get_lock_status(
                 self.selected_equipment.equipment_id
             )
-            self._set_controls_enabled(self.client.holds_lock(status))
+            self._set_controls_enabled(client.holds_lock(status))
         except Exception:
             pass
 
@@ -1177,9 +1188,11 @@ class ControlPanel(QWidget):
         selected_items = self.equipment_list_widget.selectedItems()
         if not selected_items:
             # Release lock on previously selected equipment
-            if self.selected_equipment and self.client:
+            if self.selected_equipment and self._selected_client():
                 try:
-                    self.client.release_lock(self.selected_equipment.equipment_id)
+                    self._selected_client().release_lock(
+                        self.selected_equipment.equipment_id
+                    )
                     logger.info(f"Released lock on {self.selected_equipment.equipment_id}")
                 except Exception as e:
                     logger.error(f"Error releasing lock: {e}")
@@ -1190,19 +1203,32 @@ class ControlPanel(QWidget):
             self._apply_lock_status(None)
             return
 
-        equipment_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        key = selected_items[0].data(Qt.ItemDataRole.UserRole)
 
-        # Release lock on previously selected equipment
-        if self.selected_equipment and self.selected_equipment.equipment_id != equipment_id and self.client:
-            try:
-                self.client.release_lock(self.selected_equipment.equipment_id)
-                logger.info(f"Released lock on {self.selected_equipment.equipment_id}")
-            except Exception as e:
-                logger.error(f"Error releasing lock: {e}")
+        # Release the lock on what was selected before -- on its own server,
+        # which is not necessarily the one holding the new selection.
+        previous = self.selected_equipment
+        if previous is not None and previous.key != key:
+            previous_client = self._client_for(previous)
+            if previous_client:
+                try:
+                    previous_client.release_lock(previous.equipment_id)
+                    logger.info(f"Released lock on {previous.equipment_id}")
+                except Exception as e:
+                    logger.error(f"Error releasing lock: {e}")
 
-        # Find equipment in list
+        # Matched on the composite key: two servers can each mint the same
+        # equipment id, and matching on the id alone would pick whichever was
+        # listed first -- an instrument on the wrong bench.
+        if not any(equipment.key == key for equipment in self.equipment_list):
+            # Nothing would happen at all otherwise, which is the hardest
+            # kind of failure to notice from the bench.
+            logger.warning(f"Selected row {key!r} matches no known instrument")
+
         for equipment in self.equipment_list:
-            if equipment.equipment_id == equipment_id:
+            if equipment.key == key:
+                equipment_id = equipment.equipment_id
+                client = self._client_for(equipment)
                 self.selected_equipment = equipment
                 self.equipment_info_label.setText(
                     f"{equipment.name} - {equipment.manufacturer} {equipment.model}"
@@ -1215,14 +1241,14 @@ class ControlPanel(QWidget):
                 # whoever had it -- which made the lock meaningless in the GUI
                 # and unattributable when it mattered. Overriding is now a
                 # deliberate act in the lock dialog, with the holder named.
-                if self.client:
+                if client:
                     try:
-                        status = self.client.get_lock_status(equipment_id)
+                        status = client.get_lock_status(equipment_id)
                     except Exception as e:
                         logger.error(f"Could not read lock status: {e}")
                         status = {}
 
-                    if status.get("locked") and not self.client.holds_lock(status):
+                    if status.get("locked") and not client.holds_lock(status):
                         from client.ui.equipment_lock_dialog import describe_holder
 
                         holder = describe_holder(status)
@@ -1232,7 +1258,7 @@ class ControlPanel(QWidget):
                         self._set_controls_enabled(False)
                     else:
                         try:
-                            self.client.acquire_lock(
+                            client.acquire_lock(
                                 equipment_id, lock_mode="exclusive"
                             )
                             logger.info(f"Acquired exclusive lock on {equipment_id}")
@@ -1245,7 +1271,7 @@ class ControlPanel(QWidget):
 
                 # Get equipment status to configure controls based on capabilities
                 try:
-                    status = self.client.get_equipment_status(equipment_id)
+                    status = client.get_equipment_status(equipment_id)
                     capabilities = status.get("capabilities", {})
                     max_voltage = capabilities.get("max_voltage", 60.0)
                     max_current = capabilities.get("max_current", 5.0)
@@ -1314,11 +1340,12 @@ class ControlPanel(QWidget):
         clamped into the new one's range, which reads like a measurement from
         the new instrument but is not one.
         """
-        if not self.client:
+        client = self._selected_client()
+        if not client:
             return
 
         try:
-            result = self.client.send_command(
+            result = client.send_command(
                 equipment_id, "get_setpoints", {"channel": 1}
             )
             if not result.get("success"):
@@ -1422,12 +1449,13 @@ class ControlPanel(QWidget):
     @qasync.asyncSlot(float)
     async def _send_voltage_command(self, voltage: float):
         """Send voltage command to equipment."""
-        if not self.selected_equipment or not self.client:
+        client = self._selected_client()
+        if not self.selected_equipment or not client:
             return
 
         try:
             await call_blocking(
-                self.client.send_command,
+                client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_voltage",
                 {"voltage": voltage, "channel": 1}
@@ -1438,12 +1466,13 @@ class ControlPanel(QWidget):
     @qasync.asyncSlot(float)
     async def _send_current_command(self, current: float):
         """Send current command to equipment."""
-        if not self.selected_equipment or not self.client:
+        client = self._selected_client()
+        if not self.selected_equipment or not client:
             return
 
         try:
             await call_blocking(
-                self.client.send_command,
+                client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_current",
                 {"current": current, "channel": 1}
@@ -1454,7 +1483,8 @@ class ControlPanel(QWidget):
     @qasync.asyncSlot(bool)
     async def _send_output_command(self, enabled: bool):
         """Send output enable/disable command."""
-        if not self.selected_equipment or not self.client:
+        client = self._selected_client()
+        if not self.selected_equipment or not client:
             return
 
         try:
@@ -1462,7 +1492,7 @@ class ControlPanel(QWidget):
             self._last_output_command_time = time.time()
 
             await call_blocking(
-                self.client.send_command,
+                client.send_command,
                 self.selected_equipment.equipment_id,
                 "set_output",
                 {"enabled": enabled, "channel": 1}
@@ -1534,7 +1564,7 @@ class ControlPanel(QWidget):
         Uses a single get_readings() call to update both voltage and current,
         preventing serial port overload from multiple simultaneous commands.
         """
-        if not self.selected_equipment or not self.client:
+        if not self.selected_equipment or not self._selected_client():
             return
 
         # Belt and braces: the timer should already be stopped for an
@@ -1554,7 +1584,8 @@ class ControlPanel(QWidget):
         try:
             # Get all readings in one call (sends 3 serial commands: GETD, GOUT, GETS)
             readings = await call_blocking(
-                self.client.get_readings, self.selected_equipment.equipment_id
+                self._selected_client().get_readings,
+                self.selected_equipment.equipment_id,
             )
 
             # Extract values
@@ -1705,34 +1736,62 @@ class ControlPanel(QWidget):
 
     @qasync.asyncSlot()
     async def refresh_equipment_list(self):
-        """Refresh the equipment list from server."""
-        if not self.client:
+        """Refresh the equipment list from every connected server."""
+        connections = self._connections()
+        if not connections:
             return
 
+        # Skip this tick if the last fan-out has not come back yet.
+        if self._list_refresh_in_flight:
+            return
+        self._list_refresh_in_flight = True
         try:
-            equipment_list = await call_blocking(self.client.list_equipment)
-            self.equipment_list = [Equipment.from_api_dict(eq) for eq in equipment_list]
+            await self._refresh_list_from(connections)
+        finally:
+            self._list_refresh_in_flight = False
 
-            # Update list widget. Repopulating clears the selection, and the
-            # list now refreshes on its own, so put the highlight back on the
-            # instrument being controlled rather than leave it looking idle.
-            selected_id = (
-                self.selected_equipment.equipment_id
-                if self.selected_equipment else None
-            )
-            self.equipment_list_widget.clear()
-            for equipment in self.equipment_list:
-                if equipment.connection_status == ConnectionStatus.CONNECTED:
-                    item = QListWidgetItem(
-                        f"{equipment.name} ({equipment.equipment_type.value})"
-                    )
-                    item.setData(Qt.ItemDataRole.UserRole, equipment.equipment_id)
-                    self.equipment_list_widget.addItem(item)
-                    if equipment.equipment_id == selected_id:
-                        self.equipment_list_widget.setCurrentItem(item)
+    async def _refresh_list_from(self, connections):
+        """Merge the equipment lists of every given server."""
+        # Asked concurrently, so an unreachable server costs one timeout
+        # rather than delaying every server queued behind it.
+        results = await asyncio.gather(*(
+            self._list_equipment_from(name, client)
+            for name, client in connections.items()
+        ))
 
-        except Exception as e:
-            logger.error(f"Error refreshing equipment list: {e}")
+        gathered = []
+        for server_name, listed, error in results:
+            if error is not None:
+                # One server being unreachable must not empty the list for
+                # the rest: this runs on a timer and on tab focus, so the
+                # supply on the reachable Pi has to stay controllable.
+                logger.warning(f"Could not list equipment on {server_name}: {error}")
+                continue
+            gathered.extend(Equipment.from_api_dict(eq, server_name) for eq in listed)
+
+        self.equipment_list = gathered
+
+        # Update list widget. Repopulating clears the selection, and the
+        # list now refreshes on its own, so put the highlight back on the
+        # instrument being controlled rather than leave it looking idle.
+        selected_key = (
+            self.selected_equipment.key if self.selected_equipment else None
+        )
+        # Name the server only once there is more than one to tell apart.
+        servers = {eq.server_name for eq in self.equipment_list if eq.server_name}
+        show_server = len(servers) > 1
+
+        self.equipment_list_widget.clear()
+        for equipment in self.equipment_list:
+            if equipment.connection_status == ConnectionStatus.CONNECTED:
+                text = f"{equipment.name} ({equipment.equipment_type.value})"
+                if show_server and equipment.server_name:
+                    text = f"{text} — {equipment.server_name}"
+                item = QListWidgetItem(text)
+                item.setData(Qt.ItemDataRole.UserRole, equipment.key)
+                self.equipment_list_widget.addItem(item)
+                if equipment.key == selected_key:
+                    self.equipment_list_widget.setCurrentItem(item)
 
     def showEvent(self, event):
         """Bring the list up to date whenever this tab comes to the front.
@@ -1742,13 +1801,59 @@ class ControlPanel(QWidget):
         moment ago was missing from the Control tab until they did.
         """
         super().showEvent(event)
-        if self.client:
+        # Any connected server is reason enough to refresh; there may be no
+        # active one while several are connected.
+        if self._connections():
             self.refresh_equipment_list()
 
     def set_client(self, client: LabLinkClient):
-        """Set the API client."""
+        """Set the active server's API client."""
         self.client = client
         self.refresh_equipment_list()
+
+    async def _list_equipment_from(self, server_name, client):
+        """List one server's instruments, reporting rather than raising.
+
+        Returned as a triple so the caller can keep the rows it did get and
+        still say which servers went quiet.
+        """
+        try:
+            return server_name, await call_blocking(client.list_equipment), None
+        except Exception as e:
+            return server_name, [], e
+
+    def _connections(self):
+        """Every server to list instruments from, keyed by name.
+
+        Falls back to the single active client when the registry is empty,
+        which is the case before a server is registered and in tests that
+        construct the panel directly.
+        """
+        try:
+            clients = get_server_manager().connected_clients()
+        except Exception as e:  # a registry problem must not empty the list
+            logger.warning(f"Could not read the server registry: {e}")
+            clients = {}
+
+        if clients:
+            return clients
+        return {None: self.client} if self.client else {}
+
+    def _client_for(self, equipment):
+        """The connection that holds a given instrument.
+
+        Every reading, setpoint and lock call has to go to the server the
+        instrument is actually on. Reading ``self.client`` instead would send
+        a voltage meant for one bench to whichever server happens to be
+        selected in the dropdown.
+        """
+        if equipment is None or equipment.server_name is None:
+            return self.client
+        return get_server_manager().get_client(equipment.server_name) or self.client
+
+    def _selected_client(self):
+        """The connection for whatever is selected right now."""
+        return self._client_for(self.selected_equipment)
 
     def wheelEvent(self, event):
         """Handle mouse wheel events over dials."""
