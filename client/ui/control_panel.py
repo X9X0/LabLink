@@ -25,6 +25,9 @@ from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from client.api.client import LabLinkClient, call_blocking
 from client.utils.server_manager import get_server_manager
+from client.utils.inflight import (READINGS_ABANDONED_AFTER,
+                                   REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 
 logger = logging.getLogger(__name__)
 
@@ -469,8 +472,9 @@ class ControlPanel(QWidget):
         super().__init__(parent)
         self.client = client
         self.selected_equipment: Optional[Equipment] = None
-        #: A fan-out over several servers can outlast the refresh interval.
-        self._list_refresh_in_flight = False
+        #: When the in-flight list fan-out started, or None. See
+        #: client/utils/inflight.py for why this is a time, not a flag.
+        self._list_refresh_started_at = None
 
         # How many places the selected instrument's readings actually resolve
         # to. A supply that sends hundredths printed as 0.300 A claims a digit
@@ -503,7 +507,10 @@ class ControlPanel(QWidget):
 
         # Track last command time to prevent reading updates from overwriting user actions
         self._last_output_command_time = 0
-        self._readings_in_flight = False
+        #: When the in-flight readings request started, or None. Same reason
+        #: as the list refresh: a destroyed task never clears a flag, and the
+        #: readings would then stop for good while the panel looked fine.
+        self._readings_started_at = None
 
         # Timer for reading updates (single timer to prevent serial port overload)
         self.readings_timer = QTimer()
@@ -1576,11 +1583,12 @@ class ControlPanel(QWidget):
             return
 
         # The 1 Hz timer can outpace a slow server, so skip ticks while a
-        # request is still in flight instead of queueing them up.
-        if self._readings_in_flight:
+        # request is still in flight instead of queueing them up. A request
+        # still held long past any plausible round trip is treated as lost,
+        # so one destroyed task cannot stop the readings for good.
+        if not claim_slot(self, "_readings_started_at", READINGS_ABANDONED_AFTER):
             return
 
-        self._readings_in_flight = True
         try:
             # Get all readings in one call (sends 3 serial commands: GETD, GOUT, GETS)
             readings = await call_blocking(
@@ -1690,7 +1698,7 @@ class ControlPanel(QWidget):
             else:
                 logger.error(f"Error updating readings: {e}")
         finally:
-            self._readings_in_flight = False
+            release_slot(self, "_readings_started_at")
 
     @staticmethod
     def _equipment_is_gone(error) -> bool:
@@ -1781,14 +1789,14 @@ class ControlPanel(QWidget):
         if not connections:
             return
 
-        # Skip this tick if the last fan-out has not come back yet.
-        if self._list_refresh_in_flight:
+        # Skip this tick if the last fan-out has not come back yet -- unless
+        # it has been out so long that it is not coming back.
+        if not claim_slot(self, "_list_refresh_started_at", REFRESH_ABANDONED_AFTER):
             return
-        self._list_refresh_in_flight = True
         try:
             await self._refresh_list_from(connections)
         finally:
-            self._list_refresh_in_flight = False
+            release_slot(self, "_list_refresh_started_at")
 
     async def _refresh_list_from(self, connections):
         """Merge the equipment lists of every given server."""

@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
 
 from client.api.client import LabLinkClient, call_blocking
 from client.utils.server_manager import get_server_manager
+from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +121,10 @@ class EquipmentPanel(QWidget):
         super().__init__(parent)
 
         self.client: Optional[LabLinkClient] = None
-        #: A fan-out over several servers can outlast the five-second refresh.
-        self._refresh_in_flight = False
+        #: When the in-flight fan-out started, or None. A time rather than a
+        #: flag: see client/utils/inflight.py -- a destroyed task never runs
+        #: its finally, and a flag left set froze this list until restart.
+        self._refresh_started_at = None
         self.equipment_list: List[Equipment] = []
         self.selected_equipment: Optional[Equipment] = None
 
@@ -486,14 +490,14 @@ class EquipmentPanel(QWidget):
         if not connections:
             return
 
-        # Skip this tick if the last fan-out has not come back yet.
-        if self._refresh_in_flight:
+        # Skip this tick if the last fan-out has not come back yet -- unless
+        # it has been out so long that it is not coming back.
+        if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
             return
-        self._refresh_in_flight = True
         try:
             await self._refresh_from(connections)
         finally:
-            self._refresh_in_flight = False
+            release_slot(self, "_refresh_started_at")
 
     async def _refresh_from(self, connections):
         """Merge the equipment lists of every given server."""
