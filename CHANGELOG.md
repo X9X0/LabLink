@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.2] - 2026-09-15
+
+### 🐛 Fixed
+
+- **After a server update the client had to be restarted before equipment
+  showed as connected.** Refreshing waited on a single-flight guard: a boolean
+  set before the request and cleared in a `finally`. qasync destroys pending
+  tasks when the event loop is disturbed -- which a server update does by
+  definition, since the server goes away mid-request -- and a task destroyed
+  mid-await never runs its `finally`. The flag stayed set for the life of the
+  process, so every later refresh returned at the guard and the list could
+  never update again. The guard now records when the work started rather than
+  that it is happening, and a slot still held long past any plausible round
+  trip is taken anyway: the worst case is one overlapping refresh instead of a
+  frozen panel. Applied to the equipment list, the Control tab's list, and the
+  readings request, where a destroyed task would have stopped the numbers with
+  nothing on screen to say why.
+
+---
+
+
 ## [2.3.1] - 2026-09-15
 
 ### 🐛 Fixed
