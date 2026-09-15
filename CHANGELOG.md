@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.1] - 2026-09-15
+
+### 🐛 Fixed
+
+- **A bench that was already connected could not be reconnected.** After a
+  server update the scope and both supplies refused to connect while the
+  server was still holding all three open and serving readings from them.
+  `connect` always opened the resource again, so pressing Connect asked
+  libusb to claim an interface the server itself was holding; it answered
+  `[Errno 16] Resource busy` and the API returned 500 -- a refusal that reads
+  like broken hardware and is really the server colliding with itself. An
+  instrument that is already open is returned as it stands, and an entry that
+  is present but no longer connected is dropped first, since there a real
+  open is wanted.
+- **A websocket stream retried a command the instrument does not have.** A
+  scope asked for `get_readings` logged "Unknown command" twice a second,
+  indefinitely. Every pass sends the same command, so what fails once fails
+  always; the stream stops now.
+- **A timestamp in a broadcast disconnected the client.** `send_json` uses a
+  plain `json.dumps`, which cannot encode the datetime in every readings
+  payload, and the failure was raised inside the per-connection loop -- so a
+  serialisation bug was read as the client hanging up and the websocket was
+  dropped. The message is encoded once, before any connection is touched.
+
+---
+
+
 
 
 ## [2.3.0] - 2026-09-15
