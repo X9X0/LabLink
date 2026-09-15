@@ -1107,7 +1107,13 @@ class ControlPanel(QWidget):
             self._had_control = False
             return
 
-        mine = bool(self.client) and self.client.holds_lock(status)
+        # Judged by the connection that holds the instrument, not the active
+        # one. holds_lock compares the lock's session id against the client's
+        # own, and every server connection has a different session: asking the
+        # wrong client always answers "someone else has it", which greys out
+        # the controls for any instrument that is not on the selected server.
+        client = self._selected_client()
+        mine = bool(client) and client.holds_lock(status)
         self.lock_status_widget.update_status(status, is_mine=mine)
         self.manage_lock_button.setEnabled(True)
         self._set_controls_enabled(mine)
@@ -1558,7 +1564,7 @@ class ControlPanel(QWidget):
         Uses a single get_readings() call to update both voltage and current,
         preventing serial port overload from multiple simultaneous commands.
         """
-        if not self.selected_equipment or not self.client:
+        if not self.selected_equipment or not self._selected_client():
             return
 
         # Belt and braces: the timer should already be stopped for an
@@ -1795,7 +1801,9 @@ class ControlPanel(QWidget):
         moment ago was missing from the Control tab until they did.
         """
         super().showEvent(event)
-        if self.client:
+        # Any connected server is reason enough to refresh; there may be no
+        # active one while several are connected.
+        if self._connections():
             self.refresh_equipment_list()
 
     def set_client(self, client: LabLinkClient):

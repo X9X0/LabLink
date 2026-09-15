@@ -44,10 +44,15 @@ pytestmark = pytest.mark.skipif(
 class FakeClient:
     """A server that lists instruments, or refuses to."""
 
-    def __init__(self, *equipment, unreachable=False):
+    def __init__(self, *equipment, unreachable=False, session_id="session"):
         self.equipment = list(equipment)
         self.unreachable = unreachable
         self.commands = []
+        self.session_id = session_id
+
+    def holds_lock(self, status):
+        """Mirrors LabLinkClient: a lock is mine if it names my session."""
+        return bool(status.get("locked")) and status.get("session_id") == self.session_id
 
     def list_equipment(self):
         if self.unreachable:
@@ -262,3 +267,49 @@ class TestTheControlTabDrivesTheRightBench:
         _drain(qapp)
 
         assert [c[1] for c in lab.commands] == ["set_voltage"]
+
+
+class TestLockOwnershipFollowsTheInstrument:
+    """Whose lock it is has to be judged by the right connection.
+
+    `holds_lock` compares the lock's session id against the client's own, and
+    every server connection has a different session. Asking the active client
+    about a lock held on another server always answers "someone else has it",
+    which greys out the controls -- so an instrument on any server but the
+    selected one could be seen but not driven until the dropdown was switched.
+    """
+
+    def _panel(self, qapp, registry):
+        lab = FakeClient(supply("ps_a"))
+        lab.session_id = "session-lab"
+        bench = FakeClient(supply("ps_b"))
+        bench.session_id = "session-bench"
+        registry({"Lab Server": lab, "Bench 2": bench})
+
+        panel = ControlPanel(client=lab)      # Lab Server is the active one
+        _run(panel, "refresh_equipment_list")
+        _drain(qapp)
+        return panel, lab, bench
+
+    def test_a_lock_on_another_server_still_reads_as_mine(self, qapp, registry):
+        panel, _, bench = self._panel(qapp, registry)
+        panel.selected_equipment = next(
+            eq for eq in panel.equipment_list if eq.server_name == "Bench 2"
+        )
+
+        panel._apply_lock_status({"locked": True, "session_id": bench.session_id})
+
+        assert panel.voltage_spinbox.isEnabled(), (
+            "controls greyed out for a lock this client does hold"
+        )
+
+    def test_a_lock_held_by_someone_else_still_disables(self, qapp, registry):
+        """The guard must not have been loosened into always saying yes."""
+        panel, _, _ = self._panel(qapp, registry)
+        panel.selected_equipment = next(
+            eq for eq in panel.equipment_list if eq.server_name == "Bench 2"
+        )
+
+        panel._apply_lock_status({"locked": True, "session_id": "someone-else"})
+
+        assert not panel.voltage_spinbox.isEnabled()
