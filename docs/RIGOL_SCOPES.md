@@ -10,6 +10,14 @@ Sources are the programming guides in `~/Manuals/Rigol/_text_extracted/` and the
 datasheets in `~/Manuals/Rigol/<family>/Datasheet/`. The legacy DS1000D/E, DS1000B/CA
 and DS2000A trees are **not** covered here (see `rigol_scope.py`).
 
+The **DS1000Z** family — DS1054Z, DS1074Z, DS1104Z and MSO1000Z — is also in
+`rigol_scope.py`, driven by `RigolDS1104`. They share one command tree, so the
+class named for the DS1104Z drives all of them; what differs is bandwidth, which
+`ds1000z_specs()` reads out of the model name (Rigol encodes it there: `DS1`, the
+bandwidth in tens of MHz, the channel count, `Z`). Do not confuse this family
+with the two-channel **DS1000Z-E**, which is a different instrument on the modern
+tree and is covered in the table below.
+
 ## Families and models
 
 | Class | Family key | Models (analog ch / digital ch, bandwidth, max sample rate, max memory) | Guide |

@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/version-2.3.1-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-1436%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-2482%20passing-brightgreen.svg)
 ![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
 ![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
 
@@ -462,7 +462,10 @@ For detailed setup instructions:
 ## Supported Equipment
 
 - Rigol MSO2072A Oscilloscope
-- Rigol DS1104 Oscilloscope
+- Rigol DS1000Z Oscilloscopes: DS1054Z (50 MHz), DS1074Z (70 MHz), DS1104Z
+  (100 MHz), MSO1000Z — 4 channels, 1 GSa/s, 24 Mpts. One command tree for the
+  family; bandwidth and channel count are read from the model reported by
+  `*IDN?`, so each instrument reports its own rather than the family's
 - Rigol DS1102D Oscilloscope (100 MHz, 1 GSa/s, 2 channels)
 - Rigol DL3021A DC Electronic Load
 - Rigol DM3058 / DM3058E 5½-digit Digital Multimeter (USB-TMC, LAN, GPIB, RS-232; E model USB/RS-232 only)
