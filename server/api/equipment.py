@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
+from server.equipment import rigol_registry
 from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
                                           catalog, resolve_model)
 from server.equipment.locks import lock_manager
@@ -96,16 +97,17 @@ async def list_supported_models(
     still identified during discovery — it just cannot be connected yet.
 
     **Query parameters:**
-    - `manufacturer`: filter by manufacturer (currently only B&K Precision)
+    - `manufacturer`: filter by manufacturer (B&K Precision or Rigol)
     - `equipment_type`: filter by LabLink equipment type
     - `supported_only`: omit families with no driver
 
     **Returns:** a list of model entries.
     """
-    entries = catalog()
+    entries = catalog() + rigol_registry.catalog()
 
-    if manufacturer and manufacturer.lower() not in MANUFACTURER.lower():
-        entries = []
+    if manufacturer:
+        wanted = manufacturer.lower()
+        entries = [e for e in entries if wanted in e["manufacturer"].lower()]
     if equipment_type:
         entries = [e for e in entries if e["equipment_type"] == equipment_type]
     if supported_only:
@@ -114,7 +116,7 @@ async def list_supported_models(
     return {
         "count": len(entries),
         "models": entries,
-        "categories": CATEGORY_LABELS,
+        "categories": {**CATEGORY_LABELS, **rigol_registry.category_labels()},
     }
 
 
@@ -128,10 +130,13 @@ async def describe_model(model: str):
     """
     info = resolve_model(model)
     if info is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No B&K Precision family matches model {model!r}",
-        )
+        rigol_entry = rigol_registry.resolve_model(model)
+        if rigol_entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No B&K Precision or Rigol family matches model {model!r}",
+            )
+        return {"query": model, **rigol_entry}
 
     entry = next(e for e in catalog() if e["key"] == info.key)
     return {"query": model, **entry}
