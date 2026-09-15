@@ -494,7 +494,10 @@ class RigolDPBase(BaseEquipment):
         self.family: str = self.spec["family"]
         self._dialect: Dict[str, Any] = FAMILY_DIALECTS[self.family]
         self._active_range: Optional[str] = None  # label of the selected range
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Connection

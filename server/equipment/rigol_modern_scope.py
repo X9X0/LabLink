@@ -634,7 +634,10 @@ class RigolModernScopeBase(BaseEquipment):
         self.family: FamilySpec = self.spec.family_spec
         self.num_channels = self.spec.analog_channels
         self.num_digital = self.spec.digital_channels
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
         self._last_waveform: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------ #

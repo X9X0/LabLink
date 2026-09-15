@@ -275,7 +275,10 @@ class RigolVNABase(BaseEquipment):
         self._marker_trace: Dict[int, int] = {}
         self._cal_method: Optional[str] = None
         self._cal_param: Optional[str] = None
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Identity
