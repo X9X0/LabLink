@@ -1630,9 +1630,47 @@ class ControlPanel(QWidget):
             self._update_graph()
 
         except Exception as e:
-            logger.error(f"Error updating readings: {e}")
+            if self._equipment_is_gone(e):
+                # The server no longer holds this instrument -- it was
+                # disconnected, or the server restarted, which an update does.
+                # Retrying cannot fix that, and the timer would ask again ten
+                # times a second: the 404 storm that follows is what starves
+                # the connect task, so a reconnect appears to hang too.
+                logger.info(
+                    "Equipment %s is no longer open on the server; stopping "
+                    "readings", getattr(self.selected_equipment, "equipment_id", "?"),
+                )
+                self._stop_data_acquisition()
+                self._mark_selection_disconnected()
+                self._show_not_connected()
+                self.refresh_equipment_list()
+            else:
+                logger.error(f"Error updating readings: {e}")
         finally:
             self._readings_in_flight = False
+
+    @staticmethod
+    def _equipment_is_gone(error) -> bool:
+        """Whether the server answered "I do not have that instrument".
+
+        Narrow on purpose: a timeout, a dropped connection or a serial hiccup
+        is transient and should keep polling. Only a 404 means the id itself
+        is stale.
+        """
+        response = getattr(error, "response", None)
+        return getattr(response, "status_code", None) == 404
+
+    def _mark_selection_disconnected(self):
+        """Stop trusting a cached "connected" that the server contradicts.
+
+        ``_selected_is_connected`` reads the status the list was populated
+        with, so without this the next tick starts the timer straight back up.
+        """
+        if self.selected_equipment is not None:
+            try:
+                self.selected_equipment.connection_status = ConnectionStatus.DISCONNECTED
+            except Exception:
+                pass
 
     def _update_graph(self):
         """Update the graph with current data."""
