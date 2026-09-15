@@ -1,6 +1,7 @@
 """Rigol oscilloscope driver."""
 
 import logging
+import re
 import uuid
 from typing import Any, Dict, Optional
 
@@ -235,8 +236,35 @@ class RigolMSO2072A(BaseEquipment):
         return measurements
 
 
+def ds1000z_specs(model: str):
+    """Bandwidth and channel count read out of a DS1000Z model name.
+
+    The family shares one command tree, so a DS1054Z is driven by this class
+    too -- but it is a 50 MHz instrument, and reporting the DS1104Z's 100 MHz
+    for it invites a measurement that is trusted well outside the analogue
+    front end. Rigol encodes both numbers in the name: DS1 + bandwidth in tens
+    of MHz + channel count + Z, so DS1054Z is 50 MHz and 4 channels, DS1074Z
+    is 70, DS1104Z is 100. MSO1000Z models follow the same shape.
+
+    Returns None for anything that does not match, leaving the caller's own
+    defaults in place rather than guessing.
+    """
+    match = re.search(r"(?:DS|MSO)1(\d{2})(\d)Z", (model or "").upper())
+    if not match:
+        return None
+    return {
+        "bandwidth_mhz": int(match.group(1)) * 10,
+        "num_channels": int(match.group(2)),
+    }
+
+
 class RigolDS1104(BaseEquipment):
-    """Driver for Rigol DS1104 digital oscilloscope."""
+    """Driver for the Rigol DS1000Z oscilloscope family.
+
+    Named for the DS1104Z, but the DS1054Z and DS1074Z share its command tree
+    and are dispatched here as well; what differs between them is bandwidth,
+    which is read from the model name rather than assumed.
+    """
 
     def __init__(self, resource_manager, resource_string: str):
         """Initialize Rigol DS1104 scope."""
@@ -277,10 +305,13 @@ class RigolDS1104(BaseEquipment):
             parts = idn.split(",")
             firmware = parts[3] if len(parts) > 3 else None
 
-            # Get capabilities
+            # Capabilities of the instrument that actually answered, not of
+            # the model this class is named after.
+            model = parts[1] if len(parts) > 1 else self.model
+            specs = ds1000z_specs(model)
             capabilities = {
-                "num_channels": self.num_channels,
-                "bandwidth": "100MHz",
+                "num_channels": specs["num_channels"] if specs else self.num_channels,
+                "bandwidth": f"{specs['bandwidth_mhz']}MHz" if specs else "100MHz",
                 "sample_rate": "1GSa/s",
                 "memory_depth": "24Mpts",
             }

@@ -107,11 +107,34 @@ KEYWORD_DRIVER_CLASSES = [
 ]
 
 
+def _keyword_matches(keyword: str, model_upper: str) -> bool:
+    """Whether a model keyword appears as a model name, not mid-word.
+
+    A plain substring test is not enough. B&K's RFM3000 contains "M300", so
+    it matched the Rigol M300 data acquisition driver -- and because the
+    keyword registry is consulted before the B&K one, a B&K instrument would
+    have been driven as a Rigol.
+
+    Only the leading edge can be anchored: keywords are a mix of whole model
+    names ("M300") and family prefixes ("DSG3", which has to match DSG3060),
+    so requiring a boundary after the keyword would break the prefixes.
+    """
+    start = 0
+    while True:
+        index = model_upper.find(keyword, start)
+        if index == -1:
+            return False
+        # A model name does not begin in the middle of a longer word.
+        if index == 0 or not model_upper[index - 1].isalnum():
+            return True
+        start = index + 1
+
+
 def find_keyword_driver(model_upper: str):
     """Return the first keyword-registered driver class matching a model string."""
     for cls in KEYWORD_DRIVER_CLASSES:
         keywords = getattr(cls, "MODEL_KEYWORDS", ())
-        if any(k.upper() in model_upper for k in keywords):
+        if any(_keyword_matches(k.upper(), model_upper) for k in keywords):
             return cls
     return None
 
@@ -387,9 +410,9 @@ class EquipmentManager:
             return RigolDM3058(self.resource_manager, resource_string)
 
         # Keyword-registered driver families (Rigol DP, DG, DSA/RSA, DSG, ...)
-        elif find_keyword_driver(model_upper) is not None:
-            return find_keyword_driver(model_upper)(self.resource_manager, resource_string)
-
+        keyword_driver = find_keyword_driver(model_upper)
+        if keyword_driver is not None:
+            return keyword_driver(self.resource_manager, resource_string)
 
         # B&K Precision: dispatched through the model registry so every
         # documented family is reachable, not just the hand-listed few.
