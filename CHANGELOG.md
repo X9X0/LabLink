@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.5] - 2026-09-14
+
+### 🐛 Fixed
+
+- **The Disconnect button did nothing, and had done since v1.3.0.** That
+  release made the handler a coroutine without marking it as a Qt slot, so
+  clicking built a coroutine object and discarded it -- no request, no dialog,
+  no error, not even a log line. Nothing on screen distinguishes a slot that
+  silently never ran from one that ran and had nothing to do, which is how it
+  survived four minor releases. An audit of every signal connection in the
+  client found this was the only one, and that audit is now a test.
+
+### 📝 Changed
+
+- **The equipment details read as a table.** The grid gave neither column a
+  stretch, so Qt split the spare width evenly and every value began at the
+  halfway mark, a hand's width from the caption naming it. The captions now
+  take their natural width and the values sit beside them.
+
+---
+
+
 ## [2.1.4] - 2026-09-14
 
 ### 🐛 Fixed
