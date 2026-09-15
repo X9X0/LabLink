@@ -73,11 +73,36 @@ between two supplies keeps the graph history.
 | Type | Panel | Polls | Default |
 |---|---|---|---|
 | `power_supply` | `PowerSupplyPanel` | `readings` (`GET /equipment/{id}/readings`) | 100 ms |
+| `oscilloscope` | `OscilloscopePanel` | `measurements` (`get_measurements`), plus the waveform on its own timer (`get_waveform_data`, decimated to 600 points) | 500 ms / 1000 ms |
 | everything else | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
 
-Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): oscilloscope with a
-live trace, electronic load, multimeter, function generator, RF generator,
-spectrum analyzer, VNA, data acquisition. Each panel's controls follow its
+### OscilloscopePanel
+
+Front-panel layout: the live trace and a measurements table on the left;
+Run / Stop / Single / Force / Auto, per-channel vertical controls (enable,
+scale, offset, coupling, Apply), horizontal (scale, offset) and edge trigger
+(source, level, slope, sweep) on the right. Channel rows and trigger sources
+follow `capabilities["num_channels"]`. On binding it reads `get_state` once
+and puts the scope's own settings on the controls with signals blocked, so
+selecting a scope never commands it.
+
+Commands sent: `set_channel {channel, enabled, scale, offset, coupling}`,
+`set_timebase {scale, offset}`, `set_trigger {source, level, slope, sweep}`,
+`trigger_run`, `trigger_stop`, `trigger_single`, `force_trigger`,
+`autoscale`, `get_measurements {channel}`, `get_waveform_data {channel, points}`.
+The trace axes come from the returned data: time from the sample times, volts
+as ±4 divisions of the largest enabled channel scale, as on the instrument.
+A driver that answers `Unknown command` for `get_waveform_data` is asked once;
+the trace timer stops and the panel says so.
+
+The legacy DS1000Z / MSO2000A / DS1000D drivers (`server/equipment/rigol_scope.py`)
+did not have `get_waveform_data`, `set_trigger`, `get_state`, `get_measurement`
+or `get_readings`; `LegacyScopeExtras` adds them with the same names and
+shapes as `rigol_modern_scope`, so the bench DS1054Z gets a live trace.
+
+Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): electronic load,
+multimeter, function generator, RF generator, spectrum analyzer, VNA, data
+acquisition. Each panel's controls follow its
 driver family's `set_*` / `get_*` surface (`server/equipment/rigol_*.py`,
 `bk_*.py`) and the family docs (`docs/RIGOL_*.md`).
 
@@ -96,6 +121,13 @@ top-of-scale above a reading). They remain importable from
   polling contract (404 / 501 / 405 stop, transients do not, disconnected
   instruments are never polled, hidden panels stop), cadence defaults and
   per-type overrides, and the shell's dispatch.
+- `tests/gui/test_oscilloscope_panel.py` -- the scope panel against a fake
+  client: configuration from capabilities and `get_state`, the exact payload
+  of every command, measurement polling, decimated trace fetching and axes,
+  one-shot handling of a driver without waveforms.
+- `tests/unit/test_legacy_scope_extras.py` -- the legacy drivers' new
+  commands against a scripted DS1054Z, including waveform scaling and
+  server-side decimation.
 - `tests/gui/test_readouts.py`, `test_panel_reranging.py`,
   `test_readings_stop_on_404.py`, `test_analog_gauge.py` -- the supply panel's
   behaviour, constructed directly.

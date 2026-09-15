@@ -4,6 +4,7 @@ from client.ui.instruments.base import (POLL_KINDS, POLL_MEASUREMENTS,
                                         POLL_READINGS, POLL_STATE,
                                         InstrumentPanel)
 from client.ui.instruments.generic import GenericInstrumentPanel
+from client.ui.instruments.oscilloscope import OscilloscopePanel
 from client.ui.instruments.power_supply import PowerSupplyPanel
 from client.ui.instruments.registry import (panel_class_for, register_panel,
                                             registered_panels)
@@ -14,6 +15,7 @@ __all__ = [
     "InstrumentPanel",
     "GenericInstrumentPanel",
     "PowerSupplyPanel",
+    "OscilloscopePanel",
     "POLL_KINDS",
     "POLL_READINGS",
     "POLL_MEASUREMENTS",

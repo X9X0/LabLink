@@ -38,6 +38,19 @@ Per-instrument control panels, phase 1: the shell and the contract.
 - `client/ui/instruments/widgets.py`: `FittedReadout`, `AnalogGauge`,
   `ChartWithReadouts` and `nice_range` shared by every panel (still importable
   from `client.ui.control_panel`).
+- **`OscilloscopePanel` with a live trace** (`client/ui/instruments/oscilloscope.py`).
+  Per-channel vertical controls, horizontal, edge trigger, Run / Stop / Single /
+  Force / Auto, an automatic-measurements table on the panel's poll timer, and
+  the waveform on its own slower timer, fetched decimated (`get_waveform_data`
+  with `points`). Channel rows follow the instrument's channel count; the
+  scope's own settings are read onto the controls without commanding it.
+- `LegacyScopeExtras` (`server/equipment/rigol_scope.py`): the DS1000Z, MSO2000A
+  and DS1000D drivers gain `get_waveform_data` (real samples, scaled from the
+  preamble, decimated server-side), `set_trigger`, `get_trigger`, `get_channel`,
+  `get_timebase`, `get_state`, `get_measurement` and `get_readings`, with the
+  same names and shapes as the modern driver -- so the bench DS1054Z gets a
+  live trace. The only server change in this release, and it adds commands
+  rather than altering any.
 - `docs/INSTRUMENT_PANELS.md`: the contract and how to add a panel.
 
 ### 🐛 Fixed

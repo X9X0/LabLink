@@ -16,7 +16,225 @@ from .base import BaseEquipment
 logger = logging.getLogger(__name__)
 
 
-class RigolMSO2072A(BaseEquipment):
+
+class LegacyScopeExtras:
+    """Commands the per-instrument scope panel needs that the original
+    DS1000Z / MSO2000A / DS1000D drivers did not expose.
+
+    They speak the same command tree as ``rigol_modern_scope`` for these
+    subsystems, so the panel can drive a DS1054Z and a DHO804 with one set of
+    command names. Mixed into the three legacy classes; every method uses only
+    ``_write`` / ``_query`` / ``_query_binary`` from BaseEquipment.
+    """
+
+    #: NORMal-mode waveform reads on these families return at most 1200
+    #: points (the screen), which is what a live trace wants.
+    WAVEFORM_POINTS = 1200
+
+    async def get_waveform_data(self, channel: int = 1, mode: str = "NORMal",
+                                points: Optional[int] = None, **_ignored) -> Dict[str, Any]:
+        """JSON-friendly waveform: metadata plus time/voltage lists.
+
+        Same shape as ``RigolModernScopeBase.get_waveform_data`` so the client
+        panel does not care which driver answered. ``points`` decimates the
+        trace server-side (every n-th sample) so a 1 Hz live trace does not
+        move 1200 floats per channel when 400 pixels are available.
+        """
+        from .rigol_modern_scope import parse_preamble, raw_to_volts
+
+        channel = int(channel)
+        if channel < 1 or channel > self.num_channels:
+            raise ValueError(f"Invalid channel: {channel}")
+        await self._write(f":WAV:SOUR CHAN{channel}")
+        await self._write(":WAV:MODE NORM")
+        await self._write(":WAV:FORM BYTE")
+        preamble = parse_preamble(await self._query(":WAV:PRE?"))
+        raw = await self._query_binary(":WAV:DATA?")
+        volts = raw_to_volts(bytes(raw), preamble, "BYTE")
+        x_inc = float(preamble.get("x_increment") or 0.0) or 1e-9
+        x_org = float(preamble.get("x_origin") or 0.0)
+        times = x_org + np.arange(len(volts)) * x_inc
+
+        if points and points > 0 and len(volts) > points:
+            step = int(np.ceil(len(volts) / points))
+            volts = volts[::step]
+            times = times[::step]
+
+        time_scale = float(await self._query(":TIM:MAIN:SCAL?"))
+        volt_scale = float(await self._query(f":CHAN{channel}:SCAL?"))
+        volt_offset = float(await self._query(f":CHAN{channel}:OFFS?"))
+        return {
+            "equipment_id": self.cached_info.id if self.cached_info else "unknown",
+            "channel": channel,
+            "source": f"CHAN{channel}",
+            "mode": "NORMal",
+            "sample_rate": 1.0 / x_inc,
+            "time_scale": time_scale,
+            "voltage_scale": volt_scale,
+            "voltage_offset": volt_offset,
+            "num_samples": int(len(volts)),
+            "x_origin": x_org,
+            "x_increment": float(times[1] - times[0]) if len(times) > 1 else x_inc,
+            "y_increment": preamble.get("y_increment"),
+            "data_id": f"waveform_{uuid.uuid4().hex[:8]}",
+            "time": [float(t) for t in times],
+            "voltage": [float(v) for v in volts],
+        }
+
+    # -- trigger -----------------------------------------------------------
+
+    async def set_trigger(self, source: Optional[str] = None, level: Optional[float] = None,
+                          slope: Optional[str] = None, mode: Optional[str] = None,
+                          sweep: Optional[str] = None, **_ignored) -> Dict[str, Any]:
+        """Edge trigger setup; only the given parameters are written."""
+        if mode is not None:
+            token = str(mode).strip().upper()
+            token = {"EDGE": "EDGE", "PULSE": "PULS", "PULS": "PULS", "SLOPE": "SLOP",
+                     "SLOP": "SLOP", "VIDEO": "VID", "VID": "VID", "PATTERN": "PATT",
+                     "PATT": "PATT"}.get(token)
+            if token is None:
+                raise ValueError(f"Invalid trigger mode: {mode}")
+            await self._write(f":TRIG:MODE {token}")
+        if source is not None:
+            src = str(source).strip().upper().replace("CHANNEL", "CHAN")
+            if src.startswith("CH") and not src.startswith("CHAN"):
+                src = "CHAN" + src[2:]
+            if src in ("EXT", "EXTERNAL"):
+                src = "EXT"
+            elif src in ("AC", "ACLINE", "LINE"):
+                src = "ACL"
+            await self._write(f":TRIG:EDGE:SOUR {src}")
+        if level is not None:
+            await self._write(f":TRIG:EDGE:LEV {float(level)}")
+        if slope is not None:
+            sl = str(slope).strip().upper()
+            sl = {"POS": "POS", "POSITIVE": "POS", "RISE": "POS", "RISING": "POS",
+                  "NEG": "NEG", "NEGATIVE": "NEG", "FALL": "NEG", "FALLING": "NEG",
+                  "RFAL": "RFAL", "EITHER": "RFAL", "BOTH": "RFAL"}.get(sl)
+            if sl is None:
+                raise ValueError(f"Invalid trigger slope: {slope}")
+            await self._write(f":TRIG:EDGE:SLOP {sl}")
+        if sweep is not None:
+            sw = str(sweep).strip().upper()
+            sw = {"AUTO": "AUTO", "NORMAL": "NORM", "NORM": "NORM", "SINGLE": "SING",
+                  "SING": "SING"}.get(sw)
+            if sw is None:
+                raise ValueError(f"Invalid trigger sweep: {sweep}")
+            await self._write(f":TRIG:SWE {sw}")
+        return await self.get_trigger()
+
+    async def get_trigger(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for key, cmd in (("mode", ":TRIG:MODE?"), ("source", ":TRIG:EDGE:SOUR?"),
+                         ("slope", ":TRIG:EDGE:SLOP?"), ("sweep", ":TRIG:SWE?"),
+                         ("status", ":TRIG:STAT?")):
+            try:
+                result[key] = (await self._query(cmd)).strip()
+            except Exception as e:
+                logger.debug(f"{cmd} failed: {e}")
+                result[key] = None
+        try:
+            result["level"] = float(await self._query(":TRIG:EDGE:LEV?"))
+        except Exception:
+            result["level"] = None
+        return result
+
+    async def get_trigger_status(self) -> str:
+        return (await self._query(":TRIG:STAT?")).strip()
+
+    async def force_trigger(self):
+        await self._write(":TFOR")
+
+    # -- read-back for the panel --------------------------------------------
+
+    async def get_channel(self, channel: int = 1) -> Dict[str, Any]:
+        channel = int(channel)
+        if channel < 1 or channel > self.num_channels:
+            raise ValueError(f"Invalid channel: {channel}")
+        pre = f":CHAN{channel}"
+        result: Dict[str, Any] = {"channel": channel}
+        for key, cmd, conv in (("enabled", f"{pre}:DISP?", lambda v: v.strip() in ("1", "ON")),
+                               ("scale", f"{pre}:SCAL?", float),
+                               ("offset", f"{pre}:OFFS?", float),
+                               ("coupling", f"{pre}:COUP?", lambda v: v.strip()),
+                               ("probe", f"{pre}:PROB?", float)):
+            try:
+                result[key] = conv(await self._query(cmd))
+            except Exception as e:
+                logger.debug(f"{cmd} failed: {e}")
+                result[key] = None
+        return result
+
+    async def get_timebase(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        try:
+            result["scale"] = float(await self._query(":TIM:MAIN:SCAL?"))
+        except Exception:
+            result["scale"] = None
+        try:
+            result["offset"] = float(await self._query(":TIM:MAIN:OFFS?"))
+        except Exception:
+            result["offset"] = None
+        return result
+
+    async def get_state(self) -> Dict[str, Any]:
+        state: Dict[str, Any] = {"model": self.model, "channels": {}}
+        for ch in range(1, self.num_channels + 1):
+            try:
+                state["channels"][str(ch)] = await self.get_channel(ch)
+            except Exception as e:
+                state["channels"][str(ch)] = {"error": str(e)}
+        state["timebase"] = await self.get_timebase()
+        state["trigger"] = await self.get_trigger()
+        return state
+
+    async def get_measurement(self, channel: str = "CH1") -> Dict[str, Any]:
+        """Acquisition-engine hook: ``CH1`` (VAVG), ``CH2:VPP``, ``1.freq``."""
+        text = (channel or "CH1").strip().upper()
+        if ":" in text:
+            src, item = text.split(":", 1)
+        elif "." in text:
+            src, item = text.split(".", 1)
+        else:
+            src, item = text, "VAVG"
+        digits = "".join(c for c in src if c.isdigit()) or "1"
+        ch = int(digits)
+        item = {"FREQUENCY": "FREQ", "PER": "PERIOD"}.get(item, item).lower()
+        measurements = await self.get_measurements(ch)
+        value = measurements.get(item)
+        if value is None:
+            raise ValueError(f"Unknown measurement {item!r}; have {sorted(measurements)}")
+        return {"value": value, "channel": ch, "item": item}
+
+    async def get_readings(self, channel: int = 1) -> Dict[str, Any]:
+        data = await self.get_measurements(int(channel))
+        data["channel"] = int(channel)
+        return data
+
+    async def _extra_command(self, command: str, parameters: dict) -> Any:
+        """Dispatch for the methods this mixin adds; raises on anything else."""
+        handlers = {
+            "get_waveform_data": self.get_waveform_data,
+            "set_trigger": self.set_trigger,
+            "get_trigger": self.get_trigger,
+            "get_trigger_status": self.get_trigger_status,
+            "force_trigger": self.force_trigger,
+            "get_channel": self.get_channel,
+            "get_timebase": self.get_timebase,
+            "get_state": self.get_state,
+            "get_measurement": self.get_measurement,
+            "get_readings": self.get_readings,
+            "run": self.trigger_run,
+            "stop": self.trigger_stop,
+            "single": self.trigger_single,
+        }
+        handler = handlers.get(command)
+        if handler is None:
+            raise ValueError(f"Unknown command: {command}")
+        return await handler(**(parameters or {}))
+
+
+class RigolMSO2072A(LegacyScopeExtras, BaseEquipment):
     """Driver for Rigol MSO2072A oscilloscope."""
 
     def __init__(self, resource_manager, resource_string: str):
@@ -99,7 +317,7 @@ class RigolMSO2072A(BaseEquipment):
         elif command == "get_measurements":
             return await self.get_measurements(**parameters)
         else:
-            raise ValueError(f"Unknown command: {command}")
+            return await self._extra_command(command, parameters)
 
     async def get_waveform(self, channel: int = 1) -> WaveformData:
         """Get waveform data from a channel."""
@@ -258,7 +476,7 @@ def ds1000z_specs(model: str):
     }
 
 
-class RigolDS1104(BaseEquipment):
+class RigolDS1104(LegacyScopeExtras, BaseEquipment):
     """Driver for the Rigol DS1000Z oscilloscope family.
 
     Named for the DS1104Z, but the DS1054Z and DS1074Z share its command tree
@@ -348,7 +566,7 @@ class RigolDS1104(BaseEquipment):
         elif command == "get_measurements":
             return await self.get_measurements(**parameters)
         else:
-            raise ValueError(f"Unknown command: {command}")
+            return await self._extra_command(command, parameters)
 
     async def get_waveform(self, channel: int = 1) -> WaveformData:
         """Get waveform data from a channel."""
@@ -481,7 +699,7 @@ class RigolDS1104(BaseEquipment):
         return measurements
 
 
-class RigolDS1102D(BaseEquipment):
+class RigolDS1102D(LegacyScopeExtras, BaseEquipment):
     """Driver for Rigol DS1102D digital oscilloscope.
 
     Specifications:
@@ -578,7 +796,7 @@ class RigolDS1102D(BaseEquipment):
         elif command == "get_trigger_status":
             return await self.get_trigger_status()
         else:
-            raise ValueError(f"Unknown command: {command}")
+            return await self._extra_command(command, parameters)
 
     async def get_waveform(self, channel: int = 1) -> WaveformData:
         """Get waveform data from a channel."""
