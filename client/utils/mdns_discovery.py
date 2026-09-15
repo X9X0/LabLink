@@ -51,7 +51,7 @@ class LabLinkServer:
             "port": self.port,
             "ws_port": self.ws_port,
             "url": f"http://{self.address}:{self.port}",
-            "ws_url": f"ws://{self.address}:{self.ws_port}/ws",
+            "ws_url": f"ws://{self.address}:{self.port}/ws",
             "properties": self.properties,
             "discovered_at": self.discovered_at,
         }
@@ -194,11 +194,13 @@ class LabLinkDiscovery:
             for key, value in info.properties.items():
                 try:
                     properties[key.decode("utf-8")] = value.decode("utf-8")
-                except:
+                except Exception:
                     pass
 
             # Get WebSocket port from properties
-            ws_port = int(properties.get("ws_port", port + 1))
+            # /ws is served on the API port; older servers advertised a
+            # separate ws_port that nothing ever bound.
+            ws_port = int(properties.get("ws_port", port)) or port
 
             # Get server name
             server_name = properties.get("hostname", name.split(".")[0])

@@ -10,7 +10,9 @@ Provides JWT-based authentication with:
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 # Password hashing
@@ -103,6 +105,7 @@ def create_access_token(
     user: User,
     config: AuthConfig,
     auth_method: AuthMethod = AuthMethod.PASSWORD,
+    session_id: Optional[str] = None,
 ) -> str:
     """
     Create a JWT access token.
@@ -111,11 +114,13 @@ def create_access_token(
         user: User object
         config: Authentication configuration
         auth_method: How the user authenticated
+        session_id: Backing SessionManager session; the token is revoked
+            whenever this session is destroyed (logout, password change, etc.)
 
     Returns:
         Encoded JWT token
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=config.access_token_expire_minutes)
 
     payload = TokenPayload(
@@ -126,6 +131,7 @@ def create_access_token(
         exp=expires,
         iat=now,
         auth_method=auth_method,
+        session_id=session_id,
     )
 
     token = jwt.encode(payload.dict(), config.secret_key, algorithm=config.algorithm)
@@ -144,7 +150,7 @@ def create_refresh_token(user_id: str, config: AuthConfig) -> str:
     Returns:
         Encoded JWT refresh token
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expires = now + timedelta(days=config.refresh_token_expire_days)
 
     payload = {
@@ -222,10 +228,65 @@ def decode_refresh_token(token: str, config: AuthConfig) -> Optional[str]:
 
 
 class SessionManager:
-    """Manages active user sessions."""
+    """Manages active user sessions with optional SQLite write-through."""
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[Path] = None):
         self._sessions: Dict[str, SessionInfo] = {}  # session_id -> SessionInfo
+        self._db_path = db_path
+
+        if db_path is not None:
+            self._rehydrate_sessions()
+
+    # ------------------------------------------------------------------
+    # DB helpers
+    # ------------------------------------------------------------------
+
+    def _db_write(self, sql: str, params: tuple = ()):
+        """Execute a single write statement on the sessions DB."""
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            conn.execute(sql, params)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _rehydrate_sessions(self):
+        """Load non-expired sessions from DB into the in-memory dict."""
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            cursor = conn.cursor()
+            now = datetime.now(timezone.utc)
+            cursor.execute(
+                "SELECT session_id, user_id, username, ip_address, auth_method, "
+                "created_at, expires_at, last_activity FROM sessions WHERE expires_at > ?",
+                (now.isoformat(),),
+            )
+            loaded = 0
+            for row in cursor.fetchall():
+                try:
+                    session = SessionInfo(
+                        session_id=row[0],
+                        user_id=row[1],
+                        username=row[2],
+                        ip_address=row[3],
+                        auth_method=AuthMethod(row[4]),
+                        created_at=datetime.fromisoformat(row[5]),
+                        expires_at=datetime.fromisoformat(row[6]),
+                        last_activity=datetime.fromisoformat(row[7]),
+                    )
+                    self._sessions[row[0]] = session
+                    loaded += 1
+                except Exception as e:
+                    logger.warning(f"Failed to rehydrate session {row[0]}: {e}")
+            logger.info(f"Rehydrated {loaded} sessions from database")
+        except Exception as e:
+            logger.warning(f"Session rehydration skipped: {e}")
+        finally:
+            conn.close()
+
+    # ------------------------------------------------------------------
+    # Session operations
+    # ------------------------------------------------------------------
 
     def create_session(
         self,
@@ -235,8 +296,13 @@ class SessionManager:
         expires_in_minutes: int = 30,
     ) -> str:
         """Create a new session."""
+        # Login and token-refresh are the only paths that grow this table, so
+        # prune here rather than running a separate cleanup task.
+        self.cleanup_expired_sessions()
+
         session_id = secrets.token_urlsafe(32)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=expires_in_minutes)
 
         session = SessionInfo(
             session_id=session_id,
@@ -245,11 +311,29 @@ class SessionManager:
             ip_address=ip_address,
             auth_method=auth_method,
             created_at=now,
-            expires_at=now + timedelta(minutes=expires_in_minutes),
+            expires_at=expires_at,
             last_activity=now,
         )
 
         self._sessions[session_id] = session
+
+        if self._db_path is not None:
+            self._db_write(
+                "INSERT OR REPLACE INTO sessions "
+                "(session_id, user_id, username, ip_address, auth_method, "
+                "created_at, expires_at, last_activity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    user.user_id,
+                    user.username,
+                    ip_address,
+                    auth_method.value,
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+
         logger.info(f"Session created for user {user.username} from {ip_address}")
         return session_id
 
@@ -261,12 +345,17 @@ class SessionManager:
             return None
 
         # Check if expired
-        if datetime.utcnow() > session.expires_at:
+        if datetime.now(timezone.utc) > session.expires_at:
             self.destroy_session(session_id)
             return None
 
         # Update last activity
-        session.last_activity = datetime.utcnow()
+        session.last_activity = datetime.now(timezone.utc)
+        if self._db_path is not None:
+            self._db_write(
+                "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
+                (session.last_activity.isoformat(), session_id),
+            )
         return session
 
     def destroy_session(self, session_id: str) -> bool:
@@ -274,6 +363,10 @@ class SessionManager:
         if session_id in self._sessions:
             session = self._sessions[session_id]
             del self._sessions[session_id]
+            if self._db_path is not None:
+                self._db_write(
+                    "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+                )
             logger.info(f"Session destroyed for user {session.username}")
             return True
         return False
@@ -285,13 +378,24 @@ class SessionManager:
         for session_id in session_ids:
             session = self._sessions[session_id]
             if session.user_id == user_id:
-                self.destroy_session(session_id)
+                # Remove from memory without triggering individual DB deletes;
+                # the bulk DELETE below handles the DB side atomically.
+                del self._sessions[session_id]
+                logger.info(f"Session destroyed for user {session.username}")
                 count += 1
+
+        # Bulk-delete all sessions for this user from DB in one query, which
+        # also catches any orphaned DB rows that were not in _sessions.
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM sessions WHERE user_id = ?", (user_id,)
+            )
+
         return count
 
     def get_active_sessions(self) -> list[SessionInfo]:
         """Get all active sessions."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         active = []
 
         # Clean up expired sessions
@@ -311,7 +415,7 @@ class SessionManager:
 
     def cleanup_expired_sessions(self) -> int:
         """Remove expired sessions."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         count = 0
 
         session_ids = list(self._sessions.keys())
@@ -320,6 +424,12 @@ class SessionManager:
             if now > session.expires_at:
                 self.destroy_session(session_id)
                 count += 1
+
+        # Bulk-delete any orphaned expired rows from DB
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM sessions WHERE expires_at <= ?", (now.isoformat(),)
+            )
 
         return count
 
@@ -330,11 +440,56 @@ class SessionManager:
 
 
 class LoginAttemptTracker:
-    """Tracks failed login attempts for account lockout."""
+    """Tracks failed login attempts for account lockout.
 
-    def __init__(self, config: AuthConfig):
+    Attempts are written through to SQLite when a ``db_path`` is supplied, so
+    a restart doesn't reset an in-progress attacker's attempt budget.
+    """
+
+    def __init__(self, config: AuthConfig, db_path: Optional[Path] = None):
         self.config = config
         self._attempts: Dict[str, list[datetime]] = {}  # username -> [timestamps]
+        self._db_path = db_path
+
+        if db_path is not None:
+            self._rehydrate_attempts()
+
+    def _db_write(self, sql: str, params: tuple = ()):
+        """Execute a single write statement on the attempts DB."""
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            try:
+                conn.execute(sql, params)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            # Lockout tracking must never block a login response.
+            logger.warning(f"Could not persist login attempt: {e}")
+
+    def _rehydrate_attempts(self):
+        """Load recent attempts from DB so lockouts survive a restart."""
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=self.config.account_lockout_duration_minutes
+        )
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            try:
+                rows = conn.execute(
+                    "SELECT username, attempted_at FROM login_attempts WHERE attempted_at > ?",
+                    (cutoff.isoformat(),),
+                ).fetchall()
+            finally:
+                conn.close()
+
+            for username, attempted_at in rows:
+                self._attempts.setdefault(username, []).append(
+                    datetime.fromisoformat(attempted_at)
+                )
+            if rows:
+                logger.info(f"Rehydrated {len(rows)} recent failed login attempts")
+        except Exception as e:
+            logger.warning(f"Login attempt rehydration skipped: {e}")
 
     def record_failed_attempt(self, username: str) -> int:
         """
@@ -343,7 +498,7 @@ class LoginAttemptTracker:
         Returns:
             Number of failed attempts
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if username not in self._attempts:
             self._attempts[username] = []
@@ -354,6 +509,16 @@ class LoginAttemptTracker:
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
         self._attempts[username] = [t for t in self._attempts[username] if t > cutoff]
 
+        if self._db_path is not None:
+            self._db_write(
+                "INSERT INTO login_attempts (username, attempted_at) VALUES (?, ?)",
+                (username, now.isoformat()),
+            )
+            self._db_write(
+                "DELETE FROM login_attempts WHERE attempted_at <= ?",
+                (cutoff.isoformat(),),
+            )
+
         return len(self._attempts[username])
 
     def clear_attempts(self, username: str):
@@ -361,12 +526,17 @@ class LoginAttemptTracker:
         if username in self._attempts:
             del self._attempts[username]
 
+        if self._db_path is not None:
+            self._db_write(
+                "DELETE FROM login_attempts WHERE username = ?", (username,)
+            )
+
     def get_attempt_count(self, username: str) -> int:
         """Get current failed attempt count."""
         if username not in self._attempts:
             return 0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=self.config.account_lockout_duration_minutes)
 
         # Filter recent attempts
@@ -397,7 +567,7 @@ class LoginAttemptTracker:
         lockout_until = first_attempt + timedelta(
             minutes=self.config.account_lockout_duration_minutes
         )
-        remaining = (lockout_until - datetime.utcnow()).total_seconds()
+        remaining = (lockout_until - datetime.now(timezone.utc)).total_seconds()
 
         return max(0, int(remaining))
 

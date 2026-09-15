@@ -15,7 +15,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_modern_scope import (  # noqa: E402
+from server.equipment.rigol_modern_scope import (  # noqa: E402
     FAMILIES, MEASURE_ITEMS, RigolDHO800, RigolDHO1000, RigolDHO5000,
     RigolDS1000ZE, RigolDS4000, RigolDS6000, RigolDS70000, RigolDS80000,
     RigolDS8000R, RigolMHO900, RigolModernScopeBase, RigolMSO5000,

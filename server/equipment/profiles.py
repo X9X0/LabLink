@@ -49,6 +49,10 @@ class ProfileManager:
         self.auto_load = settings.auto_load_profiles
         self._profiles_cache: Dict[str, EquipmentProfile] = {}
 
+    def profile_exists(self, profile_name: str) -> bool:
+        """Whether a profile of this name is already on disk."""
+        return self._get_profile_path(profile_name).exists()
+
     def _get_profile_path(self, profile_name: str) -> Path:
         """Get path for a profile file."""
         # Sanitize profile name
@@ -76,7 +80,7 @@ class ProfileManager:
             profile.modified_at = datetime.now()
             profile_path = self._get_profile_path(profile.name)
 
-            with open(profile_path, "w") as f:
+            with open(profile_path, "w", encoding="utf-8") as f:
                 json.dump(profile.dict(), f, indent=2, default=str)
 
             self._profiles_cache[profile.name] = profile
@@ -112,7 +116,7 @@ class ProfileManager:
                 logger.warning(f"Profile '{profile_name}' not found at {profile_path}")
                 return None
 
-            with open(profile_path, "r") as f:
+            with open(profile_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             profile = EquipmentProfile(**data)
@@ -144,7 +148,7 @@ class ProfileManager:
         try:
             for profile_file in self.profile_dir.glob("*.json"):
                 try:
-                    with open(profile_file, "r") as f:
+                    with open(profile_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     profile = EquipmentProfile(**data)
 
@@ -423,9 +427,20 @@ def create_default_profiles():
         ),
     ]
 
-    # Save all default profiles
+    # Write only the ones that are missing.
+    #
+    # This used to save all of them on every startup, and save_profile stamps
+    # modified_at, so the shipped profile files were rewritten on every boot --
+    # dirtying the working tree of anyone who runs the server from a checkout,
+    # and, worse, silently discarding edits a user had made to a default.
+    # "Default" should mean the value it starts with, not one restored from
+    # under you each time the process restarts.
     all_profiles = scope_profiles + ps_profiles + load_profiles + dmm_profiles
-    for profile in all_profiles:
+    created = [p for p in all_profiles if not profile_manager.profile_exists(p.name)]
+    for profile in created:
         profile_manager.save_profile(profile)
 
-    logger.info(f"Created {len(all_profiles)} default profiles")
+    logger.info(
+        f"Created {len(created)} default profiles "
+        f"({len(all_profiles) - len(created)} already present)"
+    )

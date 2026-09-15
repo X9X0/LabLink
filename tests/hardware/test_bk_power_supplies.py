@@ -1,10 +1,11 @@
 """Tests for BK Precision power supply drivers (9205B and 1685B)."""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import sys
 sys.path.append("..")
-from equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.bk_registry import MANUFACTURER
 
 
 class TestBK9205B:
@@ -48,7 +49,7 @@ class TestBK9205B:
         await power_supply.connect()
         info = await power_supply.get_info()
 
-        assert info.manufacturer == "BK Precision"
+        assert info.manufacturer == MANUFACTURER
         assert info.model == "9205B"
         assert info.serial_number == "123456"
         assert "ps_" in info.id
@@ -63,8 +64,10 @@ class TestBK9205B:
 
         assert status.connected is True
         assert status.firmware_version == "V1.0"
-        assert status.capabilities["max_voltage"] == 120.0
-        assert status.capabilities["max_current"] == 10.0
+        # B&K rates the 9205B at 60 V / 25 A / 600 W. This asserted
+        # 120 V / 10 A, the figures the driver carried before #116.
+        assert status.capabilities["max_voltage"] == 60.0
+        assert status.capabilities["max_current"] == 25.0
         assert status.capabilities["num_channels"] == 1
 
     @pytest.mark.asyncio
@@ -79,7 +82,7 @@ class TestBK9205B:
 
         # Test out of range
         with pytest.raises(ValueError):
-            await power_supply.set_voltage(150.0)  # Max is 120V
+            await power_supply.set_voltage(150.0)  # Max is 60 V
 
         with pytest.raises(ValueError):
             await power_supply.set_voltage(-1.0)
@@ -95,8 +98,11 @@ class TestBK9205B:
         mock_instrument.write.assert_called()
 
         # Test out of range
+        # 15 A used to be refused here, on a supply rated for 25 A.
+        await power_supply.set_current(15.0)
+
         with pytest.raises(ValueError):
-            await power_supply.set_current(15.0)  # Max is 10A
+            await power_supply.set_current(30.0)  # Max is 25 A
 
         with pytest.raises(ValueError):
             await power_supply.set_current(-1.0)
@@ -116,15 +122,16 @@ class TestBK9205B:
     @pytest.mark.asyncio
     async def test_get_readings(self, power_supply, mock_instrument):
         """Test getting readings from the power supply."""
-        mock_instrument.query.side_effect = [
-            "BK Precision,9205B,123456,V1.0",  # IDN for connect
-            "BK Precision,9205B,123456,V1.0",  # IDN for get_info
-            "12.05",  # Measured voltage
-            "2.50",   # Measured current
-            "1",      # Output state (ON)
-            "12.00",  # Voltage setpoint
-            "5.00"    # Current setpoint
-        ]
+        responses = {
+            "*IDN?": "BK Precision,9205B,123456,V1.0",
+            "MEAS:VOLT?": "12.05",
+            "MEAS:CURR?": "2.50",
+            "VOLT?": "12.00",
+            "CURR?": "5.00",
+            "OUTP?": "1",
+            "SYST:ERR?": '0,"No error"',
+        }
+        mock_instrument.query.side_effect = lambda cmd, *a, **k: responses[cmd]
 
         await power_supply.connect()
         readings = await power_supply.get_readings()
@@ -181,21 +188,34 @@ class TestBK1685B:
         await power_supply.connect()
         info = await power_supply.get_info()
 
-        assert info.manufacturer == "BK Precision"
+        assert info.manufacturer == MANUFACTURER
         assert info.model == "1685B"
-        assert info.serial_number == "123456"
+        # The 1685B does not support *IDN?, so the driver reports no serial.
+        assert info.serial_number is None
         assert "ps_" in info.id
 
     @pytest.mark.asyncio
     async def test_get_status(self, power_supply, mock_instrument):
-        """Test getting power supply status."""
+        """Test getting power supply status.
+
+        The firmware version is deliberately absent. The fixed-width protocol
+        has no *IDN?, so there is nowhere for a version to come from; the
+        driver stopped asking in the health-monitor fix, because each attempt
+        held the serial port for a full timeout every 30 seconds and collided
+        with whatever the panel was doing.
+
+        This used to assert "V2.1" and passed only because a MagicMock
+        answered a command the instrument does not implement. Asserting None
+        keeps the real constraint visible: if a version ever appears here,
+        something is querying a header this protocol does not have.
+        """
         mock_instrument.query.return_value = "BK Precision,1685B,123456,V2.1"
 
         await power_supply.connect()
         status = await power_supply.get_status()
 
         assert status.connected is True
-        assert status.firmware_version == "V2.1"
+        assert status.firmware_version is None
         assert status.capabilities["max_voltage"] == 18.0
         assert status.capabilities["max_current"] == 5.0
         assert status.capabilities["num_channels"] == 1
@@ -237,24 +257,29 @@ class TestBK1685B:
     @pytest.mark.asyncio
     async def test_get_readings(self, power_supply, mock_instrument):
         """Test getting readings from the power supply."""
-        mock_instrument.query.side_effect = [
-            "BK Precision,1685B,123456,V2.1",  # IDN for connect
-            "BK Precision,1685B,123456,V2.1",  # IDN for get_info
-            "5.02",   # Measured voltage
-            "1.25",   # Measured current
-            "ON",     # Output state
-            "5.00",   # Voltage setpoint
-            "2.00"    # Current setpoint
-        ]
+        # GETD: VVVV(/100) IIII(/100) mode  -> 5.02 V, 12.50 A, CV.
+        # Both reading fields are two decimals, per the worked example in the
+        # 1685B/1900B manuals (030201450 = 3.02 V, 1.45 A).
+        # GOUT: "0" means output ON (the protocol inverts this)
+        # GETS on a 1685B: VVV(/10) CCC(/100) -> 5.0 V, 0.20 A setpoints
+        bk_responses = {
+            "GETD": "050212500",
+            "GOUT": "0",
+            "GETS": "050020",
+        }
+
+        async def fake_bk_query(command):
+            return bk_responses[command]
 
         await power_supply.connect()
-        readings = await power_supply.get_readings()
+        with patch.object(power_supply, "_bk_query", side_effect=fake_bk_query):
+            readings = await power_supply.get_readings()
 
         assert readings.voltage_actual == 5.02
-        assert readings.current_actual == 1.25
+        assert readings.current_actual == 12.50
         assert readings.output_enabled is True
         assert readings.voltage_set == 5.00
-        assert readings.current_set == 2.00
+        assert readings.current_set == 0.20
 
     @pytest.mark.asyncio
     async def test_cv_cc_mode_detection(self, power_supply, mock_instrument):
@@ -263,26 +288,30 @@ class TestBK1685B:
 
         await power_supply.connect()
 
-        # Test CV mode (current well below limit)
-        mock_instrument.query.side_effect = [
-            "5.00",   # Measured voltage
-            "1.00",   # Measured current (well below limit)
-            "ON",     # Output state
-            "5.00",   # Voltage setpoint
-            "3.00"    # Current setpoint
-        ]
-        readings = await power_supply.get_readings()
+        # The 1685B reports CV/CC in the GETD mode byte (0 = CV, 1 = CC)
+        # rather than through SCPI queries.
+        async def bk_query_with_mode(mode_digit):
+            async def _query(command):
+                return {
+                    "GETD": f"05001000{mode_digit}",
+                    "GOUT": "0",
+                    "GETS": "050030",
+                }[command]
+
+            return _query
+
+        # Test CV mode
+        with patch.object(
+            power_supply, "_bk_query", side_effect=await bk_query_with_mode("0")
+        ):
+            readings = await power_supply.get_readings()
         assert readings.in_cv_mode is True
         assert readings.in_cc_mode is False
 
-        # Test CC mode (current at limit)
-        mock_instrument.query.side_effect = [
-            "4.50",   # Measured voltage
-            "3.00",   # Measured current (at limit)
-            "ON",     # Output state
-            "5.00",   # Voltage setpoint
-            "3.00"    # Current setpoint
-        ]
-        readings = await power_supply.get_readings()
+        # Test CC mode
+        with patch.object(
+            power_supply, "_bk_query", side_effect=await bk_query_with_mode("1")
+        ):
+            readings = await power_supply.get_readings()
         assert readings.in_cc_mode is True
         assert readings.in_cv_mode is False

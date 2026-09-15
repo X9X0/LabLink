@@ -4,8 +4,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
-from waveform.advanced_analysis import AdvancedWaveformAnalyzer
-from waveform.advanced_models import (
+from server.waveform.advanced_analysis import AdvancedWaveformAnalyzer
+from server.waveform.advanced_models import (
     ComparisonResult,
     CrossCorrelationData,
     EyeDiagramConfig,
@@ -23,7 +23,7 @@ from waveform.advanced_models import (
     TrendData,
     TrendParameter,
 )
-from waveform.manager import WaveformManager
+from server.waveform.manager import WaveformManager
 
 router = APIRouter(prefix="/api/waveform/advanced", tags=["waveform-advanced"])
 

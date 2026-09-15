@@ -1,0 +1,450 @@
+# LabLink Client - Windows Installation Guide
+
+## Quick Start (Recommended Method)
+
+### Option 1: One Command, Nothing to Download (Easiest)
+
+Open PowerShell -- no admin rights needed -- and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+```
+
+The script fetches LabLink itself, so there is nothing to clone first. It asks
+where to install and whether you want a desktop shortcut; press Enter for the
+defaults.
+
+This form cannot take parameters, because `iex` runs the script as a string
+rather than as a file. To pass options, compile it explicitly instead:
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1).Content)) -InstallPath 'D:\LabLink' -Unattended
+```
+
+Neither form is subject to the execution policy, because that applies to script
+files on disk and not to commands run in an existing session. That is also why
+endpoint protection tends to look closely at `iwr ... | iex`: fetching code and
+running it from memory is the shape of a real attack as well as a convenience.
+If your environment flags it, use Option 2 or 3 instead -- they do the same
+work from a file it can inspect.
+
+### Option 2: Using the Batch File Wrapper
+
+1. Download or clone the LabLink repository
+2. Open the LabLink folder in File Explorer
+3. Double-click `install-client.bat`
+
+The batch file handles the PowerShell execution policy automatically.
+
+### Option 3: Using PowerShell Directly
+
+Open PowerShell and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+**Important:** You must use the `-ExecutionPolicy Bypass` flag because Windows
+blocks running PowerShell scripts by default for security reasons.
+
+## Upgrading to 2.0 from an earlier version
+
+**2.0 requires Python 3.12 or newer.** numpy 2.5 and scipy 1.18 both dropped
+3.11, so an existing 3.10 or 3.11 install cannot run it. Check first:
+
+```powershell
+python --version
+```
+
+If that reports anything below 3.12, install 3.12+ from
+https://www.python.org/downloads/ (tick **"Add Python to PATH"**) before going
+further. Upgrading LabLink on an older Python fails with a confusing pip
+dependency-resolution error rather than a clear message.
+
+Then, from your existing LabLink directory:
+
+```powershell
+cd $env:USERPROFILE\LabLink
+git pull
+Remove-Item -Recurse -Force client\venv
+python -m venv client\venv
+client\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r client\requirements.txt
+```
+
+The virtual environment is deliberately recreated rather than upgraded in
+place: 2.0 changes major versions of numpy, PyQt6 and several others, and pip
+resolves that far more reliably in a clean environment than by upgrading over
+the old one.
+
+Or simply re-run the installer, which now performs the same steps and enforces
+the Python version:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+### What changes for you
+
+- **You will be logged out.** 2.0 binds access tokens to a server-side session,
+  so tokens issued by 1.x are refused. Log in again; no data is affected.
+- **Upgrade the server too.** A 1.x client will not work against a 2.x server,
+  or the reverse.
+- **If you deploy to a Raspberry Pi over SSH** and that Pi is old enough to
+  offer only an `ssh-rsa` host key, it will now be refused. Fix it on the Pi
+  with `sudo ssh-keygen -A` and restart its SSH service. Current Raspberry Pi OS
+  is unaffected.
+
+Full detail: [docs/BREAKING_CHANGES_2.0.md](BREAKING_CHANGES_2.0.md)
+
+---
+
+## Understanding the Execution Policy Error
+
+If you try to run `.\install-client.ps1` directly, you'll see this error:
+
+```
+File C:\...\install-client.ps1 cannot be loaded because running scripts
+is disabled on this system. For more information, see about_Execution_Policies
+```
+
+**This is a security feature of Windows PowerShell** that prevents untrusted scripts from running automatically. It's not a bug in LabLink!
+
+### Why This Happens
+
+Windows has several execution policies:
+- **Restricted** (default): No scripts can run
+- **RemoteSigned**: Only scripts from trusted publishers can run
+- **Unrestricted**: All scripts can run (not recommended)
+- **Bypass**: Temporarily allows a specific script to run
+
+### Solutions
+
+You have three options to solve this:
+
+#### Solution 1: Use `-ExecutionPolicy Bypass` Flag (Recommended)
+
+This is the safest approach - it only bypasses the policy for this one script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+#### Solution 2: Use the Batch File Wrapper
+
+Double-click `install-client.bat` - it automatically uses the bypass flag.
+
+#### Solution 3: Change Your System Policy (Not Recommended)
+
+You can permanently change your execution policy, but this reduces security:
+
+```powershell
+# Run PowerShell as Administrator, then:
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Then you can run scripts normally:
+```powershell
+.\install-client.ps1
+```
+
+**Note:** We don't recommend this approach unless you understand the security implications.
+
+## What the Installation Script Does
+
+The `install-client.ps1` script will:
+
+1. **Check for Python 3.12+** - Installs if missing or too old
+2. **Optionally install Git** - Makes updates easier (you'll be prompted)
+3. **Download LabLink** - Clones repository or downloads ZIP
+4. **Create virtual environment** - Isolates Python dependencies
+5. **Install dependencies** - Installs PyQt6 and the other client packages,
+   then the server packages, so the Server shortcut works too
+6. **Create launcher** - Makes a `lablink-client.bat` file. This is a fallback
+   for running the client *with* a console, which is useful when diagnosing a
+   startup problem; the shortcuts do not use it
+7. **Create shortcuts** - A desktop shortcut, and a **Start Menu → LabLink**
+   folder holding **LabLink** (client), **LabLink Launcher** and
+   **LabLink Server**. All target `pythonw.exe`, so none opens a console
+
+Installation typically takes 5-10 minutes depending on your internet connection.
+
+## Testing an install without risking the real one
+
+The installer and uninstaller are the two pieces that cannot be checked by
+reading them, and they are exactly the ones nobody wants to run against a
+working machine to find out. Both accept an install path, so the whole cycle
+can be exercised somewhere disposable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\test-install-cycle.ps1
+```
+
+That installs to `%TEMP%\LabLinkInstallTest`, verifies it, uninstalls it, and
+reports each step. It never touches `%USERPROFILE%\LabLink` and, by default,
+never touches the Start Menu. It refuses to run against a real install path or
+any directory containing a git checkout.
+
+Add `-KeepShortcuts` to create the desktop and Start Menu entries as well, so
+the one check no script can make — whether clicking a shortcut flashes a
+console window — can be done by hand. The uninstall step removes them again.
+
+The installer's own switches work standalone too:
+
+```powershell
+.\install-client.ps1 -InstallPath C:\LabLinkTest -NoShortcuts -Unattended
+```
+
+| Switch | Effect |
+|---|---|
+| `-InstallPath` | Where to install; skips the interactive prompt |
+| `-NoShortcuts` | Create no desktop or Start Menu entries |
+| `-NoDesktopShortcut` | Start Menu entries only |
+| `-Unattended` | Ask nothing; take the default for every prompt |
+
+### Keep development checkouts out of the install path
+
+If you work on LabLink, do not let your git clone live at
+`%USERPROFILE%\LabLink`. That is the installer's default target, so the same
+directory ends up being both a user installation and a working tree holding
+uncommitted measurements under `data/`, saved `profiles/` and local `config/`.
+
+The uninstaller warns and refuses `-Force` when it finds uncommitted work
+there, but the cleaner answer is to keep them apart: clone to somewhere like
+`C:\dev\LabLink` and leave `%USERPROFILE%\LabLink` for real installs. It also
+avoids ending up with two virtual environments of different Python versions in
+one tree.
+
+## Uninstalling
+
+Run `uninstall-client.bat` from the LabLink folder, or:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1
+```
+
+It removes the install directory, plus the desktop shortcut and Start Menu
+entries **that point into it**, after asking for confirmation. Shortcuts
+belonging to a different installation are left alone: the Start Menu and
+Desktop belong to the machine rather than to any one install, so the only way
+to scope them is to read each shortcut's target.
+
+Python and Git are left installed — the installer may have added them, but
+other software may depend on them by now, and that is not a decision a LabLink
+uninstaller should make.
+
+Saved credentials are kept unless you ask for them to go, since a reinstall
+cannot recreate them:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall-client.ps1 -RemoveSettings
+```
+
+Add `-Force` to skip the confirmation prompt, which is useful when scripting a
+wipe-and-reinstall test. `-Force` will still stop if the install directory is a
+git checkout with uncommitted work — that is the one case where the answer
+might genuinely have been no, and measurements under `data/`, saved `profiles/`
+and local `config/` all live inside that directory.
+
+You do not need to copy the uninstaller anywhere first. Windows will not delete
+a directory a running process is sitting in, so the script copies itself to
+`%TEMP%` and re-runs from there.
+
+If removal fails because a file is in use, close LabLink and run it again.
+
+## Manual Installation (Alternative)
+
+If you prefer to install manually or the script doesn't work for some reason:
+
+### Prerequisites
+
+1. **Python 3.12 or higher**
+   - Download from: https://www.python.org/downloads/
+   - During installation, check "Add Python to PATH"
+
+2. **Git** (optional, but recommended)
+   - Download from: https://git-scm.com/download/win
+
+### Steps
+
+1. **Get the code**
+   ```powershell
+   # Option A: With Git
+   git clone https://github.com/X9X0/LabLink.git
+   cd LabLink
+
+   # Option B: Download ZIP
+   # Download from https://github.com/X9X0/LabLink/archive/refs/heads/main.zip
+   # Extract and navigate to the folder
+   ```
+
+2. **Create virtual environment**
+   ```powershell
+   cd client
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+   ```powershell
+   python -m pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Run the client**
+   ```powershell
+   python main.py
+   ```
+
+5. **Create a shortcut (optional)**
+   - Create a batch file `lablink-client.bat` in the LabLink folder:
+   ```batch
+   @echo off
+   cd /d "%~dp0"
+   set PYTHONPATH=%~dp0
+   call "client\venv\Scripts\activate.bat"
+   python "client\main.py" %*
+   ```
+   - Right-click the batch file and create a shortcut to your desktop
+
+## System Requirements
+
+- **OS:** Windows 10 or Windows 11 (64-bit)
+- **Python:** 3.12 or higher
+- **RAM:** 4 GB minimum, 8 GB recommended
+- **Disk Space:** ~500 MB for installation
+- **Network:** Required for connecting to LabLink servers
+
+## Troubleshooting
+
+### Python Not Found
+
+If you see "Python is not recognized as an internal or external command":
+
+1. Install Python from https://www.python.org/downloads/
+2. During installation, **check "Add Python to PATH"**
+3. Restart PowerShell after installation
+
+### Permission Denied During Installation
+
+If Python installation fails:
+
+1. Right-click PowerShell
+2. Select "Run as Administrator"
+3. Try the installation command again
+
+### Virtual Environment Activation Fails
+
+If `.\venv\Scripts\activate` doesn't work:
+
+```powershell
+# Try this instead:
+.\venv\Scripts\Activate.ps1
+```
+
+If you still get an execution policy error:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\venv\Scripts\Activate.ps1
+```
+
+### PyQt6 Installation Fails
+
+PyQt6 requires Visual C++ redistributables. Install from:
+https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+### Shortcut Doesn't Work
+
+If the desktop shortcut doesn't launch LabLink:
+
+1. Right-click the shortcut → Properties
+2. Check that "Target" points to `client\venv\Scripts\pythonw.exe`, and that
+   "Arguments" names `scripts\windows\lablink_launch.pyw` and one of
+   `client`, `launcher` or `server`
+3. Check that "Start in" points to your LabLink folder
+
+If a shortcut appears to do nothing at all, that is the console-free launch
+hiding an error. Check `%LOCALAPPDATA%\LabLink\launch.log`, which records any
+startup failure, and open **LabLink Launcher** to repair the installation.
+
+To check the whole install at once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\verify-install.ps1
+```
+
+### ModuleNotFoundError: No module named 'client'
+
+If you see this error when trying to run the client:
+
+```
+ModuleNotFoundError: No module named 'client'
+```
+
+**Cause:** The working directory is incorrect. The client must be run from the LabLink root directory, not from inside the `client` folder.
+
+**Solution:**
+1. Make sure you're in the LabLink root directory (e.g., `C:\Users\YourName\LabLink`)
+2. Run the launcher: `.\lablink-client.bat`
+3. Or run directly: `python client\main.py` (after activating venv)
+
+**If you installed before this fix:**
+1. Navigate to your LabLink folder in PowerShell
+2. Run the installer again: `powershell -ExecutionPolicy Bypass -File .\install-client.ps1`
+3. This will recreate the `lablink-client.bat` with the correct paths
+4. The installer will detect the existing installation and update files
+
+**Quick Fix Without Reinstalling:**
+You can manually fix the `lablink-client.bat` file:
+1. Open `lablink-client.bat` in Notepad
+2. Replace the contents with:
+```batch
+@echo off
+cd /d "%~dp0"
+call "client\venv\Scripts\activate.bat"
+python "client\main.py" %*
+```
+3. Save and try running it again
+
+### SD Card Writer Shows "Not Supported on Windows"
+
+The SD card image writer is not implemented for Windows in the GUI. Use one of these alternatives:
+
+- **Win32 Disk Imager**: https://sourceforge.net/projects/win32diskimager/
+- **Rufus**: https://rufus.ie/
+- **balenaEtcher**: https://www.balena.io/etcher/
+
+You can still use the SSH Deployment Wizard to deploy LabLink to an existing Raspberry Pi.
+
+## Getting Help
+
+If you encounter issues:
+
+1. Check this troubleshooting section
+2. Check the [main README](../README.md) for general documentation
+3. File an issue on GitHub: https://github.com/X9X0/LabLink/issues
+
+## Next Steps
+
+Once installed, you can:
+
+1. **Launch LabLink Client**
+   - Double-click the desktop shortcut, or
+   - Run `lablink-client.bat`, or
+   - Navigate to `client` folder and run `python main.py`
+
+2. **Connect to a Server**
+   - Use the SSH Deployment Wizard to set up a new Raspberry Pi server
+   - Or connect to an existing LabLink server via File → Connect to Server
+
+3. **Discover Raspberry Pis**
+   - Use Tools → Raspberry Pi Discovery to find LabLink servers on your network
+
+4. **Explore the Documentation**
+   - See [Getting Started Guide](GETTING_STARTED.md)
+   - See [API Reference](API_REFERENCE.md)
+   - See [Client README](../client/README.md)
+
+## License
+
+TBD

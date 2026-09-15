@@ -148,6 +148,9 @@ def cleanup_old_logs(log_dir: str, retention_days: int):
     if not log_path.exists():
         return
 
+    # Wall clock deliberately: this is compared against st_mtime, which is
+    # also wall-clock. perf_counter has an arbitrary epoch and would be
+    # meaningless here.
     cutoff_time = time.time() - (retention_days * 86400)  # 86400 seconds per day
 
     for log_file in log_path.glob("*.log*"):

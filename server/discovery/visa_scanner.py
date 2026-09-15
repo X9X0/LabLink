@@ -4,10 +4,16 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pyvisa
 
+from server.equipment.bk_registry import (CATEGORY_LABELS,
+                                   CATEGORY_TO_EQUIPMENT_TYPE, MANUFACTURER,
+                                   is_bk_manufacturer, is_drivable,
+                                   resolve_model)
+
+from .bk_serial_probe import serial_port_from_resource
 from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
                      DiscoveryConfig, DiscoveryMethod)
 from .usb_hardware_db import get_device_info_from_resource
@@ -35,6 +41,9 @@ class VISAScanner:
         self.visa_backend = visa_backend
         self.rm: Optional[pyvisa.ResourceManager] = None
         self.progress_callback = progress_callback
+        # Resources a driver currently holds open, by VISA name, for the
+        # duration of one scan. See _describe_connected.
+        self._connected: Dict[str, Any] = {}
 
     def _get_resource_manager(self) -> pyvisa.ResourceManager:
         """Get or create VISA resource manager.
@@ -52,8 +61,16 @@ class VISAScanner:
 
         return self.rm
 
-    async def scan(self) -> List[DiscoveredDevice]:
+    async def scan(
+        self, connected: Optional[Dict[str, Any]] = None
+    ) -> List[DiscoveredDevice]:
         """Scan for VISA resources asynchronously.
+
+        Args:
+            connected: resources LabLink already holds open, keyed by VISA
+                resource name, each mapped to the EquipmentInfo its driver
+                produced on connect (or None if it has none yet). These are
+                described from that record and not opened a second time.
 
         Returns:
             List of discovered devices
@@ -62,6 +79,7 @@ class VISAScanner:
             Exception: If scan fails
         """
         devices = []
+        self._connected = dict(connected or {})
 
         try:
             # Create resource manager for this scan
@@ -169,10 +187,12 @@ class VISAScanner:
                 )
             raise
 
-        finally:
-            # Close resource manager after scan to prevent file descriptor leaks
-            self.close()
-
+        # Deliberately no self.close() here. pyvisa hands out one ResourceManager
+        # per backend, shared with every connected driver, and closing it closes
+        # their sessions too: each scan used to knock every connected instrument
+        # offline mid-command until its driver noticed and reconnected. Each
+        # resource the scanner opens is closed as soon as it has been queried;
+        # the manager itself is closed once, at shutdown.
         return devices
 
     def _build_query_string(self) -> str:
@@ -231,6 +251,11 @@ class VISAScanner:
             return None
 
         logger.debug(f"Processing {interface_type} resource: {resource_name}")
+
+        if resource_name in self._connected:
+            return self._describe_connected(
+                resource_name, interface_type, self._connected[resource_name]
+            )
 
         # Log ASRL resources at INFO level for visibility
         if interface_type == "ASRL":
@@ -312,6 +337,7 @@ class VISAScanner:
                     device.device_type = self._infer_device_type(device_info)
                     device.confidence_score = 0.9  # High confidence if we got *IDN?
                     device.status = ConnectionStatus.AVAILABLE
+                    self._apply_bk_registry(device)
                     logger.debug(
                         f"Successfully queried *IDN? from {resource_name}: "
                         f"{device.manufacturer} {device.model}"
@@ -374,6 +400,100 @@ class VISAScanner:
             )
 
         return device
+
+    def _describe_connected(
+        self, resource_name: str, interface_type: str, info: Any
+    ) -> DiscoveredDevice:
+        """Describe an instrument a driver already holds, without opening it.
+
+        A second session on a connected instrument competes with its driver.
+        On a serial port the scanner's *IDN? and the driver's own traffic
+        interleave and both time out, so the supply the operator is actively
+        controlling came back from every scan as "Unknown Serial Device". The
+        driver identified the instrument when it connected; that record is a
+        better identification than anything a busy port will yield now, and
+        reading it costs the instrument nothing.
+        """
+        device = DiscoveredDevice(
+            device_id=self._generate_device_id(resource_name),
+            resource_name=resource_name,
+            discovery_method=DiscoveryMethod.VISA,
+            status=ConnectionStatus.CONNECTED,
+            is_connected=True,
+            manufacturer=getattr(info, "manufacturer", None),
+            model=getattr(info, "model", None),
+            serial_number=getattr(info, "serial_number", None),
+            confidence_score=0.95,
+        )
+
+        equipment_type = getattr(info, "type", None)
+        try:
+            device.device_type = DeviceType(
+                getattr(equipment_type, "value", equipment_type)
+            )
+        except ValueError:
+            device.device_type = DeviceType.UNKNOWN
+
+        equipment_id = getattr(info, "id", None)
+        if equipment_id:
+            device.metadata["equipment_id"] = equipment_id
+        device.metadata["identified_by"] = "connected driver"
+        if interface_type == "ASRL":
+            port = serial_port_from_resource(resource_name)
+            if port:
+                device.metadata["serial_port"] = port
+
+        self._apply_bk_registry(device)
+        logger.info(
+            f"{resource_name} is connected as {device.manufacturer} "
+            f"{device.model}; described from its driver, not re-queried"
+        )
+        return device
+
+    def _apply_bk_registry(self, device: DiscoveredDevice) -> None:
+        """Enrich a discovered B&K device from the model registry.
+
+        A B&K instrument reports its SKU, not its family — 9241, 2569B-MSO,
+        MR40003 — and the manufacturer field is spelled six different ways
+        across the line. Resolving both means discovery can name the family,
+        list the interfaces it actually has, and say up front whether LabLink
+        can drive it, instead of handing the UI a bare SKU string.
+        """
+        if not is_bk_manufacturer(device.manufacturer):
+            return
+
+        # Normalise the six manufacturer spellings to one.
+        device.metadata["reported_manufacturer"] = device.manufacturer
+        device.manufacturer = MANUFACTURER
+
+        bk_model = resolve_model(device.model)
+        if not bk_model:
+            logger.info(
+                f"B&K device {device.model!r} at {device.resource_name} has no "
+                f"published programming manual in the registry"
+            )
+            return
+
+        device.metadata.update({
+            "bk_family": bk_model.key,
+            "bk_family_name": bk_model.name,
+            "bk_category": CATEGORY_LABELS.get(bk_model.category,
+                                               bk_model.category),
+            "protocol": bk_model.protocol,
+            "interfaces": bk_model.interfaces,
+            "usb_mode": bk_model.usb,
+            "default_baud": bk_model.baud,
+            "socket_ports": list(bk_model.ports),
+            "driver_supported": is_drivable(bk_model),
+        })
+        if bk_model.notes:
+            device.metadata["notes"] = bk_model.notes
+        device.capabilities = list(dict.fromkeys(
+            device.capabilities + bk_model.interfaces
+        ))
+        # A registry hit on top of a successful *IDN? is as certain as
+        # identification gets short of connecting.
+        device.confidence_score = max(device.confidence_score, 0.95)
 
     def _get_interface_type(self, resource_name: str) -> str:
         """Get interface type from resource name.
@@ -528,6 +648,17 @@ class VISAScanner:
         Returns:
             Inferred device type
         """
+        # B&K first: the registry knows exactly what every documented family
+        # is, so it settles the type before the keyword heuristics below get a
+        # chance to guess. "DS" alone matches half the catalogue.
+        if is_bk_manufacturer(device_info.get("manufacturer")):
+            bk_model = resolve_model(device_info.get("model"))
+            if bk_model:
+                equipment_type = CATEGORY_TO_EQUIPMENT_TYPE.get(bk_model.category)
+                if equipment_type:
+                    return DeviceType(equipment_type)
+                return DeviceType.UNKNOWN
+
         # Get manufacturer and model
         manufacturer = (device_info.get("manufacturer") or "").lower()
         model = (device_info.get("model") or "").lower()

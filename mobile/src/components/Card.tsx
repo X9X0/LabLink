@@ -3,12 +3,14 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Colors, Spacing, BorderRadius, Shadows } from '../constants/theme';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  // StyleProp, not ViewStyle: callers pass arrays -- `[styles.card, {...}]` --
+  // the way every React Native component accepts them.
+  style?: StyleProp<ViewStyle>;
   elevated?: boolean;
 }
 

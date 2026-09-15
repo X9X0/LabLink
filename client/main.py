@@ -2,14 +2,29 @@
 """LabLink GUI Client - Main entry point."""
 
 import argparse
+import os
 import asyncio
 import logging
 import sys
 from pathlib import Path
 
-# Add client directory to path
-client_dir = Path(__file__).parent
-sys.path.insert(0, str(client_dir))
+# Both roots, because the tree is imported both ways and neither invocation
+# supplies both on its own.
+#
+#   client.ui.*  needs the repo root      -- absent when run as a file, since
+#                                            Python adds only the script's own
+#                                            directory
+#   ui.*, utils.*  need client/           -- absent under `-m client.main`,
+#                                            where sys.path[0] is the cwd
+#
+# Getting this wrong breaks only one of the two invocations, and only on the
+# lazily-imported paths, so it survives a smoke test: `from ui.sd_card_writer
+# import SDCardWriter` in pi_image_builder.py is reached by opening the SD
+# writer, not by starting the client.
+_CLIENT_DIR = Path(__file__).resolve().parent
+for _root in (_CLIENT_DIR.parent, _CLIENT_DIR):
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import qasync
 from PyQt6.QtCore import Qt
@@ -17,6 +32,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from client.ui.main_window import MainWindow
+from client.ui.theme import get_app_stylesheet, get_theme_setting
 
 
 def setup_logging(debug=False):
@@ -31,6 +47,90 @@ def setup_logging(debug=False):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler("lablink_client.log")],
     )
+
+
+def _relaunch_command(argv):
+    """The command that starts this client again, however it was started.
+
+    The shortcuts run the client through the launcher, which sets
+    ``sys.argv[0]`` to the module name ``client.main`` and hands it to
+    ``runpy``. Rebuilding the command as ``[sys.executable] + argv`` then
+    produces ``python client.main``, which Python reads as a *file* path and
+    refuses: "can't open file 'client.main'". So a self-update applied its
+    checkout and then failed to come back, on the only launch path most users
+    have.
+
+    Args:
+        argv: ``sys.argv`` as the restart should reproduce it.
+
+    Returns:
+        An argument list for subprocess/execv.
+    """
+    entry, rest = argv[0], list(argv[1:])
+
+    # A path is run as a path; anything else is the module name runpy was
+    # given, and has to go back in as one.
+    # os.path, not pathlib: Path() chooses its flavour from os.name, so
+    # under a test that patches os.name to "nt" on Linux it raises
+    # "cannot instantiate WindowsPath on your system" before doing
+    # anything useful. os.path.exists is flavour-agnostic.
+    if entry.endswith(".py") or os.path.exists(entry):
+        return [sys.executable, entry] + rest
+    return [sys.executable, "-m", entry] + rest
+
+
+def _restart_client(drop_easter_egg=False):
+    """Restart this client so newly checked-out code is actually loaded.
+
+    Python caches imported modules in sys.modules. MainWindow and everything
+    it pulls in -- including the Raspberry Pi image builder -- are imported at
+    the top of this file, before main() runs. Anything that rewrites those
+    files afterwards, whether the easter-egg branch selector or a client
+    self-update, changes nothing at all for the running process: it keeps
+    executing the code it loaded at startup while reporting success.
+
+    Args:
+        drop_easter_egg: strip --easter-egg from the restarted command, so the
+            branch dialog does not reappear on every launch.
+
+    This does not return: the process is replaced, or exits.
+    """
+    argv = list(sys.argv)
+    if drop_easter_egg:
+        argv = [a for a in argv if a != "--easter-egg"]
+
+    command = _relaunch_command(argv)
+
+    print("🔄 Restarting to load the updated code...\n")
+
+    # The Start Menu and desktop shortcuts run this under pythonw.exe, which
+    # has no console: sys.stdout is None. print() survives that -- CPython
+    # returns silently when there is no stdout -- but flushing it does not,
+    # and the AttributeError killed the restart *after* a self-update had
+    # already checked the new code out. The update applied, the flag was
+    # cleared, and the client simply never came back. Same guard as
+    # lablink_launch.show_error, which learned this the same way.
+    stream = getattr(sys, "stdout", None)
+    if stream is not None:
+        try:
+            stream.flush()
+        except (ValueError, OSError):
+            pass
+
+    if os.name == "nt":
+        # os.execv on Windows detaches the child from the console in a way
+        # that loses its output, so spawn a replacement and exit instead.
+        import subprocess
+
+        # cwd is the checkout, so "-m client.main" resolves wherever the
+        # shortcut happened to start us from.
+        subprocess.Popen(
+            command,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        sys.exit(0)
+
+    os.execv(sys.executable, command)
 
 
 def main():
@@ -53,10 +153,12 @@ def main():
     setup_logging(debug=args.debug)
     logger = logging.getLogger(__name__)
 
+    _version_file = Path(__file__).parent.parent / "VERSION"
+    _version = _version_file.read_text().strip() if _version_file.exists() else "unknown"
     if args.debug:
-        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support (DEBUG MODE)")
+        logger.info(f"Starting LabLink GUI Client v{_version} with async WebSocket support (DEBUG MODE)")
     else:
-        logger.info("Starting LabLink GUI Client v0.10.0 with async WebSocket support")
+        logger.info(f"Starting LabLink GUI Client v{_version} with async WebSocket support")
 
     # Check for pending client update
     from client.utils.self_update import check_update_flag, clear_update_flag, perform_client_update
@@ -75,6 +177,11 @@ def main():
         if perform_client_update(ref):
             print(f"✅ Client successfully updated to {ref}")
             clear_update_flag()
+            # Same trap as the easter-egg checkout: the files on disk are now
+            # the new version, but this process is still running the old one.
+            # The flag is cleared first, so the restart cannot loop.
+            print(f"\n{'='*60}\n")
+            _restart_client()
         else:
             print(f"❌ Failed to update client to {ref}")
             print("The application will continue with the current version.")
@@ -89,29 +196,27 @@ def main():
     # Create application
     app = QApplication(sys.argv)
     app.setApplicationName("LabLink")
-    app.setApplicationVersion("0.10.0")
+
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent.parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
+    # Read version from VERSION file (single source of truth)
+    version_file = Path(__file__).parent.parent / "VERSION"
+    version = version_file.read_text().strip() if version_file.exists() else "1.2.0"
+    app.setApplicationVersion(version)
     app.setOrganizationName("LabLink Project")
 
-    # Set application style (optional)
+    # Set application style
     app.setStyle("Fusion")
 
-    # Set global stylesheet for better dropdown visibility
-    app.setStyleSheet("""
-        QComboBox QAbstractItemView {
-            selection-background-color: #E3F2FD;  /* Light blue background on hover */
-            selection-color: #000000;  /* Black text on hover */
-            background-color: white;
-            color: black;
-        }
-        QComboBox QAbstractItemView::item:hover {
-            background-color: #BBDEFB;  /* Slightly darker blue on hover */
-            color: #000000;  /* Black text */
-        }
-        QComboBox QAbstractItemView::item:selected {
-            background-color: #90CAF9;  /* Even darker blue when selected */
-            color: #000000;  /* Black text */
-        }
-    """)
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
+
+    # Store theme setting on app for access by windows
+    app.setProperty("theme", current_theme)
 
     # Create qasync event loop for asyncio integration
     loop = qasync.QEventLoop(app)
@@ -119,7 +224,7 @@ def main():
 
     # Easter egg mode: Show branch selector before launching
     if args.easter_egg:
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox
         from client.utils.git_operations import get_git_branches, get_git_tags, get_current_git_branch, checkout_git_ref
 
         logger.info("Easter egg mode activated!")
@@ -238,9 +343,51 @@ def main():
                 if checkout_git_ref(selected_ref):
                     print(f"✅ Successfully checked out {selected_ref}\n")
                     logger.info(f"Successfully checked out {selected_ref}")
+                    # Say so on screen, not only on stdout: launched from a
+                    # shortcut or lablink-client.bat there is often no console
+                    # to read, which is how a failed checkout looks exactly
+                    # like a successful one.
+                    QMessageBox.information(
+                        None,
+                        "Switched branch",
+                        f"Now on {selected_ref}.\n\n"
+                        "LabLink will restart so the checked-out code is "
+                        "actually loaded.",
+                    )
+                    # Restart, or the checkout has no effect on this run.
+                    # MainWindow and everything it imports were loaded from the
+                    # previous branch's files before main() started, and Python
+                    # caches modules in sys.modules -- changing the files on
+                    # disk afterwards changes nothing until the process
+                    # restarts. Without this the client silently keeps running
+                    # the old code while reporting a successful checkout.
+                    _restart_client(drop_easter_egg=True)
                 else:
                     print(f"❌ Failed to checkout {selected_ref}\n")
                     logger.error(f"Failed to checkout {selected_ref}")
+
+                    from client.utils.git_operations import (is_git_checkout,
+                                                             repo_dir)
+
+                    if not is_git_checkout():
+                        detail = (
+                            f"{repo_dir()} is not a git clone.\n\n"
+                            "Branch switching needs one. A ZIP download or a "
+                            "packaged install cannot switch branches; clone "
+                            "the repository instead."
+                        )
+                    else:
+                        detail = (
+                            "git refused the checkout. The usual cause is "
+                            "uncommitted local changes.\n\n"
+                            f"In {repo_dir()}, check `git status`, then commit "
+                            "or stash them and try again."
+                        )
+                    print(f"   {detail}\n")
+                    QMessageBox.warning(
+                        None, "Could not switch branch",
+                        f"Staying on the current branch.\n\n{detail}",
+                    )
 
     # Create and show main window
     window = MainWindow()

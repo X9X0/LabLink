@@ -1,4 +1,4 @@
-# GitHub Dependabot configuration
+# GitHub Dependabot configuration with grouping
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
@@ -9,13 +9,27 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "python"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      # Group all non-security updates together
+      production-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Major updates stay separate for review
+      major-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # Shared module Python dependencies
   - package-ecosystem: "pip"
@@ -23,14 +37,21 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "python"
       - "shared"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      shared-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Server Python dependencies
   - package-ecosystem: "pip"
@@ -38,14 +59,27 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "python"
       - "server"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      server-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+        exclude-patterns:
+          # Development/testing deps
+          - "pytest*"
+          - "black"
+          - "flake8"
+          - "mypy"
 
   # Client Python dependencies
   - package-ecosystem: "pip"
@@ -53,14 +87,43 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "python"
       - "client"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      client-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # NPM dependencies (mobile)
+  - package-ecosystem: "npm"
+    directory: "/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "mobile"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      mobile-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Docker dependencies
   - package-ecosystem: "docker"
@@ -68,13 +131,17 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "docker"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
 
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
@@ -82,10 +149,24 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "github-actions"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
       include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+# Notes:
+# - Security updates are NEVER grouped - they always create separate PRs
+# - Groups combine multiple dependency updates into a single PR
+# - Major version updates are kept separate for careful review
+# - open-pull-requests-limit reduced to prevent PR spam
+# - Weekly schedule on Mondays keeps updates manageable

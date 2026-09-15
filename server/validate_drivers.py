@@ -8,11 +8,18 @@ import ast
 import os
 import sys
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 def check_file_syntax(filepath):
     """Check if a Python file has valid syntax."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             code = f.read()
         ast.parse(code)
         return True, None
@@ -22,7 +29,7 @@ def check_file_syntax(filepath):
 
 def extract_classes(filepath):
     """Extract class names from a Python file."""
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         code = f.read()
     tree = ast.parse(code)
     classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
@@ -31,7 +38,7 @@ def extract_classes(filepath):
 
 def extract_methods(filepath, classname):
     """Extract method names from a class in a Python file."""
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         code = f.read()
     tree = ast.parse(code)
 
@@ -165,7 +172,7 @@ def main():
         results.append(False)
     else:
         # Check that new classes are imported
-        with open(f"{base_path}/manager.py", "r") as f:
+        with open(f"{base_path}/manager.py", "r", encoding="utf-8") as f:
             manager_code = f.read()
 
         imports_ok = (
@@ -190,7 +197,7 @@ def main():
         print(f"  ✗ Syntax Error in __init__.py: {error}")
         results.append(False)
     else:
-        with open(f"{base_path}/__init__.py", "r") as f:
+        with open(f"{base_path}/__init__.py", "r", encoding="utf-8") as f:
             init_code = f.read()
 
         exports_ok = (

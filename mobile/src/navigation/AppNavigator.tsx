@@ -13,8 +13,9 @@ import { EquipmentDetailScreen } from '../screens/EquipmentDetailScreen';
 import { AlarmsScreen } from '../screens/AlarmsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { Colors } from '../constants/theme';
+import { RootStackParamList } from './types';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 // Tab icons (using emoji for simplicity - can be replaced with react-native-vector-icons)

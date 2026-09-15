@@ -298,3 +298,86 @@ async def test_statistics(firmware_manager):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestUnimplementedRecoveryIsNotReportedAsDone:
+    """A failed update must not claim the instrument was restored.
+
+    `auto_rollback_on_failure` used to set the status to ROLLED_BACK without
+    performing a rollback, and the history record derives `rolled_back` from
+    that status -- so a failed firmware update reported the device as
+    recovered while it had not been touched. `create_backup` likewise logged
+    "Firmware backup created" at INFO for a backup that never existed.
+
+    Neither feature is implemented. These tests pin that the code says so
+    rather than claiming otherwise, and will need updating -- deliberately --
+    by whoever implements them.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_failed_update_does_not_report_a_rollback(self, firmware_manager, caplog):
+        equipment = MockEquipment()
+
+        async def explode(*args, **kwargs):
+            raise RuntimeError("upload failed")
+
+        firmware_manager._perform_update = explode
+
+        request = FirmwareUpdateRequest(
+            equipment_id="test_equipment",
+            firmware_id="no-such-package",
+            auto_rollback_on_failure=True,
+        )
+
+        progress = await firmware_manager.start_update(request, equipment)
+        try:
+            await firmware_manager._perform_update(
+                progress.update_id, request, equipment
+            )
+        except Exception:
+            pass  # the update failing is the premise, not the assertion
+
+        for history in firmware_manager.update_history.values():
+            assert history.rolled_back is False, (
+                "a rollback that never ran must not be reported as done"
+            )
+            assert history.status != FirmwareUpdateStatus.ROLLED_BACK
+
+    @pytest.mark.asyncio
+    async def test_requesting_a_backup_warns_that_there_is_none(
+        self, firmware_manager, caplog
+    ):
+        """Needs an update that reaches the backup step, so a real package."""
+        import logging
+
+        equipment = MockEquipment()
+        package = await firmware_manager.upload_firmware(
+            file_data=b"MOCK_FIRMWARE_DATA_v2.0.0",
+            equipment_type="oscilloscope",
+            manufacturer="Mock Instruments",
+            model="MockScope-2000",
+            version="2.0.0",
+            release_notes="",
+            critical=False,
+            checksum_method=FirmwareVerificationMethod.SHA256,
+        )
+
+        request = FirmwareUpdateRequest(
+            equipment_id="test_equipment",
+            firmware_id=package.id,
+            create_backup=True,
+        )
+
+        # start_update dispatches to a background task and returns
+        # immediately, so drive the work directly: otherwise the assertions run
+        # before the backup step does.
+        progress = await firmware_manager.start_update(request, equipment)
+        with caplog.at_level(logging.WARNING):
+            await firmware_manager._perform_update(
+                progress.update_id, request, equipment
+            )
+
+        assert "backup is not implemented" in caplog.text, (
+            "requesting a backup that cannot happen must warn, not log success"
+        )
+        assert "Firmware backup created" not in caplog.text

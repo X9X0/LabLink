@@ -8,7 +8,6 @@ from pathlib import Path
 # Add project paths
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "client"))
-sys.path.insert(0, str(project_root / "server"))
 sys.path.insert(0, str(project_root / "shared"))
 
 

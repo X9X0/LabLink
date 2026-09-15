@@ -21,4 +21,4 @@ source venv/bin/activate
 
 # Run the demo
 echo "Starting LabLink demo application..."
-python3 demo_acquisition_full.py
+python3 examples/demo_acquisition_full.py

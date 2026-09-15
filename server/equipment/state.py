@@ -418,7 +418,7 @@ class StateManager:
         filepath = self._state_dir / filename
 
         try:
-            with open(filepath, "w") as f:
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(state.dict(), f, indent=2, default=str)
             logger.debug(f"Saved state to {filepath}")
         except Exception as e:
@@ -446,7 +446,7 @@ class StateManager:
 
         for filepath in self._state_dir.glob("*.json"):
             try:
-                with open(filepath, "r") as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 state = EquipmentState(**data)

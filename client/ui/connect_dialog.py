@@ -15,10 +15,10 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QDialogButtonBox,
 )
-from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtCore import Qt
 
 from client.api.client import LabLinkClient
+from client.ui.theme import apply_status_colors
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,10 @@ class ConnectDeviceDialog(QDialog):
 
             # Highlight devices with high confidence (proper identification)
             if confidence >= 0.8 and manufacturer and model:
-                item.setBackground(QBrush(QColor(230, 255, 230)))  # Light green
+                apply_status_colors(item, "healthy")
                 item.setToolTip("Device properly identified via *IDN? query")
             elif confidence >= 0.6:
-                item.setBackground(QBrush(QColor(255, 255, 230)))  # Light yellow
+                apply_status_colors(item, "degraded")
                 item.setToolTip("Device partially identified via USB hardware database")
 
             self.resource_list.addItem(item)
@@ -119,49 +119,7 @@ class ConnectDeviceDialog(QDialog):
         model_layout.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)  # Allow custom model names
-        self.model_combo.addItems([
-            "BK Precision 1685B",
-            "BK Precision 9130B",
-            "BK Precision 9205B",
-            "BK Precision 9206B",
-            "BK Precision 1902B",
-            "Rigol DS1054Z",
-            "Rigol MSO2072A",
-            "Rigol DS1102D",
-            "Rigol DL3021A",
-            "Rigol DM3058",
-            "Rigol DM3058E",
-            "Rigol DM3068",
-            "Rigol DM858",
-            "Rigol DL3031A",
-            "Rigol DP832",
-            "Rigol DP711",
-            "Rigol DP932A",
-            "Rigol DP2031",
-            "Rigol DHO804",
-            "Rigol DHO1074",
-            "Rigol MSO5074",
-            "Rigol MSO7014",
-            "Rigol MSO8064",
-            "Rigol DS1202Z-E",
-            "Rigol DS4024E",
-            "Rigol DG1062Z",
-            "Rigol DG832",
-            "Rigol DG992",
-            "Rigol DG2072",
-            "Rigol DG822 Pro",
-            "Rigol DSA815",
-            "Rigol DSA832E",
-            "Rigol RSA3030",
-            "Rigol RSA5065",
-            "Rigol RSA806",
-            "Rigol DSG836",
-            "Rigol DSG3065B",
-            "Rigol RSA3030N",
-            "Rigol DNA6082",
-            "Rigol M300",
-            "Generic",
-        ])
+        self.model_combo.addItems(self._model_choices())
         model_layout.addWidget(self.model_combo)
         layout.addLayout(model_layout)
 
@@ -182,6 +140,86 @@ class ConnectDeviceDialog(QDialog):
         button_layout.addWidget(cancel_btn)
 
         layout.addLayout(button_layout)
+
+    #: Offered when the server cannot be reached for its catalogue.
+    _FALLBACK_MODELS = [
+        "BK Precision 1685B",
+        "BK Precision 1902B",
+        "BK Precision 9130B",
+        "BK Precision 9205B",
+        "BK Precision 9206B",
+        "Rigol DS1054Z",
+        "Rigol MSO2072A",
+        "Rigol DS1102D",
+        "Rigol DL3021A",
+        "Rigol DM3058",
+        "Rigol DM3058E",
+        "Rigol DM3068",
+        "Rigol DM858",
+        "Rigol DL3031A",
+        "Rigol DP832",
+        "Rigol DP711",
+        "Rigol DP932A",
+        "Rigol DP2031",
+        "Rigol DHO804",
+        "Rigol DHO1074",
+        "Rigol MSO5074",
+        "Rigol MSO7014",
+        "Rigol MSO8064",
+        "Rigol DS1202Z-E",
+        "Rigol DS4024E",
+        "Rigol DG1062Z",
+        "Rigol DG832",
+        "Rigol DG992",
+        "Rigol DG2072",
+        "Rigol DG822 Pro",
+        "Rigol DSA815",
+        "Rigol DSA832E",
+        "Rigol RSA3030",
+        "Rigol RSA5065",
+        "Rigol RSA806",
+        "Rigol DSG836",
+        "Rigol DSG3065B",
+        "Rigol RSA3030N",
+        "Rigol DNA6082",
+        "Rigol M300",
+        "Generic",
+    ]
+
+    def _model_choices(self) -> List[str]:
+        """Build the model list, preferring the server's own catalogue.
+
+        The server knows every B&K family it has a driver for — thirty-odd,
+        against the five this dialog used to hard-code — so ask it rather than
+        keeping a second list here that drifts out of date.
+        """
+        try:
+            models = self.client.get_supported_models(supported_only=True)
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch the model catalogue from the server: {e}. "
+                f"Falling back to the built-in list."
+            )
+            return list(self._FALLBACK_MODELS)
+
+        if not models:
+            return list(self._FALLBACK_MODELS)
+
+        choices = []
+        for entry in models:
+            manufacturer = entry.get("manufacturer", "")
+            # List every documented SKU, so an operator can pick the exact
+            # model. On the fixed-width supplies that choice is not cosmetic:
+            # it decides the current scaling and the SOUT polarity.
+            for sku in entry.get("skus") or [entry["key"]]:
+                choices.append(f"{manufacturer} {sku}".strip())
+
+        # Rigol and anything hand-entered still need a home.
+        for extra in self._FALLBACK_MODELS:
+            if extra.startswith("Rigol") or extra == "Generic":
+                choices.append(extra)
+
+        return sorted(dict.fromkeys(choices))
 
     def _on_device_selected(self, current: QListWidgetItem, previous: QListWidgetItem):
         """Handle device selection - auto-populate equipment type and model."""

@@ -365,7 +365,7 @@ class AcquisitionManager:
                 if isinstance(result, dict) and "value" in result:
                     return float(result["value"])
                 return float(result)
-            except:
+            except Exception:
                 raise NotImplementedError(
                     f"Equipment doesn't implement data acquisition for channel {channel}"
                 )
@@ -455,7 +455,7 @@ class AcquisitionManager:
         timestamps: np.ndarray,
     ):
         """Export to CSV format."""
-        with open(filepath, "w", newline="") as f:
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
 
             # Header
@@ -508,7 +508,7 @@ class AcquisitionManager:
             },
         }
 
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(export_data, f, indent=2, default=str)
 
     async def _export_hdf5(

@@ -13,7 +13,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_function_generator import (  # noqa: E402
+from server.equipment.rigol_function_generator import (  # noqa: E402
     MODEL_SPECS, RigolDG800, RigolDG800Pro, RigolDG900, RigolDG1000Z,
     RigolDG2000, RigolDG4000, RigolDG5000, RigolDG5000Pro, RigolDG6000,
     lookup_model_spec, normalize_waveform, parse_apply_response, parse_load)

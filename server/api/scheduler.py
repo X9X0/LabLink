@@ -1,5 +1,6 @@
 """API endpoints for scheduled operations."""
 
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -181,7 +182,7 @@ async def run_job_now(job_id: str):
 @router.get("/scheduler/executions/{execution_id}", summary="Get execution")
 async def get_execution(execution_id: str):
     """Get execution details by ID."""
-    execution = scheduler_manager.get_execution(execution_id)
+    execution = await asyncio.to_thread(scheduler_manager.get_execution, execution_id)
 
     if execution is None:
         raise HTTPException(
@@ -195,7 +196,9 @@ async def get_execution(execution_id: str):
 async def list_executions(job_id: Optional[str] = None, limit: int = 100):
     """List job executions."""
     try:
-        executions = scheduler_manager.list_executions(job_id=job_id, limit=limit)
+        executions = await asyncio.to_thread(
+            scheduler_manager.list_executions, job_id=job_id, limit=limit
+        )
 
         return {
             "success": True,
@@ -213,7 +216,7 @@ async def list_executions(job_id: Optional[str] = None, limit: int = 100):
 @router.get("/scheduler/jobs/{job_id}/history", summary="Get job history")
 async def get_job_history(job_id: str):
     """Get execution history for a job."""
-    history = scheduler_manager.get_job_history(job_id)
+    history = await asyncio.to_thread(scheduler_manager.get_job_history, job_id)
 
     if history is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -228,7 +231,7 @@ async def get_job_history(job_id: str):
 async def get_statistics():
     """Get scheduler statistics."""
     try:
-        stats = scheduler_manager.get_statistics()
+        stats = await asyncio.to_thread(scheduler_manager.get_statistics)
 
         return {"success": True, "statistics": stats.dict()}
 

@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
                              QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QVBoxLayout)
 
+from client.ui.theme import dialog_palette
+
 
 class LoginDialog(QDialog):
     """Dialog for logging into LabLink server."""
@@ -30,40 +32,26 @@ class LoginDialog(QDialog):
         self.setMinimumWidth(400)
 
         # Apply visual styling
+        _c = dialog_palette()
         self.setStyleSheet("""
-            QDialog {
-                background-color: #ecf0f1;
-            }
-            QGroupBox {
-                border: 2px solid #bdc3c7;
+            QDialog {{
+                background-color: {window_bg};
+            }}
+            QGroupBox {{
+                border: 2px solid {panel_border};
                 border-radius: 8px;
                 margin-top: 12px;
                 padding-top: 15px;
-                background-color: white;
+                background-color: {panel_bg};
                 font-weight: bold;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 15px;
                 padding: 5px 10px;
-                background-color: white;
-            }
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: 2px solid #2471a3;
-                border-radius: 6px;
-                padding: 8px 15px;
-                min-height: 30px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-                border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
-                background-color: #2471a3;
-            }
-        """)
+                background-color: {panel_bg};
+            }}
+        """.format(**_c))
 
         self._setup_ui()
         self._load_saved_credentials()
@@ -86,7 +74,7 @@ class LoginDialog(QDialog):
         # Subtitle
         subtitle_label = QLabel("Please enter your credentials to continue")
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle_label.setStyleSheet("color: gray;")
+        subtitle_label.setStyleSheet("color: {muted_text};".format(**dialog_palette()))
         layout.addWidget(subtitle_label)
 
         layout.addSpacing(20)

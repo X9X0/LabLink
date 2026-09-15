@@ -16,6 +16,7 @@ License: MIT
 
 import sys
 import os
+import tempfile
 import subprocess
 import platform
 import json
@@ -27,16 +28,110 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-# Configure logging
+# Windows: a child process inherits its parent's console, and when the parent
+# has none, Windows allocates a fresh one for the child and shows it.
+#
+# That is invisible when the launcher is started from a batch file -- there is
+# a console already, and every child quietly joins it. Start the launcher from
+# pythonw.exe instead, as the Start Menu shortcuts do, and each of the ~23
+# checks below strobes a terminal window across the screen instead.
+#
+# capture_output does not prevent this. It redirects the pipes; the window is
+# allocated either way. CREATE_NO_WINDOW is what suppresses it.
+#
+# But the flag also detaches the child from our console, so a child that
+# redirects nothing has its output discarded rather than printed. Ten of the
+# calls below are installs -- pip, venv, ensurepip -- that deliberately let
+# their progress through to whoever is watching. Setting the flag
+# unconditionally would trade strobing windows for a silent minute during a
+# pip install, which is a bad trade for anyone running this from a terminal.
+#
+# So ask whether there is a console to inherit. GetConsoleWindow() returns 0
+# exactly when this process has none, which is the pythonw.exe case and the
+# only case where Windows would allocate a fresh one. Started from a terminal
+# there is a console, the flag is not set, and output flows as it always did.
+#
+# Deliberate terminal launches -- "starting in a new terminal window", where
+# the user is meant to read the output -- never use this.
+def _no_window_flags() -> dict:
+    if sys.platform != "win32":
+        return {}
+    try:
+        import ctypes
+
+        if ctypes.windll.kernel32.GetConsoleWindow() == 0:
+            return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    except Exception:
+        # If we cannot tell, prefer visible output over a hidden window: a
+        # stray console is an annoyance, lost pip output is a support call.
+        pass
+    return {}
+
+
+#: Evaluated once: a process does not gain or lose its console while running.
+_NO_WINDOW = _no_window_flags()
+
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
+# Read version from VERSION file (single source of truth)
+_version_file = Path(__file__).parent / "VERSION"
+__version__ = _version_file.read_text(encoding="utf-8").strip() if _version_file.exists() else "1.2.0"
+
+# Configure logging.
+#
+# The log file used to be the bare relative name 'lablink_debug.log', resolved
+# against the working directory. That put a file wherever the caller happened
+# to be standing -- including directories that had just been deliberately
+# emptied -- and it is the same failure as the venv lookup above: a relative
+# path quietly depending on cwd.
+#
+# The worse half is that logging.FileHandler opens the file at import time. A
+# cwd that is read-only, or gone, raises before any of this module's error
+# handling exists. The launch shim catches that and reports it, but only
+# because it wraps the import; running lablink.py directly from such a
+# directory just dies.
+#
+# So write somewhere the user can always write, and fall back rather than
+# raise: losing the debug log is an inconvenience, failing to start over it is
+# not acceptable.
+def _log_file_handler() -> Optional[logging.Handler]:
+    candidates = []
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+    else:
+        base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    if base:
+        candidates.append(Path(base) / "LabLink")
+    candidates.append(Path(tempfile.gettempdir()) / "LabLink")
+
+    for directory in candidates:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            return logging.FileHandler(directory / "lablink_debug.log",
+                                       encoding="utf-8")
+        except OSError:
+            continue
+    return None
+
+
+_handlers = [logging.StreamHandler()]
+_file_handler = _log_file_handler()
+if _file_handler:
+    _handlers.insert(0, _file_handler)
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-    handlers=[
-        logging.FileHandler('lablink_debug.log'),
-        logging.StreamHandler()
-    ]
+    handlers=_handlers
 )
 logger = logging.getLogger(__name__)
+if not _file_handler:
+    logger.warning("No writable location for the debug log; console only")
 
 # Log startup
 logger.info("=" * 70)
@@ -51,7 +146,8 @@ def check_and_install_pip():
         [sys.executable, '-m', 'pip', '--version'],
         capture_output=True,
         text=True,
-        check=False
+        check=False,
+        **_NO_WINDOW,
     )
 
     if result.returncode != 0:
@@ -66,12 +162,68 @@ def check_and_install_pip():
         print("="*70 + "\n")
         sys.exit(1)
 
+def get_venv_paths(venv_name: str = "venv") -> Dict[str, Path]:
+    """Get platform-appropriate virtual environment paths.
+
+    On Windows, venv uses 'Scripts' directory with .exe extensions.
+    On Linux/macOS, venv uses 'bin' directory without extensions.
+
+    Args:
+        venv_name: Name of the virtual environment directory
+
+    Returns:
+        Dictionary with 'base', 'bin', 'python', and 'pip' paths
+    """
+    # Which environment is "the" environment has a right answer, and it used to
+    # be guessed: Path(venv_name) is relative, so it resolved against whatever
+    # the working directory happened to be.
+    #
+    # That let the launcher audit one environment while the Start Menu
+    # shortcuts ran another. On a machine with both a legacy root venv and the
+    # installer's client\venv, the launcher probed the root one, found every
+    # package present, and reported all green -- while the Server shortcut died
+    # on a missing fastapi that really was absent from client\venv. The repair
+    # tool denied the failure the error dialog had just sent the user to it
+    # with.
+    #
+    # If this process is itself running inside a virtual environment, that is
+    # the environment, with no guessing required: the shortcuts start the
+    # launcher with client\venv's own pythonw.exe, so sys.prefix is already the
+    # answer. Only when running outside one is there anything to search for,
+    # and then it is anchored to the repo rather than to the caller's cwd.
+    if sys.prefix != sys.base_prefix:
+        venv_base = Path(sys.prefix)
+    else:
+        root = Path(__file__).resolve().parent
+        candidates = [root / venv_name, root / "client" / venv_name]
+        venv_base = next(
+            (path for path in candidates if path.exists()), candidates[0]
+        )
+
+    if sys.platform == "win32":
+        # Windows uses Scripts directory
+        venv_bin = venv_base / "Scripts"
+        venv_python = venv_bin / "python.exe"
+        venv_pip = venv_bin / "pip.exe"
+    else:
+        # Unix-like systems (Linux, macOS) use bin directory
+        venv_bin = venv_base / "bin"
+        venv_python = venv_bin / "python"
+        venv_pip = venv_bin / "pip"
+
+    return {
+        'base': venv_base,
+        'bin': venv_bin,
+        'python': venv_python,
+        'pip': venv_pip
+    }
+
 # Qt imports with bootstrap handling
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QPushButton, QGroupBox, QTextEdit, QDialog, QMessageBox,
-        QProgressBar, QScrollArea, QFrame
+        QProgressBar, QScrollArea, QFrame, QComboBox
     )
     from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize
     from PyQt6.QtGui import QPainter, QColor, QFont, QPalette, QIcon
@@ -84,7 +236,8 @@ except ImportError:
     check_and_install_pip()
 
     # Check if Python is externally managed (PEP 668)
-    venv_path = Path("venv")
+    venv_paths = get_venv_paths()
+    venv_path = venv_paths['base']
     needs_venv = False
 
     # Check for EXTERNALLY-MANAGED marker
@@ -102,7 +255,7 @@ except ImportError:
         if not venv_path.exists():
             try:
                 print(f"\nCreating virtual environment at {venv_path}...")
-                subprocess.check_call([sys.executable, "-m", "venv", "venv"])
+                subprocess.check_call([sys.executable, "-m", "venv", "venv"], **_NO_WINDOW)
                 print("✓ Virtual environment created")
             except subprocess.CalledProcessError as e:
                 print("\n" + "="*70)
@@ -116,12 +269,12 @@ except ImportError:
                 sys.exit(1)
 
         # Install PyQt6 in venv
-        venv_python = venv_path / "bin" / "python"
-        venv_pip = venv_path / "bin" / "pip"
+        venv_python = venv_paths['python']
+        venv_pip = venv_paths['pip']
 
         try:
             print("\nInstalling PyQt6 in virtual environment...")
-            subprocess.check_call([str(venv_pip), "install", "PyQt6"])
+            subprocess.check_call([str(venv_pip), "install", "PyQt6"], **_NO_WINDOW)
             print("\n" + "="*70)
             print("✓ SUCCESS: Environment setup complete!")
             print("="*70)
@@ -139,7 +292,10 @@ except ImportError:
             print(f"\nError: {e}")
             print("\nPlease try manually:")
             print("  python3 -m venv venv")
-            print("  source venv/bin/activate")
+            if sys.platform == "win32":
+                print("  venv\\Scripts\\activate")
+            else:
+                print("  source venv/bin/activate")
             print("  pip install PyQt6")
             print(f"  python3 {sys.argv[0]}")
             print("="*70 + "\n")
@@ -148,7 +304,7 @@ except ImportError:
         # Try direct install (non-externally-managed system)
         try:
             print("\nInstalling PyQt6...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"], **_NO_WINDOW)
             print("\n" + "="*70)
             print("SUCCESS: PyQt6 installed successfully!")
             print("="*70)
@@ -165,12 +321,26 @@ except ImportError:
             print("  python3 -m pip install PyQt6")
             print("\nOr use a virtual environment:")
             print("  python3 -m venv venv")
-            print("  source venv/bin/activate")
+            if sys.platform == "win32":
+                print("  venv\\Scripts\\activate")
+            else:
+                print("  source venv/bin/activate")
             print("  pip install PyQt6")
             print(f"  python3 {sys.argv[0]}")
             print("="*70 + "\n")
             sys.exit(1)
 
+# Import theme system (after PyQt6 is confirmed to be available)
+try:
+    from client.ui.theme import get_app_stylesheet, get_theme_setting, save_theme_setting
+except ImportError:
+    # Fallback if theme module not available
+    def get_app_stylesheet(theme="light"):
+        return ""
+    def get_theme_setting():
+        return "light"
+    def save_theme_setting(theme):
+        pass
 
 # Status levels
 class StatusLevel(Enum):
@@ -203,14 +373,6 @@ class LEDIndicator(QWidget):
         self.status = StatusLevel.UNKNOWN
         self.setMinimumSize(200, 60)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("""
-            LEDIndicator {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                margin: 2px;
-            }
-        """)
 
     def set_status(self, status: StatusLevel):
         """Update the LED status and repaint."""
@@ -222,9 +384,15 @@ class LEDIndicator(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # Get theme-aware colors from palette
+        palette = self.palette()
+        bg_color = palette.color(palette.ColorRole.Base)
+        border_color = palette.color(palette.ColorRole.Mid)
+        text_color = palette.color(palette.ColorRole.Text)
+
         # Draw widget background with border
-        painter.setPen(QColor("#dee2e6"))
-        painter.setBrush(QColor("#f8f9fa"))
+        painter.setPen(border_color)
+        painter.setBrush(bg_color)
         painter.drawRoundedRect(0, 0, self.width()-1, self.height()-1, 6, 6)
 
         # Draw LED circle
@@ -240,12 +408,12 @@ class LEDIndicator(QWidget):
         painter.drawEllipse(12, 15, 30, 30)
 
         # Draw LED border for definition
-        painter.setPen(QColor("#2c3e50"))
+        painter.setPen(text_color)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(15, 18, 24, 24)
 
         # Draw label
-        painter.setPen(QColor("#2c3e50"))
+        painter.setPen(text_color)
         font = QFont()
         font.setPointSize(10)
         font.setBold(True)
@@ -330,7 +498,8 @@ class CheckWorker(QThread):
                 [sys.executable, '-m', 'pip', '--version'],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             if result.returncode == 0:
                 pip_version = result.stdout.split()[1]
@@ -365,7 +534,8 @@ class CheckWorker(QThread):
         # Virtual environment check
         self.progress.emit("Checking virtual environment...")
         in_venv = sys.prefix != sys.base_prefix
-        venv_path = Path("venv")
+        venv_paths = get_venv_paths()
+        venv_path = venv_paths['base']
 
         if in_venv:
             results['venv'] = CheckResult(
@@ -683,9 +853,18 @@ class CheckWorker(QThread):
             'scp': 'SCP (secure copy) support',
         }
 
-        # Utilities for network discovery
+        # Utilities for network discovery.
+        #
+        # scapy is deliberately absent. It was removed from the project on
+        # 2025-12-06 over a pickle-deserialization RCE with no patch available
+        # in any version, having never been imported anywhere -- see
+        # docs/security/SECURITY_UPDATE_2025-12-06.md. It stayed in this list,
+        # so a correct install reported a missing "required" utility as an
+        # ERROR, which auto-opened the repair dialog and offered to install it
+        # again. The launcher was undoing a security fix on every clean
+        # install, at the user's confirmation and with no indication of what
+        # was being restored.
         discovery_utils = {
-            'scapy': 'Network packet manipulation and discovery',
             'zeroconf': 'mDNS/Bonjour service discovery',
         }
 
@@ -706,7 +885,8 @@ class CheckWorker(QThread):
         }
 
         # Determine which Python to use for checking
-        venv_python = Path("venv/bin/python")
+        venv_paths = get_venv_paths()
+        venv_python = venv_paths['python']
         use_venv = venv_python.exists()
 
         for pkg, description in all_utils.items():
@@ -718,7 +898,8 @@ class CheckWorker(QThread):
                 result = subprocess.run(
                     [str(venv_python), '-c', f'import {import_name}'],
                     capture_output=True,
-                    check=False
+                    check=False,
+                    **_NO_WINDOW,
                 )
                 if result.returncode == 0:
                     installed.append(pkg)
@@ -806,7 +987,8 @@ class CheckWorker(QThread):
                 ['which', command],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -819,7 +1001,8 @@ class CheckWorker(QThread):
                 ['dpkg', '-s', lib_name],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -828,7 +1011,7 @@ class CheckWorker(QThread):
     def _parse_requirements(self, req_file: Path) -> List[str]:
         """Parse requirements.txt file."""
         packages = []
-        for line in req_file.read_text().splitlines():
+        for line in req_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and not line.startswith('#'):
                 # Extract package name
@@ -862,7 +1045,8 @@ class CheckWorker(QThread):
         }
 
         # Determine which Python to use for checking
-        venv_python = Path("venv/bin/python")
+        venv_paths = get_venv_paths()
+        venv_python = venv_paths['python']
         use_venv = venv_python.exists()
 
         logger.debug(f"Checking {len(packages)} packages, use_venv={use_venv}, venv_python={venv_python}")
@@ -896,7 +1080,8 @@ class CheckWorker(QThread):
                 [str(venv_python), '-c', batch_check],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -961,7 +1146,8 @@ class FixWorker(QThread):
         sorted_issues = sorted(self.issues, key=fix_priority)
 
         # Check environment status
-        venv_exists = Path("venv/bin/pip").exists()
+        venv_paths = get_venv_paths()
+        venv_exists = venv_paths['pip'].exists()
         externally_managed = self.launcher._check_externally_managed()
         logger.info(f"Externally managed: {externally_managed}, venv exists: {venv_exists}")
 
@@ -972,11 +1158,12 @@ class FixWorker(QThread):
             try:
                 if issue.fix_command == "ensurepip":
                     logger.info("Running ensurepip")
-                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'])
+                    subprocess.check_call([sys.executable, '-m', 'ensurepip', '--upgrade'], **_NO_WINDOW)
 
                 elif issue.fix_command == "create_venv":
-                    venv_path = Path("venv")
-                    venv_pip = venv_path / "bin" / "pip"
+                    venv_paths = get_venv_paths()
+                    venv_path = venv_paths['base']
+                    venv_pip = venv_paths['pip']
 
                     if venv_path.exists() and not venv_pip.exists():
                         logger.warning(f"Venv exists but is broken, recreating...")
@@ -986,7 +1173,7 @@ class FixWorker(QThread):
 
                     if not venv_path.exists():
                         logger.info("Creating virtual environment...")
-                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'])
+                        subprocess.check_call([sys.executable, '-m', 'venv', 'venv'], **_NO_WINDOW)
                         logger.info("Virtual environment created successfully")
 
                         if not venv_pip.exists():
@@ -998,30 +1185,34 @@ class FixWorker(QThread):
                     # Special handling for client utilities
                     if target == "client_utils":
                         logger.info("Installing client utilities packages")
-                        packages = ['paramiko', 'scp', 'scapy', 'zeroconf']
+                        # Must match discovery_utils/deployment_utils above,
+                        # and must not reintroduce scapy.
+                        packages = ['paramiko', 'scp', 'zeroconf']
 
-                        venv_pip = Path("venv/bin/pip")
+                        venv_paths = get_venv_paths()
+                        venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
-                            subprocess.check_call([str(venv_pip), 'install'] + packages)
+                            subprocess.check_call([str(venv_pip), 'install'] + packages, **_NO_WINDOW)
                             logger.info("Client utilities install completed successfully")
                         else:
                             logger.info("Using system pip")
-                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages)
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages, **_NO_WINDOW)
                             logger.info("Client utilities install completed successfully")
                     else:
                         # Standard requirements.txt installation
                         req_file = f"{target}/requirements.txt"
                         logger.info(f"Installing pip packages from {req_file}")
 
-                        venv_pip = Path("venv/bin/pip")
+                        venv_paths = get_venv_paths()
+                        venv_pip = venv_paths['pip']
                         if venv_pip.exists():
                             logger.info(f"Using venv pip: {venv_pip}")
-                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file])
+                            subprocess.check_call([str(venv_pip), 'install', '-r', req_file], **_NO_WINDOW)
                             logger.info("Pip install completed successfully")
                         else:
                             logger.info("Using system pip")
-                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file], **_NO_WINDOW)
                             logger.info("Pip install completed successfully")
 
                 elif issue.fix_command.startswith("apt_install:"):
@@ -1036,7 +1227,8 @@ class FixWorker(QThread):
                     pkexec_check = subprocess.run(
                         ['which', 'pkexec'],
                         capture_output=True,
-                        check=False
+                        check=False,
+                        **_NO_WINDOW,
                     )
 
                     if pkexec_check.returncode == 0:
@@ -1046,7 +1238,8 @@ class FixWorker(QThread):
                             ['pkexec', 'apt', 'update'],
                             capture_output=True,
                             text=True,
-                            check=False
+                            check=False,
+                            **_NO_WINDOW,
                         )
 
                         if result.returncode != 0:
@@ -1062,7 +1255,8 @@ class FixWorker(QThread):
                             ['pkexec', 'apt', 'install', '-y'] + package_list,
                             capture_output=True,
                             text=True,
-                            check=False
+                            check=False,
+                            **_NO_WINDOW,
                         )
 
                         if result.returncode != 0:
@@ -1135,21 +1329,44 @@ class IssueDetailsDialog(QDialog):
         self.setLayout(layout)
 
 
+class GitBranchWorker(QThread):
+    """Looks up the checked-out branch and commit without blocking the UI."""
+
+    detected = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from client.utils.git_operations import (get_current_commit_hash,
+                                                     get_current_git_branch,
+                                                     is_git_checkout)
+        except Exception:
+            return          # no client package: version alone is still shown
+
+        if not is_git_checkout():
+            return          # a ZIP download or packaged install has no .git
+
+        branch = get_current_git_branch()
+        if not branch:
+            return          # detached HEAD, or git unavailable
+
+        commit = get_current_commit_hash()
+        self.detected.emit(f"{branch} ({commit})" if commit else branch)
+
+
 class LabLinkLauncher(QMainWindow):
     """Main LabLink launcher window."""
 
+    # Emitted from the git worker thread. A signal rather than
+    # QTimer.singleShot: a timer created off the GUI thread belongs to that
+    # thread, which has no event loop, so it never fires and dies with the
+    # thread. That is exactly why the client's branch indicator never appeared
+    # until #190.
+    branch_detected = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabLink Launcher")
+        self.setWindowTitle(f"LabLink Launcher {__version__}")
         self.setMinimumSize(800, 700)
-
-        # Add defined border to main window
-        self.setStyleSheet("""
-            QMainWindow {
-                border: 6px solid #0d1419;
-                background-color: #ecf0f1;
-            }
-        """)
 
         # Store check results
         self.env_results = {}
@@ -1170,16 +1387,41 @@ class LabLinkLauncher(QMainWindow):
         # Initialize UI
         self.init_ui()
 
+        # Say which LabLink this is, before anything else happens
+        self.branch_detected.connect(self._show_branch)
+        self._branch_worker = GitBranchWorker()
+        self._branch_worker.detected.connect(self.branch_detected.emit)
+        self._branch_worker.start()
+
         # Auto-check on startup
         QTimer.singleShot(500, self.check_all)
+
+    def _version_text(self) -> str:
+        """The version, shown immediately without waiting for git."""
+        return f"LabLink {__version__}"
+
+    def _show_branch(self, branch_info: str):
+        """Append branch and commit to the version label (GUI thread only).
+
+        Shown for main as well. Hiding it there is what the client used to do,
+        and it meant the common case displayed nothing at all about what was
+        running -- which is the question this exists to answer.
+        """
+        on_main = branch_info.startswith("main")
+        self.version_label.setText(f"{self._version_text()}  📍 {branch_info}")
+        self.version_label.setStyleSheet(
+            "color: gray;" if on_main else "color: #27ae60; font-weight: bold;"
+        )
+        self.version_label.setToolTip(
+            f"LabLink launcher {__version__}\n"
+            f"Running from branch {branch_info}\n\n"
+            "This is the code this launcher will start."
+        )
 
     def init_ui(self):
         """Initialize the user interface."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
-        # Set main window background
-        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
 
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(15, 15, 15, 15)
@@ -1190,34 +1432,36 @@ class LabLinkLauncher(QMainWindow):
         self.header = QLabel("LabLink System Launcher")
         self.header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         self.header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.header.setStyleSheet("""
-            padding: 20px;
-            background-color: #1a252f;
-            color: white;
-            border-radius: 8px;
-            border: 2px solid #0d1419;
-        """)
+        self.header.setProperty("headerLabel", True)
         self.header.mousePressEvent = self._header_clicked
         main_layout.addWidget(self.header)
+
+        # Which LabLink is this? Permanently visible, matching the client's
+        # status bar so the two agree at a glance. __version__ was read from
+        # the VERSION file and then never used by anything until now.
+        self.version_label = QLabel(self._version_text())
+        self.version_label.setStyleSheet("color: gray;")
+        self.statusBar().addWidget(self.version_label)
+
+        # Theme selector
+        theme_layout = QHBoxLayout()
+        theme_layout.addStretch()
+        theme_label = QLabel("Theme:")
+        theme_label.setFont(QFont("Arial", 10))
+        theme_layout.addWidget(theme_label)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Light", "Dark", "Auto"])
+        self.theme_combo.setCurrentText(get_theme_setting().capitalize())
+        self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
+        self.theme_combo.setFont(QFont("Arial", 10))
+        self.theme_combo.setMinimumWidth(120)
+        theme_layout.addWidget(self.theme_combo)
+        main_layout.addLayout(theme_layout)
 
         # Status indicators section
         status_group = QGroupBox("System Status")
         status_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        status_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-        """)
         status_layout = QVBoxLayout()
         status_layout.setSpacing(8)
 
@@ -1253,52 +1497,16 @@ class LabLinkLauncher(QMainWindow):
         self.progress_label = QLabel("Ready")
         self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.progress_label.setFont(QFont("Arial", 10))
-        self.progress_label.setStyleSheet("""
-            QLabel {
-                padding: 8px;
-                background-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-                color: #2c3e50;
-            }
-        """)
+        self.progress_label.setProperty("statusLabel", True)
         main_layout.addWidget(self.progress_label)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #bdc3c7;
-                border-radius: 6px;
-                background-color: white;
-                text-align: center;
-                height: 25px;
-            }
-            QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 4px;
-            }
-        """)
         main_layout.addWidget(self.progress_bar)
 
         # Control buttons
         control_group = QGroupBox("Actions")
         control_group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        control_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 15px;
-                padding: 5px 10px;
-                background-color: white;
-            }
-        """)
         control_layout = QVBoxLayout()
         control_layout.setSpacing(10)
 
@@ -1306,21 +1514,6 @@ class LabLinkLauncher(QMainWindow):
         check_btn = QPushButton("🔄 Refresh Status")
         check_btn.setFont(QFont("Arial", 11))
         check_btn.setMinimumHeight(40)
-        check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ecf0f1;
-                border: 2px solid #bdc3c7;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #d5dbdb;
-                border: 2px solid #95a5a6;
-            }
-            QPushButton:pressed {
-                background-color: #bdc3c7;
-            }
-        """)
         check_btn.clicked.connect(self.check_all)
         control_layout.addWidget(check_btn)
 
@@ -1328,22 +1521,7 @@ class LabLinkLauncher(QMainWindow):
         self.fix_btn = QPushButton("🔧 Fix Issues Automatically")
         self.fix_btn.setFont(QFont("Arial", 11))
         self.fix_btn.setMinimumHeight(40)
-        self.fix_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border: 2px solid #d68910;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #e67e22;
-                border: 2px solid #ca6f1e;
-            }
-            QPushButton:pressed {
-                background-color: #d68910;
-            }
-        """)
+        self.fix_btn.setProperty("buttonStyle", "warning")
         self.fix_btn.clicked.connect(self.fix_issues)
         control_layout.addWidget(self.fix_btn)
 
@@ -1351,7 +1529,6 @@ class LabLinkLauncher(QMainWindow):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("background-color: #bdc3c7; margin: 10px 0px;")
         control_layout.addWidget(line)
 
         # Launch buttons
@@ -1361,52 +1538,13 @@ class LabLinkLauncher(QMainWindow):
         self.server_btn = QPushButton("▶️  Start Server")
         self.server_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.server_btn.setMinimumHeight(50)
-        self.server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: 2px solid #1e8449;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-                border: 2px solid #186a3b;
-            }
-            QPushButton:pressed {
-                background-color: #1e8449;
-            }
-            QPushButton:disabled {
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }
-        """)
+        self.server_btn.setProperty("buttonStyle", "success")
         self.server_btn.clicked.connect(self.launch_server)
         launch_layout.addWidget(self.server_btn)
 
         self.client_btn = QPushButton("▶️  Start Client")
         self.client_btn.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         self.client_btn.setMinimumHeight(50)
-        self.client_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: 2px solid #2471a3;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-                border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
-                background-color: #2471a3;
-            }
-            QPushButton:disabled {
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }
-        """)
         self.client_btn.clicked.connect(self.launch_client)
         launch_layout.addWidget(self.client_btn)
 
@@ -1419,7 +1557,7 @@ class LabLinkLauncher(QMainWindow):
         info_label = QLabel("💡 Click on any LED indicator to see detailed information")
         info_label.setFont(QFont("Arial", 9))
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setStyleSheet("color: #7f8c8d; padding: 10px;")
+        info_label.setProperty("infoLabel", True)
         main_layout.addWidget(info_label)
 
     def _check_externally_managed(self) -> bool:
@@ -1441,7 +1579,8 @@ class LabLinkLauncher(QMainWindow):
                 ['which', command],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except FileNotFoundError:
@@ -1465,13 +1604,8 @@ class LabLinkLauncher(QMainWindow):
                 self._click_count = 0  # Reset
 
                 # Change header to indicate debug mode
-                self.header.setStyleSheet("""
-                    padding: 20px;
-                    background-color: #c0392b;
-                    color: white;
-                    border-radius: 8px;
-                    border: 2px solid #e74c3c;
-                """)
+                self.header.setProperty("debugMode", True)
+                self.header.setStyle(self.header.style())  # Force style refresh
                 self.header.setText("LabLink System Launcher [DEBUG MODE]")
 
                 # Show funny Easter egg message
@@ -1486,27 +1620,6 @@ class LabLinkLauncher(QMainWindow):
                     "Click the header 7 more times to disable debug mode."
                 )
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-                msg.setStyleSheet("""
-                    QMessageBox {
-                        background-color: #2c3e50;
-                    }
-                    QLabel {
-                        color: #ecf0f1;
-                        font-size: 11pt;
-                    }
-                    QPushButton {
-                        background-color: #27ae60;
-                        color: white;
-                        border: none;
-                        padding: 8px 16px;
-                        border-radius: 4px;
-                        font-weight: bold;
-                        min-width: 80px;
-                    }
-                    QPushButton:hover {
-                        background-color: #2ecc71;
-                    }
-                """)
                 msg.exec()
                 logger.info("🐛 DEBUG MODE ENABLED via Easter egg!")
             else:
@@ -1515,13 +1628,8 @@ class LabLinkLauncher(QMainWindow):
                 self._click_count = 0
 
                 # Restore normal header
-                self.header.setStyleSheet("""
-                    padding: 20px;
-                    background-color: #1a252f;
-                    color: white;
-                    border-radius: 8px;
-                    border: 2px solid #0d1419;
-                """)
+                self.header.setProperty("debugMode", False)
+                self.header.setStyle(self.header.style())  # Force style refresh
                 self.header.setText("LabLink System Launcher")
 
                 msg = QMessageBox(self)
@@ -1531,6 +1639,23 @@ class LabLinkLauncher(QMainWindow):
                 msg.setInformativeText("Server and client will now launch normally.")
                 msg.exec()
                 logger.info("Debug mode disabled")
+
+    def _on_theme_changed(self, theme_text):
+        """Handle theme change from combo box."""
+        theme = theme_text.lower()
+        save_theme_setting(theme)
+
+        # Apply new theme
+        app = QApplication.instance()
+        app.setStyleSheet(get_app_stylesheet(theme))
+        app.setProperty("theme", theme)
+
+        # Show restart hint
+        QMessageBox.information(
+            self,
+            "Theme Changed",
+            f"Theme changed to {theme_text}.\\n\\nSome elements may require a restart to fully update."
+        )
 
     def check_all(self):
         """Check all system components."""
@@ -1832,7 +1957,8 @@ class LabLinkLauncher(QMainWindow):
                     ['pkexec', 'apt', 'update'],
                     check=False,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    **_NO_WINDOW,
                 )
 
                 if result.returncode == 0:
@@ -1841,7 +1967,8 @@ class LabLinkLauncher(QMainWindow):
                         ['pkexec', 'apt', 'install', '-y'] + packages.split(),
                         check=False,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        **_NO_WINDOW,
                     )
 
                     if result.returncode == 0:
@@ -1913,7 +2040,8 @@ class LabLinkLauncher(QMainWindow):
             result = subprocess.run(
                 ['which', command],
                 capture_output=True,
-                check=False
+                check=False,
+                **_NO_WINDOW,
             )
             return result.returncode == 0
         except Exception:
@@ -1949,7 +2077,8 @@ class LabLinkLauncher(QMainWindow):
         server_dir = lablink_root / "server"
 
         # Use venv python if available, otherwise system python (use absolute path)
-        venv_python = lablink_root / "venv" / "bin" / "python"
+        venv_paths = get_venv_paths()
+        venv_python = lablink_root / venv_paths['python']
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
@@ -1957,15 +2086,23 @@ class LabLinkLauncher(QMainWindow):
             debug_flag = " --debug" if self.debug_mode else ""
 
             # Launch in new terminal
-            # Server has mixed imports - needs both server/ as cwd AND LabLink root in PYTHONPATH
+            # Run from the repo root as `-m server.main`, matching the
+            # container.
+            #
+            # This used to cd into server/ *and* put the repo root on
+            # PYTHONPATH, with a comment explaining that the server had mixed
+            # imports and needed both. Supplying both is what let the same
+            # file import under two names, so every module-level singleton
+            # existed twice and the lock reaper polled a dictionary nothing
+            # wrote to (#197). The workaround was the defect.
             if platform.system() == "Linux":
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'
                 subprocess.Popen(['x-terminal-emulator', '-e', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Darwin":  # macOS
-                cmd = f'cd {server_dir} && PYTHONPATH={lablink_root}:$PYTHONPATH {python_exe} main.py{debug_flag}'
+                cmd = f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'
                 subprocess.Popen(['open', '-a', 'Terminal', f'bash -c "{cmd}; exec bash"'])
             elif platform.system() == "Windows":
-                subprocess.Popen(['start', 'cmd', '/k', f'cd {server_dir} && set PYTHONPATH={lablink_root};%PYTHONPATH% && {python_exe} main.py{debug_flag}'], shell=True)
+                subprocess.Popen(['start', 'cmd', '/k', f'cd {lablink_root} && {python_exe} -m server.main{debug_flag}'], shell=True)
 
             self._show_auto_close_message(
                 "Server Starting",
@@ -1995,7 +2132,8 @@ class LabLinkLauncher(QMainWindow):
         lablink_root = Path.cwd().absolute()
 
         # Use venv python if available, otherwise system python (use absolute path)
-        venv_python = lablink_root / "venv" / "bin" / "python"
+        venv_paths = get_venv_paths()
+        venv_python = lablink_root / venv_paths['python']
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         try:
@@ -2009,7 +2147,8 @@ class LabLinkLauncher(QMainWindow):
 
             subprocess.Popen(
                 args,
-                cwd=str(lablink_root)
+                cwd=str(lablink_root),
+                **_NO_WINDOW,
             )
 
             self._show_auto_close_message(
@@ -2029,93 +2168,20 @@ def main():
     """Main entry point."""
     app = QApplication(sys.argv)
 
+    # Set application icon (appears in taskbar and window title)
+    icon_path = Path(__file__).parent / "images" / "favicon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     # Set application style
     app.setStyle("Fusion")
 
-    # Dark theme with high contrast
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(30, 30, 32))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 45, 48))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(53, 53, 57))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(60, 60, 64))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
-    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 255, 255))
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(100, 149, 237))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 122, 204))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    app.setPalette(dark_palette)
+    # Load saved theme preference and apply it
+    current_theme = get_theme_setting()
+    app.setStyleSheet(get_app_stylesheet(current_theme))
 
-    # Global stylesheet for borders and enhanced visuals
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #2d2d30;
-        }
-        QGroupBox {
-            border: 2px solid #3c3c3f;
-            border-radius: 6px;
-            margin-top: 12px;
-            padding-top: 18px;
-            background-color: #252526;
-            font-weight: bold;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 12px;
-            padding: 0 8px;
-            color: #dcdcdc;
-        }
-        QPushButton {
-            background-color: #3c3c3f;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 8px 16px;
-            color: #dcdcdc;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-            border: 1px solid #007acc;
-        }
-        QPushButton:pressed {
-            background-color: #007acc;
-        }
-        QPushButton:disabled {
-            background-color: #3c3c3f;
-            color: #6d6d6d;
-            border: 1px solid #444444;
-        }
-        QProgressBar {
-            border: 1px solid #555555;
-            border-radius: 4px;
-            background-color: #1e1e1e;
-            text-align: center;
-            color: #dcdcdc;
-        }
-        QProgressBar::chunk {
-            background-color: #007acc;
-            border-radius: 3px;
-        }
-        QTextEdit, QPlainTextEdit {
-            background-color: #1e1e1e;
-            border: 1px solid #3c3c3f;
-            border-radius: 4px;
-            color: #dcdcdc;
-            selection-background-color: #264f78;
-        }
-        QLabel {
-            color: #dcdcdc;
-        }
-        QMessageBox {
-            background-color: #2d2d30;
-        }
-        QDialog {
-            background-color: #2d2d30;
-            border: 2px solid #555555;
-        }
-    """)
+    # Store theme setting on app for access by dialogs
+    app.setProperty("theme", current_theme)
 
     # Create and show launcher
     launcher = LabLinkLauncher()

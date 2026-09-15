@@ -10,7 +10,12 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
 from .base import BaseEquipment
-from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
+from .bk_power_supply import (BK1685B, BK1687B, BK1688B, BK1696, BK1901B,
+                              BK1902B, BK9103, BK9104, BK9130B, BK9205B,
+                              BK9206B)
+from .bk_registry import (PROTOCOL_SCPI, equipment_type_for, resolve_model)
+from .bk_scpi import (BKSCPIElectronicLoad, BKSCPIMultimeter,
+                      BKSCPIPowerSupply)
 from .mock.mock_electronic_load import MockElectronicLoad
 from .mock.mock_multimeter import MockMultimeter
 from .mock.mock_oscilloscope import MockOscilloscope
@@ -117,6 +122,14 @@ class EquipmentManager:
     def __init__(self):
         """Initialize equipment manager."""
         self.equipment: Dict[str, BaseEquipment] = {}
+
+        # What this server has identified before. Held on the data volume,
+        # so it survives the container restart an upgrade performs -- the
+        # list used to be emptied by every one of those, and rediscovering
+        # a 1685B means inferring it from a USB bridge again.
+        from server.equipment.inventory import EquipmentInventory
+
+        self.inventory = EquipmentInventory()
         self.resource_manager: Optional[ResourceManager] = None
         self._lock = asyncio.Lock()
 
@@ -130,10 +143,31 @@ class EquipmentManager:
             logger.error(f"Failed to initialize equipment manager: {e}")
 
     async def shutdown(self):
-        """Shutdown and cleanup all equipment connections."""
+        """Shut down, applying the disconnect policy to every instrument.
+
+        This used to call `equipment.disconnect()` directly, which closes the
+        port and sends nothing -- so an explicit disconnect through the API
+        disabled a supply's output while stopping the server left it live.
+        The same policy now governs both, because "what happens to the bench
+        when LabLink goes away" should not depend on how it went away.
+        """
+        policy = self.default_disconnect_policy()
         async with self._lock:
             for equipment_id, equipment in self.equipment.items():
                 try:
+                    if policy == "off":
+                        try:
+                            if hasattr(equipment, "set_output"):
+                                await equipment.set_output(False)
+                            elif hasattr(equipment, "set_input"):
+                                await equipment.set_input(False)
+                            logger.info(f"Safe state applied to {equipment_id}")
+                        except Exception as e:
+                            # A shutdown must still shut down.
+                            logger.error(
+                                f"Error putting {equipment_id} into safe state: {e}"
+                            )
+
                     await equipment.disconnect()
                     logger.info(f"Disconnected {equipment_id}")
                 except Exception as e:
@@ -152,7 +186,7 @@ class EquipmentManager:
         """
         try:
             # Use discovery manager for comprehensive discovery with filtering
-            from discovery import get_discovery_manager
+            from server.discovery import get_discovery_manager
 
             discovery_manager = get_discovery_manager()
             result = await discovery_manager.scan()
@@ -170,7 +204,7 @@ class EquipmentManager:
                 return []
 
             try:
-                from discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
+                from server.discovery.models import DiscoveredDevice, DeviceType, DiscoveryMethod
                 import uuid
 
                 resources = self.resource_manager.list_resources()
@@ -237,9 +271,14 @@ class EquipmentManager:
                 # Store equipment
                 self.equipment[equipment_id] = equipment
 
+                # Remember what it is, so a restart does not lose the bench.
+                self.inventory.remember(info)
+
                 # Record connection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_connection(equipment_id)
+
+                self._notify_discovery(resource_string, equipment_id, connected=True)
 
                 logger.info(
                     f"Connected to {model} at {resource_string} with ID {equipment_id}"
@@ -351,30 +390,128 @@ class EquipmentManager:
         elif find_keyword_driver(model_upper) is not None:
             return find_keyword_driver(model_upper)(self.resource_manager, resource_string)
 
-        # BK Precision power supplies
-        elif "9206" in model_upper:
-            return BK9206B(self.resource_manager, resource_string)
-        elif "9205" in model_upper:
-            return BK9205B(self.resource_manager, resource_string)
-        elif "9130" in model_upper or "9131" in model_upper:
-            return BK9130B(self.resource_manager, resource_string)
-        elif "1685" in model_upper:
-            return BK1685B(self.resource_manager, resource_string)
-        elif "1902" in model_upper:
-            return BK1902B(self.resource_manager, resource_string)
+
+        # B&K Precision: dispatched through the model registry so every
+        # documented family is reachable, not just the hand-listed few.
+        bk_equipment = self._create_bk_instance(
+            resource_string, equipment_type, model
+        )
+        if bk_equipment is not None:
+            return bk_equipment
 
         return None
 
-    async def disconnect_device(self, equipment_id: str):
-        """Disconnect a device."""
+    #: Models with a hand-written driver, which wins over the generic one.
+    _BK_SPECIFIC_DRIVERS = {
+        "1685B": BK1685B, "1687B": BK1687B, "1688B": BK1688B,
+        "1901B": BK1901B, "1902B": BK1902B,
+        "9103": BK9103, "9104": BK9104,
+        "9130B": BK9130B, "9131B": BK9130B, "9132B": BK9130B,
+        "9205B": BK9205B, "9206B": BK9206B,
+        "1696": BK1696, "1697": BK1696, "1698": BK1696,
+    }
+
+    #: Generic SCPI driver per LabLink equipment type.
+    _BK_GENERIC_DRIVERS = {
+        EquipmentType.POWER_SUPPLY: BKSCPIPowerSupply,
+        EquipmentType.ELECTRONIC_LOAD: BKSCPIElectronicLoad,
+        EquipmentType.MULTIMETER: BKSCPIMultimeter,
+    }
+
+    def _create_bk_instance(
+        self, resource_string: str, equipment_type: EquipmentType, model: str
+    ) -> Optional[BaseEquipment]:
+        """Build a B&K driver for `model`, or None if it is not a B&K model.
+
+        A SKU is resolved to its family first, so a 9241 gets the 9240-series
+        driver and a 2569B-MSO is recognised as a 2560B scope, rather than
+        falling through as unsupported.
+        """
+        info = resolve_model(model)
+        if info is None:
+            return None
+
+        # An exact SKU with its own driver takes precedence over the family's.
+        sku = model.upper().replace(" ", "").replace("-", "")
+        for candidate in (sku, info.key):
+            driver = self._BK_SPECIFIC_DRIVERS.get(candidate)
+            if driver:
+                return driver(self.resource_manager, resource_string)
+        for documented_sku in info.skus:
+            if sku.endswith(documented_sku) and documented_sku in self._BK_SPECIFIC_DRIVERS:
+                return self._BK_SPECIFIC_DRIVERS[documented_sku](
+                    self.resource_manager, resource_string
+                )
+
+        # No hand-written driver: the generic SCPI drivers cover the rest,
+        # but only where the protocol family and the category both line up.
+        if info.protocol != PROTOCOL_SCPI:
+            logger.warning(
+                f"B&K {info.name} speaks the {info.protocol} protocol, which "
+                f"has no LabLink driver yet"
+            )
+            return None
+
+        resolved_type = equipment_type_for(info)
+        if resolved_type is None:
+            logger.warning(
+                f"B&K {info.name} is a {info.category}; LabLink has no "
+                f"equipment type for it"
+            )
+            return None
+
+        driver = self._BK_GENERIC_DRIVERS.get(EquipmentType(resolved_type))
+        if driver is None:
+            return None
+
+        logger.info(
+            f"Using the generic B&K SCPI driver for {info.name} "
+            f"({resolved_type})"
+        )
+        return driver(self.resource_manager, resource_string, model=model)
+
+    # What to leave an instrument doing when LabLink lets go of it.
+    #
+    # "off" disables the output; "hold" leaves the instrument exactly as it is.
+    # The default comes from settings.safe_state_on_disconnect, which has
+    # always meant "off" -- this only gives the operator a way to say otherwise
+    # for one disconnect, without changing the server's default for everyone.
+    DISCONNECT_POLICIES = ("off", "hold")
+
+    def default_disconnect_policy(self) -> str:
+        """The policy used when a caller does not name one."""
+        from server.config.settings import settings
+
+        return "off" if settings.safe_state_on_disconnect else "hold"
+
+    async def disconnect_device(self, equipment_id: str, policy: Optional[str] = None):
+        """Disconnect a device, leaving it in the requested state.
+
+        Args:
+            equipment_id: the device to disconnect
+            policy: "off" to disable the output first, "hold" to leave the
+                instrument as it is. Defaults to the server's configured
+                behaviour.
+
+        Note that "hold" asks LabLink to send nothing. It is not a promise
+        about the instrument: a supply whose serial port has `hupcl` set may
+        still see DTR drop when the port closes. What this controls is whether
+        LabLink itself turns the output off, which -- contrary to issue #198 --
+        is what was actually happening.
+        """
+        if policy is None:
+            policy = self.default_disconnect_policy()
+        if policy not in self.DISCONNECT_POLICIES:
+            raise ValueError(
+                f"Unknown disconnect policy {policy!r}; "
+                f"expected one of {', '.join(self.DISCONNECT_POLICIES)}"
+            )
+
         async with self._lock:
             if equipment_id in self.equipment:
                 equipment = self.equipment[equipment_id]
 
-                # Safe state on disconnect - disable outputs
-                from config.settings import settings
-
-                if settings.safe_state_on_disconnect:
+                if policy == "off":
                     try:
                         logger.info(
                             f"Putting {equipment_id} into safe state before disconnect"
@@ -394,27 +531,83 @@ class EquipmentManager:
                         logger.error(
                             f"Error putting {equipment_id} into safe state: {e}"
                         )
+                else:
+                    # Worth a line of its own: "the output was still on when we
+                    # let go" is exactly the thing someone reads the log for.
+                    logger.info(
+                        f"Leaving {equipment_id} as it is on disconnect "
+                        f"(policy 'hold'); its output state is unchanged"
+                    )
 
                 await equipment.disconnect()
                 del self.equipment[equipment_id]
 
                 # Record disconnection event for diagnostics
-                from diagnostics import diagnostics_manager
+                from server.diagnostics import diagnostics_manager
                 diagnostics_manager.record_disconnection(equipment_id)
 
+                self._notify_discovery(
+                    equipment.resource_string, equipment_id, connected=False
+                )
+
                 logger.info(f"Disconnected device {equipment_id}")
+
+    @staticmethod
+    def _notify_discovery(
+        resource_string: str, equipment_id: str, connected: bool
+    ) -> None:
+        """Tell discovery a resource changed hands, so its cache says so too.
+
+        Best effort: discovery is bookkeeping, and a connection must not fail
+        because the bookkeeping did (or because discovery is not running, as
+        in the unit tests).
+        """
+        try:
+            from server.discovery import get_discovery_manager
+
+            manager = get_discovery_manager()
+            if connected:
+                manager.mark_connected_resource(resource_string, equipment_id)
+            else:
+                manager.mark_disconnected_resource(resource_string)
+        except Exception as e:
+            logger.debug(f"Discovery not updated for {resource_string}: {e}")
 
     def get_equipment(self, equipment_id: str) -> Optional[BaseEquipment]:
         """Get equipment by ID."""
         return self.equipment.get(equipment_id)
 
-    def get_connected_devices(self) -> List[EquipmentInfo]:
-        """Get list of all connected devices."""
-        return [
-            equipment.cached_info
-            for equipment in self.equipment.values()
-            if equipment.cached_info
-        ]
+    async def get_connected_devices(self) -> List[EquipmentInfo]:
+        """Every instrument this server knows, open or merely remembered.
+
+        Remembered ones carry connected=False. They are listed so an
+        operator can reconnect a bench that was identified in an earlier
+        session instead of rediscovering it -- no port is opened by
+        appearing here.
+        """
+        async with self._lock:
+            devices = []
+            open_ids = set()
+            for equipment in self.equipment.values():
+                if equipment.cached_info:
+                    info = equipment.cached_info.model_copy(
+                        update={"connected": True}
+                    )
+                    devices.append(info)
+                    open_ids.add(info.id)
+
+            for entry in self.inventory.entries():
+                if entry.get("id") in open_ids:
+                    continue
+                try:
+                    devices.append(EquipmentInfo(**{**entry, "connected": False}))
+                except Exception as e:
+                    # A remembered entry that no longer fits the model is
+                    # not worth failing the whole list for.
+                    equipment_id = entry.get("id")
+                    logger.warning(f"Skipping remembered {equipment_id}: {e}")
+
+            return devices
 
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""

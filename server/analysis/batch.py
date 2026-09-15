@@ -189,13 +189,13 @@ class BatchProcessor:
             Loaded data dictionary
         """
         if file_path.suffix == ".json":
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         elif file_path.suffix == ".csv":
             # Simple CSV loading
             import csv
 
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
                 # Convert to columnar format
@@ -215,12 +215,12 @@ class BatchProcessor:
             file_path: Output file path
         """
         if file_path.suffix == ".json":
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         elif file_path.suffix == ".csv":
             import csv
 
-            with open(file_path, "w", newline="") as f:
+            with open(file_path, "w", newline="", encoding="utf-8") as f:
                 if data:
                     writer = csv.DictWriter(f, fieldnames=data.keys())
                     writer.writeheader()

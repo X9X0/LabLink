@@ -14,7 +14,18 @@ except ImportError as e:
     print("\nRequired packages:")
     print("  pip install PyQt6")
     PYQT_AVAILABLE = False
-    sys.exit(1)
+    # Only exit when run as a script. Under pytest this executes at import
+    # time, and a SystemExit during collection is an INTERNALERROR that
+    # aborts the entire session -- every test in the run, not just this file.
+    if __name__ == "__main__":
+        sys.exit(1)
+
+
+# Skip rather than fail when PyQt is absent: the flag above only gated the
+# script section, so under pytest these ran anyway and failed on the import.
+pytestmark = pytest.mark.skipif(
+    not PYQT_AVAILABLE, reason="PyQt6 is not installed"
+)
 
 
 def test_settings_manager():

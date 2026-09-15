@@ -4,8 +4,10 @@ import sys
 import os
 import asyncio
 
-# Add paths
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "client"))
+# Repo root, so the fully-qualified client.* imports below resolve. Note that
+# both client/api and server/api exist, so a bare "api.client" import binds to
+# the server package instead.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 try:
     from PyQt6.QtWidgets import (
@@ -17,15 +19,19 @@ try:
     import numpy as np
     PYQT_AVAILABLE = True
 except ImportError as e:
-    print(f"Error: {e}")
-    print("\nRequired packages:")
-    print("  pip install PyQt6 pyqtgraph numpy")
     PYQT_AVAILABLE = False
-    sys.exit(1)
 
-from ui.equipment import OscilloscopePanel, PowerSupplyPanel, ElectronicLoadPanel
-from api.client import LabLinkClient
-from utils.settings import get_settings
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not PYQT_AVAILABLE, reason="PyQt6/pyqtgraph/numpy not installed"
+)
+
+if PYQT_AVAILABLE:
+    from client.ui.equipment import (ElectronicLoadPanel, OscilloscopePanel,
+                                     PowerSupplyPanel)
+    from client.api.client import LabLinkClient
+    from client.utils.settings import get_settings
 
 
 class EquipmentPanelDemo(QMainWindow):

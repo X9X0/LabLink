@@ -170,7 +170,7 @@ class TestSettingsManager:
         assert export_file.exists()
 
         # Read export file
-        with open(export_file, 'r') as f:
+        with open(export_file, 'r', encoding='utf-8') as f:
             exported = json.load(f)
 
         assert "connection/host" in exported

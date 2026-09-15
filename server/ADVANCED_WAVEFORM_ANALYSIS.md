@@ -754,7 +754,7 @@ print(f"Transfer function calculated ({len(frequencies)} points)")
 
 - [Waveform Capture & Analysis](WAVEFORM_USER_GUIDE.md) - Basic waveform features
 - [Data Analysis Pipeline](ANALYSIS_USER_GUIDE.md) - Signal processing, filtering, SPC
-- [API Reference](API_REFERENCE.md) - Complete API documentation
+- [API Reference](../docs/API_REFERENCE.md) - Complete API documentation
 
 ---
 

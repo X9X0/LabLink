@@ -13,13 +13,13 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from config.settings import settings
-from equipment.manager import equipment_manager
+from server.config.settings import settings
+from server.equipment.manager import equipment_manager
 from fastapi import WebSocket, WebSocketDisconnect
-from websocket.enhanced_features import (BackpressureConfig, CompressionType,
+from server.websocket.enhanced_features import (BackpressureConfig, CompressionType,
                                          MessagePriority, RecordingFormat,
                                          StreamRecordingConfig)
-from websocket.enhanced_manager import EnhancedStreamManager
+from server.websocket.enhanced_manager import EnhancedStreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -434,7 +434,7 @@ async def stream_acquisition_data(
     compression: CompressionType,
 ):
     """Stream acquisition data to client."""
-    from acquisition import acquisition_manager
+    from server.acquisition import acquisition_manager
 
     interval_sec = interval_ms / 1000.0
 

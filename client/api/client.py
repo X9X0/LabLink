@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import threading
 import os
 import sys
 import uuid
@@ -30,6 +31,77 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+async def call_blocking(fn, *args, **kwargs):
+    """Run a blocking LabLinkClient call off the Qt/asyncio event loop.
+
+    LabLinkClient is synchronous (requests-based), so calling it directly from
+    a slot or a qasync coroutine freezes the GUI for the whole round-trip.
+    """
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+_DEFAULT_TIMEOUT = 10  # seconds
+
+
+class _TimeoutSession(requests.Session):
+    """A session that applies a default timeout and renews an expired token.
+
+    Access tokens last 30 minutes by default; the refresh token lasts a week.
+    The client used to refresh only while connecting, and nothing watched for
+    a 401 afterwards, so half an hour into a session every authenticated call
+    began failing and nothing said why. The UI still showed a connection, the
+    reads that need no auth still worked, and the first symptom was a write
+    refused with "401 Unauthorized" -- for one user, an update-mode switch an
+    hour after connecting.
+
+    Renewing here rather than at each call site means every authenticated
+    request is covered, including ones added later.
+    """
+
+    #: Endpoints that must never trigger a refresh-and-retry. Refreshing in
+    #: response to one of these would recurse, and a failed login answering
+    #: 401 is the correct answer, not a stale token.
+    _NO_RETRY = ("/security/refresh", "/security/login", "/auth/login")
+
+    def __init__(self):
+        super().__init__()
+        #: Set by LabLinkClient; returns True when a new token was obtained.
+        self.renew_token = None
+        # Serialises renewal so a burst of parallel 401s asks once rather than
+        # once each. The panels call through call_blocking on worker threads,
+        # so this genuinely happens.
+        self._renewal_lock = threading.Lock()
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", _DEFAULT_TIMEOUT)
+        response = super().request(method, url, **kwargs)
+
+        if response.status_code != 401 or self.renew_token is None:
+            return response
+        if any(path in url for path in self._NO_RETRY):
+            return response
+
+        token_before = self.headers.get("Authorization")
+        with self._renewal_lock:
+            # Another thread may have renewed while this one waited, in which
+            # case the retry below simply uses the token it obtained.
+            if self.headers.get("Authorization") == token_before:
+                logger.info("Access token rejected; renewing and retrying once")
+                try:
+                    if not self.renew_token():
+                        logger.warning("Token renewal failed; sign-in required")
+                        return response
+                except Exception as e:
+                    logger.error(f"Token renewal raised: {e}")
+                    return response
+
+        # super(), so the retry cannot re-enter this method and loop: one
+        # renewal, one retry, then whatever the server says stands.
+        retried = super().request(method, url, **kwargs)
+        if retried.status_code == 401:
+            logger.warning(f"Still unauthorized after renewing: {url}")
+        return retried
+
+
 class LabLinkClient:
     """Client for communicating with LabLink server."""
 
@@ -41,7 +113,9 @@ class LabLinkClient:
         Args:
             host: Server hostname or IP address
             api_port: REST API port
-            ws_port: WebSocket port
+            ws_port: retained for backwards compatibility and ignored. The
+                /ws endpoint is a route on the API server, so the WebSocket
+                connection is built from api_port.
         """
         self.host = host
         self.api_port = api_port
@@ -49,7 +123,9 @@ class LabLinkClient:
 
         self.api_base_url = f"http://{host}:{api_port}/api"
 
-        self._session = requests.Session()
+        self._session = _TimeoutSession()
+        # The session renews on a 401 and retries once; this is how it asks.
+        self._session.renew_token = self.refresh_access_token
 
         # Session ID for equipment lock management
         self.session_id = str(uuid.uuid4())
@@ -65,6 +141,10 @@ class LabLinkClient:
         # Note: WebSocket is on the same port as API, not a separate port
         if WebSocketManager:
             self.ws_manager = WebSocketManager(host=host, port=api_port)
+            # /ws is refused without the token, and the token changes when it
+            # is renewed, so hand over readers rather than a value.
+            self.ws_manager.token_provider = lambda: self.access_token
+            self.ws_manager.renew_token = self.refresh_access_token
         else:
             self.ws_manager = None
             logger.warning("WebSocket manager not available")
@@ -147,7 +227,7 @@ class LabLinkClient:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Login request failed: {e}")
-            raise Exception(f"Login request failed: {e}")
+            raise
 
     def logout(self) -> bool:
         """Logout from LabLink server.
@@ -407,6 +487,27 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def get_supported_models(
+        self, equipment_type: Optional[str] = None, supported_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """List the instrument models the server knows how to talk to.
+
+        Args:
+            equipment_type: Optional LabLink equipment type filter
+            supported_only: Omit families the server has no driver for
+
+        Returns:
+            List of model catalogue entries
+        """
+        params: Dict[str, Any] = {"supported_only": supported_only}
+        if equipment_type:
+            params["equipment_type"] = equipment_type
+        response = self._session.get(
+            f"{self.api_base_url}/equipment/models", params=params
+        )
+        response.raise_for_status()
+        return response.json().get("models", [])
+
     def get_equipment(self, equipment_id: str) -> Dict[str, Any]:
         """Get equipment details.
 
@@ -433,32 +534,48 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
-    def connect_equipment(self, equipment_id: str) -> Dict[str, Any]:
+    def connect_equipment(
+        self, resource_string: str, equipment_type: str, model: str
+    ) -> Dict[str, Any]:
         """Connect to equipment.
 
         Args:
-            equipment_id: Equipment ID
+            resource_string: VISA resource string or connection info
+            equipment_type: Equipment type (e.g. "oscilloscope")
+            model: Equipment model name
 
         Returns:
-            Response dictionary
+            Response dictionary with equipment_id and status
         """
+        payload = {
+            "resource_string": resource_string,
+            "equipment_type": equipment_type,
+            "model": model,
+        }
         response = self._session.post(
-            f"{self.api_base_url}/equipment/{equipment_id}/connect"
+            f"{self.api_base_url}/equipment/connect", json=payload
         )
         response.raise_for_status()
         return response.json()
 
-    def disconnect_equipment(self, equipment_id: str) -> Dict[str, Any]:
+    def disconnect_equipment(
+        self, equipment_id: str, on_disconnect: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Disconnect from equipment.
 
         Args:
             equipment_id: Equipment ID
+            on_disconnect: "off" to disable the output first, "hold" to leave
+                the instrument as it is. None uses the server's default, which
+                is "off".
 
         Returns:
-            Response dictionary
+            Response dictionary, including the `on_disconnect` policy applied
         """
+        params = {"on_disconnect": on_disconnect} if on_disconnect else None
         response = self._session.post(
-            f"{self.api_base_url}/equipment/disconnect/{equipment_id}"
+            f"{self.api_base_url}/equipment/disconnect/{equipment_id}",
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -609,11 +726,40 @@ class LabLinkClient:
             "timeout_seconds": timeout_seconds,
             "queue_if_busy": False,
         }
+        # Name the holder. The server falls back to the authenticated user, but
+        # sending it means a lock is attributable even on a server without
+        # authentication enabled.
+        username = (self.user_data or {}).get("username") if self.user_data else None
+        if username:
+            payload["username"] = username
         response = self._session.post(
             f"{self.api_base_url}/locks/acquire", json=payload
         )
         response.raise_for_status()
         return response.json()
+
+    def get_lock_status(self, equipment_id: str) -> Dict[str, Any]:
+        """Who holds the lock on this equipment, and until when.
+
+        Returns a dict with `locked`, and when locked also `username`,
+        `client_ip`, `acquired_at`, `time_remaining`, `timeout_seconds` and
+        `session_id`.
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/locks/status/{equipment_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_all_locks(self) -> Dict[str, Any]:
+        """Every lock currently held, keyed by equipment id."""
+        response = self._session.get(f"{self.api_base_url}/locks/all")
+        response.raise_for_status()
+        return response.json()
+
+    def holds_lock(self, status: Dict[str, Any]) -> bool:
+        """Whether a lock status describes a lock held by this client."""
+        return bool(status.get("locked")) and status.get("session_id") == self.session_id
 
     def release_lock(self, equipment_id: str, force: bool = False) -> Dict[str, Any]:
         """Release a lock on equipment.
@@ -1397,6 +1543,32 @@ class LabLinkClient:
         response = self._session.post(
             f"{self.api_base_url}/diagnostics/pi-diagnostics",
             timeout=90  # Allow up to 90 seconds for diagnostics to complete
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def run_usb_diagnostics(self, resource_string: str) -> Dict[str, Any]:
+        """Run USB device diagnostics to troubleshoot connection issues.
+
+        Analyzes why a USB device's serial number may not be readable and
+        provides recommendations for resolving the issue.
+
+        Args:
+            resource_string: VISA resource string of the device to diagnose
+
+        Returns:
+            Dictionary containing:
+            - resource_string: The analyzed resource string
+            - has_serial: Whether a serial number is present
+            - serial_readable: Whether the serial number can be read
+            - usb_info: USB vendor/product/serial information
+            - issues: List of detected issues
+            - recommendations: List of recommended fixes
+        """
+        response = self._session.post(
+            f"{self.base_url}/equipment/diagnostics/usb",
+            json={"resource_string": resource_string},
+            timeout=10
         )
         response.raise_for_status()
         return response.json()

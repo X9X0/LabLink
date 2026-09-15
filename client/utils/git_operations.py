@@ -5,10 +5,67 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
+from client.utils.proc import no_window_kwargs
+
 logger = logging.getLogger(__name__)
 
-# All git commands run against the LabLink checkout, not the process cwd
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+def repo_dir() -> str:
+    """The LabLink checkout these git commands should operate on.
+
+    Every call here used to run in the process's current working directory,
+    which is only the checkout when the client happens to be launched from it.
+    Started from a desktop shortcut, a Start Menu entry, or as
+    ``python C:\\LabLink\\client\\main.py`` from a home directory, git either
+    saw an unrelated repository or none at all -- so the branch list came back
+    empty and checkouts failed, with nothing on screen to say why.
+
+    Derived from this file's own location, which is inside the checkout by
+    definition.
+    """
+    return str(Path(__file__).resolve().parents[2])
+
+
+def is_git_checkout() -> bool:
+    """Whether the client is running from a git clone at all.
+
+    A ZIP download or a packaged install has no .git, and every git-backed
+    feature is unavailable there. Worth reporting as its own condition rather
+    than as a string of failed commands.
+    """
+    return (Path(repo_dir()) / ".git").exists()
+
+
+def get_current_commit_hash(short: bool = True) -> Optional[str]:
+    """The commit currently checked out.
+
+    A branch name alone does not identify the running code -- the branch moves,
+    and "which code is this?" is usually asked after a pull or a checkout. The
+    hash pins it.
+
+    Args:
+        short: abbreviated hash rather than the full 40 characters
+
+    Returns:
+        The hash, or None if this is not a checkout or git is unavailable.
+    """
+    command = ["git", "rev-parse"] + (["--short"] if short else []) + ["HEAD"]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+        return result.stdout.strip() or None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to get commit hash: {e.stderr}")
+        return None
+    except FileNotFoundError:
+        logger.error("git command not found")
+        return None
 
 
 def get_git_root() -> Optional[str]:
@@ -20,10 +77,11 @@ def get_git_root() -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -34,19 +92,34 @@ def get_git_root() -> Optional[str]:
         return None
 
 
-def get_git_tags() -> List[str]:
+def get_git_tags(fetch: bool = False) -> List[str]:
     """Get list of git tags sorted by version (newest first).
 
     Returns:
         List of tag names, e.g., ["v0.28.0", "v0.27.0", ...]
     """
     try:
+        if fetch:
+            # "git tag" only ever lists what this clone already knows.
+            # Without this a new release could never appear in the
+            # version picker, no matter how many times Refresh Versions
+            # was pressed -- and the log line said "Fetching git tags".
+            subprocess.run(
+                ["git", "fetch", "--tags", "--prune"],
+                capture_output=True,
+                text=True,
+                cwd=repo_dir(),
+                check=False,
+                **no_window_kwargs()
+            )
+
         result = subprocess.run(
             ["git", "tag", "--sort=-version:refname"],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         tags = [tag.strip() for tag in result.stdout.split('\n') if tag.strip()]
         logger.info(f"Found {len(tags)} git tags")
@@ -78,18 +151,20 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
             # Use --sort=-committerdate to sort by most recent first
             result = subprocess.run(
                 ["git", "branch", "-a", "--sort=-committerdate"],
-            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
         else:
             result = subprocess.run(
                 ["git", "branch", "-a"],
-            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
 
         branches = []
@@ -133,15 +208,16 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
                     check_line = original_line if original_line.startswith('remotes/') else line
                     commit_check = subprocess.run(
                         ["git", "log", "-1", "--since=3.months.ago", "--format=%ci", check_line],
-            cwd=str(_REPO_ROOT),
                         capture_output=True,
                         text=True,
-                        check=False
+                        cwd=repo_dir(),
+                        check=False,
+                        **no_window_kwargs()
                     )
                     # If no output, branch has no commits in last 3 months
                     if not commit_check.stdout.strip():
                         continue
-                except:
+                except Exception:
                     # If check fails, include the branch anyway
                     pass
 
@@ -159,6 +235,120 @@ def get_git_branches(show_all: bool = False, sort_by_date: bool = True) -> List[
         return []
 
 
+def describe_head() -> Optional[str]:
+    """What HEAD is, in words, whether or not it is on a branch.
+
+    Checking out a tag detaches HEAD, and ``git branch --show-current`` then
+    prints nothing. Updating the local server does exactly that -- it checks a
+    ref out in this very clone -- so the status bar and the branch picker both
+    lost their answer to "which code is this?" at the moment it was most worth
+    asking.
+
+    Returns:
+        The branch name, or ``detached at <tag-or-hash>`` when there is none,
+        or None if this is not a checkout.
+    """
+    try:
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=True, **no_window_kwargs()
+        ).stdout.strip()
+        if branch:
+            return branch
+
+        # Detached: name the tag if one points here, else the commit.
+        tag = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=False, **no_window_kwargs()
+        ).stdout.strip()
+        if tag:
+            return f"detached at {tag}"
+
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=repo_dir(),
+            check=True, **no_window_kwargs()
+        ).stdout.strip()
+        return f"detached at {commit}" if commit else None
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Could not describe HEAD: {e}")
+        return None
+
+
+def get_branch_hashes(fetch: bool = False) -> dict:
+    """Short commit hash for every branch name the picker can offer.
+
+    One ``for-each-ref`` rather than a ``rev-parse`` per branch: the update
+    picker lists every branch in the repository, and this runs on the UI
+    thread each time that list is refreshed.
+
+    The remote wins over a local branch of the same name, because the hash
+    shown is what selecting that entry would land on: the updater checks the
+    branch out and then pulls, so origin's tip is the destination. Where you
+    are now is already on the status bar.
+
+    Returns:
+        ``{branch_name: short_hash}``, empty if git is unavailable.
+    """
+    if fetch:
+        # for-each-ref reads only what this clone already has, so without
+        # this a branch that moved five minutes ago still shows its old
+        # commit however many times Refresh Branches is pressed.
+        try:
+            subprocess.run(
+                ["git", "fetch", "--all", "--prune"],
+                capture_output=True, text=True, cwd=repo_dir(),
+                check=False, **no_window_kwargs()
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"Could not fetch before listing branches: {e}")
+
+    try:
+        result = subprocess.run(
+            [
+                "git", "for-each-ref",
+                "--format=%(refname:short) %(objectname:short)",
+                "refs/remotes/origin", "refs/heads",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Could not read branch hashes: {e}")
+        return {}
+
+    # Sorted into local and remote first, then merged with the remote on top.
+    # Relying on the order git prints them in would be relying on an accident:
+    # for-each-ref sorts by refname regardless of the order the patterns were
+    # given, so refs/heads always precedes refs/remotes and the preference
+    # would be whichever way that happened to fall.
+    local, remote = {}, {}
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        name, short_hash = parts
+        if name.endswith("/HEAD"):
+            continue
+        if name.startswith("origin/"):
+            name = name[len("origin/"):]
+            target = remote
+        else:
+            target = local
+        if not name or name == "origin":
+            continue
+        target[name] = short_hash
+
+    hashes = dict(local)
+    hashes.update(remote)
+    return hashes
+
+
 def get_current_git_branch() -> Optional[str]:
     """Get currently checked out branch.
 
@@ -168,10 +358,11 @@ def get_current_git_branch() -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
         branch = result.stdout.strip()
         return branch if branch else None
@@ -180,6 +371,80 @@ def get_current_git_branch() -> Optional[str]:
         return None
     except FileNotFoundError:
         logger.error("git command not found")
+        return None
+
+
+def compare_ref_to_head(ref: str) -> Optional[dict]:
+    """How far ``ref`` sits ahead of and behind the checked-out HEAD.
+
+    The update UI offers tags and branches side by side, and a tag is a fixed
+    point in history: selecting the only tag in a repository whose main has
+    moved on is a downgrade wearing the word "update". That is not theoretical
+    -- picking ``v2.0.0`` from the version list checked out a commit 168 behind
+    main, silently, and the client came back as an older build.
+
+    Deliberately going backwards is what ``rollback`` is for. This exists so
+    the update path can say what it is about to do first.
+
+    Fetches, because a ref that has never been fetched cannot be compared, and
+    because a stale ``origin/main`` would answer the wrong question.
+
+    Args:
+        ref: tag or branch name, as offered in the update selectors
+
+    Returns:
+        ``{"ahead": int, "behind": int, "same": bool}`` -- ``ahead`` counts
+        commits ref has that HEAD does not, ``behind`` counts the reverse --
+        or None when the ref cannot be resolved or git is unavailable.
+    """
+    try:
+        subprocess.run(
+            ["git", "fetch", "--all", "--tags"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+
+        # Compare against what the update would actually land on. Fetching
+        # moves origin/<branch>; it never moves the local branch ref, so
+        # comparing against the local one said "already up to date" while
+        # origin was a commit ahead -- and the guard then refused a real
+        # update. The updater checks the branch out and pulls, so origin's
+        # tip is the destination. A tag has no remote-tracking ref and falls
+        # through to itself.
+        target = ref
+        probe = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{ref}"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=False,
+            **no_window_kwargs()
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            target = f"origin/{ref}"
+
+        # HEAD...target prints "<only in HEAD>	<only in target>", which is
+        # how far target is behind and ahead respectively.
+        result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"HEAD...{target}"],
+            capture_output=True,
+            text=True,
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
+        )
+
+        behind_str, ahead_str = result.stdout.split()
+        behind, ahead = int(behind_str), int(ahead_str)
+        return {"ahead": ahead, "behind": behind, "same": ahead == 0 and behind == 0}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Could not compare {ref} with HEAD: {e.stderr}")
+        return None
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Could not compare {ref} with HEAD: {e}")
         return None
 
 
@@ -197,29 +462,32 @@ def checkout_git_ref(ref: str) -> bool:
         logger.info(f"Fetching latest changes from origin...")
         subprocess.run(
             ["git", "fetch", "--all", "--tags"],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
 
         # Then checkout the ref
         logger.info(f"Checking out {ref}...")
         result = subprocess.run(
             ["git", "checkout", ref],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=True
+            cwd=repo_dir(),
+            check=True,
+            **no_window_kwargs()
         )
 
         # Check if it's a branch (not a tag) by checking if we're on a branch after checkout
         branch_check = subprocess.run(
             ["git", "symbolic-ref", "-q", "HEAD"],
-            cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            check=False
+            cwd=repo_dir(),
+            check=False,
+            **no_window_kwargs()
         )
 
         # If it's a branch (exit code 0), pull latest changes
@@ -227,10 +495,11 @@ def checkout_git_ref(ref: str) -> bool:
             logger.info(f"Pulling latest changes for branch {ref}...")
             subprocess.run(
                 ["git", "pull", "origin", ref],
-            cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
-                check=True
+                cwd=repo_dir(),
+                check=True,
+                **no_window_kwargs()
             )
 
         logger.info(f"Successfully checked out {ref}")

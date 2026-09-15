@@ -271,7 +271,10 @@ class RigolM300(BaseEquipment):
         self._last_scan: Optional[DataAcquisitionData] = None
         self._last_scan_time: float = 0.0
         self._consumed: set = set()
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Connection / identity

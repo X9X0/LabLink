@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import secrets
 import sys
 import tarfile
 import zipfile
@@ -44,7 +45,7 @@ class BackupManager:
         """Load backup metadata from disk."""
         if self.metadata_file.exists():
             try:
-                with open(self.metadata_file, "r") as f:
+                with open(self.metadata_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for backup_id, meta_dict in data.items():
                         self.metadata[backup_id] = BackupMetadata(**meta_dict)
@@ -61,7 +62,7 @@ class BackupManager:
                 backup_id: meta.model_dump(mode="json")
                 for backup_id, meta in self.metadata.items()
             }
-            with open(self.metadata_file, "w") as f:
+            with open(self.metadata_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str)
         except Exception as e:
             logger.error(f"Failed to save backup metadata: {e}")
@@ -82,7 +83,13 @@ class BackupManager:
             Exception: If backup creation fails
         """
         # Generate backup ID
-        backup_id = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Second-resolution alone collides when two backups are taken in the
+        # same second, and the later one silently overwrites the earlier one's
+        # metadata; the suffix keeps ids unique while staying sortable.
+        backup_id = (
+            f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            f"_{secrets.token_hex(3)}"
+        )
 
         logger.info(f"Creating backup: {backup_id} ({request.backup_type})")
 
@@ -124,6 +131,11 @@ class BackupManager:
             metadata.file_count = file_count
             metadata.directory_count = dir_count
 
+            # Register the backup before verifying: verify_backup() looks the
+            # backup up in self.metadata, so registering afterwards made it
+            # raise "Backup not found" and fail every verified backup.
+            self.metadata[backup_id] = metadata
+
             # Verify if requested
             verify = (
                 request.verify_after_backup
@@ -137,7 +149,6 @@ class BackupManager:
                 metadata.verification_time = verification.verification_time
 
             # Save metadata
-            self.metadata[backup_id] = metadata
             self._save_metadata()
 
             logger.info(
@@ -938,7 +949,7 @@ class BackupManager:
             # Try to get version from main.py
             main_file = Path(__file__).parent.parent / "main.py"
             if main_file.exists():
-                with open(main_file, "r") as f:
+                with open(main_file, "r", encoding="utf-8") as f:
                     for line in f:
                         if "version=" in line:
                             # Extract version from FastAPI app definition
@@ -947,7 +958,7 @@ class BackupManager:
                                 version = parts[1].split('"')[1]
                                 return version
             return "unknown"
-        except:
+        except Exception:
             return "unknown"
 
     def _get_python_version(self) -> str:

@@ -16,7 +16,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_power_supply import (FAMILY_DIALECTS,  # noqa: E402
+from server.equipment.rigol_power_supply import (FAMILY_DIALECTS,  # noqa: E402
                                           MODEL_TABLE, RigolDP700,
                                           RigolDP800, RigolDP900,
                                           RigolDP1116A, RigolDP1308A,

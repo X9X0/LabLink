@@ -8,6 +8,9 @@ from pydantic import BaseModel
 
 from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
+from server.equipment import rigol_registry
+from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
+                                          catalog, resolve_model)
 from server.equipment.locks import lock_manager
 from server.equipment.manager import equipment_manager
 from shared.models.commands import Command, CommandResponse
@@ -24,6 +27,12 @@ CONTROL_COMMANDS = {
     "set_voltage",
     "set_current",
     "set_output",
+    # Protection limits are control, not configuration: raising an OVP ceiling
+    # under another operator's session removes the guard on their experiment,
+    # and clearing a trip re-arms an output that latched off for a reason.
+    "set_ovp",
+    "set_ocp",
+    "clear_protection",
     "set_input",
     "set_mode",
     "set_range",
@@ -74,6 +83,91 @@ async def discover_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/models")
+async def list_supported_models(
+    manufacturer: Optional[str] = None,
+    equipment_type: Optional[str] = None,
+    supported_only: bool = False,
+):
+    """List the instrument models LabLink knows about.
+
+    Every B&K Precision family with a published programming manual is listed,
+    each with the interfaces it actually carries, the protocol it speaks, and
+    whether LabLink has a driver for it. A family with ``supported: false`` is
+    still identified during discovery — it just cannot be connected yet.
+
+    **Query parameters:**
+    - `manufacturer`: filter by manufacturer (B&K Precision or Rigol)
+    - `equipment_type`: filter by LabLink equipment type
+    - `supported_only`: omit families with no driver
+
+    **Returns:** a list of model entries.
+    """
+    entries = catalog() + rigol_registry.catalog()
+
+    if manufacturer:
+        wanted = manufacturer.lower()
+        entries = [e for e in entries if wanted in e["manufacturer"].lower()]
+    if equipment_type:
+        entries = [e for e in entries if e["equipment_type"] == equipment_type]
+    if supported_only:
+        entries = [e for e in entries if e["supported"]]
+
+    return {
+        "count": len(entries),
+        "models": entries,
+        "categories": {**CATEGORY_LABELS, **rigol_registry.category_labels()},
+    }
+
+
+@router.get("/models/{model}")
+async def describe_model(model: str):
+    """Resolve a model or SKU string to its family and interface facts.
+
+    Accepts what an instrument actually reports — a SKU (`9241`), a variant
+    (`2569B-MSO`), a hyphenated part number (`HVL-1000-25`) or a full
+    `B&K Precision 9130B` string — and returns the family it belongs to.
+    """
+    info = resolve_model(model)
+    if info is None:
+        rigol_entry = rigol_registry.resolve_model(model)
+        if rigol_entry is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No B&K Precision or Rigol family matches model {model!r}",
+            )
+        return {"query": model, **rigol_entry}
+
+    entry = next(e for e in catalog() if e["key"] == info.key)
+    return {"query": model, **entry}
+
+
+class USBDiagnosticsRequest(BaseModel):
+    """Request to run USB diagnostics."""
+
+    resource_string: str
+
+
+@router.post("/diagnostics/usb")
+async def run_usb_diagnostics(request: USBDiagnosticsRequest):
+    """
+    Run USB diagnostics on a device to troubleshoot connection issues.
+
+    Helps identify why USB serial numbers may be unreadable and provides
+    recommendations for resolving the issue.
+    """
+    try:
+        from server.utils.usb_diagnostics import diagnose_usb_device
+
+        diagnostics = diagnose_usb_device(request.resource_string)
+        logger.info(f"USB diagnostics run for {request.resource_string}")
+
+        return diagnostics
+    except Exception as e:
+        logger.error(f"Error running USB diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/connect", response_model=dict)
 async def connect_device(request: ConnectDeviceRequest):
     """Connect to a device."""
@@ -90,8 +184,26 @@ async def connect_device(request: ConnectDeviceRequest):
 
 
 @router.post("/disconnect/{equipment_id}")
-async def disconnect_device(equipment_id: str, session_id: Optional[str] = None):
-    """Disconnect a device."""
+async def disconnect_device(
+    equipment_id: str,
+    session_id: Optional[str] = None,
+    on_disconnect: Optional[str] = None,
+):
+    """Disconnect a device, leaving it in the state the operator chooses.
+
+    **This can switch off a live output, and by default it does.** LabLink
+    sends the off command itself, in `EquipmentManager.disconnect_device`,
+    when `safe_state_on_disconnect` is set -- which is the default.
+
+    - `on_disconnect=off` disables the output before closing the transport
+    - `on_disconnect=hold` leaves the instrument exactly as it is
+    - omitted: the server's configured default
+
+    "hold" means LabLink sends nothing; it is not a guarantee about the
+    instrument, since a serial port with `hupcl` set may drop DTR on close
+    regardless. See issue #198, whose original diagnosis blamed that close for
+    behaviour LabLink was in fact commanding.
+    """
     try:
         # Release locks for this equipment
         if settings.enable_equipment_locks and session_id:
@@ -100,8 +212,26 @@ async def disconnect_device(equipment_id: str, session_id: Optional[str] = None)
             except Exception as e:
                 logger.warning(f"Error releasing lock during disconnect: {e}")
 
-        await equipment_manager.disconnect_device(equipment_id)
-        return {"equipment_id": equipment_id, "status": "disconnected"}
+        try:
+            await equipment_manager.disconnect_device(equipment_id, on_disconnect)
+        except ValueError as e:
+            # An unknown policy is the caller's mistake, not a server fault --
+            # and silently falling back to the default would turn an output
+            # off for someone who asked for it to stay on.
+            raise HTTPException(status_code=400, detail=str(e))
+
+        applied = on_disconnect or equipment_manager.default_disconnect_policy()
+        return {
+            "equipment_id": equipment_id,
+            "status": "disconnected",
+            "on_disconnect": applied,
+        }
+    except HTTPException:
+        # Re-raise rather than let the handler below wrap it: without this, a
+        # rejected policy came back as `500 {"detail": "400: Unknown disconnect
+        # policy ..."}` -- the right message inside the wrong status, which a
+        # client cannot distinguish from the server having fallen over.
+        raise
     except Exception as e:
         logger.error(f"Error disconnecting device: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -111,7 +241,7 @@ async def disconnect_device(equipment_id: str, session_id: Optional[str] = None)
 async def list_devices():
     """List all connected devices."""
     try:
-        devices = equipment_manager.get_connected_devices()
+        devices = await equipment_manager.get_connected_devices()
         return devices
     except Exception as e:
         logger.error(f"Error listing devices: {e}")

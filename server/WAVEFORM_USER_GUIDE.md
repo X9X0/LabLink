@@ -996,7 +996,7 @@ for test, passed in results.items():
 
 ## Related Documentation
 
-- [API Reference](API_REFERENCE.md) - Complete API documentation
+- [API Reference](../docs/API_REFERENCE.md) - Complete API documentation
 - [Data Acquisition System](ACQUISITION_SYSTEM.md) - Data acquisition features
 - [Equipment Guide](EQUIPMENT_GUIDE.md) - Equipment setup and configuration
 

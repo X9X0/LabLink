@@ -441,7 +441,10 @@ class RigolDGBase(BaseEquipment):
         self.serial_number: Optional[str] = None
         self.firmware_version: Optional[str] = None
         self.spec: ModelSpec = MODEL_SPECS[self.DEFAULT_MODEL]
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
         # Locally cached settings used for validation (refreshed by queries).
         self._load: Dict[int, str] = {}
         self._unit: Dict[int, str] = {}

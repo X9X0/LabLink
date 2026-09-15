@@ -3,17 +3,17 @@
 from typing import Any, Dict, List
 
 import numpy as np
-from analysis.batch import BatchProcessor
-from analysis.filters import SignalFilter
-from analysis.fitting import CurveFitter
-from analysis.models import (AnalysisDataset, BatchJobConfig, BatchJobResult,
+from server.analysis.batch import BatchProcessor
+from server.analysis.filters import SignalFilter
+from server.analysis.fitting import CurveFitter
+from server.analysis.models import (AnalysisDataset, BatchJobConfig, BatchJobResult,
                              CapabilityResult, FilterConfig, FilterResult,
                              FitConfig, FitResult, Report, ReportConfig,
                              ReportSection, ResampleConfig, SPCChartConfig,
                              SPCChartResult)
-from analysis.reports import ReportGenerator
-from analysis.resampling import DataResampler
-from analysis.spc import SPCAnalyzer
+from server.analysis.reports import ReportGenerator
+from server.analysis.resampling import DataResampler
+from server.analysis.spc import SPCAnalyzer
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
@@ -186,7 +186,7 @@ async def interpolate_missing_points(
 ):
     """Interpolate missing (NaN) data points."""
     try:
-        from analysis.models import ResampleMethod
+        from server.analysis.models import ResampleMethod
 
         x_array = np.array(x_data)
         y_array = np.array(y_data)
@@ -234,7 +234,7 @@ async def predict_from_fit(
 ):
     """Predict Y values for new X values using fit coefficients."""
     try:
-        from analysis.models import FitType
+        from server.analysis.models import FitType
 
         coeffs_array = np.array(coefficients)
         x_array = np.array(x_new)

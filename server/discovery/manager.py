@@ -6,12 +6,14 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+from .bk_serial_probe import serial_port_from_resource
 from .history import ConnectionHistoryTracker
 from .mdns_scanner import MDNSScanner
 from .models import (ConnectionStatistics, ConnectionStatus, DeviceAlias,
-                     DiscoveredDevice, DiscoveryConfig, DiscoveryMethod,
-                     DiscoveryScanRequest, DiscoveryScanResult,
-                     DiscoveryStatus, LastKnownGood, SmartRecommendation)
+                     DeviceType, DiscoveredDevice, DiscoveryConfig,
+                     DiscoveryMethod, DiscoveryScanRequest,
+                     DiscoveryScanResult, DiscoveryStatus, LastKnownGood,
+                     SmartRecommendation)
 from .visa_scanner import VISAScanner
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,81 @@ class DiscoveryManager:
                 logger.error(f"Auto-discovery error: {e}")
                 await asyncio.sleep(60)  # Wait before retry
 
+    @staticmethod
+    def _merge_serial_probe_results(discovered: list, probed: list) -> int:
+        """Fold serial-probe results into the devices the scanners found.
+
+        A device found twice must appear once, so a probe result that lands on
+        a port another scanner already listed has to yield or merge. Which one
+        depends on whether that listing represents an actual identification.
+
+        For USB-TMC and TCPIP it does: VISA opened a session and read *IDN?.
+        For ASRL it does not. pyvisa enumerates a serial port straight from
+        the device node without opening it or exchanging a byte, so an ASRL
+        entry with no successful *IDN? behind it is a port listing wearing a
+        device's clothes — which is exactly why it reads "Unknown Serial
+        Device", type unknown, confidence 0.4.
+
+        Deferring to that would discard a real identification, from a real
+        exchange with the instrument, in favour of the fact that a file exists
+        in /dev. So an unidentified entry is enriched from the probe instead,
+        keeping its device_id and resource_name so history and aliases already
+        keyed on them stay put. An identified entry still wins outright.
+
+        Returns the number of devices the probe contributed, new or enriched.
+        """
+        by_key = {}
+        for device in discovered:
+            by_key[device.resource_name] = device
+            port = device.metadata.get("serial_port")
+            if port:
+                by_key.setdefault(port, device)
+
+        contributed = 0
+        for found in probed:
+            existing = by_key.get(found.resource_name) or by_key.get(
+                found.metadata.get("serial_port")
+            )
+
+            if existing is None:
+                # Nothing else saw this port. This is the USB-CDC case: VISA
+                # cannot enumerate those at all.
+                discovered.append(found)
+                contributed += 1
+                logger.info(
+                    f"Serial probe found {found.manufacturer} {found.model} "
+                    f"on {found.resource_name}, which VISA did not enumerate"
+                )
+                continue
+
+            if existing.device_type != DeviceType.UNKNOWN:
+                logger.debug(
+                    f"Keeping the identified entry for {existing.resource_name} "
+                    f"over the probe result"
+                )
+                continue
+
+            for field in ("manufacturer", "model", "serial_number",
+                          "firmware_version", "device_type", "status"):
+                value = getattr(found, field, None)
+                if value is not None:
+                    setattr(existing, field, value)
+            existing.confidence_score = max(
+                existing.confidence_score, found.confidence_score
+            )
+            existing.capabilities = list(dict.fromkeys(
+                existing.capabilities + found.capabilities
+            ))
+            existing.metadata.update(found.metadata)
+            contributed += 1
+            logger.info(
+                f"Serial probe identified {existing.resource_name} as "
+                f"{existing.manufacturer} {existing.model}, which the VISA "
+                f"listing could only report as an unknown serial device"
+            )
+
+        return contributed
+
     async def scan(
         self, request: Optional[DiscoveryScanRequest] = None
     ) -> DiscoveryScanResult:
@@ -180,6 +257,12 @@ class DiscoveryManager:
 
             discovered = []
 
+            # Instruments a driver already holds are described from the
+            # driver's record and left alone on the wire, by both the VISA
+            # scanner and the serial probe. See VISAScanner._describe_connected
+            # for what happened when they were not.
+            held = self._connected_resources()
+
             # VISA scan
             if DiscoveryMethod.VISA in methods and self.config.enable_visa_scan:
                 try:
@@ -188,7 +271,7 @@ class DiscoveryManager:
                         self._progress_callback(
                             "scan_started", {"method": "VISA", "stage": "starting"}
                         )
-                    visa_devices = await self.visa_scanner.scan()
+                    visa_devices = await self.visa_scanner.scan(connected=held)
                     discovered.extend(visa_devices)
                     result.visa_count = len(visa_devices)
                     logger.info(f"VISA scan found {len(visa_devices)} devices")
@@ -219,6 +302,29 @@ class DiscoveryManager:
                         result.errors.append(f"mDNS scan failed: {e}")
                 else:
                     logger.debug("mDNS scanning not available (zeroconf not installed)")
+
+            # Serial / USB-CDC probe. VISA cannot enumerate a USB-CDC
+            # instrument at all, and the legacy fixed-width supplies do not
+            # answer *IDN?, so neither shows up in the scans above.
+            if self.config.enable_serial_probe:
+                try:
+                    from .bk_serial_probe import probe_serial_ports
+
+                    logger.debug("Probing serial ports for B&K instruments...")
+                    serial_devices = await probe_serial_ports(
+                        timeout=self.config.serial_probe_timeout_sec,
+                        usb_only=self.config.serial_probe_usb_only,
+                        exclude=[
+                            port for port in map(serial_port_from_resource, held)
+                            if port
+                        ],
+                    )
+                    result.usb_count = self._merge_serial_probe_results(
+                        discovered, serial_devices
+                    )
+                except Exception as e:
+                    logger.error(f"Serial probe failed: {e}")
+                    result.errors.append(f"Serial probe failed: {e}")
 
             # Merge discovered devices with existing cache
             new_count, updated_count = self._update_device_cache(discovered)
@@ -286,6 +392,8 @@ class DiscoveryManager:
                 device.location = existing.location
                 device.tags = existing.tags
 
+                self._keep_stronger_identification(existing, device)
+
                 # Update device
                 self.devices[device_id] = device
                 updated_count += 1
@@ -300,6 +408,75 @@ class DiscoveryManager:
                 )
 
         return new_count, updated_count
+
+    @staticmethod
+    def _keep_stronger_identification(
+        existing: DiscoveredDevice, device: DiscoveredDevice
+    ) -> None:
+        """Do not let a scan that failed to identify an instrument erase one that did.
+
+        A scan can miss an instrument it identified last time -- the port was
+        busy, the instrument was mid-command, the probe lost a race -- and what
+        it reports then is "Unknown Serial Device, confidence 0.4". That
+        describes the scan, not the instrument. Overwriting a real
+        identification with it cost the operator the type, model and limits
+        until a later scan got lucky. So when the new entry is the less
+        confident one, the identity fields carry forward from the old; what
+        the new scan does know -- that the device is present, and whether it
+        is connected -- still comes from the new scan.
+        """
+        if device.confidence_score >= existing.confidence_score:
+            return
+        if existing.device_type == DeviceType.UNKNOWN:
+            return
+
+        weaker = f"{device.manufacturer} {device.model}"
+        for field in ("manufacturer", "model", "serial_number",
+                      "firmware_version", "device_type"):
+            value = getattr(existing, field)
+            if value is not None:
+                setattr(device, field, value)
+        device.confidence_score = existing.confidence_score
+        device.capabilities = list(dict.fromkeys(
+            existing.capabilities + device.capabilities
+        ))
+        # The old entry's notes and limits are worth more than the new one's
+        # "did not respond"; its equipment_id is not, since whether the device
+        # is connected now is the new scan's call.
+        carried = {k: v for k, v in existing.metadata.items() if k != "equipment_id"}
+        device.metadata = {**device.metadata, **carried}
+
+        logger.info(
+            f"Kept the earlier identification of {device.resource_name} as "
+            f"{device.manufacturer} {device.model}; this scan could only "
+            f"report it as {weaker}"
+        )
+
+    @staticmethod
+    def _connected_resources() -> Dict[str, object]:
+        """Resources the equipment manager holds open, by VISA resource name.
+
+        Each maps to the EquipmentInfo the driver produced on connect, or None
+        if it has none. Imported lazily because the equipment package imports
+        discovery. Anything going wrong here means "treat nothing as held",
+        which is the old behaviour rather than a failure.
+        """
+        try:
+            from server.equipment.manager import equipment_manager
+        except Exception as e:
+            logger.debug(f"Equipment manager not available to discovery: {e}")
+            return {}
+
+        held: Dict[str, object] = {}
+        for equipment in list(getattr(equipment_manager, "equipment", {}).values()):
+            info = getattr(equipment, "cached_info", None)
+            resource = (
+                getattr(info, "resource_string", None)
+                or getattr(equipment, "resource_string", None)
+            )
+            if resource:
+                held[resource] = info
+        return held
 
     def get_devices(
         self,
@@ -638,6 +815,28 @@ class DiscoveryManager:
 
             logger.info(f"Device {device_id} marked as disconnected")
 
+    def _device_for_resource(self, resource_name: str) -> Optional[DiscoveredDevice]:
+        for device in self.devices.values():
+            if device.resource_name == resource_name:
+                return device
+        return None
+
+    def mark_connected_resource(self, resource_name: str, equipment_id: str):
+        """mark_connected, keyed the way the equipment manager keys things.
+
+        The equipment manager knows VISA resources, not discovery's device
+        ids, and it is the one that knows when a connection happens.
+        """
+        device = self._device_for_resource(resource_name)
+        if device:
+            self.mark_connected(device.device_id, equipment_id)
+
+    def mark_disconnected_resource(self, resource_name: str):
+        """mark_disconnected, keyed by VISA resource."""
+        device = self._device_for_resource(resource_name)
+        if device:
+            self.mark_disconnected(device.device_id)
+
     def cleanup(self):
         """Cleanup old devices and history."""
         # Remove devices not seen recently
@@ -670,7 +869,7 @@ class DiscoveryManager:
                     asyncio.create_task(self.stop_auto_discovery())
                 else:
                     loop.run_until_complete(self.stop_auto_discovery())
-            except:
+            except Exception:
                 self.is_running = False
 
         # Close VISA scanner to release file descriptors

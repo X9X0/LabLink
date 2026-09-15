@@ -17,7 +17,7 @@ class TestAcquisitionSession:
         session_id = "session_001"
         mock_acquisition_manager.create_session.return_value = session_id
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/session/create", json=sample_acquisition_session_data)
 
@@ -39,7 +39,7 @@ class TestAcquisitionSession:
         }
         mock_acquisition_manager.create_session.side_effect = Exception("Equipment not found")
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/session/create", json=invalid_data)
 
@@ -51,7 +51,7 @@ class TestAcquisitionSession:
         # Arrange
         session_id = "session_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(f"/api/acquisition/session/{session_id}/start")
 
@@ -64,7 +64,7 @@ class TestAcquisitionSession:
         # Arrange
         session_id = "session_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(f"/api/acquisition/session/{session_id}/stop")
 
@@ -84,7 +84,7 @@ class TestAcquisitionSession:
 
         mock_acquisition_manager.get_session.return_value = mock_session
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.get(f"/api/acquisition/session/{session_id}")
 
@@ -102,7 +102,7 @@ class TestAcquisitionSession:
         ]
         mock_acquisition_manager.get_all_sessions.return_value = mock_sessions
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.get("/api/acquisition/sessions")
 
@@ -116,7 +116,7 @@ class TestAcquisitionSession:
         # Arrange
         session_id = "session_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.delete(f"/api/acquisition/session/{session_id}")
 
@@ -144,7 +144,7 @@ class TestAcquisitionData:
         mock_session.get_data = MagicMock(return_value=mock_data)
         mock_acquisition_manager.get_session.return_value = mock_session
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.get(f"/api/acquisition/session/{session_id}/data")
 
@@ -171,7 +171,7 @@ class TestAcquisitionData:
         mock_session.get_statistics = MagicMock(return_value=mock_stats)
         mock_acquisition_manager.get_session.return_value = mock_session
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.get(f"/api/acquisition/session/{session_id}/statistics")
 
@@ -189,7 +189,7 @@ class TestAcquisitionData:
             "filename": "acquisition_data.csv",
         }
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(
                 f"/api/acquisition/session/{session_id}/export",
@@ -213,7 +213,7 @@ class TestAcquisitionModes:
             "sample_rate": 1000,
         }
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/session/create", json=session_data)
 
@@ -231,7 +231,7 @@ class TestAcquisitionModes:
             "trigger_slope": "rising",
         }
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/session/create", json=session_data)
 
@@ -249,7 +249,7 @@ class TestAcquisitionModes:
             "burst_interval": 1.0,
         }
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/session/create", json=session_data)
 
@@ -272,7 +272,7 @@ class TestAcquisitionSynchronization:
             "sample_rate": 1000,
         }
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post("/api/acquisition/synchronized/create", json=sync_data)
 
@@ -284,7 +284,7 @@ class TestAcquisitionSynchronization:
         # Arrange
         sync_id = "sync_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(f"/api/acquisition/synchronized/{sync_id}/start")
 
@@ -309,7 +309,7 @@ class TestAcquisitionWorkflow:
         mock_session.get_data = MagicMock(return_value={"samples": [1, 2, 3]})
         mock_acquisition_manager.get_session.return_value = mock_session
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Step 1: Create session
             create_data = {
                 "equipment_id": "test_scope_001",
@@ -350,7 +350,7 @@ class TestAcquisitionWorkflow:
             "session_003",
         ]
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Create multiple sessions
             sessions = []
             for i in range(3):
@@ -378,7 +378,7 @@ class TestAcquisitionBuffering:
         # Arrange
         session_id = "session_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.get(f"/api/acquisition/session/{session_id}/buffer")
 
@@ -390,7 +390,7 @@ class TestAcquisitionBuffering:
         # Arrange
         session_id = "session_001"
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(f"/api/acquisition/session/{session_id}/buffer/clear")
 
@@ -403,7 +403,7 @@ class TestAcquisitionBuffering:
         session_id = "session_001"
         buffer_data = {"buffer_size": 10000}
 
-        with patch("api.acquisition.acquisition_manager", mock_acquisition_manager):
+        with patch("server.api.acquisition.acquisition_manager", mock_acquisition_manager):
             # Act
             response = client.post(
                 f"/api/acquisition/session/{session_id}/buffer/size",

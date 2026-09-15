@@ -190,6 +190,17 @@ setup_environment() {
     else
         print_step ".env file already exists"
     fi
+
+    # Make version check script executable
+    if [ -f "lablink-version.sh" ]; then
+        chmod +x lablink-version.sh
+
+        # Create symlink in /usr/local/bin for easy access
+        if [ -w /usr/local/bin ] || [ -n "$SUDO" ]; then
+            $SUDO ln -sf "$LABLINK_DIR/lablink-version.sh" /usr/local/bin/lablink-version
+            print_step "Installed 'lablink-version' command"
+        fi
+    fi
 }
 
 deploy_with_docker() {
@@ -243,9 +254,16 @@ deploy_native() {
     fi
 
     # Start server
+    #
+    # From the repo root, naming the module. The venv stays where it was
+    # created, but the working directory must not be inside server/: that puts
+    # the package directory on sys.path and `import server.x` stops resolving
+    # (issue #197). The log and pid paths are unchanged -- ../logs from server/
+    # is the same file as logs/ from here.
     print_step "Starting LabLink server..."
-    nohup python main.py > ../logs/lablink.log 2>&1 &
-    echo $! > ../lablink.pid
+    cd "$LABLINK_DIR"
+    nohup python -m server.main > logs/lablink.log 2>&1 &
+    echo $! > lablink.pid
 
     print_step "Server started (PID: $(cat ../lablink.pid))"
 }
@@ -263,9 +281,9 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$LABLINK_DIR/server
+WorkingDirectory=$LABLINK_DIR
 Environment="PATH=$LABLINK_DIR/server/venv/bin"
-ExecStart=$LABLINK_DIR/server/venv/bin/python main.py
+ExecStart=$LABLINK_DIR/server/venv/bin/python -m server.main
 Restart=always
 RestartSec=10
 
@@ -313,6 +331,9 @@ print_success() {
         echo "  Restart:       sudo systemctl restart lablink.service"
     fi
 
+    echo ""
+    echo "Utility Commands:"
+    echo "  Check version: lablink-version"
     echo ""
     echo "For help and documentation: https://docs.lablink.io"
     echo ""

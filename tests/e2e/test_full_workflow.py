@@ -121,36 +121,42 @@ class TestMockEquipmentWorkflow:
             psu = MockPowerSupply(None, "MOCK::PSU::3CH")
             load = MockElectronicLoad(None, "MOCK::LOAD::350W")
 
-            # Connect all
-            assert scope.connect()
-            assert psu.connect()
-            assert load.connect()
+            # Connect all. These are coroutines: calling them without await
+            # only produces a truthy coroutine object and asserts nothing.
+            await scope.connect()
+            await psu.connect()
+            await load.connect()
 
-            # Test oscilloscope workflow
-            scope.set_channel_enabled(1, True)
-            scope.set_channel_scale(1, 1.0)
+            # Test oscilloscope workflow. Channel setup is a single
+            # set_channel() call, not separate enable/scale setters.
+            await scope.set_channel(1, enabled=True, scale=1.0)
             waveform = await scope.get_waveform(1)
-            assert len(waveform) > 0
+            assert waveform is not None
+            assert waveform.channel == 1
+            # Samples travel separately over the binary WebSocket channel;
+            # the model carries the metadata and a data_id to match them.
+            assert waveform.num_samples > 0
+            assert waveform.data_id
 
             # Test power supply workflow
-            psu.set_voltage(12.0, channel=1)
-            psu.set_current(2.0, channel=1)
-            psu.set_output(True, channel=1)
+            await psu.set_voltage(12.0, channel=1)
+            await psu.set_current(2.0, channel=1)
+            await psu.set_output(True, channel=1)
             psu_data = await psu.get_readings(channel=1)
             assert psu_data is not None
 
             # Test electronic load workflow
-            load.set_mode("CC")
-            load.set_current(5.0)
-            load.set_input(True)
+            await load.set_mode("CC")
+            await load.set_current(5.0)
+            await load.set_input(True)
             load_data = await load.get_readings()
             assert load_data is not None
             assert load_data.mode == "CC"
 
             # Clean up
-            scope.disconnect()
-            psu.disconnect()
-            load.disconnect()
+            await scope.disconnect()
+            await psu.disconnect()
+            await load.disconnect()
 
         except ImportError:
             pytest.skip("Mock equipment not available")

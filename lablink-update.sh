@@ -2,10 +2,29 @@
 # LabLink Update Script
 # Updates code from git and rebuilds containers
 #
-# Usage: sudo ./lablink-update.sh [branch]
+# Usage: sudo ./lablink-update.sh [ref] [--yes]
 # Example: sudo ./lablink-update.sh main
+#          sudo ./lablink-update.sh v2.1.1
+#          sudo ./lablink-update.sh v2.1.1 --yes    # never prompt
+#
+# The ref may be a branch or a tag. A tag is a fixed point and is checked out
+# detached, which is what pinning a bench Pi to a release means; only a branch
+# is pulled, because pulling a tag is not a thing.
+#
+# --yes, or any non-interactive shell, rebuilds without asking. The client
+# drives this over SSH, where a prompt would simply hang forever.
 
-BRANCH="${1:-main}"
+REF="main"
+ASSUME_YES=0
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) ASSUME_YES=1 ;;
+        *) REF="$arg" ;;
+    esac
+done
+
+# No tty means nobody can answer a question.
+[ -t 0 ] || ASSUME_YES=1
 
 echo "╔═══════════════════════════════════════════════════════╗"
 echo "║                                                       ║"
@@ -22,6 +41,16 @@ fi
 
 cd /opt/lablink || exit 1
 
+# One update at a time. Two runs overlapping -- an operator pressing the
+# button while another is still going, or a person on the box at the same
+# time -- have each other's containers half torn down, and docker compose
+# reports "No such container: <id>" as one removes what the other just made.
+exec 9>/var/lock/lablink-update.lock
+if ! flock -n 9; then
+    echo "Another LabLink update is already running. Nothing to do."
+    exit 0
+fi
+
 echo "Step 1: Checking current version..."
 CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -29,22 +58,41 @@ echo "  Current branch: $CURRENT_BRANCH"
 echo "  Current commit: $CURRENT_COMMIT"
 echo ""
 
-echo "Step 2: Pulling latest code from git (branch: $BRANCH)..."
-if git fetch origin "$BRANCH" && git checkout "$BRANCH" && git pull origin "$BRANCH"; then
+echo "Step 2: Updating code from git (ref: $REF)..."
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "  ✗ /opt/lablink is not a git checkout, so there is nothing to update."
+    echo "    Deploy it with the client's SSH wizard, or clone it:"
+    echo "      sudo git clone https://github.com/X9X0/LabLink.git /opt/lablink"
+    echo "    (keep the existing .env — it is not in git)"
+    exit 1
+fi
+
+# --tags as well as branches: the version list offers releases.
+if git fetch --all --tags --prune && git checkout "$REF"; then
+    # Only a branch can be pulled. A tag is already the exact commit, and
+    # "git pull origin <tag>" would try to merge it into a detached HEAD.
+    if git symbolic-ref -q HEAD >/dev/null; then
+        git pull --ff-only origin "$REF" || echo "  (no fast-forward available)"
+    fi
+
     NEW_COMMIT=$(git rev-parse --short HEAD)
-    echo "  ✓ Code updated to: $NEW_COMMIT"
+    echo "  ✓ Code now at: $NEW_COMMIT"
 
     if [ "$CURRENT_COMMIT" = "$NEW_COMMIT" ]; then
         echo "  Already up to date!"
-        read -p "Rebuild anyway? (y/N): " rebuild
-        if [ "$rebuild" != "y" ] && [ "$rebuild" != "Y" ]; then
-            echo "No rebuild needed. Exiting."
-            exit 0
+        if [ "$ASSUME_YES" -eq 1 ]; then
+            echo "  Rebuilding anyway."
+        else
+            read -p "Rebuild anyway? (y/N): " rebuild
+            if [ "$rebuild" != "y" ] && [ "$rebuild" != "Y" ]; then
+                echo "No rebuild needed. Exiting."
+                exit 0
+            fi
         fi
     fi
 else
-    echo "  ✗ Git pull failed"
-    echo "  Continuing with rebuild anyway..."
+    echo "  ✗ Could not check out $REF"
+    exit 1
 fi
 echo ""
 

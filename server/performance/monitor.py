@@ -6,6 +6,7 @@ Collects, stores, and analyzes performance metrics with baseline tracking
 and degradation detection.
 """
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -45,6 +46,24 @@ class PerformanceMonitor:
         self._load_thresholds()
 
         logger.info(f"Performance monitor initialized with database: {self.db_path}")
+
+    async def _run_db(self, fn):
+        """Run sync SQLite work in a worker thread with a managed connection.
+
+        Keeps blocking DB I/O off the event loop, and guarantees the
+        connection is closed even if ``fn`` raises.
+        """
+
+        def _wrapped():
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                result = fn(conn)
+                conn.commit()
+                return result
+            finally:
+                conn.close()
+
+        return await asyncio.to_thread(_wrapped)
 
     def _init_database(self):
         """Initialize SQLite database schema."""
@@ -244,35 +263,32 @@ class PerformanceMonitor:
                 await self._check_degradation(metric, baseline)
 
         # Store in database
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO performance_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                metric.metric_id,
-                metric.equipment_id,
-                metric.component,
-                metric.metric_type.value,
-                metric.value,
-                metric.unit,
-                metric.timestamp.isoformat(),
-                metric.operation,
-                json.dumps(metric.metadata),
-                metric.baseline_id,
-                metric.deviation_percent,
+        def _insert(conn):
+            conn.execute(
+                """
+                INSERT INTO performance_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
                 (
-                    1
-                    if metric.within_threshold
-                    else 0 if metric.within_threshold is not None else None
+                    metric.metric_id,
+                    metric.equipment_id,
+                    metric.component,
+                    metric.metric_type.value,
+                    metric.value,
+                    metric.unit,
+                    metric.timestamp.isoformat(),
+                    metric.operation,
+                    json.dumps(metric.metadata),
+                    metric.baseline_id,
+                    metric.deviation_percent,
+                    (
+                        1
+                        if metric.within_threshold
+                        else 0 if metric.within_threshold is not None else None
+                    ),
                 ),
-            ),
-        )
+            )
 
-        conn.commit()
-        conn.close()
+        await self._run_db(_insert)
 
         return metric
 
@@ -359,35 +375,32 @@ class PerformanceMonitor:
         )
 
         # Store alert
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
+        def _insert(conn):
+            conn.execute(
+                """
+                INSERT INTO performance_alerts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    alert.alert_id,
+                    alert.equipment_id,
+                    alert.component,
+                    alert.severity,
+                    alert.metric_type.value,
+                    alert.current_value,
+                    alert.threshold_value,
+                    alert.baseline_value,
+                    alert.trend_direction.value if alert.trend_direction else None,
+                    alert.degradation_percent,
+                    alert.message,
+                    json.dumps(alert.recommendations),
+                    alert.triggered_at.isoformat(),
+                    alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
+                    alert.resolved_at.isoformat() if alert.resolved_at else None,
+                    1 if alert.active else 0,
+                ),
+            )
 
-        cursor.execute(
-            """
-            INSERT INTO performance_alerts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                alert.alert_id,
-                alert.equipment_id,
-                alert.component,
-                alert.severity,
-                alert.metric_type.value,
-                alert.current_value,
-                alert.threshold_value,
-                alert.baseline_value,
-                alert.trend_direction.value if alert.trend_direction else None,
-                alert.degradation_percent,
-                alert.message,
-                json.dumps(alert.recommendations),
-                alert.triggered_at.isoformat(),
-                alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
-                alert.resolved_at.isoformat() if alert.resolved_at else None,
-                1 if alert.active else 0,
-            ),
-        )
-
-        conn.commit()
-        conn.close()
+        await self._run_db(_insert)
 
         self._active_alerts[alert_key] = alert
         logger.warning(f"Performance alert created: {message}")
@@ -504,39 +517,36 @@ class PerformanceMonitor:
         )
 
         # Store baseline
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
+        def _insert(conn):
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO performance_baselines VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    baseline.baseline_id,
+                    baseline.equipment_id,
+                    baseline.component,
+                    baseline.avg_latency_ms,
+                    baseline.p95_latency_ms,
+                    baseline.p99_latency_ms,
+                    baseline.avg_throughput,
+                    baseline.error_rate_percent,
+                    baseline.latency_warning_threshold_ms,
+                    baseline.latency_critical_threshold_ms,
+                    baseline.throughput_warning_threshold,
+                    baseline.error_rate_warning_threshold,
+                    baseline.error_rate_critical_threshold,
+                    baseline.created_at.isoformat(),
+                    baseline.updated_at.isoformat(),
+                    baseline.sample_count,
+                    baseline.measurement_period_hours,
+                    baseline.confidence_level,
+                    baseline.notes,
+                    json.dumps(baseline.tags),
+                ),
+            )
 
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO performance_baselines VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                baseline.baseline_id,
-                baseline.equipment_id,
-                baseline.component,
-                baseline.avg_latency_ms,
-                baseline.p95_latency_ms,
-                baseline.p99_latency_ms,
-                baseline.avg_throughput,
-                baseline.error_rate_percent,
-                baseline.latency_warning_threshold_ms,
-                baseline.latency_critical_threshold_ms,
-                baseline.throughput_warning_threshold,
-                baseline.error_rate_warning_threshold,
-                baseline.error_rate_critical_threshold,
-                baseline.created_at.isoformat(),
-                baseline.updated_at.isoformat(),
-                baseline.sample_count,
-                baseline.measurement_period_hours,
-                baseline.confidence_level,
-                baseline.notes,
-                json.dumps(baseline.tags),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
+        await self._run_db(_insert)
 
         # Cache baseline
         key = f"{equipment_id}:{component}"
@@ -580,9 +590,6 @@ class PerformanceMonitor:
         Returns:
             List of performance metrics
         """
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
-
         query = "SELECT * FROM performance_metrics WHERE 1=1"
         params = []
 
@@ -609,9 +616,7 @@ class PerformanceMonitor:
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        rows = await self._run_db(lambda conn: conn.execute(query, params).fetchall())
 
         metrics = []
         for row in rows:
@@ -639,9 +644,6 @@ class PerformanceMonitor:
         self, equipment_id: Optional[str] = None, severity: Optional[str] = None
     ) -> List[PerformanceAlert]:
         """Get active performance alerts."""
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
-
         query = "SELECT * FROM performance_alerts WHERE active = 1"
         params = []
 
@@ -655,9 +657,7 @@ class PerformanceMonitor:
 
         query += " ORDER BY triggered_at DESC"
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        rows = await self._run_db(lambda conn: conn.execute(query, params).fetchall())
 
         alerts = []
         for row in rows:
@@ -685,37 +685,29 @@ class PerformanceMonitor:
 
     async def acknowledge_alert(self, alert_id: str):
         """Acknowledge a performance alert."""
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE performance_alerts 
-            SET acknowledged_at = ? 
-            WHERE alert_id = ?
-        """,
-            (datetime.now().isoformat(), alert_id),
+        await self._run_db(
+            lambda conn: conn.execute(
+                """
+                UPDATE performance_alerts
+                SET acknowledged_at = ?
+                WHERE alert_id = ?
+            """,
+                (datetime.now().isoformat(), alert_id),
+            )
         )
-
-        conn.commit()
-        conn.close()
 
     async def resolve_alert(self, alert_id: str):
         """Resolve a performance alert."""
-        conn = sqlite3.connect(str(self.db_path))
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE performance_alerts 
-            SET resolved_at = ?, active = 0 
-            WHERE alert_id = ?
-        """,
-            (datetime.now().isoformat(), alert_id),
+        await self._run_db(
+            lambda conn: conn.execute(
+                """
+                UPDATE performance_alerts
+                SET resolved_at = ?, active = 0
+                WHERE alert_id = ?
+            """,
+                (datetime.now().isoformat(), alert_id),
+            )
         )
-
-        conn.commit()
-        conn.close()
 
         # Remove from active alerts cache
         for key, alert in list(self._active_alerts.items()):

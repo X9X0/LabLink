@@ -30,7 +30,7 @@ from typing import Any, Dict, List
 
 # Import our log analysis modules
 try:
-    from log_analyzer import (LogAnalyzer, LogEntry, LogFormatter, LogQuery,
+    from server.log_analyzer import (LogAnalyzer, LogEntry, LogFormatter, LogQuery,
                               LogReader)
 except ImportError:
     print("Error: log_analyzer.py must be in the same directory", file=sys.stderr)
@@ -524,7 +524,7 @@ def main():
 
         # Write output
         if args.output:
-            Path(args.output).write_text(output)
+            Path(args.output).write_text(output, encoding="utf-8")
             print(f"Report saved to {args.output}", file=sys.stderr)
         else:
             print(output)

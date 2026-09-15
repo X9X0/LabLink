@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from equipment.calibration import (CalibrationRecord, CalibrationResult,
+from server.equipment.calibration import (CalibrationRecord, CalibrationResult,
                                    CalibrationSchedule, CalibrationType,
                                    get_calibration_manager)
 from fastapi import APIRouter, HTTPException

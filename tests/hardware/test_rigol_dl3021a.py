@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 import sys
 sys.path.append("..")
-from equipment.rigol_electronic_load import RigolDL3021A
+from server.equipment.rigol_electronic_load import RigolDL3021A
 
 
 class TestRigolDL3021A:

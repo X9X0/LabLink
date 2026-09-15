@@ -10,6 +10,13 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Set
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Color codes for terminal output
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -90,7 +97,7 @@ class ASTVisitor(ast.NodeVisitor):
 def parse_python_file(filepath: Path) -> ASTVisitor:
     """Parse a Python file and extract structure information."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read())
         visitor = ASTVisitor()
         visitor.visit(tree)
@@ -199,7 +206,7 @@ def verify_manager():
         and "acquisition_manager"
         not in [
             line
-            for line in open(filepath).read().split("\n")
+            for line in open(filepath, encoding="utf-8").read().split("\n")
             if "acquisition_manager" in line
         ]
     ):
@@ -428,7 +435,7 @@ def verify_websocket():
         print_error("websocket_server.py not found")
         return False
 
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
 
     # Check for acquisition streaming methods
     required_features = [
@@ -460,7 +467,7 @@ def verify_init():
         print_error("acquisition/__init__.py not found")
         return False
 
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
 
     # Check for key exports
     required_exports = [

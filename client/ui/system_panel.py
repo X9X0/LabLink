@@ -3,11 +3,9 @@
 import logging
 from typing import Optional
 
-import sys
-
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
+    QApplication, QInputDialog, QSizePolicy,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -27,8 +25,43 @@ from PyQt6.QtWidgets import (
 )
 
 from client.api.client import LabLinkClient
+from client.ui.theme import dialog_palette
 
 logger = logging.getLogger(__name__)
+
+
+class RemoteUpdateWorker(QThread):
+    """Runs the remote update off the GUI thread, reporting as it goes.
+
+    The rebuild takes minutes. Running it inline froze the window for the
+    whole time with nothing on screen, so there was no way to tell a slow
+    update from a hung one.
+    """
+
+    line = pyqtSignal(str)
+    done = pyqtSignal(object)
+
+    def __init__(self, host, remote_dir, ref):
+        super().__init__()
+        self.host = host
+        self.remote_dir = remote_dir
+        self.ref = ref
+
+    def run(self):
+        from client.utils.docker_operations import update_remote_server
+
+        try:
+            result = update_remote_server(
+                self.host, self.remote_dir, self.ref,
+                # Queued across the thread boundary by Qt, so the log is
+                # only ever touched on the GUI thread.
+                on_output=self.line.emit,
+            )
+        except Exception as e:
+            from client.utils.docker_operations import DockerRebuildResult
+
+            result = DockerRebuildResult(success=False, output="", error=str(e))
+        self.done.emit(result)
 
 
 class AsyncWorker(QThread):
@@ -66,6 +99,7 @@ class UpdateDialog(QDialog):
     def __init__(self, parent=None):
         """Initialize update dialog."""
         super().__init__(parent)
+        _c = dialog_palette()
         self.setWindowTitle("Server Update Configuration")
         self.setModal(True)
         self.resize(400, 200)
@@ -92,7 +126,7 @@ class UpdateDialog(QDialog):
             "⚠️ WARNING: This will pull latest code from git.\n"
             "In Docker environments, a rebuild and restart will be required."
         )
-        warning.setStyleSheet("color: orange; padding: 10px;")
+        warning.setStyleSheet("color: {warn_text}; padding: 10px;".format(**_c))
         warning.setWordWrap(True)
         layout.addWidget(warning)
 
@@ -130,6 +164,8 @@ class SystemPanel(QWidget):
 
     def _setup_ui(self):
         """Set up user interface."""
+        _c = dialog_palette()
+
         layout = QVBoxLayout(self)
 
         # Header
@@ -139,9 +175,7 @@ class SystemPanel(QWidget):
         # Update notification banner (hidden by default)
         self.notification_banner = QLabel()
         self.notification_banner.setWordWrap(True)
-        self.notification_banner.setStyleSheet(
-            "background-color: #FFA500; color: white; padding: 10px; border-radius: 5px; font-weight: bold;"
-        )
+        self.notification_banner.setStyleSheet("background-color: {warn_bg}; color: {warn_text}; padding: 10px; border-radius: 5px; font-weight: bold;".format(**_c))
         self.notification_banner.hide()
         layout.addWidget(self.notification_banner)
 
@@ -173,7 +207,7 @@ class SystemPanel(QWidget):
 
         mode_info = QLabel("ℹ️ Stable tracks version releases, Development tracks all commits")
         mode_info.setWordWrap(True)
-        mode_info.setStyleSheet("color: gray; font-size: 10px;")
+        mode_info.setStyleSheet("color: {muted_text}; font-size: 10px;".format(**_c))
 
         update_layout.addLayout(mode_layout)
         update_layout.addWidget(mode_info)
@@ -189,7 +223,9 @@ class SystemPanel(QWidget):
         version_selector_layout.addWidget(self.version_selector)
 
         self.refresh_versions_btn = QPushButton("Refresh Versions")
-        self.refresh_versions_btn.clicked.connect(self._populate_versions)
+        self.refresh_versions_btn.clicked.connect(
+            lambda: self._populate_versions(fetch=True)
+        )
         version_selector_layout.addWidget(self.refresh_versions_btn)
 
         version_selector_layout.addStretch()
@@ -222,24 +258,24 @@ class SystemPanel(QWidget):
         branch_row2 = QHBoxLayout()
         self.show_all_branches_checkbox = QCheckBox("Show all branches (including inactive)")
         self.show_all_branches_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-size: 9px;
-                color: gray;
-            }
-            QCheckBox::indicator {
+                color: {muted_text};
+            }}
+            QCheckBox::indicator {{
                 width: 14px;
                 height: 14px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+        """.format(**_c))
         self.show_all_branches_checkbox.setToolTip(
             "When unchecked, only shows current and active branches (with commits in last 6 months).\n"
             "When checked, shows all branches sorted by most recent."
@@ -290,7 +326,7 @@ class SystemPanel(QWidget):
 
         # Separator
         separator1 = QLabel("─" * 120)
-        separator1.setStyleSheet("color: #bdc3c7;")
+        separator1.setStyleSheet("color: {panel_border};".format(**_c))
         update_layout.addWidget(separator1)
 
         # Side-by-side layout for Local and Remote sections
@@ -300,12 +336,12 @@ class SystemPanel(QWidget):
         # ========== Local Server Section ==========
         local_section = QWidget()
         local_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -324,26 +360,26 @@ class SystemPanel(QWidget):
             "If disabled or if automatic fails, manual instructions will be shown."
         )
         self.auto_docker_rebuild_local.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         local_layout.addWidget(self.auto_docker_rebuild_local)
 
         # Push button to bottom
@@ -355,36 +391,23 @@ class SystemPanel(QWidget):
         self.update_local_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on this machine"
         )
-        self.update_local_server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         local_layout.addWidget(self.update_local_server_btn)
 
         # ========== Vertical Separator ==========
         separator_frame = QFrame()
         separator_frame.setFrameShape(QFrame.Shape.VLine)
         separator_frame.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame.setStyleSheet("color: #bdc3c7;")
+        separator_frame.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Remote Server Section ==========
         remote_section = QWidget()
         remote_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         remote_layout = QVBoxLayout(remote_section)
         remote_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -408,9 +431,29 @@ class SystemPanel(QWidget):
             "Format: username@hostname or username@ip-address\n"
             "Example: pi@192.168.1.100"
         )
-        self.ssh_host_input.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
         ssh_layout.addWidget(self.ssh_host_input)
         remote_layout.addLayout(ssh_layout)
+
+        # Where LabLink lives on that host. This used to be taken from the
+        # local checkout, so the update sent a Windows path to a Raspberry
+        # Pi and died on the first cd.
+        path_layout = QHBoxLayout()
+        path_label = QLabel("Path:")
+        path_label.setStyleSheet(
+            "background: transparent; border: none; font-size: 9px; font-weight: bold;"
+        )
+        path_layout.addWidget(path_label)
+
+        self.remote_path_input = QLineEdit()
+        self.remote_path_input.setText("/opt/lablink")
+        self.remote_path_input.setPlaceholderText("/opt/lablink")
+        self.remote_path_input.setToolTip(
+            "The LabLink checkout on the remote host.\n"
+            "It must be a git checkout; the image builder and the SSH "
+            "deploy wizard both create one."
+        )
+        path_layout.addWidget(self.remote_path_input)
+        remote_layout.addLayout(path_layout)
 
         # Checkbox for automatic rebuild (remote)
         self.auto_docker_rebuild_remote = QCheckBox("Auto-rebuild")
@@ -420,26 +463,26 @@ class SystemPanel(QWidget):
             "If disabled or if automatic fails, manual instructions will be shown."
         )
         self.auto_docker_rebuild_remote.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         remote_layout.addWidget(self.auto_docker_rebuild_remote)
 
         # Push button to bottom
@@ -451,19 +494,6 @@ class SystemPanel(QWidget):
         self.update_remote_server_btn.setToolTip(
             "Checkout selected version/branch locally and rebuild Docker containers on remote host via SSH"
         )
-        self.update_remote_server_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         remote_layout.addWidget(self.update_remote_server_btn)
 
         # Add sections to side-by-side layout with equal stretch
@@ -489,12 +519,12 @@ class SystemPanel(QWidget):
         # ========== Client Self-Update Section ==========
         client_section = QWidget()
         client_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         client_layout = QVBoxLayout(client_section)
         client_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -510,36 +540,23 @@ class SystemPanel(QWidget):
         self.update_client_btn = QPushButton("Update Client")
         self.update_client_btn.clicked.connect(self._update_client)
         self.update_client_btn.setToolTip("Update client to selected version/branch and restart")
-        self.update_client_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         client_layout.addWidget(self.update_client_btn)
 
         # ========== Vertical Separator 1 ==========
         separator_frame1 = QFrame()
         separator_frame1.setFrameShape(QFrame.Shape.VLine)
         separator_frame1.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame1.setStyleSheet("color: #bdc3c7;")
+        separator_frame1.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Auto-Rebuild Section ==========
         auto_rebuild_section = QWidget()
         auto_rebuild_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         auto_rebuild_layout = QVBoxLayout(auto_rebuild_section)
         auto_rebuild_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -551,26 +568,26 @@ class SystemPanel(QWidget):
 
         self.auto_rebuild_checkbox = QCheckBox("Enable after updates")
         self.auto_rebuild_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         self.auto_rebuild_checkbox.setToolTip("Enable automatic Docker rebuild after updates")
         auto_rebuild_layout.addWidget(self.auto_rebuild_checkbox)
 
@@ -579,36 +596,23 @@ class SystemPanel(QWidget):
 
         self.configure_rebuild_btn = QPushButton("Configure")
         self.configure_rebuild_btn.clicked.connect(self.configure_auto_rebuild)
-        self.configure_rebuild_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         auto_rebuild_layout.addWidget(self.configure_rebuild_btn)
 
         # ========== Vertical Separator 2 ==========
         separator_frame2 = QFrame()
         separator_frame2.setFrameShape(QFrame.Shape.VLine)
         separator_frame2.setFrameShadow(QFrame.Shadow.Sunken)
-        separator_frame2.setStyleSheet("color: #bdc3c7;")
+        separator_frame2.setStyleSheet("color: {panel_border};".format(**_c))
 
         # ========== Scheduled Checks Section ==========
         scheduled_section = QWidget()
         scheduled_section.setStyleSheet("""
-            QWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QWidget {{
+                background-color: {panel_bg};
+                border: 1px solid {panel_border};
                 border-radius: 6px;
-            }
-        """)
+            }}
+        """.format(**_c))
         scheduled_layout = QVBoxLayout(scheduled_section)
         scheduled_layout.setContentsMargins(8, 8, 8, 8)
 
@@ -622,26 +626,26 @@ class SystemPanel(QWidget):
         checkbox_interval_layout = QHBoxLayout()
         self.scheduled_checkbox = QCheckBox("Enable")
         self.scheduled_checkbox.setStyleSheet("""
-            QCheckBox {
+            QCheckBox {{
                 background: transparent;
                 border: none;
                 font-weight: bold;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #3498db;
+                border: 2px solid {accent};
                 border-radius: 3px;
-                background: white;
-            }
-            QCheckBox::indicator:checked {
-                background: #3498db;
-                border: 2px solid #3498db;
-            }
-            QCheckBox::indicator:checked:hover {
-                background: #2e86c1;
-            }
-        """)
+                background: {field_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {accent};
+                border: 2px solid {accent};
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: {accent_hover};
+            }}
+        """.format(**_c))
         self.scheduled_checkbox.setToolTip("Enable automatic update checking")
         checkbox_interval_layout.addWidget(self.scheduled_checkbox)
 
@@ -653,7 +657,6 @@ class SystemPanel(QWidget):
         self.interval_spinbox.setRange(1, 168)  # 1 hour to 1 week
         self.interval_spinbox.setValue(24)
         self.interval_spinbox.setFixedWidth(50)
-        self.interval_spinbox.setStyleSheet("background: white; border: 1px solid #ced4da; border-radius: 3px; padding: 2px;")
         checkbox_interval_layout.addWidget(self.interval_spinbox)
 
         hours_label = QLabel("hrs")
@@ -668,19 +671,6 @@ class SystemPanel(QWidget):
 
         self.configure_scheduled_btn = QPushButton("Configure")
         self.configure_scheduled_btn.clicked.connect(self.configure_scheduled)
-        self.configure_scheduled_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 6px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2e86c1;
-            }
-        """)
         scheduled_layout.addWidget(self.configure_scheduled_btn)
 
         # Add sections to side-by-side layout with equal stretch
@@ -700,15 +690,25 @@ class SystemPanel(QWidget):
 
         self.logs_text = QTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setMaximumHeight(200)
-        logs_layout.addWidget(self.logs_text)
+        # Grow into whatever room the window has. This was capped at 200px,
+        # so on a maximised window the log stayed ten lines tall with a third
+        # of the screen empty beneath it -- while streaming a build log that
+        # is the one thing worth reading at that moment.
+        self.logs_text.setMinimumHeight(160)
+        self.logs_text.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        logs_layout.addWidget(self.logs_text, 1)
 
         clear_logs_btn = QPushButton("Clear Logs")
         clear_logs_btn.clicked.connect(self.logs_text.clear)
         logs_layout.addWidget(clear_logs_btn)
 
         logs_group.setLayout(logs_layout)
-        layout.addWidget(logs_group)
+        # The stretch factor is what actually hands the spare height over;
+        # an Expanding policy alone does nothing if every sibling has an
+        # equal claim on it.
+        layout.addWidget(logs_group, 1)
 
         # Stretch to fill remaining space
         layout.addStretch()
@@ -716,7 +716,43 @@ class SystemPanel(QWidget):
     def set_client(self, client: LabLinkClient):
         """Set API client."""
         self.client = client
+        self._prefill_ssh_from_connection()
         self.refresh()
+
+    def _prefill_ssh_from_connection(self):
+        """Offer the connected server as the host to update.
+
+        The client already knows which machine it is talking to, so asking
+        the user to type the address again invites a typo that points the
+        update at the wrong Pi. The SSH user is remembered per server, since
+        it is the one part the API connection cannot tell us.
+
+        Only fills an empty field: whatever the user typed wins.
+        """
+        if self.ssh_host_input.text().strip():
+            return
+
+        host = getattr(self.client, "host", None)
+        if not host:
+            return
+
+        user = None
+        try:
+            from client.utils.server_manager import ServerManager
+
+            active = ServerManager().get_active_server()
+            if active and active.host == host:
+                user = getattr(active, "user", None)
+        except Exception as e:
+            logger.debug(f"Could not read the saved SSH user: {e}")
+
+        self.ssh_host_input.setText(f"{user}@{host}" if user else host)
+        if not user:
+            # A bare host would make ssh try the local Windows username.
+            self.ssh_host_input.setToolTip(
+                f"Add the SSH user for {host}, as user@{host}.\n"
+                "It is remembered for this server once the update succeeds."
+            )
 
     def refresh(self):
         """Refresh system information."""
@@ -741,10 +777,23 @@ class SystemPanel(QWidget):
                 pass
 
         except Exception as e:
-            logger.error(f"Error refreshing system info: {e}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to refresh system info:\n{str(e)}"
-            )
+            # This runs on a five-second timer. A modal dialog here
+            # interrupts whatever the operator is doing to report
+            # something they cannot act on -- and during a server update
+            # it is not even a fault: the containers are down because we
+            # asked them to be. Say it where it belongs instead.
+            logger.warning(f"Could not refresh system info: {e}")
+            if self._remote_update_running():
+                self.status_label.setText(
+                    "Status: server restarting as part of the update"
+                )
+            else:
+                self.status_label.setText("Status: not reachable")
+
+    def _remote_update_running(self) -> bool:
+        """Whether we are the reason the server is unreachable."""
+        worker = getattr(self, "_remote_worker", None)
+        return bool(worker is not None and worker.isRunning())
 
     def _on_mode_changed(self, index: int):
         """Handle update mode selection change."""
@@ -800,7 +849,9 @@ class SystemPanel(QWidget):
 
     def _refresh_branches(self):
         """Refresh the list of available branches (client-side)."""
-        from client.utils.git_operations import get_git_branches, get_current_git_branch
+        from client.utils.git_operations import (
+            get_branch_hashes, get_git_branches, get_current_git_branch,
+        )
 
         try:
             show_all = self.show_all_branches_checkbox.isChecked()
@@ -812,6 +863,14 @@ class SystemPanel(QWidget):
             # Get branches from local git with filtering
             branches = get_git_branches(show_all=show_all, sort_by_date=True)
             current_branch = get_current_git_branch()
+            # A branch name alone does not say which code it is. Two machines
+            # both "on main" can be a week apart, and after the update picker
+            # sent one install to a branch 30 commits behind there was nothing
+            # on screen that would have shown it.
+            # The user pressed Refresh Branches, so go and look. The
+            # branch list is also rebuilt on mode changes, which is why
+            # the fetch is opt-in rather than automatic.
+            hashes = get_branch_hashes(fetch=True)
 
             if branches:
                 # Update combo box
@@ -827,6 +886,12 @@ class SystemPanel(QWidget):
                     if is_current:
                         display_name += " (current)"
                         selected_index = i
+
+                    # The hash is display only; currentData stays the branch
+                    # name, which is what the checkout is given.
+                    short_hash = hashes.get(branch_name)
+                    if short_hash:
+                        display_name += f"  [{short_hash}]"
 
                     self.branch_combo.addItem(display_name, branch_name)
 
@@ -1275,16 +1340,28 @@ class SystemPanel(QWidget):
                 self, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
             )
 
-    def _populate_versions(self):
-        """Populate version selector with git tags (client-side)."""
+    def _populate_versions(self, fetch: bool = False):
+        """Populate the version selector with git tags.
+
+        The visible tab is refreshed every five seconds, and this runs on
+        that path. Fetching here made every one of those a network round
+        trip on the GUI thread -- the window hitched every few seconds and
+        the log filled with "Fetching git tags..." over and over.
+
+        So only the Refresh Versions button fetches. The periodic pass
+        re-reads local tags, which is cheap, and says nothing unless the
+        list actually changed.
+        """
         from client.utils.git_operations import get_git_tags
 
         try:
-            self.logs_text.append("\n🏷️  Fetching git tags...")
-            self.refresh_versions_btn.setEnabled(False)
-            self.refresh_versions_btn.setText("Loading...")
+            if fetch:
+                self.logs_text.append("\nFetching git tags...")
+                self.refresh_versions_btn.setEnabled(False)
+                self.refresh_versions_btn.setText("Loading...")
+                QApplication.processEvents()
 
-            tags = get_git_tags()
+            tags = get_git_tags(fetch=fetch)
 
             if tags:
                 # Update combo box
@@ -1296,9 +1373,15 @@ class SystemPanel(QWidget):
 
                 self.version_selector.blockSignals(False)
 
-                self.logs_text.append(f"✅ Found {len(tags)} versions")
+                # Only worth saying when the user asked, or when the list
+                # actually moved. Said every five seconds it is noise that
+                # buries the update output it shares a box with.
+                if fetch or len(tags) != getattr(self, "_known_tag_count", None):
+                    self.logs_text.append(f"Found {len(tags)} versions")
+                self._known_tag_count = len(tags)
             else:
-                self.logs_text.append("⚠️  No git tags found")
+                if fetch:
+                    self.logs_text.append("No git tags found")
                 QMessageBox.warning(
                     self,
                     "No Versions Found",
@@ -1443,7 +1526,9 @@ class SystemPanel(QWidget):
 
     def _update_local_server(self):
         """Update local server by checking out git ref and rebuilding Docker locally."""
-        from client.utils.git_operations import checkout_git_ref, get_git_root
+        from client.utils.git_operations import (
+            checkout_git_ref, compare_ref_to_head, get_git_root,
+        )
         from client.utils.docker_operations import (
             is_docker_available_locally,
             rebuild_docker_local,
@@ -1466,15 +1551,43 @@ class SystemPanel(QWidget):
                 )
                 return
 
+            # The checkout below is this clone -- the one the client is
+            # running from -- so an older ref moves the client's own code
+            # backwards as a side effect of a local update.
+            position = compare_ref_to_head(ref)
+            if position and position["ahead"] == 0 and position["behind"] > 0:
+                behind = position["behind"]
+                plural = "s" if behind != 1 else ""
+                going_back = QMessageBox.warning(
+                    self,
+                    "This Is Older Than What You Are Running",
+                    f"{ref} is {behind} commit{plural} behind the code this "
+                    f"client is running.\n\n"
+                    f"The checkout is shared, so this moves the client back to "
+                    f"it as well.\n\n"
+                    f"Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if going_back != QMessageBox.StandardButton.Yes:
+                    self.logs_text.append(
+                        f"\nLocal server update to {ref} "
+                        f"cancelled: {behind} commit{plural} behind HEAD"
+                    )
+                    return
+
             # Confirm with user
             reply = QMessageBox.question(
                 self,
                 "Confirm Local Server Update",
                 f"Update LOCAL server to {ref}?\n\n"
                 f"This will:\n"
-                f"1. Checkout {ref} in local git\n"
+                f"1. Checkout {ref} in this clone -- the one this client also\n"
+                f"   runs from, so the client's own code changes too\n"
                 f"2. Rebuild Docker containers on THIS MACHINE\n"
                 f"3. Restart local server\n\n"
+                f"A tag leaves the clone on no branch. Restart the client "
+                f"afterwards so it runs what is now checked out.\n\n"
                 f"This may take several minutes.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -1584,163 +1697,96 @@ class SystemPanel(QWidget):
             self.update_local_server_btn.setEnabled(True)
             self.update_local_server_btn.setText("Update Local Server")
 
-    def _update_remote_server(self):
-        """Update remote server by checking out git ref and rebuilding Docker via SSH."""
-        from client.utils.git_operations import checkout_git_ref, get_git_root
-        from client.utils.docker_operations import (
-            rebuild_docker_ssh,
-            generate_rebuild_instructions
+    def _ensure_passwordless_ssh(self, ssh_host: str) -> bool:
+        """Make sure we can reach `ssh_host` without a password, setting it up
+        if this is the first time.
+
+        The update runs with its output captured, so a password prompt could
+        never be answered and would hang. Requiring the user to arrange keys
+        beforehand only works for people who already know how; everyone else
+        met "Permission denied" with nothing to do about it. So ask once,
+        install a key, and never ask again.
+        """
+        from client.utils.ssh_access import (
+            install_public_key, key_access_works, split_host,
         )
 
-        try:
-            # Get SSH host
-            ssh_host = self.ssh_host_input.text().strip()
-            if not ssh_host:
-                QMessageBox.warning(
-                    self,
-                    "SSH Host Required",
-                    "Please enter an SSH host (e.g., user@hostname or user@ip-address)\n\n"
-                    "Example: pi@192.168.1.100"
-                )
-                return
+        if key_access_works(ssh_host):
+            return True
 
-            # Get selected ref (tag or branch)
-            mode = self.update_mode_combo.currentData()
-            if mode == "stable":
-                ref = self.version_selector.currentData()
-            else:  # development
-                ref = self.branch_combo.currentData()
-
-            if not ref:
-                QMessageBox.warning(
-                    self,
-                    "No Version Selected",
-                    "Please select a version or branch first."
-                )
-                return
-
-            # Confirm with user
-            reply = QMessageBox.question(
+        user, host = split_host(ssh_host)
+        if not user:
+            QMessageBox.warning(
                 self,
-                "Confirm Remote Server Update",
-                f"Update REMOTE server ({ssh_host}) to {ref}?\n\n"
-                f"This will:\n"
-                f"1. Checkout {ref} in local git\n"
-                f"2. Rebuild Docker containers on {ssh_host} via SSH\n"
-                f"3. Restart remote server\n\n"
-                f"This may take several minutes.\n"
-                f"You may be prompted for SSH password/key.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                "SSH User Needed",
+                f"Enter the host as user@{host}.\n\n"
+                f"The server's SSH username is the one thing the connection "
+                f"cannot tell us."
             )
+            return False
 
-            if reply != QMessageBox.StandardButton.Yes:
-                return
+        answer = QMessageBox.question(
+            self,
+            "Set Up Passwordless Access",
+            f"{ssh_host} still asks for a password.\n\n"
+            f"LabLink can set up a key so it never asks again. You will be "
+            f"asked for the SSH password once; it is used to install the key "
+            f"and is not saved.\n\n"
+            f"Set it up now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
 
-            # Disable button during update
-            self.update_remote_server_btn.setEnabled(False)
-            self.update_remote_server_btn.setText("Updating...")
+        password, ok = QInputDialog.getText(
+            self,
+            "SSH Password",
+            f"Password for {ssh_host}:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not password:
+            return False
 
-            # Progress: 0% - Starting
-            self.update_status_label.setText(f"Update Status: Starting remote server update to {ref}")
-            self.progress_bar.setValue(0)
-
-            # Step 1: Checkout git ref
-            self.logs_text.append(f"\n🔄 Checking out {ref}...")
-            self.update_status_label.setText(f"Update Status: Checking out {ref}...")
-            self.progress_bar.setValue(10)
-
-            if not checkout_git_ref(ref):
-                raise Exception(f"Failed to checkout {ref}")
-
-            self.logs_text.append(f"✅ Checked out {ref}")
-
-            # Progress: 25% - Git checkout complete
-            self.update_status_label.setText(f"Update Status: Git checkout complete")
-            self.progress_bar.setValue(25)
-
-            # Get project directory
-            project_dir = get_git_root()
-            if not project_dir:
-                raise Exception("Could not determine project root directory")
-
-            # Step 2: Docker rebuild via SSH (if auto-enabled)
-            if self.auto_docker_rebuild_remote.isChecked():
-                # Progress: 50% - Docker rebuild started
-                self.logs_text.append(f"\n🐳 Rebuilding Docker on {ssh_host} via SSH...")
-                self.update_status_label.setText(f"Update Status: Rebuilding Docker on {ssh_host} via SSH...")
-                self.progress_bar.setValue(50)
-
-                result = rebuild_docker_ssh(ssh_host, project_dir)
-
-                if result.success:
-                    # Progress: 100% - Complete
-                    self.progress_bar.setValue(100)
-                    self.update_status_label.setText(f"Update Status: Remote server updated successfully!")
-
-                    self.logs_text.append(f"✅ Docker rebuild successful on {ssh_host}!")
-                    self.logs_text.append(f"\nOutput:\n{result.output}")
-
-                    QMessageBox.information(
-                        self,
-                        "Remote Server Updated",
-                        f"Remote server ({ssh_host}) successfully updated to {ref} and rebuilt!\n\n"
-                        f"The remote server should now be running the new version."
-                    )
-
-                    # Optionally refresh if connected to this server
-                    # (Note: This only refreshes if currently connected to this remote server)
-                    try:
-                        self.refresh()
-                    except:
-                        pass  # May not be connected to the updated server
-                else:
-                    # Rebuild failed - show manual instructions
-                    self.progress_bar.setValue(0)
-                    self.update_status_label.setText(f"Update Status: Docker rebuild failed on {ssh_host}")
-
-                    self.logs_text.append(f"❌ Docker rebuild failed on {ssh_host}: {result.error}")
-
-                    instructions = generate_rebuild_instructions(project_dir, ref)
-                    self.logs_text.append(f"\n📋 Manual Instructions for {ssh_host}:\n{instructions}")
-
-                    QMessageBox.warning(
-                        self,
-                        "Rebuild Failed",
-                        f"Git checkout succeeded but Docker rebuild failed on {ssh_host}.\n\n"
-                        f"{result.error}\n\n"
-                        f"SSH to {ssh_host} and run these commands:\n\n{instructions}"
-                    )
-            else:
-                # Manual rebuild - show instructions
-                self.progress_bar.setValue(25)
-                self.update_status_label.setText(f"Update Status: Git checkout complete - manual rebuild required on {ssh_host}")
-
-                instructions = generate_rebuild_instructions(project_dir, ref)
-
-                self.logs_text.append(f"\n📋 Manual rebuild required on {ssh_host}:\n{instructions}")
-
-                QMessageBox.information(
-                    self,
-                    "Manual Rebuild Required",
-                    f"Git checkout complete. SSH to {ssh_host} and run:\n\n{instructions}"
-                )
-
-        except Exception as e:
-            logger.error(f"Error updating remote server: {e}")
-            self.logs_text.append(f"\n❌ Error: {str(e)}")
-            self.progress_bar.setValue(0)
-            self.update_status_label.setText(f"Update Status: Update failed")
-            QMessageBox.critical(
-                self, "Update Failed", f"Failed to update remote server:\n{str(e)}"
-            )
-
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        try:
+            worked, message = install_public_key(ssh_host, password)
         finally:
-            self.update_remote_server_btn.setEnabled(True)
-            self.update_remote_server_btn.setText("Update Remote Server")
+            QApplication.restoreOverrideCursor()
+            del password
+
+        self.logs_text.append(message)
+        if not worked:
+            QMessageBox.critical(self, "Could Not Set Up SSH Access", message)
+        return worked
+
+    def _remember_ssh_user(self, ssh_host: str):
+        """Store the SSH user against the server it worked for.
+
+        The API connection knows the host but never the SSH user, so without
+        this it is retyped every session -- and a typo points a rebuild at
+        the wrong machine.
+        """
+        if "@" not in ssh_host:
+            return
+        user, _, host = ssh_host.partition("@")
+        try:
+            from client.utils.server_manager import ServerManager
+
+            manager = ServerManager()
+            active = manager.get_active_server()
+            if active and active.host == host and getattr(active, "user", None) != user:
+                manager.update_server(active.name, user=user)
+                logger.info(f"Remembered SSH user {user} for {host}")
+        except Exception as e:
+            # Not worth failing an otherwise successful update over.
+            logger.debug(f"Could not remember the SSH user: {e}")
 
     def _update_client(self):
         """Update client by marking for update on next restart."""
-        from client.utils.self_update import mark_for_update, relaunch_client
+        from client.utils.git_operations import compare_ref_to_head
+        from client.utils.self_update import mark_for_update
+        import sys
 
         try:
             # Get selected ref (tag or branch)
@@ -1757,6 +1803,58 @@ class SystemPanel(QWidget):
                     "Please select a version or branch first."
                 )
                 return
+
+            # Something on screen the instant the button is pressed. The
+            # direction check fetches, which is seconds on a slow link, and
+            # until it returned the button looked ignored -- so it got
+            # pressed again.
+            self.update_client_btn.setEnabled(False)
+            self.update_client_btn.setText("Checking...")
+            self.logs_text.append(
+                f"\nChecking {ref} against the running client..."
+            )
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            QApplication.processEvents()
+
+            # Say so before going backwards.
+            #
+            # The version list offers tags, and a tag is a fixed point: the
+            # only tag here, v2.0.0, is well behind main. Selecting it read as
+            # "update" and silently installed an older client. Going back on
+            # purpose is what the rollback button is for, so this asks rather
+            # than refuses -- but it asks with the number, and defaults to No.
+            position = compare_ref_to_head(ref)
+            if position and position["same"]:
+                QMessageBox.information(
+                    self,
+                    "Already Up To Date",
+                    f"The client is already running {ref}.\n\n"
+                    f"There is nothing to update."
+                )
+                return
+
+            if position and position["ahead"] == 0 and position["behind"] > 0:
+                behind = position["behind"]
+                plural = "s" if behind != 1 else ""
+                going_back = QMessageBox.warning(
+                    self,
+                    "This Is Older Than What You Are Running",
+                    f"{ref} is {behind} commit{plural} behind the code "
+                    f"you are running now.\n\n"
+                    f"Updating to it will replace your client with an older "
+                    f"build, losing anything added since.\n\n"
+                    f"To go back to an earlier version deliberately, use "
+                    f"Rollback instead.\n\n"
+                    f"Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if going_back != QMessageBox.StandardButton.Yes:
+                    self.logs_text.append(
+                        f"\nUpdate to {ref} cancelled: "
+                        f"{behind} commit{plural} behind HEAD"
+                    )
+                    return
 
             # Confirm with user
             reply = QMessageBox.question(
@@ -1784,27 +1882,21 @@ class SystemPanel(QWidget):
                     self,
                     "Client Update Scheduled",
                     f"Client has been marked for update to {ref}.\n\n"
-                    f"The application will now restart and apply the update."
+                    f"LabLink will close and reopen once. The update is "
+                    f"applied in between, before any window appears."
                 )
 
-                # Start a fresh client process; it applies the update on
-                # startup (client/main.py checks the flag before building the
-                # window). Only quit this one once the new one is running.
-                self.logs_text.append(f"🔄 Restarting application...")
-                if relaunch_client():
-                    app = QApplication.instance()
-                    if app is not None:
-                        QTimer.singleShot(500, app.quit)
-                    else:
-                        sys.exit(0)
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Restart Failed",
-                        "The update is scheduled but the client could not restart "
-                        "itself.\n\nClose the client and start it again to apply "
-                        f"the update to {ref}.",
-                    )
+                # Actually restart, rather than exiting and hoping.
+                #
+                # This called sys.exit(0) on the theory that "the launcher
+                # should detect the flag" -- but nothing watches for it, so
+                # the client just closed and the update sat there until
+                # somebody started it by hand, while the dialog above
+                # promised the application would restart.
+                self.logs_text.append("🔄 Restarting application...")
+                from client.main import _restart_client
+
+                _restart_client()
 
             else:
                 self.logs_text.append(f"❌ Failed to mark client for update")
@@ -1820,6 +1912,184 @@ class SystemPanel(QWidget):
             QMessageBox.critical(
                 self, "Update Failed", f"Failed to update client:\n{str(e)}"
             )
+
+        finally:
+            # Also runs on the SystemExit the relaunch raises, which costs
+            # nothing and keeps the button usable on every other path.
+            QApplication.restoreOverrideCursor()
+            self.update_client_btn.setEnabled(True)
+            self.update_client_btn.setText("Update Client")
+
+    def _instruments_in_use(self) -> list:
+        """Instruments the server currently holds open, by name.
+
+        Updating stops the containers, so anything connected is dropped and
+        any output left on stays on with nothing watching it. That is worth
+        saying before starting, not discovering afterwards.
+        """
+        if not self.client:
+            return []
+        try:
+            listed = self.client.list_equipment() or []
+        except Exception as e:
+            logger.debug(f"Could not check what is connected: {e}")
+            return []
+
+        names = []
+        for item in listed:
+            # Remembered-but-closed instruments are not in use; only the ones
+            # the server actually holds open will be interrupted.
+            if not item.get("connected", True):
+                continue
+            label = " ".join(
+                part for part in (item.get("manufacturer"), item.get("model"))
+                if part
+            )
+            names.append(label or item.get("id", "unknown"))
+        return names
+
+    def _update_remote_server(self):
+        """Update a remote LabLink over SSH and rebuild its containers.
+
+        This used to check the ref out in the *local* clone and then run
+        docker compose on the remote in a directory named by the local git
+        root -- so it moved this machine's code and then told a Raspberry Pi
+        to "cd C:/LabLinkTest", which fails on the first command. Nothing ever
+        updated the remote's own code.
+
+        The remote already ships the right procedure in lablink-update.sh.
+        Driving that means a bench Pi updates identically whether somebody
+        ssh'd in and ran it or pressed this button.
+        """
+        from client.utils.docker_operations import update_remote_server
+
+        try:
+            ssh_host = self.ssh_host_input.text().strip()
+            if not ssh_host:
+                QMessageBox.warning(
+                    self,
+                    "SSH Host Required",
+                    "Please enter an SSH host (e.g. user@hostname).\n\n"
+                    "Example: admin@192.168.91.191"
+                )
+                return
+
+            remote_dir = self.remote_path_input.text().strip() or "/opt/lablink"
+
+            mode = self.update_mode_combo.currentData()
+            ref = (self.version_selector.currentData() if mode == "stable"
+                   else self.branch_combo.currentData())
+            if not ref:
+                QMessageBox.warning(
+                    self,
+                    "No Version Selected",
+                    "Please select a version or branch first."
+                )
+                return
+
+            in_use = self._instruments_in_use()
+            if in_use:
+                listed = "".join(f"  - {name}\n" for name in in_use)
+                in_use_warning = (
+                    f"\n\n{len(in_use)} instrument(s) are connected and will "
+                    f"be disconnected while the server restarts:\n"
+                    f"{listed}"
+                    f"\nAn output left enabled stays enabled, with nothing "
+                    f"watching it.\n"
+                )
+            else:
+                in_use_warning = ""
+
+            reply = QMessageBox.question(
+                self,
+                "Confirm Remote Server Update",
+                f"Update {ssh_host}:{remote_dir} to {ref}?\n\n"
+                f"On that host this will:\n"
+                f"1. Fetch and check out {ref}\n"
+                f"2. Rebuild the containers\n"
+                f"3. Bring them back up\n\n"
+                f"This machine's own checkout is not touched.\n"
+                f"{in_use_warning}"
+                f"The remote must be a git checkout, and SSH must work "
+                f"without a password.\n\n"
+                f"This may take several minutes.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Something on screen before the SSH call, which is minutes long.
+            self.update_remote_server_btn.setEnabled(False)
+            self.update_remote_server_btn.setText("Updating...")
+            self.logs_text.append(f"\nUpdating {ssh_host}:{remote_dir} to {ref}...")
+            self.update_status_label.setText(
+                f"Update Status: Updating {ssh_host} to {ref} (this takes minutes)"
+            )
+            self.progress_bar.setValue(10)
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            QApplication.processEvents()
+
+            if not self._ensure_passwordless_ssh(ssh_host):
+                self.logs_text.append("Remote update cancelled: no SSH access")
+                self._reset_remote_update_button()
+                return
+
+            # Off the GUI thread, so the window stays alive and the log fills
+            # as the remote works.
+            self._remote_worker = RemoteUpdateWorker(ssh_host, remote_dir, ref)
+            self._remote_worker.line.connect(self.logs_text.append)
+            self._remote_worker.done.connect(
+                lambda res: self._on_remote_update_done(res, ssh_host, remote_dir, ref)
+            )
+            self._remote_worker.start()
+            return
+
+        except Exception as e:
+            logger.error(f"Error starting the remote update: {e}")
+            self.logs_text.append(f"\nError: {str(e)}")
+            QMessageBox.critical(
+                self, "Update Failed",
+                f"Failed to start the remote update:\n{str(e)}"
+            )
+            self._reset_remote_update_button()
+
+    def _reset_remote_update_button(self):
+        """Give the button back. Called on every way out, including the worker
+        finishing, which is why it is not a finally: the handler now returns
+        while the update is still running."""
+        QApplication.restoreOverrideCursor()
+        self.update_remote_server_btn.setEnabled(True)
+        self.update_remote_server_btn.setText("Update Remote Server")
+
+    def _on_remote_update_done(self, result, ssh_host, remote_dir, ref):
+        """Report what the remote said, back on the GUI thread."""
+        try:
+            if result.success:
+                self._remember_ssh_user(ssh_host)
+                self.progress_bar.setValue(100)
+                self.update_status_label.setText("Update Status: Remote server updated")
+                QMessageBox.information(
+                    self,
+                    "Remote Server Updated",
+                    f"{ssh_host}:{remote_dir} is now on {ref}.\n\n"
+                    f"Its containers were rebuilt and restarted."
+                )
+            else:
+                self.progress_bar.setValue(0)
+                self.update_status_label.setText("Update Status: Remote update failed")
+                self.logs_text.append(f"Remote update failed: {result.error}")
+                QMessageBox.critical(
+                    self,
+                    "Remote Update Failed",
+                    f"Updating {ssh_host} failed.\n\n{result.error}\n\n"
+                    f"To do it by hand:\n"
+                    f"  ssh {ssh_host}\n"
+                    f"  cd {remote_dir}\n"
+                    f"  sudo ./lablink-update.sh {ref} --yes"
+                )
+        finally:
+            self._reset_remote_update_button()
 
     def closeEvent(self, event):
         """Handle widget close event."""

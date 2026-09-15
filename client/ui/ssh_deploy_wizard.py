@@ -1,9 +1,138 @@
 """SSH Deployment Wizard for deploying LabLink server to remote machines."""
 
 import asyncio
+import base64
+import hashlib
 import logging
+import os
+import shlex
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# LabLink-specific SSH known-hosts file (separate from user's ~/.ssh/known_hosts)
+_LABLINK_KNOWN_HOSTS = os.path.expanduser("~/.ssh/lablink_known_hosts")
+
+
+def _host_key_fingerprint(key) -> str:
+    """Return a SHA256 fingerprint string for a paramiko host key."""
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return "SHA256:" + base64.b64encode(digest).rstrip(b"=").decode()
+
+
+def _load_known_hosts(ssh_client, extra_path: str = _LABLINK_KNOWN_HOSTS):
+    """Load system and LabLink known_hosts files into an SSHClient."""
+    system_known = os.path.expanduser("~/.ssh/known_hosts")
+    for path in (system_known, extra_path):
+        if os.path.exists(path):
+            try:
+                ssh_client.load_host_keys(path)
+            except Exception:
+                pass
+
+
+def _known_hosts_name(hostname: str, port: int = 22) -> str:
+    """Canonical known_hosts entry name, matching paramiko's own format.
+
+    paramiko brackets the host and appends the port for anything other than
+    22, and looks entries up that way on reconnect. Writing a bare hostname
+    for a non-standard port produces an entry that is never matched, so the
+    host stays "unknown" forever.
+    """
+    return hostname if port == 22 else f"[{hostname}]:{port}"
+
+
+def _save_host_key(
+    hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+):
+    """Append a verified host key to the LabLink known_hosts file."""
+    Path(known_hosts_path).parent.mkdir(parents=True, exist_ok=True)
+    hostname = _known_hosts_name(hostname, port)
+    key_line = f"{hostname} {key.get_name()} {key.get_base64()}\n"
+    # Avoid writing duplicates
+    existing = ""
+    if os.path.exists(known_hosts_path):
+        with open(known_hosts_path, "r") as f:
+            existing = f.read()
+    if hostname not in existing:
+        with open(known_hosts_path, "a") as f:
+            f.write(key_line)
+
+
+def _forget_host_key(
+    hostname: str, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+) -> bool:
+    """Drop every stored key for a host. Returns True if anything was removed.
+
+    Needed when a Pi is reimaged: the address is the same and the key is not,
+    and _save_host_key deliberately will not append a second entry for a name
+    it already has. Without this the old key stays and every later connection
+    is refused.
+    """
+    if not os.path.exists(known_hosts_path):
+        return False
+
+    name = _known_hosts_name(hostname, port)
+    with open(known_hosts_path, "r") as fh:
+        lines = fh.readlines()
+
+    kept = [ln for ln in lines if ln.split(" ", 1)[0] != name]
+    if len(kept) == len(lines):
+        return False
+
+    with open(known_hosts_path, "w") as fh:
+        fh.writelines(kept)
+    return True
+
+
+def _replace_host_key(
+    hostname: str, key, known_hosts_path: str = _LABLINK_KNOWN_HOSTS, port: int = 22
+):
+    """Trust a new key for a host that already has a different one stored."""
+    _forget_host_key(hostname, known_hosts_path, port)
+    _save_host_key(hostname, key, known_hosts_path, port)
+
+
+try:
+    import paramiko
+
+    class _LabLinkHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+        """Reject unknown host keys and store the offending key for later inspection."""
+
+        def __init__(self):
+            self._unknown: Dict[str, object] = {}  # hostname -> key
+
+        @staticmethod
+        def _bare_host(hostname: str) -> str:
+            """Strip paramiko's "[host]:port" form down to just the host.
+
+            paramiko only brackets the host when the port is not 22, so a
+            caller looking up by plain hostname would miss the entry on any
+            non-standard port.
+            """
+            if hostname.startswith("[") and "]:" in hostname:
+                return hostname[1:hostname.index("]:")]
+            return hostname
+
+        def missing_host_key(self, client, hostname, key):
+            # Store under both the form paramiko used and the bare host, so a
+            # lookup by either succeeds.
+            self._unknown[hostname] = key
+            self._unknown[self._bare_host(hostname)] = key
+            fingerprint = _host_key_fingerprint(key)
+            raise paramiko.ssh_exception.SSHException(
+                f"Unknown host key for {hostname}\n"
+                f"Fingerprint ({key.get_name()}): {fingerprint}\n"
+                "Run 'Test Connection' to verify and accept this host key."
+            )
+
+        def get_unknown_key(self, hostname):
+            key = self._unknown.get(hostname)
+            if key is None:
+                key = self._unknown.get(self._bare_host(hostname))
+            return key
+
+except ImportError:
+    _LabLinkHostKeyPolicy = None
 
 try:
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -20,6 +149,133 @@ except ImportError:
     PYQT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+class ServiceStatusMonitorThread(QThread):
+    """Thread for monitoring systemd service status after deployment."""
+
+    status_update = pyqtSignal(str)  # Service status output
+    finished = pyqtSignal()  # Monitoring finished
+
+    def __init__(self, ssh_config: Dict, service_name: str = "lablink-docker.service"):
+        """Initialize service status monitor thread.
+
+        Args:
+            ssh_config: SSH connection configuration
+            service_name: Name of systemd service to monitor
+        """
+        super().__init__()
+        self.config = ssh_config
+        self.service_name = service_name
+        self._stop_requested = False
+
+    def run(self):
+        """Monitor service status and emit updates."""
+        try:
+            import paramiko
+            import time
+
+            # Extract configuration
+            host = self.config["host"]
+            port = self.config["port"]
+            username = self.config["username"]
+            auth_method = self.config["auth_method"]
+            password = self.config.get("password")
+            key_file = self.config.get("key_file")
+
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            import socket as sock
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    resolved_host = sock.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host} for status monitoring")
+                except sock.gaierror as e:
+                    self.status_update.emit(f"❌ Cannot resolve hostname {host}: {e}")
+                    self.finished.emit()
+                    return
+
+            # Create SSH client with TOFU host key verification
+            ssh = paramiko.SSHClient()
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(_LabLinkHostKeyPolicy())
+
+            # Connect
+            try:
+                if auth_method == "password":
+                    ssh.connect(
+                        resolved_host,
+                        port=port,
+                        username=username,
+                        password=password,
+                        timeout=15,
+                    )
+                elif auth_method == "key":
+                    key_path = Path(key_file).expanduser()
+                    ssh.connect(
+                        resolved_host,
+                        port=port,
+                        username=username,
+                        key_filename=str(key_path),
+                        timeout=15,
+                    )
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    self.status_update.emit(
+                        f"❌ {msg}\n\nUse 'Test Connection' on the connection page to verify and accept this host."
+                    )
+                else:
+                    self.status_update.emit(f"❌ SSH error: {e}")
+                self.finished.emit()
+                return
+            except Exception as e:
+                self.status_update.emit(f"❌ Failed to connect: {e}")
+                self.finished.emit()
+                return
+
+            # Show initial status
+            status_cmd = f"sudo systemctl status {self.service_name} --no-pager -l"
+            stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+            output = stdout.read().decode()
+            error_output = stderr.read().decode()
+
+            if exit_code != 0 and not output:
+                # systemctl status returns non-zero for inactive services, but still provides output
+                # If there's no output at all, something is wrong
+                if error_output:
+                    self.status_update.emit(f"❌ Error getting service status: {error_output}")
+                else:
+                    self.status_update.emit(f"⚠️ Service status command returned exit code {exit_code}")
+
+            if output:
+                self.status_update.emit(output)
+
+            # Monitor for a few seconds to catch any changes
+            for i in range(3):
+                if self._stop_requested:
+                    break
+                time.sleep(2)
+
+                # Get updated status
+                stdin, stdout, stderr = ssh.exec_command(status_cmd, get_pty=True)
+                exit_code = stdout.channel.recv_exit_status()
+                output = stdout.read().decode()
+
+                if output:
+                    self.status_update.emit("\n--- Updated status ---\n" + output)
+
+            ssh.close()
+            self.finished.emit()
+
+        except Exception as e:
+            self.status_update.emit(f"❌ Status monitoring error: {e}")
+            self.finished.emit()
+
+    def request_stop(self):
+        """Request thread to stop."""
+        self._stop_requested = True
 
 
 class DeploymentThread(QThread):
@@ -61,15 +317,28 @@ class DeploymentThread(QThread):
 
             self.progress.emit(5, "Connecting to remote host...")
 
-            # Create SSH client
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            import socket as sock
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    self.progress.emit(6, f"Resolving {host}...")
+                    resolved_host = sock.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host}")
+                except sock.gaierror as e:
+                    self.finished.emit(False, f"Cannot resolve hostname {host}: {e}")
+                    return
+
+            # Create SSH client with TOFU host key verification
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(_LabLinkHostKeyPolicy())
 
             # Connect
             try:
                 if auth_method == "password":
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         password=password,
@@ -78,7 +347,7 @@ class DeploymentThread(QThread):
                 elif auth_method == "key":
                     key_path = Path(key_file).expanduser()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         key_filename=str(key_path),
@@ -86,6 +355,16 @@ class DeploymentThread(QThread):
                     )
                 else:
                     raise ValueError(f"Unknown auth method: {auth_method}")
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    self.finished.emit(
+                        False,
+                        f"{msg}\n\nUse 'Test Connection' on the connection page to verify and accept this host key.",
+                    )
+                else:
+                    self.finished.emit(False, f"SSH error: {e}")
+                return
             except Exception as e:
                 self.finished.emit(False, f"Connection failed: {e}")
                 return
@@ -95,6 +374,31 @@ class DeploymentThread(QThread):
                 return
 
             self.progress.emit(10, "Connected successfully")
+
+            # Leave the server reachable without a password. We are already
+            # authenticated here, so this is the one moment it costs nothing;
+            # afterwards the remote update can run with its output captured,
+            # where a password prompt could never be answered. Failing to
+            # install it is not worth failing a deployment over -- the update
+            # will offer to set it up later.
+            try:
+                from client.utils.ssh_access import public_key_text
+
+                pub = public_key_text()
+                if pub:
+                    quoted = shlex.quote(pub)
+                    _, out, _ = ssh.exec_command(
+                        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+                        "touch ~/.ssh/authorized_keys && "
+                        "chmod 600 ~/.ssh/authorized_keys && "
+                        f"grep -qxF {quoted} ~/.ssh/authorized_keys || "
+                        f"echo {quoted} >> ~/.ssh/authorized_keys",
+                        timeout=30,
+                    )
+                    if out.channel.recv_exit_status() == 0:
+                        self.progress.emit(12, "Passwordless access set up")
+            except Exception as e:
+                logger.warning(f"Could not install the SSH key: {e}")
 
             # Fetch initial system stats
             try:
@@ -107,7 +411,14 @@ class DeploymentThread(QThread):
 
             # Create remote directory
             self.progress.emit(15, f"Creating remote directory: {server_path}")
-            stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {server_path}")
+
+            # Use sudo for /opt paths (requires elevated permissions)
+            if server_path.startswith("/opt"):
+                mkdir_cmd = f"sudo mkdir -p {server_path} && sudo chown {username}:{username} {server_path}"
+            else:
+                mkdir_cmd = f"mkdir -p {server_path}"
+
+            stdin, stdout, stderr = ssh.exec_command(mkdir_cmd, get_pty=True)
             exit_code = stdout.channel.recv_exit_status()
             if exit_code != 0:
                 error = stderr.read().decode()
@@ -119,16 +430,25 @@ class DeploymentThread(QThread):
                 ssh.close()
                 return
 
-            # Copy server files using tar+ssh (much faster than SCP)
-            self.progress.emit(20, "Copying server files...")
+            # How the code gets there. Cloning is the default because it
+            # leaves a git checkout behind, which is what every later update
+            # needs; sending the working tree is for testing uncommitted work
+            # and produces a server that cannot update itself.
+            source_mode = self.config.get("source_mode", "clone")
 
             try:
-                source = Path(source_path)
-                if source.is_dir():
-                    # Use tar+ssh for fast transfer (10-20x faster than SCP)
-                    self._copy_files_tar(ssh, source, server_path, deployment_mode)
+                if source_mode == "clone":
+                    ref = self.config.get("ref", "main")
+                    self.progress.emit(20, f"Cloning {ref} on the remote...")
+                    described = self._clone_on_remote(ssh, server_path, ref)
+                    self.progress.emit(35, f"Remote is at {described}")
+                else:
+                    self.progress.emit(20, "Copying working tree (no git checkout)...")
+                    source = Path(source_path)
+                    if source.is_dir():
+                        self._copy_files_tar(ssh, source, server_path, deployment_mode)
             except Exception as e:
-                self.finished.emit(False, f"Failed to copy files: {e}")
+                self.finished.emit(False, f"Failed to place server files: {e}")
                 ssh.close()
                 return
 
@@ -181,6 +501,49 @@ class DeploymentThread(QThread):
             logger.exception("Deployment failed")
             self.finished.emit(False, f"Deployment failed: {e}")
 
+    def _clone_on_remote(self, ssh, server_path, ref="main"):
+        """Put a git checkout of `ref` at `server_path` on the remote.
+
+        The wizard used to tar the local tree across with ``--exclude=.git``,
+        which is why a deployed Pi had no checkout -- and without one it can
+        never update itself: lablink-update.sh, the diagnostics and the
+        client's remote update all need something to fetch into. Cloning is
+        also far less to send, since the remote pulls from GitHub directly.
+
+        An existing ``.env`` is left alone: it is not in git, it holds the
+        JWT secret and the database password, and losing it would take the
+        server down with no way back.
+        """
+        quoted = shlex.quote(server_path)
+        quoted_ref = shlex.quote(ref)
+
+        script = (
+            f"set -e; "
+            f"if [ -d {quoted}/.git ]; then "
+            f"  cd {quoted} && sudo git fetch --all --tags --prune && "
+            f"  sudo git checkout {quoted_ref}; "
+            f"else "
+            f"  sudo mkdir -p {quoted}; "
+            f"  sudo git clone https://github.com/X9X0/LabLink.git /tmp/lablink-clone; "
+            f"  cd /tmp/lablink-clone && sudo git checkout {quoted_ref}; "
+            # Move the checkout in around whatever is already there, so a
+            # previous .env survives.
+            f"  sudo cp -a /tmp/lablink-clone/.git {quoted}/.git; "
+            f"  sudo rm -rf /tmp/lablink-clone; "
+            f"  cd {quoted} && sudo git reset --hard {quoted_ref}; "
+            f"fi; "
+            f"cd {quoted} && git describe --tags --always"
+        )
+
+        _, out, err = ssh.exec_command(script, timeout=300)
+        output = out.read().decode().strip()
+        error = err.read().decode().strip()
+        status = out.channel.recv_exit_status()
+        if status != 0:
+            raise RuntimeError(f"Remote clone failed: {error or output}")
+        return output
+
+
     def _copy_files_tar(self, ssh, source, server_path, deployment_mode):
         """Copy files using tar+ssh for fast transfer.
 
@@ -218,15 +581,31 @@ class DeploymentThread(QThread):
             self.progress.emit(35, f"Transferring {file_size_mb:.1f} MB...")
 
             # Transfer via SCP (single file is much faster)
+            # For /opt paths, upload to /tmp first (no sudo required), then move with sudo
             from scp import SCPClient
-            with SCPClient(ssh.get_transport()) as scp:
+            import time
+            timestamp = int(time.time())
+
+            if server_path.startswith("/opt"):
+                # Upload to /tmp first (user-writable)
+                remote_tar = f"/tmp/lablink-deploy-{timestamp}.tar.gz"
+            else:
+                # Upload directly to destination
                 remote_tar = f"{server_path}.tar.gz"
+
+            with SCPClient(ssh.get_transport()) as scp:
                 scp.put(tar_path, remote_tar)
 
             self.progress.emit(50, "Extracting files on remote...")
 
             # Extract on remote (extract TO server_path)
-            extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+            # Note: server_path should already exist from earlier mkdir, but add mkdir -p for safety
+            # Use sudo for /opt paths
+            if server_path.startswith("/opt"):
+                extract_cmd = f"sudo mkdir -p {server_path} && sudo tar xzf {remote_tar} -C {server_path} && sudo chown -R $USER:$USER {server_path} && rm {remote_tar}"
+            else:
+                extract_cmd = f"mkdir -p {server_path} && tar xzf {remote_tar} -C {server_path} && rm {remote_tar}"
+
             stdin, stdout, stderr = ssh.exec_command(extract_cmd, get_pty=True)
             exit_code = stdout.channel.recv_exit_status()
 
@@ -278,6 +657,10 @@ class DeploymentThread(QThread):
     def _deploy_docker(self, ssh, server_path, username):
         """Deploy using Docker Compose."""
 
+        # OPTION A: Clean up old Python-mode systemd service if it exists
+        self.progress.emit(79, "Cleaning up old services...")
+        self._cleanup_old_python_service(ssh)
+
         # Check if previous deployment exists
         self.progress.emit(80, "Checking for existing deployment...")
         check_cmd = f"cd {server_path} && docker compose ps -q 2>/dev/null"
@@ -299,11 +682,16 @@ class DeploymentThread(QThread):
 
         self.progress.emit(82, "Generating .env file...")
 
+        # Get hostname from remote Pi
+        stdin, stdout, stderr = ssh.exec_command("hostname", get_pty=True)
+        hostname = stdout.read().decode().strip()
+        logger.info(f"Remote Pi hostname: {hostname}")
+
         # Generate JWT secret
         import secrets
         jwt_secret = secrets.token_urlsafe(32)
 
-        env_content = self._generate_env_file(jwt_secret)
+        env_content = self._generate_env_file(jwt_secret, hostname)
 
         # Write .env file
         env_path = f"{server_path}/.env"
@@ -370,8 +758,118 @@ class DeploymentThread(QThread):
 
         self.progress.emit(99, "Docker containers started successfully!")
 
+        # OPTION B: Create docker-compose systemd service for auto-start
+        self._create_docker_compose_service(ssh, server_path, username)
+
         # Install convenience commands
         self._install_convenience_commands(ssh, server_path, username)
+
+    def _cleanup_old_python_service(self, ssh):
+        """Clean up old Python-mode systemd service if it exists.
+
+        Args:
+            ssh: Active SSH connection
+        """
+        try:
+            logger.info("Checking for old Python-mode lablink.service...")
+
+            # Check if service exists
+            check_cmd = "systemctl list-unit-files lablink.service 2>/dev/null | grep -q lablink.service"
+            stdin, stdout, stderr = ssh.exec_command(check_cmd, get_pty=True)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code == 0:
+                logger.info("Found old Python-mode service, cleaning up...")
+
+                # Stop and disable the service
+                cleanup_cmds = [
+                    "sudo systemctl stop lablink.service",
+                    "sudo systemctl disable lablink.service",
+                    "sudo rm -f /etc/systemd/system/lablink.service",
+                    "sudo systemctl daemon-reload"
+                ]
+
+                for cmd in cleanup_cmds:
+                    stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+                    stdout.channel.recv_exit_status()  # Wait for completion
+
+                logger.info("Old Python-mode service removed successfully")
+            else:
+                logger.info("No old Python-mode service found")
+
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old service (non-fatal): {e}")
+            # Don't fail deployment if cleanup fails
+
+    def _create_docker_compose_service(self, ssh, server_path, username):
+        """Create systemd service for Docker Compose auto-start.
+
+        Args:
+            ssh: Active SSH connection
+            server_path: Path to server deployment
+            username: User to run service as
+        """
+        try:
+            logger.info("Creating docker-compose systemd service...")
+
+            service_content = f"""[Unit]
+Description=LabLink Docker Compose
+Documentation=https://github.com/X9X0/LabLink
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={server_path}
+User={username}
+
+# Start containers
+ExecStart=/usr/bin/docker compose up -d
+
+# Stop containers
+ExecStop=/usr/bin/docker compose down
+
+# Restart = restart containers
+ExecReload=/usr/bin/docker compose restart
+
+# Don't restart on failure (Docker Compose handles container restarts)
+Restart=no
+
+# Set environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+            # Write service file to temp location
+            service_path = "/tmp/lablink-docker.service"
+            service_content_escaped = service_content.replace("'", "'\\''")
+            write_cmd = f"cat > {service_path} << 'EOF'\n{service_content}\nEOF"
+            stdin, stdout, stderr = ssh.exec_command(write_cmd, get_pty=True)
+            stdout.channel.recv_exit_status()
+
+            # Install service
+            install_cmds = [
+                f"sudo mv {service_path} /etc/systemd/system/lablink-docker.service",
+                "sudo systemctl daemon-reload",
+                "sudo systemctl enable lablink-docker.service",
+                "sudo systemctl start lablink-docker.service"  # Start the service immediately
+            ]
+
+            for cmd in install_cmds:
+                stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+                exit_code = stdout.channel.recv_exit_status()
+                if exit_code != 0:
+                    error = stderr.read().decode().strip()
+                    logger.warning(f"Service install warning: {error}")
+
+            logger.info("Docker Compose systemd service created and enabled")
+
+        except Exception as e:
+            logger.warning(f"Failed to create docker-compose service (non-fatal): {e}")
+            # Don't fail deployment if service creation fails
 
     def _install_diagnostic_script(self, ssh, server_path):
         """Install Pi diagnostic script to /opt/lablink/.
@@ -381,6 +879,14 @@ class DeploymentThread(QThread):
             server_path: Path to server deployment on Pi
         """
         try:
+            # If deploying directly to /opt/lablink, script is already there
+            if server_path == "/opt/lablink":
+                logger.info("Deployment to /opt/lablink - diagnostic script already in place")
+                # Just ensure it's executable
+                chmod_cmd = f"sudo chmod +x {server_path}/diagnose-pi.sh"
+                ssh.exec_command(chmod_cmd, get_pty=True)
+                return
+
             # Create /opt/lablink directory with sudo
             logger.info("Creating /opt/lablink directory...")
             ssh.exec_command("sudo mkdir -p /opt/lablink", get_pty=True)
@@ -440,6 +946,7 @@ lablink-help() {{
     echo ""
     echo "Status & Monitoring:"
     echo "  lablink-status      - Show container status"
+    echo "  lablink-version     - Show version and git commit info"
     echo "  lablink-logs        - View all logs (follow mode)"
     echo "  lablink-logs-server - View server logs only"
     echo "  lablink-logs-web    - View web dashboard logs only"
@@ -554,20 +1061,25 @@ fi"""
             filename_str = filename.decode('utf-8') if isinstance(filename, bytes) else filename
             self.progress.emit(overall_percent, f"Copying: {Path(filename_str).name}")
 
-    def _generate_env_file(self, jwt_secret: str) -> str:
+    def _generate_env_file(self, jwt_secret: str, hostname: str = None) -> str:
         """Generate .env file content for Docker deployment.
 
         Args:
             jwt_secret: Generated JWT secret key
+            hostname: Host system hostname (optional)
 
         Returns:
             .env file content
         """
+        # Use hostname if provided, otherwise default to "LabLink Server"
+        server_name = hostname if hostname else "LabLink Server"
+
         return f"""# LabLink Server Configuration
 # Generated by SSH Deployment Wizard
 
 # Server
 LABLINK_VERSION=latest
+LABLINK_SERVER_NAME={server_name}
 LABLINK_API_PORT=8000
 LABLINK_WS_PORT=8001
 LABLINK_WEB_PORT=80
@@ -822,6 +1334,7 @@ class ConnectionPage(QWizardPage):
         """Test SSH connection."""
         try:
             import paramiko
+            import socket
 
             host = self.host_edit.text()
             port = self.port_spin.value()
@@ -833,14 +1346,27 @@ class ConnectionPage(QWizardPage):
 
             self.test_result_label.setText("Testing...")
 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Pre-resolve .local hostnames (paramiko doesn't support mDNS natively)
+            resolved_host = host
+            if host.endswith('.local'):
+                try:
+                    self.test_result_label.setText("Resolving .local hostname...")
+                    resolved_host = socket.gethostbyname(host)
+                    logger.info(f"Resolved {host} to {resolved_host}")
+                except socket.gaierror as e:
+                    self.test_result_label.setText(f"❌ Cannot resolve {host}: {e}")
+                    return
 
-            try:
+            policy = _LabLinkHostKeyPolicy()
+            ssh = paramiko.SSHClient()
+            _load_known_hosts(ssh)
+            ssh.set_missing_host_key_policy(policy)
+
+            def _attempt_connect():
                 if self.password_radio.isChecked():
                     password = self.password_edit.text()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         password=password,
@@ -850,15 +1376,117 @@ class ConnectionPage(QWizardPage):
                     key_file = self.key_edit.text()
                     key_path = Path(key_file).expanduser()
                     ssh.connect(
-                        host,
+                        resolved_host,
                         port=port,
                         username=username,
                         key_filename=str(key_path),
                         timeout=10,
                     )
 
+            try:
+                _attempt_connect()
                 ssh.close()
-                self.test_result_label.setText("✅ Connection successful!")
+                if host != resolved_host:
+                    self.test_result_label.setText(f"✅ Connection successful! ({host} → {resolved_host})")
+                else:
+                    self.test_result_label.setText("✅ Connection successful!")
+
+            except paramiko.ssh_exception.BadHostKeyException as e:
+                # A *changed* key, which paramiko raises before consulting the
+                # missing-host-key policy -- so the accept dialog above never
+                # fires and a reimaged Pi is otherwise a dead end. Reimaging
+                # is the ordinary cause and the user should be able to say so,
+                # but interception looks identical from here, so both
+                # fingerprints are shown and the default is No.
+                from PyQt6.QtWidgets import QMessageBox
+
+                reply = QMessageBox.warning(
+                    self,
+                    "Host key has changed",
+                    f"The host key for <b>{host}</b> is not the one previously "
+                    "trusted.\n\n"
+                    f"Previously trusted: {_host_key_fingerprint(e.expected_key)}\n"
+                    f"Now offered:        {_host_key_fingerprint(e.key)}\n\n"
+                    "If you have just reimaged this Pi, this is expected: a new "
+                    "image has a new key.\n\n"
+                    "If you have not, do not accept. Something else may be "
+                    "answering on this address.\n\n"
+                    "Replace the stored key?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.test_result_label.setText(
+                        "❌ Connection aborted — changed host key rejected"
+                    )
+                    return
+
+                _replace_host_key(resolved_host, e.key, port=port)
+                if host != resolved_host:
+                    _replace_host_key(host, e.key, port=port)
+                try:
+                    ssh3 = paramiko.SSHClient()
+                    _load_known_hosts(ssh3)
+                    ssh3.set_missing_host_key_policy(paramiko.RejectPolicy())
+                    if self.password_radio.isChecked():
+                        ssh3.connect(resolved_host, port=port, username=username,
+                                     password=self.password_edit.text(), timeout=10)
+                    else:
+                        ssh3.connect(resolved_host, port=port, username=username,
+                                     key_filename=str(Path(self.key_edit.text()).expanduser()),
+                                     timeout=10)
+                    ssh3.close()
+                    self.test_result_label.setText(
+                        "✅ New host key accepted and connection successful!"
+                    )
+                except Exception as e3:
+                    self.test_result_label.setText(
+                        f"❌ Connection failed after key replacement: {e3}"
+                    )
+            except paramiko.ssh_exception.SSHException as e:
+                msg = str(e)
+                if "Unknown host key" in msg:
+                    # TOFU: present fingerprint and ask user to confirm
+                    unknown_key = policy.get_unknown_key(resolved_host)
+                    if unknown_key:
+                        fingerprint = _host_key_fingerprint(unknown_key)
+                        from PyQt6.QtWidgets import QMessageBox
+                        reply = QMessageBox.question(
+                            self,
+                            "Unknown Host Key",
+                            f"The host key for <b>{host}</b> is not in your known hosts.\n\n"
+                            f"Key type: {unknown_key.get_name()}\n"
+                            f"Fingerprint: {fingerprint}\n\n"
+                            "Verify this fingerprint out-of-band before accepting.\n\n"
+                            "Do you want to trust and save this host key?",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.No,
+                        )
+                        if reply == QMessageBox.StandardButton.Yes:
+                            _save_host_key(resolved_host, unknown_key, port=port)
+                            if host != resolved_host:
+                                _save_host_key(host, unknown_key, port=port)
+                            # Retry with accepted key now in known_hosts
+                            try:
+                                ssh2 = paramiko.SSHClient()
+                                _load_known_hosts(ssh2)
+                                ssh2.set_missing_host_key_policy(paramiko.RejectPolicy())
+                                if self.password_radio.isChecked():
+                                    ssh2.connect(resolved_host, port=port, username=username,
+                                                 password=self.password_edit.text(), timeout=10)
+                                else:
+                                    ssh2.connect(resolved_host, port=port, username=username,
+                                                 key_filename=str(Path(self.key_edit.text()).expanduser()), timeout=10)
+                                ssh2.close()
+                                self.test_result_label.setText("✅ Host key accepted and connection successful!")
+                            except Exception as e2:
+                                self.test_result_label.setText(f"❌ Connection failed after key acceptance: {e2}")
+                        else:
+                            self.test_result_label.setText("❌ Connection aborted — host key rejected by user")
+                    else:
+                        self.test_result_label.setText(f"❌ Unknown host key error: {msg}")
+                else:
+                    self.test_result_label.setText(f"❌ SSH error: {e}")
             except Exception as e:
                 self.test_result_label.setText(f"❌ Connection failed: {e}")
 
@@ -897,7 +1525,7 @@ class DeploymentOptionsPage(QWizardPage):
 
         # Remote server path
         self.server_path_edit = QLineEdit()
-        self.server_path_edit.setPlaceholderText("/home/<username>/lablink")
+        self.server_path_edit.setPlaceholderText("/opt/lablink (Docker) or /home/<username>/lablink (Python)")
         self.registerField("server_path*", self.server_path_edit)
         layout.addRow("Remote Server Path:", self.server_path_edit)
 
@@ -928,6 +1556,50 @@ class DeploymentOptionsPage(QWizardPage):
 
         mode_group.setLayout(mode_layout)
         layout.addRow(mode_group)
+
+        # Where the code comes from. This decides whether the deployed server
+        # can ever update itself: the working-tree transfer excludes .git, and
+        # without a checkout lablink-update.sh and the client's remote update
+        # have nothing to fetch into.
+        source_group = QGroupBox("Source")
+        source_layout = QVBoxLayout()
+
+        self.source_button_group = QButtonGroup(self)
+
+        self.clone_radio = QRadioButton("Clone from GitHub (Recommended)")
+        self.clone_radio.setChecked(True)
+        self.source_button_group.addButton(self.clone_radio, 0)
+        source_layout.addWidget(self.clone_radio)
+
+        clone_desc = QLabel(
+            "  • The server gets a git checkout and can update itself\n"
+            "  • Far less to send: the remote pulls from GitHub directly"
+        )
+        clone_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        source_layout.addWidget(clone_desc)
+
+        ref_row = QHBoxLayout()
+        ref_row.addWidget(QLabel("  Version or branch:"))
+        self.ref_input = QLineEdit("main")
+        self.ref_input.setToolTip("A tag such as v2.1.1 pins the server to a release.")
+        ref_row.addWidget(self.ref_input)
+        source_layout.addLayout(ref_row)
+
+        self.worktree_radio = QRadioButton("Send this working tree (for testing)")
+        self.source_button_group.addButton(self.worktree_radio, 1)
+        source_layout.addWidget(self.worktree_radio)
+
+        worktree_desc = QLabel(
+            "  • Deploys uncommitted local changes\n"
+            "  • No git checkout, so this server CANNOT update itself"
+        )
+        worktree_desc.setStyleSheet("color: gray; margin-left: 20px;")
+        source_layout.addWidget(worktree_desc)
+
+        self.clone_radio.toggled.connect(self.ref_input.setEnabled)
+
+        source_group.setLayout(source_layout)
+        layout.addRow(source_group)
 
         # Options
         options_group = QGroupBox("Installation Options")
@@ -970,13 +1642,18 @@ class DeploymentOptionsPage(QWizardPage):
         return has_source and has_server_path
 
     def initializePage(self):
-        """Initialize page when shown - set default remote path based on username."""
+        """Initialize page when shown - set default remote path based on deployment mode."""
         wizard = self.wizard()
         username = wizard.field("username")
 
-        # Set default remote path based on username if field is empty
+        # Set default remote path based on deployment mode if field is empty
         if not self.server_path_edit.text():
-            self.server_path_edit.setText(f"/home/{username}/lablink")
+            if self.docker_radio.isChecked():
+                # Docker mode: use /opt/lablink (production-style path)
+                self.server_path_edit.setText("/opt/lablink")
+            else:
+                # Python mode: use home directory (no sudo required)
+                self.server_path_edit.setText(f"/home/{username}/lablink")
 
     def _on_mode_changed(self):
         """Handle deployment mode change."""
@@ -986,6 +1663,19 @@ class DeploymentOptionsPage(QWizardPage):
         self.install_docker_check.setEnabled(use_docker)
         self.install_deps_check.setEnabled(not use_docker)
         self.setup_service_check.setEnabled(not use_docker)
+
+        # Update default path based on mode (only if user hasn't customized it)
+        current_path = self.server_path_edit.text()
+        wizard = self.wizard()
+        username = wizard.field("username") if wizard else "admin"
+
+        # Check if path matches the default for the OTHER mode
+        if use_docker and current_path == f"/home/{username}/lablink":
+            # Switching to Docker from Python - change to /opt/lablink
+            self.server_path_edit.setText("/opt/lablink")
+        elif not use_docker and current_path == "/opt/lablink":
+            # Switching to Python from Docker - change to home directory
+            self.server_path_edit.setText(f"/home/{username}/lablink")
 
     def _browse_source(self):
         """Browse for source directory."""
@@ -1008,7 +1698,9 @@ class DeploymentProgressPage(QWizardPage):
         self.setSubTitle("Please wait while the server is deployed...")
 
         self.deployment_thread: Optional[DeploymentThread] = None
+        self.service_monitor_thread: Optional[ServiceStatusMonitorThread] = None
         self.deployment_successful = False
+        self.ssh_config = None
 
         layout = QVBoxLayout(self)
 
@@ -1061,6 +1753,17 @@ class DeploymentProgressPage(QWizardPage):
         self.log_output.setFont(QFont("Monospace", 9))
         layout.addWidget(self.log_output)
 
+        # Service status indicator (visible from start)
+        status_indicator_layout = QHBoxLayout()
+        status_indicator_layout.addWidget(QLabel("Service Status:"))
+
+        self.service_status_indicator = QLabel("● Unknown")
+        self.service_status_indicator.setStyleSheet("color: gray; font-weight: bold;")
+        status_indicator_layout.addWidget(self.service_status_indicator)
+        status_indicator_layout.addStretch()
+
+        layout.addLayout(status_indicator_layout)
+
         layout.addStretch()
 
     def initializePage(self):
@@ -1088,6 +1791,18 @@ class DeploymentProgressPage(QWizardPage):
             "source_path": str(wizard.field("source_path")),
             "server_path": str(wizard.field("server_path")),
             "deployment_mode": "docker" if wizard.page(1).docker_radio.isChecked() else "python",
+            # Clone unless the user explicitly asked to send the working tree.
+            # getattr, because an older page that has no such control should
+            # get the behaviour that leaves a usable server behind.
+            "source_mode": (
+                "worktree"
+                if getattr(wizard.page(1), "worktree_radio", None) is not None
+                and wizard.page(1).worktree_radio.isChecked()
+                else "clone"
+            ),
+            "ref": getattr(wizard.page(1), "ref_input", None).text().strip()
+            if getattr(wizard.page(1), "ref_input", None) is not None
+            else "main",
             "install_docker": wizard.field("install_docker"),
             "install_deps": wizard.field("install_deps"),
             "setup_service": wizard.field("setup_service"),
@@ -1102,6 +1817,16 @@ class DeploymentProgressPage(QWizardPage):
         Args:
             config: Deployment configuration
         """
+        # Store SSH config for later use (log monitoring)
+        self.ssh_config = {
+            "host": config["host"],
+            "port": config["port"],
+            "username": config["username"],
+            "auth_method": config["auth_method"],
+            "password": config.get("password"),
+            "key_file": config.get("key_file"),
+        }
+
         self.deployment_thread = DeploymentThread(config)
         self.deployment_thread.progress.connect(self._on_progress)
         self.deployment_thread.stats.connect(self._on_stats_update)
@@ -1147,16 +1872,68 @@ class DeploymentProgressPage(QWizardPage):
 
         if success:
             self.status_label.setText("✅ " + message)
-            self.log_output.append("")
-            self.log_output.append("=== Deployment Completed Successfully ===")
+
+            # Start service status monitoring
+            self._start_status_monitoring()
         else:
             self.status_label.setText("❌ " + message)
             self.log_output.append("")
             self.log_output.append(f"=== Deployment Failed: {message} ===")
+            self.service_status_indicator.setText("● Failed")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
 
         # Enable the Finish button
         self.wizard().button(QWizard.WizardButton.FinishButton).setEnabled(True)
         self.completeChanged.emit()
+
+    def _start_status_monitoring(self):
+        """Start monitoring service status."""
+        if not self.ssh_config:
+            return
+
+        # Update indicator to checking state
+        self.service_status_indicator.setText("● Checking...")
+        self.service_status_indicator.setStyleSheet("color: orange; font-weight: bold;")
+
+        # Start service status monitoring thread
+        self.service_monitor_thread = ServiceStatusMonitorThread(self.ssh_config)
+        self.service_monitor_thread.status_update.connect(self._on_status_update)
+        self.service_monitor_thread.finished.connect(self._on_status_monitoring_finished)
+        self.service_monitor_thread.start()
+
+    def _on_status_update(self, status: str):
+        """Handle service status update.
+
+        Args:
+            status: Service status text
+        """
+        # Log the status for debugging
+        logger.debug(f"Service status update received: {status[:200]}...")
+
+        # Check if service is active
+        # For oneshot services with RemainAfterExit=yes, status shows "active (exited)"
+        # This is the correct/expected state for docker-compose services
+        if "Active: active" in status or "Active: \x1b[0;1;32mactive" in status:
+            self.service_status_indicator.setText("● Operational")
+            self.service_status_indicator.setStyleSheet("color: green; font-weight: bold;")
+            logger.info("Service detected as operational")
+        elif "Active: inactive" in status or "Active: failed" in status or "Active: \x1b[0;1;31mfailed" in status:
+            self.service_status_indicator.setText("● Not Running")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
+            logger.warning("Service detected as not running or failed")
+        elif "could not be found" in status or "could not find" in status:
+            self.service_status_indicator.setText("● Service Not Found")
+            self.service_status_indicator.setStyleSheet("color: red; font-weight: bold;")
+            logger.error("Service not found on system")
+        else:
+            logger.debug(f"Service status not recognized, keeping current state")
+
+    def _on_status_monitoring_finished(self):
+        """Handle status monitoring completion."""
+        # If still checking, update to unknown
+        if "Checking" in self.service_status_indicator.text():
+            self.service_status_indicator.setText("● Unknown")
+            self.service_status_indicator.setStyleSheet("color: gray; font-weight: bold;")
 
     def isComplete(self):
         """Check if page is complete."""
@@ -1171,6 +1948,10 @@ class DeploymentProgressPage(QWizardPage):
             self.deployment_thread.request_stop()
             self.deployment_thread.wait(5000)
 
+        if self.service_monitor_thread and self.service_monitor_thread.isRunning():
+            self.service_monitor_thread.request_stop()
+            self.service_monitor_thread.wait(2000)
+
 
 class SSHDeployWizard(QWizard):
     """Wizard for deploying LabLink server via SSH."""
@@ -1181,7 +1962,7 @@ class SSHDeployWizard(QWizard):
 
         self.setWindowTitle("Deploy Server via SSH")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(700, 600)
 
         # Add pages
         self.connection_page = ConnectionPage()

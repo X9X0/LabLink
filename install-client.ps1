@@ -5,14 +5,85 @@
 #   powershell -ExecutionPolicy Bypass -File install-client.ps1
 #   OR
 #   iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+#
+# This file must stay pure ASCII and BOM-free. Piping it to iex parses it as
+# a string rather than loading it as a file, and a UTF-8 BOM survives that
+# trip: the mark fuses with the first '#' so PowerShell reads it as a command
+# name, the param() block below stops being recognised, and the whole thing
+# dies on line 1 with "The term '#' is not recognized". Loading the same
+# bytes from disk is fine, which is why this went unnoticed -- so if you add
+# a box-drawing character or an accent here, the one-liner is what breaks.
 
-# Requires -Version 5.1
+#Requires -Version 5.1
+
+<#
+.SYNOPSIS
+    Installs the LabLink client on Windows.
+
+.DESCRIPTION
+    Installs Python and Git if missing, fetches LabLink, builds a virtual
+    environment with the client and server dependencies, and creates a desktop
+    shortcut plus a Start Menu folder holding the client, launcher and server.
+
+    Run with no arguments for the interactive install. The parameters exist so
+    the whole thing can be exercised against a throwaway directory: pointing
+    -InstallPath somewhere disposable means a test never goes near a real
+    install -- or near a development checkout that happens to share the default
+    location.
+
+.PARAMETER InstallPath
+    Where to install. Skips the interactive prompt when given.
+
+.PARAMETER NoShortcuts
+    Create no desktop or Start Menu shortcuts. For testing the install itself
+    without touching the user's Start Menu.
+
+.PARAMETER NoDesktopShortcut
+    Create the Start Menu entries but no desktop shortcut.
+
+.PARAMETER Unattended
+    Ask nothing. Takes the default for every prompt, including installing Git
+    when it is missing. Implies the answers, not the shortcuts: combine with
+    -NoShortcuts to leave the Start Menu alone.
+
+.PARAMETER ReplaceExistingShortcuts
+    Take over shortcuts that point at a different LabLink installation. Without
+    this, the install stops rather than overwriting them -- the Desktop and
+    Start Menu are machine-wide, so an install pointed somewhere harmless can
+    still clobber a real installation's entries.
+
+.EXAMPLE
+    .\install-client.ps1
+
+.EXAMPLE
+    # A disposable install, asking nothing and leaving the Start Menu alone
+    .\install-client.ps1 -InstallPath C:\LabLinkTest -NoShortcuts -Unattended
+#>
+
+param(
+    [string]$InstallPath,
+    [switch]$NoShortcuts,
+    [switch]$NoDesktopShortcut,
+    [switch]$Unattended,
+    [switch]$ReplaceExistingShortcuts
+)
+
+# The #Requires directive above only binds when PowerShell loads this as a
+# file. The documented install pipes this script to iex, which parses it as a
+# string and ignores the directive entirely, so the version floor has to be
+# enforced at runtime as well or the one-liner path stays ungated.
+$MinPSVersion = [Version]"5.1"
+$CurrentPSVersion = [Version]"$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
+if ($CurrentPSVersion -lt $MinPSVersion) {
+    throw "LabLink requires PowerShell $MinPSVersion or later; this session is $($PSVersionTable.PSVersion). Windows 10 and 11 ship 5.1 as powershell.exe -- run the installer with that."
+}
 
 # Configuration
-$LablinkDir = "$env:USERPROFILE\LabLink"
-$CreateDesktopShortcut = $true
-$CreateStartMenuShortcut = $true
-$PythonMinVersion = [Version]"3.8.0"
+$LablinkDir = if ($InstallPath) { $InstallPath } else { "$env:USERPROFILE\LabLink" }
+$CreateDesktopShortcut = -not ($NoShortcuts -or $NoDesktopShortcut)
+$CreateStartMenuShortcut = -not $NoShortcuts
+# LabLink 2.0 requires Python 3.12+: numpy 2.5 and scipy 1.18 both drop 3.11.
+$PythonMinVersion = [Version]"3.12.0"
 
 # Color output functions
 function Write-Step {
@@ -32,12 +103,12 @@ function Write-WarningMsg {
 
 function Write-Header {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║                                                       ║" -ForegroundColor Blue
-    Write-Host "║           LabLink Client Installation                 ║" -ForegroundColor Blue
-    Write-Host "║            Desktop GUI Application                    ║" -ForegroundColor Blue
-    Write-Host "║                                                       ║" -ForegroundColor Blue
-    Write-Host "╚═══════════════════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host "+=======================================================+" -ForegroundColor Blue
+    Write-Host "|                                                       |" -ForegroundColor Blue
+    Write-Host "|           LabLink Client Installation                 |" -ForegroundColor Blue
+    Write-Host "|            Desktop GUI Application                    |" -ForegroundColor Blue
+    Write-Host "|                                                       |" -ForegroundColor Blue
+    Write-Host "+=======================================================+" -ForegroundColor Blue
     Write-Host ""
 }
 
@@ -47,9 +118,28 @@ function Test-Administrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Invoke-Checked {
+    <#
+    Fail when the last external command failed.
+
+    There was not a single exit-code check in this script. pip would fail to
+    resolve a package, print ERROR, and the next line would announce
+    "dependencies installed" -- so an install where nothing installed reported
+    success and exited 0. A user told the install worked is worse off than one
+    told it failed.
+    #>
+    param([string]$What)
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$What failed (exit code $LASTEXITCODE). See the output above."
+    }
+}
+
 function Get-PythonVersion {
+    param([string]$Exe = "python")
+
     try {
-        $pythonVersion = python --version 2>&1
+        $pythonVersion = & $Exe --version 2>&1
         if ($pythonVersion -match "Python (\d+\.\d+\.\d+)") {
             return [Version]$Matches[1]
         }
@@ -60,11 +150,59 @@ function Get-PythonVersion {
     return $null
 }
 
-function Install-Python {
-    Write-Step "Python not found or version too old. Installing Python 3.11..."
+function Find-SuitablePython {
+    <#
+    Locate an interpreter new enough to install with, by asking each candidate
+    rather than trusting PATH order.
 
-    $pythonInstallerUrl = "https://www.python.org/ftp/python/3.11.7/python-3.11.7-amd64.exe"
-    $installerPath = "$env:TEMP\python-installer.exe"
+    PATH is not reliable here. A machine-wide Python shadows a per-user one,
+    and the installer places its own per-user: it was possible to install 3.12,
+    report success, and then build the virtual environment with the 3.10 that
+    was still first on PATH -- which is how an install came to declare success
+    over a tree whose client could not import.
+
+    Returns the path to a suitable interpreter, or $null.
+    #>
+    $candidates = @()
+
+    # Where this script's own Install-Python puts it, checked first because it
+    # is the one we most recently guaranteed.
+    $candidates += "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+
+    # The launcher reports interpreters properly, newest first.
+    try {
+        $listed = & py -0p 2>$null
+        foreach ($line in $listed) {
+            if ($line -match "([A-Za-z]:\\[^\s].*python\.exe)") {
+                $candidates += $Matches[1]
+            }
+        }
+    }
+    catch { }
+
+    # Whatever PATH offers, last rather than first.
+    try {
+        $onPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+        if ($onPath) { $candidates += $onPath }
+    }
+    catch { }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (-not (Test-Path $candidate)) { continue }
+        $version = Get-PythonVersion -Exe $candidate
+        if ($version -and $version -ge $PythonMinVersion) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Install-Python {
+    Write-Step "Python not found or older than 3.12. Installing Python 3.12..."
+
+    $pythonInstallerUrl = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
+    $installerPath = "$env:TEMP\python-3.12-installer.exe"
 
     Write-Step "Downloading Python installer..."
     Invoke-WebRequest -Uri $pythonInstallerUrl -OutFile $installerPath
@@ -74,10 +212,14 @@ function Install-Python {
 
     Remove-Item $installerPath
 
-    # Refresh PATH
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    # Refresh PATH, user entries FIRST. InstallAllUsers=0 puts Python under
+    # %LOCALAPPDATA% and PrependPath=1 prepends it to the *user* path, so
+    # putting Machine first lets an older machine-wide Python shadow the one
+    # just installed. Callers should still prefer Find-SuitablePython, which
+    # does not depend on PATH order at all.
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','User') + ';' + [System.Environment]::GetEnvironmentVariable('Path','Machine')
 
-    Write-Step "Python installed"
+    Write-Step "Python installer finished"
 }
 
 function Install-Git {
@@ -95,7 +237,7 @@ function Install-Git {
     Remove-Item $installerPath
 
     # Refresh PATH
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
 
     Write-Step "Git installed"
 }
@@ -145,22 +287,50 @@ function Install-ClientDependencies {
 
     Set-Location "$LablinkDir\client"
 
-    # Create virtual environment
+    # Build the environment with the interpreter we verified, not with whatever
+    # "python" resolves to. Those were not the same thing: a machine-wide 3.10
+    # shadowed the 3.12 this script had just installed, and the venv inherited
+    # the wrong one.
     if (-not (Test-Path "venv")) {
-        python -m venv venv
+        & $script:PythonExe -m venv venv
+        Invoke-Checked "Creating the virtual environment"
         Write-Step "Created Python virtual environment"
     }
 
-    # Activate virtual environment and install dependencies
-    & ".\venv\Scripts\Activate.ps1"
+    # Address the venv's own executables directly. Activate.ps1 edits PATH for
+    # the process, which works, but naming them leaves nothing to resolve.
+    $venvPython = "$LablinkDir\client\venv\Scripts\python.exe"
+    if (-not (Test-Path $venvPython)) {
+        throw "The virtual environment has no python.exe at $venvPython."
+    }
 
-    # Upgrade pip
-    python -m pip install --upgrade pip
+    $venvVersion = Get-PythonVersion -Exe $venvPython
+    if (-not $venvVersion -or $venvVersion -lt $PythonMinVersion) {
+        throw ("The virtual environment was built with Python $venvVersion, but " +
+               "$PythonMinVersion or newer is required. Delete " +
+               "$LablinkDir\client\venv and re-run this script.")
+    }
+    Write-Step "Virtual environment uses Python $venvVersion"
 
-    # Install requirements
-    pip install -r requirements.txt
+    & $venvPython -m pip install --upgrade pip
+    Invoke-Checked "Upgrading pip"
 
-    Write-Step "Dependencies installed"
+    & $venvPython -m pip install -r requirements.txt
+    Invoke-Checked "Installing client dependencies"
+    Write-Step "Client dependencies installed"
+
+    # The Start Menu offers a Server entry, so the server's dependencies have
+    # to be here too -- a shortcut that opens nothing is worse than no
+    # shortcut. This is ~20 further packages (fastapi, uvicorn, pyvisa and so
+    # on) on top of the client's.
+    Write-Step "Installing server dependencies (to run the server on this machine)..."
+    & $venvPython -m pip install -r "$LablinkDir\shared\requirements.txt"
+    Invoke-Checked "Installing shared dependencies"
+
+    & $venvPython -m pip install -r "$LablinkDir\server\requirements.txt"
+    Invoke-Checked "Installing server dependencies"
+
+    Write-Step "Server dependencies installed"
 }
 
 function Create-LauncherScript {
@@ -168,16 +338,141 @@ function Create-LauncherScript {
 
     $launcherPath = "$LablinkDir\lablink-client.bat"
 
-    $batchContent = @"
+    $batchContent = @'
 @echo off
-cd /d "%~dp0client"
-call venv\Scripts\activate.bat
-python main.py %*
-"@
+REM LabLink Launcher
+REM This batch file activates the virtual environment and runs the LabLink launcher
 
-    Set-Content -Path $launcherPath -Value $batchContent
+REM Change to LabLink root directory (handles spaces in path)
+cd /d "%~dp0"
 
-    Write-Step "Launcher script created: $launcherPath"
+REM Check if virtual environment exists
+if not exist "client\venv\Scripts\activate.bat" (
+    echo ERROR: Virtual environment not found!
+    echo Please run install-client.bat again.
+    pause
+    exit /b 1
+)
+
+REM Activate virtual environment
+call "client\venv\Scripts\activate.bat"
+if errorlevel 1 (
+    echo ERROR: Failed to activate virtual environment!
+    pause
+    exit /b 1
+)
+
+REM Set PYTHONPATH to LabLink root so Python can find the client module
+set PYTHONPATH=%~dp0
+
+REM Run LabLink launcher from root directory
+python lablink.py %*
+'@
+
+    # lablink-client.bat is committed to the repository, so a clone already has
+    # it. Rewriting it is not merely redundant: Set-Content does not reproduce
+    # the line endings checkout produced, so `git status` then reports a
+    # modified tracked file in every fresh install. The uninstaller refuses
+    # -Force on a dirty tree -- correctly, since that is how it avoids deleting
+    # somebody's uncommitted work -- so the installer was quietly breaking the
+    # documented uninstall path with a difference that is not a real edit.
+    #
+    # Compare content with line endings normalised, and write only when it
+    # would actually change something.
+    $normalised = {
+        param([string]$Text)
+        ($Text -replace "`r`n", "`n").TrimEnd("`n")
+    }
+
+    $needsWrite = $true
+    if (Test-Path $launcherPath) {
+        $existing = Get-Content -Path $launcherPath -Raw
+        if ((& $normalised $existing) -eq (& $normalised $batchContent)) {
+            $needsWrite = $false
+        }
+    }
+
+    if ($needsWrite) {
+        Set-Content -Path $launcherPath -Value $batchContent
+        Write-Step "Launcher script written: $launcherPath"
+    }
+    else {
+        Write-Step "Launcher script already up to date: $launcherPath"
+    }
+}
+
+function New-LabLinkShortcut {
+    param(
+        [string]$Path,
+        [string]$Target,
+        [string]$Description
+    )
+
+    # Point at pythonw.exe rather than a .bat file. Windows opens a console
+    # window for any batch file, and python.exe attaches one of its own, so
+    # either would leave a black window sitting behind the GUI for the whole
+    # session. pythonw.exe has no console at all.
+    #
+    # That is why lablink_launch.pyw exists: with no console there is nowhere
+    # for a traceback to go, so it catches startup failures and shows them in
+    # a message box instead of failing silently.
+    $pythonw = "$LablinkDir\client\venv\Scripts\pythonw.exe"
+    $launcher = "$LablinkDir\scripts\windows\lablink_launch.pyw"
+
+    # Never point a shortcut at something that is not there. Without a console
+    # there is nothing to print a "file not found" to, so a shortcut aimed at a
+    # missing shim does not fail -- it does nothing at all, which is the exact
+    # failure this whole design exists to prevent. Refusing loudly here is the
+    # only place that silence can still be turned back into a message.
+    foreach ($required in @($pythonw, $launcher)) {
+        if (-not (Test-Path $required)) {
+            throw ("Cannot create the '$Target' shortcut: $required is missing. " +
+                   "The installed copy of LabLink is missing files the shortcuts " +
+                   "need; re-run the installer against a complete checkout.")
+        }
+    }
+
+    # The Desktop and Start Menu belong to the machine, not to this install, so
+    # -InstallPath cannot scope where a shortcut is written. An install pointed
+    # at a throwaway directory would still overwrite the real installation's
+    # desktop shortcut, and the uninstall would then correctly remove it as its
+    # own -- leaving the real install with no shortcut and nobody having been
+    # told.
+    #
+    # A shortcut already pointing somewhere else therefore belongs to another
+    # installation, and is not ours to replace silently.
+    if ((Test-Path $Path) -and -not $ReplaceExistingShortcuts) {
+        try {
+            $existing = (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+        }
+        catch {
+            $existing = $null
+        }
+
+        if ($existing) {
+            $normalizedExisting = [System.IO.Path]::GetFullPath($existing).TrimEnd('\')
+            $normalizedRoot = [System.IO.Path]::GetFullPath($LablinkDir).TrimEnd('\')
+            $belongsHere = $normalizedExisting.StartsWith(
+                $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase)
+
+            if (-not $belongsHere) {
+                throw ("$Path already exists and points at $existing, which is " +
+                       "outside $LablinkDir. It belongs to another LabLink " +
+                       "installation. Re-run with -ReplaceExistingShortcuts to " +
+                       "take it over, or with -NoShortcuts to leave it alone.")
+            }
+        }
+    }
+
+    $WScriptShell = New-Object -ComObject WScript.Shell
+    $shortcut = $WScriptShell.CreateShortcut($Path)
+    $shortcut.TargetPath = $pythonw
+    $shortcut.Arguments = "`"$launcher`" $Target"
+    $shortcut.WorkingDirectory = $LablinkDir
+    $shortcut.Description = $Description
+    $shortcut.IconLocation = "$LablinkDir\images\icon.ico"
+    $shortcut.Save()
 }
 
 function Create-DesktopShortcut {
@@ -188,15 +483,8 @@ function Create-DesktopShortcut {
     Write-Step "Creating desktop shortcut..."
 
     $desktopPath = [Environment]::GetFolderPath("Desktop")
-    $shortcutPath = "$desktopPath\LabLink.lnk"
-
-    $WScriptShell = New-Object -ComObject WScript.Shell
-    $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
-    $shortcut.WorkingDirectory = $LablinkDir
-    $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    #$shortcut.IconLocation = "$LablinkDir\client\resources\icon.ico"
-    $shortcut.Save()
+    New-LabLinkShortcut -Path "$desktopPath\LabLink.lnk" -Target "client" `
+        -Description "LabLink - Laboratory Equipment Control"
 
     Write-Step "Desktop shortcut created"
 }
@@ -206,36 +494,76 @@ function Create-StartMenuShortcut {
         return
     }
 
-    Write-Step "Creating Start Menu shortcut..."
+    Write-Step "Creating Start Menu shortcuts..."
 
+    # A folder rather than three loose entries, so the Start Menu shows one
+    # "LabLink" group holding the client, the launcher and the server.
     $startMenuPath = [Environment]::GetFolderPath("Programs")
-    $shortcutPath = "$startMenuPath\LabLink.lnk"
+    $folder = "$startMenuPath\LabLink"
+    if (-not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
 
-    $WScriptShell = New-Object -ComObject WScript.Shell
-    $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$LablinkDir\lablink-client.bat"
-    $shortcut.WorkingDirectory = $LablinkDir
-    $shortcut.Description = "LabLink - Laboratory Equipment Control"
-    #$shortcut.IconLocation = "$LablinkDir\client\resources\icon.ico"
-    $shortcut.Save()
+    # The client is what a lab user wants; it is named plainly so it is what
+    # they find when they type "lablink".
+    New-LabLinkShortcut -Path "$folder\LabLink.lnk" -Target "client" `
+        -Description "LabLink - Laboratory Equipment Control"
 
-    Write-Step "Start Menu shortcut created"
+    # The launcher checks the installation and repairs dependencies. It is
+    # where the error message box sends people when something is wrong.
+    New-LabLinkShortcut -Path "$folder\LabLink Launcher.lnk" -Target "launcher" `
+        -Description "LabLink Launcher - environment checks and repair"
+
+    # Running the server on this machine rather than on a Pi.
+    New-LabLinkShortcut -Path "$folder\LabLink Server.lnk" -Target "server" `
+        -Description "LabLink Server - run the API server on this machine"
+
+    Write-Step "Start Menu shortcuts created (client, launcher, server)"
 }
 
 function Write-Success {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║                                                       ║" -ForegroundColor Green
-    Write-Host "║        LabLink Client Installed Successfully!        ║" -ForegroundColor Green
-    Write-Host "║                                                       ║" -ForegroundColor Green
-    Write-Host "╚═══════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "+=======================================================+" -ForegroundColor Green
+    Write-Host "|                                                       |" -ForegroundColor Green
+    Write-Host "|        LabLink Client Installed Successfully!         |" -ForegroundColor Green
+    Write-Host "|                                                       |" -ForegroundColor Green
+    Write-Host "+=======================================================+" -ForegroundColor Green
     Write-Host ""
 
     Write-Host "Installation Directory: $LablinkDir"
     Write-Host ""
-    Write-Host "To start LabLink Client:"
-    Write-Host "  - Double-click the desktop shortcut"
-    Write-Host "  - Or run: $LablinkDir\lablink-client.bat"
+    # Only name the entries that were actually created. This block used to list
+    # the Start Menu folder and the desktop shortcut unconditionally, so a
+    # -NoShortcuts install finished by telling the user to go and use shortcuts
+    # it had deliberately not made.
+    if ($CreateStartMenuShortcut) {
+        Write-Host "Start Menu -> LabLink:"
+        Write-Host "  LabLink            the client. This is the one to use."
+        Write-Host "  LabLink Launcher   environment checks and dependency repair"
+        Write-Host "  LabLink Server     run the API server on this machine"
+        Write-Host ""
+    }
+
+    if ($CreateDesktopShortcut) {
+        Write-Host "The desktop shortcut opens the client."
+    }
+
+    if ($CreateStartMenuShortcut -or $CreateDesktopShortcut) {
+        Write-Host "None of them open a console window."
+        Write-Host ""
+        Write-Host "If a shortcut appears to do nothing, open 'LabLink Launcher':"
+        Write-Host "it checks the installation and can repair it. Startup errors"
+        Write-Host "are also logged to $env:LOCALAPPDATA\LabLink\launch.log"
+        Write-Host ""
+    }
+    else {
+        Write-Host "No shortcuts were created. Start the client with:"
+        Write-Host "  $LablinkDir\lablink-client.bat"
+        Write-Host ""
+        Write-Host "Startup errors are logged to $env:LOCALAPPDATA\LabLink\launch.log"
+        Write-Host ""
+    }
+    Write-Host "To remove LabLink: $LablinkDir\uninstall-client.bat"
     Write-Host ""
     Write-Host "For help and documentation: https://docs.lablink.io"
     Write-Host ""
@@ -250,41 +578,63 @@ function Main {
         Write-WarningMsg "Running as Administrator. This is not required."
     }
 
-    # Prompt for installation options
-    $response = Read-Host "Installation directory [$LablinkDir]"
-    if ($response) {
-        $LablinkDir = $response
+    # Prompt for installation options, unless they were supplied. A caller who
+    # named a path or asked for no shortcuts has already answered; asking again
+    # would make the switches useless for scripting.
+    if (-not $InstallPath -and -not $Unattended) {
+        $response = Read-Host "Installation directory [$LablinkDir]"
+        if ($response) {
+            $LablinkDir = $response
+        }
+    } else {
+        Write-Step "Installing to $LablinkDir"
     }
 
-    $response = Read-Host "Create desktop shortcut? (Y/n)"
-    if ($response -eq 'n' -or $response -eq 'N') {
-        $CreateDesktopShortcut = $false
+    if (-not $NoShortcuts -and -not $NoDesktopShortcut -and -not $Unattended) {
+        $response = Read-Host "Create desktop shortcut? (Y/n)"
+        if ($response -eq 'n' -or $response -eq 'N') {
+            $CreateDesktopShortcut = $false
+        }
+    }
+
+    if ($NoShortcuts) {
+        Write-Step "Shortcuts disabled (-NoShortcuts)"
     }
 
     Write-Host ""
 
-    # Check Python
+    # Check Python. The result of installing it has to be checked: this used to
+    # call Install-Python, re-read the version, assign it, and never compare it
+    # -- so an install that changed nothing looked identical to one that
+    # worked, and the venv was then built with the old interpreter.
     Write-Step "Checking Python installation..."
-    $pythonVersion = Get-PythonVersion
+    $script:PythonExe = Find-SuitablePython
 
-    if ($null -eq $pythonVersion) {
+    if (-not $script:PythonExe) {
         Install-Python
-        $pythonVersion = Get-PythonVersion
+        $script:PythonExe = Find-SuitablePython
+
+        if (-not $script:PythonExe) {
+            throw ("Python $PythonMinVersion or newer is still not available after " +
+                   "installing it. If an older Python is installed machine-wide it " +
+                   "may be taking precedence; install Python 3.12 manually and " +
+                   "re-run this script.")
+        }
     }
-    elseif ($pythonVersion -lt $PythonMinVersion) {
-        Write-WarningMsg "Python version $pythonVersion is too old (need >= $PythonMinVersion)"
-        Install-Python
-        $pythonVersion = Get-PythonVersion
-    }
-    else {
-        Write-Step "Python $pythonVersion found"
-    }
+
+    $pythonVersion = Get-PythonVersion -Exe $script:PythonExe
+    Write-Step "Using Python $pythonVersion  ($script:PythonExe)"
 
     # Check Git (optional, but helpful)
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
-        if ($response -ne 'n' -and $response -ne 'N') {
+        if ($Unattended) {
+            # The default answer is yes, and an unattended run takes defaults.
             Install-Git
+        } else {
+            $response = Read-Host "Git not found. Install Git for easier updates? (Y/n)"
+            if ($response -ne 'n' -and $response -ne 'N') {
+                Install-Git
+            }
         }
     }
 
@@ -297,7 +647,14 @@ function Main {
     Write-Success
 }
 
-# Run main installation
+# Run main installation.
+#
+# Push-Location wraps the whole run because the install Set-Locations into the
+# installation directory, and the documented install pipes this script to iex,
+# which runs it in the caller's own session. Without this a successful install
+# leaves the user's shell sitting in <install>\client. It is a finally so the
+# location is restored on a failed install too, not just a clean one.
+Push-Location
 try {
     Main
 }
@@ -305,4 +662,7 @@ catch {
     Write-ErrorMsg "Installation failed: $_"
     Write-Host $_.ScriptStackTrace
     exit 1
+}
+finally {
+    Pop-Location
 }

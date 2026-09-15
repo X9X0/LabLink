@@ -30,6 +30,7 @@ from client.ui.sync_panel import SyncPanel
 from client.ui.test_sequence_panel import TestSequencePanel
 from client.utils.server_manager import get_server_manager
 from client.utils.token_storage import get_token_storage
+from client.ui.theme import save_theme_setting, get_app_stylesheet
 
 logger = logging.getLogger(__name__)
 
@@ -39,24 +40,26 @@ class MainWindow(QMainWindow):
 
     # Signals
     connection_changed = pyqtSignal(bool)  # True if connected, False if disconnected
+    # Emitted from the git-lookup worker thread. A signal rather than a
+    # QTimer: singleShot called off the GUI thread creates a timer owned by
+    # that thread, which has no event loop, so it never fires and dies with
+    # the thread. That is why the branch indicator never appeared. Signals
+    # cross threads properly, delivered on the receiver's thread.
+    branch_detected = pyqtSignal(str)
 
     def __init__(self):
         """Initialize main window."""
         super().__init__()
 
         self.client: Optional[LabLinkClient] = None
+        # "host:port" of the connection being established, used to file its
+        # tokens under the right server.
+        self._connecting_server_key: Optional[str] = None
         self.connection_dialog: Optional[ConnectionDialog] = None
         self.login_dialog: Optional[LoginDialog] = None
         self.ws_connected = False
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
-
-        # Apply visual styling - background only
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #ecf0f1;
-            }
-        """)
 
         self._setup_ui()
         self._setup_menus()
@@ -71,9 +74,6 @@ class MainWindow(QMainWindow):
         # Central widget with tab layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
-        # Set central widget background
-        central_widget.setStyleSheet("QWidget { background-color: #ecf0f1; }")
 
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -105,6 +105,13 @@ class MainWindow(QMainWindow):
         # Control panel for equipment control and visualization
         self.control_panel = ControlPanel()
         self.tab_widget.addTab(self.control_panel, "Control")
+
+        # Connecting or disconnecting an instrument on the Equipment tab
+        # changes what the Control tab has to offer; it used to find out only
+        # when the operator pressed Refresh there.
+        self.equipment_panel.equipment_changed.connect(
+            self.control_panel.refresh_equipment_list
+        )
 
         # Data acquisition panel
         self.acquisition_panel = AcquisitionPanel()
@@ -172,6 +179,23 @@ class MainWindow(QMainWindow):
         refresh_action.triggered.connect(self.refresh_all)
         view_menu.addAction(refresh_action)
 
+        view_menu.addSeparator()
+
+        # Theme submenu
+        theme_menu = view_menu.addMenu("&Theme")
+
+        light_theme_action = QAction("&Light", self)
+        light_theme_action.triggered.connect(lambda: self.change_theme("light"))
+        theme_menu.addAction(light_theme_action)
+
+        dark_theme_action = QAction("&Dark", self)
+        dark_theme_action.triggered.connect(lambda: self.change_theme("dark"))
+        theme_menu.addAction(dark_theme_action)
+
+        auto_theme_action = QAction("&Auto", self)
+        auto_theme_action.triggered.connect(lambda: self.change_theme("auto"))
+        theme_menu.addAction(auto_theme_action)
+
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
 
@@ -206,17 +230,38 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def _read_client_version(self) -> str:
+        """Version of the client that is actually running."""
+        from pathlib import Path
+
+        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        try:
+            return version_file.read_text().strip()
+        except OSError:
+            return "unknown"
+
+    def _version_text(self) -> str:
+        return f"LabLink {self._client_version}"
+
     def _setup_status_bar(self):
         """Set up status bar."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        # Git branch indicator (debug mode only)
-        branch_info = self._get_git_branch()
-        if branch_info and not branch_info.startswith("main"):
-            self.branch_label = QLabel(f"📍 {branch_info}")
-            self.branch_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-            self.status_bar.addWidget(self.branch_label)
+        # Which client code is running. The status bar previously showed the
+        # connection and the *server* version, so there was nothing anywhere
+        # in the UI identifying the client itself -- and after the branch
+        # selector checks out a different ref, that is the thing you need to
+        # see. The branch is appended once the git lookup returns.
+        self._client_version = self._read_client_version()
+        self.version_label = QLabel(self._version_text())
+        self.version_label.setStyleSheet("color: gray;")
+        self.status_bar.addWidget(self.version_label)
+
+        # Git branch indicator populated asynchronously to avoid blocking startup
+        self.branch_detected.connect(self._show_branch_label)
+        import threading
+        threading.Thread(target=self._fetch_git_branch_async, daemon=True).start()
 
         # Connection status label
         self.connection_label = QLabel("Not Connected")
@@ -247,16 +292,28 @@ class MainWindow(QMainWindow):
             client_dir = Path(__file__).parent.parent.parent
 
             # Get branch name
+            from client.utils.proc import no_window_kwargs
+
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
                 cwd=client_dir,
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=1,
+                **no_window_kwargs()
             )
 
             if branch_result.returncode == 0:
                 branch_name = branch_result.stdout.strip()
+
+                # Empty means a detached HEAD, which is what checking out a
+                # tag leaves behind -- and the local server update does that
+                # in this same clone. Saying nothing there is the worst time
+                # to say nothing, so name the tag or the commit instead.
+                if not branch_name:
+                    from client.utils.git_operations import describe_head
+
+                    branch_name = describe_head() or "detached"
 
                 # Get short commit hash
                 hash_result = subprocess.run(
@@ -264,7 +321,8 @@ class MainWindow(QMainWindow):
                     cwd=client_dir,
                     capture_output=True,
                     text=True,
-                    timeout=1
+                    timeout=1,
+                    **no_window_kwargs()
                 )
 
                 if hash_result.returncode == 0:
@@ -277,12 +335,37 @@ class MainWindow(QMainWindow):
 
         return None
 
+    def _fetch_git_branch_async(self):
+        """Fetch git branch info in the background; emit it for the GUI thread."""
+        branch_info = self._get_git_branch()
+        if branch_info:
+            self.branch_detected.emit(branch_info)
+
+    def _show_branch_label(self, branch_info: str):
+        """Append the branch and commit to the version label (main thread only).
+
+        Shown for every branch including main. It used to be hidden on main,
+        which meant the status bar said nothing at all about what was running
+        in the common case -- and after the client checks out a different ref,
+        "which code is this?" is exactly the question being asked.
+        """
+        on_main = branch_info.startswith("main")
+        self.version_label.setText(f"{self._version_text()}  📍 {branch_info}")
+        self.version_label.setStyleSheet(
+            "color: gray;" if on_main else "color: #27ae60; font-weight: bold;"
+        )
+        self.version_label.setToolTip(
+            f"LabLink client {self._client_version}\n"
+            f"Running from branch {branch_info}\n\n"
+            "This is the code executing now, not the server's version."
+        )
+
     # ==================== Connection Management ====================
 
     def show_connection_dialog(self):
         """Show connection dialog."""
-        if self.connection_dialog is None:
-            self.connection_dialog = ConnectionDialog(self)
+        # Recreate each time so the dialog always reflects current settings
+        self.connection_dialog = ConnectionDialog(self)
 
         if self.connection_dialog.exec():
             host = self.connection_dialog.get_host()
@@ -330,9 +413,10 @@ class MainWindow(QMainWindow):
             return
 
         if server.connected:
-            # Disconnect
-            self.disconnect_from_server()
-            self.server_manager.mark_disconnected(server_name)
+            # Disconnect this server only. Several can be connected at once,
+            # so tearing down whichever client happens to be active would
+            # drop a bench the operator did not ask to leave.
+            self.disconnect_server(server_name)
             self.server_selector.refresh()
         else:
             # Connect
@@ -370,6 +454,9 @@ class MainWindow(QMainWindow):
         """
         try:
             self.client = LabLinkClient(host, api_port, ws_port)
+            # Tokens are stored per server: with two Pis connected, one set of
+            # credentials must not overwrite the other's.
+            self._connecting_server_key = f"{host}:{api_port}"
 
             if self.client.connect():
                 # Get server info
@@ -398,8 +485,11 @@ class MainWindow(QMainWindow):
                     return
 
                 # Try to restore session from stored tokens
-                if self.token_storage.has_tokens():
-                    access_token, refresh_token = self.token_storage.load_tokens()
+                server_key = self._connecting_server_key
+                if self.token_storage.has_tokens(server_key):
+                    access_token, refresh_token = self.token_storage.load_tokens(
+                        server_key
+                    )
                     self.client.access_token = access_token
                     self.client.refresh_token = refresh_token
                     self.client._update_auth_header()
@@ -415,7 +505,10 @@ class MainWindow(QMainWindow):
                     else:
                         # Token refresh failed, clear and require login
                         logger.info("Stored tokens invalid, requiring login")
-                        self.token_storage.clear_all()
+                        # Only this server's tokens: another server's session
+                        # is still good and clearing it would log the operator
+                        # out of a bench they are using.
+                        self.token_storage.clear_tokens(server_key)
 
                 # Show login dialog
                 if self.login_dialog is None:
@@ -431,7 +524,9 @@ class MainWindow(QMainWindow):
                     # Save tokens if login successful
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token, self.client.refresh_token
+                            self.client.access_token,
+                            self.client.refresh_token,
+                            server=self._connecting_server_key,
                         )
                         self.token_storage.save_user_data(user_data)
 
@@ -470,6 +565,13 @@ class MainWindow(QMainWindow):
         # Set client for all panels
         self.equipment_panel.set_client(self.client)
         self.control_panel.set_client(self.client)
+        # Losing a lock mid-session greys out the controls; say why.
+        try:
+            self.control_panel.status_message.connect(
+                lambda text: self.status_bar.showMessage(text, 10000)
+            )
+        except (TypeError, RuntimeError):  # already connected
+            pass
         self.acquisition_panel.set_client(self.client)
         self.alarm_panel.set_client(self.client)
         self.scheduler_panel.set_client(self.client)
@@ -488,10 +590,9 @@ class MainWindow(QMainWindow):
         self.refresh_all()
 
         # Attempt WebSocket connection (optional, non-blocking)
-        # Schedule async task using asyncio's event loop (qasync provides it)
+        # _connect_websocket is an asyncSlot so calling it schedules it via qasync
         try:
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(self._connect_websocket(), loop=loop)
+            self._connect_websocket()
         except Exception as e:
             logger.error(f"Connection error: {e}")
 
@@ -535,12 +636,56 @@ class MainWindow(QMainWindow):
             logger.error(f"WebSocket connection error: {e}")
             # Don't show error to user - WebSocket is optional
 
-    def disconnect_from_server(self):
-        """Disconnect from server."""
+    def disconnect_server(self, server_name: str):
+        """Disconnect one named server, leaving any others connected.
+
+        The panels that span servers re-read the registry, so dropping one
+        connection removes its instruments from the lists and leaves the rest
+        alone.
+        """
+        server = self.server_manager.get_server(server_name)
+        client = self.server_manager.get_client(server_name)
+
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception as e:
+                logger.debug(f"Error disconnecting {server_name}: {e}")
+
+        self.server_manager.mark_disconnected(server_name)
+
+        # If the active connection was the one that went, adopt whatever is
+        # still connected rather than leaving the server-scoped tabs pointing
+        # at a dead client.
+        if client is not None and client is self.client:
+            remaining = self.server_manager.connected_clients()
+            self.client = next(iter(remaining.values()), None)
+            if self.client is None:
+                self.connection_label.setText("Not Connected")
+                self.connection_changed.emit(False)
+
+        self.equipment_panel.refresh()
+        self.control_panel.refresh_equipment_list()
+
+        name = server.name if server else server_name
+        self.status_bar.showMessage(f"Disconnected from {name}", 3000)
+
+    @qasync.asyncSlot()
+    async def disconnect_from_server(self):
+        """Disconnect from every server."""
         if self.client:
-            # Schedule async disconnect properly
-            asyncio.create_task(self.client.disconnect())
+            try:
+                await self.client.disconnect()
+            except Exception as e:
+                logger.debug(f"Error during disconnect: {e}")
             self.client = None
+
+        # Any other connections are live too, and leaving them registered
+        # would keep their instruments in the lists after a full disconnect.
+        try:
+            self.server_manager.disconnect_all()
+        except Exception as e:
+            logger.debug(f"Error disconnecting remaining servers: {e}")
 
         # Reset connection states
         self.ws_connected = False
@@ -577,7 +722,9 @@ class MainWindow(QMainWindow):
                     # Save tokens
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token, self.client.refresh_token
+                            self.client.access_token,
+                            self.client.refresh_token,
+                            server=getattr(self, "_connecting_server_key", None),
                         )
                         self.token_storage.save_user_data(user_data)
 
@@ -647,12 +794,32 @@ class MainWindow(QMainWindow):
         # Trigger diagnostics
         self.diagnostics_panel.run_full_diagnostics()
 
+    def change_theme(self, theme: str):
+        """Change application theme."""
+        save_theme_setting(theme)
+
+        # Apply new theme
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        app.setStyleSheet(get_app_stylesheet(theme))
+        app.setProperty("theme", theme)
+
+        # Show confirmation
+        QMessageBox.information(
+            self,
+            "Theme Changed",
+            f"Theme changed to {theme.capitalize()}.\\n\\nThe new theme has been applied."
+        )
+
     def show_about(self):
         """Show about dialog."""
+        from PyQt6.QtWidgets import QApplication
+        version = QApplication.applicationVersion()
+
         QMessageBox.about(
             self,
             "About LabLink",
-            "<h2>LabLink v0.10.0</h2>"
+            f"<h2>LabLink v{version}</h2>"
             "<p>Laboratory Equipment Control and Data Acquisition System</p>"
             "<p>A modular client-server application for remote control and data "
             "acquisition from laboratory equipment.</p>"
@@ -664,7 +831,7 @@ class MainWindow(QMainWindow):
             "<li>Job scheduling and automation</li>"
             "<li>Equipment diagnostics and health monitoring</li>"
             "</ul>"
-            "<p>© 2024 LabLink Project</p>",
+            "<p>© 2025 LabLink Project</p>",
         )
 
     def closeEvent(self, event):

@@ -133,7 +133,7 @@ class StreamRecorder:
         # Initialize recording session
         self.recording_sessions[session_id] = {
             "filepath": str(filepath),
-            "start_time": time.time(),
+            "start_time": time.perf_counter(),
             "message_count": 0,
             "bytes_written": 0,
             "metadata": metadata or {},
@@ -245,7 +245,7 @@ class StreamRecorder:
         file_handle.close()
 
         # Calculate statistics
-        duration = time.time() - session["start_time"]
+        duration = time.perf_counter() - session["start_time"]
         stats = {
             "filepath": session["filepath"],
             "duration_seconds": duration,
@@ -277,7 +277,7 @@ class StreamRecorder:
             return None
 
         session = self.recording_sessions[session_id]
-        duration = time.time() - session["start_time"]
+        duration = time.perf_counter() - session["start_time"]
 
         return {
             "filepath": session["filepath"],
@@ -394,6 +394,8 @@ class PriorityQueue:
             return False
 
         priority_msg = PriorityMessage(
+            # Wall clock deliberately: this timestamp is reported to clients
+            # as an absolute time, not used for an interval.
             priority=priority, timestamp=time.time(), data=message
         )
 
@@ -575,7 +577,7 @@ class RateLimiter:
         self.max_rate = max_rate
         self.burst_size = burst_size
         self.tokens = burst_size
-        self.last_refill = time.time()
+        self.last_refill = time.perf_counter()
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> bool:
@@ -586,7 +588,7 @@ class RateLimiter:
         """
         async with self._lock:
             # Refill tokens based on time elapsed
-            now = time.time()
+            now = time.perf_counter()
             elapsed = now - self.last_refill
             tokens_to_add = elapsed * self.max_rate
 

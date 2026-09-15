@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, AsyncMock
 # Add parent directory to path
 sys.path.append("..")
 
-from equipment.rigol_scope import RigolDS1104
-from equipment.rigol_electronic_load import RigolDL3021A
-from equipment.bk_power_supply import BK9205B, BK1685B
+from server.equipment.rigol_scope import RigolDS1104
+from server.equipment.rigol_electronic_load import RigolDL3021A
+from server.equipment.bk_power_supply import BK9205B, BK1685B
 
 
 class TestResults:
@@ -183,8 +183,9 @@ async def test_bk9205b():
 
         # Test get_status
         status = await ps.get_status()
-        assert status.capabilities["max_voltage"] == 120.0
-        assert status.capabilities["max_current"] == 10.0
+        # 60 V / 25 A / 600 W, per B&K. See #116.
+        assert status.capabilities["max_voltage"] == 60.0
+        assert status.capabilities["max_current"] == 25.0
 
         # Test set_voltage
         await ps.set_voltage(12.0)
@@ -267,7 +268,7 @@ if __name__ == "__main__":
 async def test_rigol_dm3058_and_dm3068():
     """Test Rigol DM3058 / DM3068 multimeter drivers with patched I/O."""
     from unittest.mock import patch
-    from equipment.rigol_multimeter import RigolDM3058, RigolDM3068
+    from server.equipment.rigol_multimeter import RigolDM3058, RigolDM3068
 
     for cls, model, digits in ((RigolDM3058, "DM3058", 5.5), (RigolDM3068, "DM3068", 6.5)):
         idn = f"Rigol Technologies,{model},DM3A020080808,01.01.00.02.00.00"

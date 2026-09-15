@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
-from testing import (TestExecution, TestSequence, TestStatus, TestStep,
+from server.testing import (TestExecution, TestSequence, TestStatus, TestStep,
                      get_test_executor)
-from testing.templates import TestTemplateLibrary
+from server.testing.templates import TestTemplateLibrary
 
 router = APIRouter(prefix="/api/testing", tags=["testing"])
 

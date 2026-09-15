@@ -617,7 +617,7 @@ def cmd_query(args):
 
     # Write output
     if args.output:
-        Path(args.output).write_text(output)
+        Path(args.output).write_text(output, encoding="utf-8")
         print(f"Wrote {len(entries)} entries to {args.output}", file=sys.stderr)
     else:
         print(output)
@@ -657,7 +657,7 @@ def cmd_report(args):
 
     # Write output
     if args.output:
-        Path(args.output).write_text(output)
+        Path(args.output).write_text(output, encoding="utf-8")
         print(f"Report saved to {args.output}", file=sys.stderr)
     else:
         print(output)

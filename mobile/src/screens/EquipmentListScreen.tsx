@@ -13,6 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import { apiClient } from '../api/client';
 import { wsManager } from '../api/websocket';
 import { Card } from '../components/Card';
@@ -20,7 +22,8 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import type { Equipment, WebSocketMessage, WebSocketMessageType } from '../types/api';
 
 export const EquipmentListScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,7 +90,7 @@ export const EquipmentListScreen: React.FC = () => {
   }, []);
 
   const handleEquipmentPress = (item: Equipment) => {
-    navigation.navigate('EquipmentDetail' as never, { equipmentId: item.equipment_id } as never);
+    navigation.navigate('EquipmentDetail', { equipmentId: item.equipment_id });
   };
 
   const getStatusColor = (status: string) => {

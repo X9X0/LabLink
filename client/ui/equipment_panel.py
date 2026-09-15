@@ -1,6 +1,7 @@
 """Equipment control panel for LabLink GUI."""
 
 import asyncio
+import qasync
 import logging
 from typing import Dict, List, Optional, Set
 
@@ -12,7 +13,8 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
                              QMessageBox, QProgressDialog, QPushButton,
                              QSplitter, QTextEdit, QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
+from client.utils.server_manager import get_server_manager
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +70,11 @@ class DiscoverySettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
-    def _load_settings(self):
+    @qasync.asyncSlot()
+    async def _load_settings(self):
         """Load current discovery settings from server."""
         try:
-            settings = self.client.get_discovery_settings()
+            settings = await call_blocking(self.client.get_discovery_settings)
             self.tcpip_checkbox.setChecked(settings.get("scan_tcpip", True))
             self.usb_checkbox.setChecked(settings.get("scan_usb", True))
             self.serial_checkbox.setChecked(settings.get("scan_serial", False))
@@ -107,12 +110,17 @@ class EquipmentPanel(QWidget):
     """Panel for equipment control and monitoring."""
 
     equipment_selected = pyqtSignal(str)  # equipment_id
+    # The set of connected instruments changed: something was connected or
+    # disconnected here. Other tabs that list connected equipment listen.
+    equipment_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         """Initialize equipment panel."""
         super().__init__(parent)
 
         self.client: Optional[LabLinkClient] = None
+        #: A fan-out over several servers can outlast the five-second refresh.
+        self._refresh_in_flight = False
         self.equipment_list: List[Equipment] = []
         self.selected_equipment: Optional[Equipment] = None
 
@@ -213,6 +221,19 @@ class EquipmentPanel(QWidget):
         info_layout.addWidget(QLabel("Status:"), 5, 0)
         info_layout.addWidget(self.status_label, 5, 1)
 
+        # Read this as a table, not as two columns pinned to opposite edges.
+        # With neither column given a stretch the grid split the slack evenly,
+        # which pushed every value to the far side of the panel and left the
+        # reader tracking across a hand's width of empty space to find out
+        # what "Model:" says. The label column takes its natural width and the
+        # value column absorbs the rest, so the two sit together.
+        info_layout.setColumnStretch(0, 0)
+        info_layout.setColumnStretch(1, 1)
+        for value in (self.name_label, self.type_label, self.manufacturer_label,
+                      self.model_label, self.resource_label, self.status_label):
+            value.setAlignment(Qt.AlignmentFlag.AlignLeft
+                               | Qt.AlignmentFlag.AlignVCenter)
+
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
 
@@ -277,13 +298,47 @@ class EquipmentPanel(QWidget):
         return widget
 
     def set_client(self, client: LabLinkClient):
-        """Set API client.
+        """Set the active server's API client.
+
+        Still meaningful with several servers connected: it is the connection
+        used for anything not tied to a particular instrument, such as
+        discovering new devices.
 
         Args:
             client: LabLink API client
         """
         self.client = client
         self._register_ws_handlers()
+
+    def _connections(self):
+        """Every server to list instruments from, keyed by name.
+
+        Falls back to the single active client when the registry is empty,
+        which is the case before a server is registered and in tests that
+        construct the panel directly.
+        """
+        try:
+            clients = get_server_manager().connected_clients()
+        except Exception as e:  # a registry problem must not empty the list
+            logger.warning(f"Could not read the server registry: {e}")
+            clients = {}
+
+        if clients:
+            return clients
+        return {None: self.client} if self.client else {}
+
+    def _client_for(self, equipment):
+        """The connection an instrument was listed through.
+
+        Resolved per instrument rather than read from ``self.client``: with
+        two servers connected, the one the user last selected in the dropdown
+        is very often not the one holding the supply they clicked on.
+        """
+        if equipment is None:
+            return self.client
+        if equipment.server_name is None:
+            return self.client
+        return get_server_manager().get_client(equipment.server_name) or self.client
 
     def _connect_ws_signals(self):
         """Connect WebSocket signals to slot handlers."""
@@ -424,30 +479,82 @@ class EquipmentPanel(QWidget):
             self.progress_dialog.setLabelText(f"{method} scan complete: {device_count} devices")
             self.progress_dialog.setValue(100)
 
-    def refresh(self):
-        """Refresh equipment list."""
-        if not self.client:
+    @qasync.asyncSlot()
+    async def refresh(self):
+        """Refresh the equipment list from every connected server."""
+        connections = self._connections()
+        if not connections:
             return
 
+        # Skip this tick if the last fan-out has not come back yet.
+        if self._refresh_in_flight:
+            return
+        self._refresh_in_flight = True
         try:
-            equipment_data = self.client.list_equipment()
-            self.equipment_list.clear()
+            await self._refresh_from(connections)
+        finally:
+            self._refresh_in_flight = False
+
+    async def _refresh_from(self, connections):
+        """Merge the equipment lists of every given server."""
+        # Asked concurrently: a server that is switched off costs a full
+        # connect timeout, and one after another that is the sum of them.
+        # The reachable bench should not wait on the unreachable one.
+        results = await asyncio.gather(*(
+            self._list_equipment_from(name, client)
+            for name, client in connections.items()
+        ))
+
+        gathered = []
+        unreachable = []
+
+        for server_name, equipment_data, error in results:
+            if error is not None:
+                # One Pi being unreachable must not empty the list for the
+                # others, and must not raise a dialog: with several servers
+                # this fires on a timer and would interrupt the bench to
+                # report something the operator cannot act on.
+                logger.warning(f"Could not list equipment on {server_name}: {error}")
+                unreachable.append(server_name or "server")
+                continue
 
             for eq_data in equipment_data:
-                equipment = Equipment.from_api_dict(eq_data)
-                self.equipment_list.append(equipment)
+                gathered.append(Equipment.from_api_dict(eq_data, server_name))
 
-            self._update_equipment_list_widget()
+        self.equipment_list.clear()
+        self.equipment_list.extend(gathered)
+        self._update_equipment_list_widget()
+        self._report_unreachable(unreachable)
 
+    async def _list_equipment_from(self, server_name, client):
+        """List one server's instruments, reporting rather than raising.
+
+        Returned as a triple so the caller can keep the rows it did get and
+        still say which servers went quiet.
+        """
+        try:
+            return server_name, await call_blocking(client.list_equipment), None
         except Exception as e:
-            logger.error(f"Error refreshing equipment list: {e}")
-            QMessageBox.warning(
-                self, "Error", f"Failed to refresh equipment list: {str(e)}"
-            )
+            return server_name, [], e
+
+    def _report_unreachable(self, unreachable):
+        """Say which servers did not answer, without stealing the focus."""
+        if not unreachable:
+            self.equipment_list_widget.setToolTip("")
+            return
+
+        names = ", ".join(unreachable)
+        logger.info(f"Equipment list is missing entries from: {names}")
+        self.equipment_list_widget.setToolTip(f"Not answering: {names}")
 
     def _update_equipment_list_widget(self):
         """Update equipment list widget."""
         self.equipment_list_widget.clear()
+
+        # Name the server only once there is more than one to tell apart.
+        # On a single-Pi bench the suffix is noise on every row.
+        servers = {eq.server_name for eq in self.equipment_list if eq.server_name}
+        show_server = len(servers) > 1
 
         for equipment in self.equipment_list:
             status_icon = (
@@ -456,9 +563,11 @@ class EquipmentPanel(QWidget):
                 else "○"
             )
             item_text = f"{status_icon} {equipment.name} ({equipment.model})"
+            if show_server and equipment.server_name:
+                item_text = f"{item_text} — {equipment.server_name}"
 
             item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, equipment.equipment_id)
+            item.setData(Qt.ItemDataRole.UserRole, equipment.key)
 
             self.equipment_list_widget.addItem(item)
 
@@ -468,14 +577,19 @@ class EquipmentPanel(QWidget):
         if not selected_items:
             return
 
-        equipment_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        key = selected_items[0].data(Qt.ItemDataRole.UserRole)
 
-        # Find equipment in list
+        # Matched on the composite key: two servers can each mint the same
+        # equipment id, and matching on the id alone would select whichever
+        # happened to be listed first.
+        if not any(equipment.key == key for equipment in self.equipment_list):
+            logger.warning(f"Selected row {key!r} matches no known instrument")
+
         for equipment in self.equipment_list:
-            if equipment.equipment_id == equipment_id:
+            if equipment.key == key:
                 self.selected_equipment = equipment
                 self._update_details_panel()
-                self.equipment_selected.emit(equipment_id)
+                self.equipment_selected.emit(equipment.equipment_id)
                 break
 
     def _update_details_panel(self):
@@ -661,28 +775,43 @@ class EquipmentPanel(QWidget):
         if connect_dialog.exec() == QDialog.DialogCode.Accepted:
             # Device was connected, refresh the list
             self.refresh()
+            self.equipment_changed.emit()
         else:
             # User cancelled, still refresh in case something changed
             self.refresh()
 
-    def connect_equipment(self):
+    @qasync.asyncSlot()
+    async def connect_equipment(self):
         """Connect to selected equipment."""
-        if not self.selected_equipment or not self.client:
+        client = self._client_for(self.selected_equipment)
+        if not self.selected_equipment or not client:
             return
 
         try:
-            result = self.client.connect_equipment(self.selected_equipment.equipment_id)
+            # The client model calls these resource_name and
+            # equipment_type; the server payload calls them
+            # resource_string and type. Asking the dataclass for the
+            # server names raised AttributeError, which surfaced as
+            # "Connection failed" with no indication it was our own bug.
+            result = await call_blocking(
+                client.connect_equipment,
+                self.selected_equipment.resource_name,
+                self.selected_equipment.equipment_type,
+                self.selected_equipment.model,
+            )
 
-            if result.get("success"):
+            if result.get("status") == "connected":
                 QMessageBox.information(
                     self, "Success", "Equipment connected successfully"
                 )
                 self.refresh()
+                self.equipment_changed.emit()
                 self._on_equipment_selected()  # Refresh details
 
                 # Auto-start WebSocket streaming for connected equipment
-                equipment_id = self.selected_equipment.equipment_id
-                asyncio.create_task(self._start_equipment_stream(equipment_id))
+                equipment_id = result.get("equipment_id", "")
+                if equipment_id:
+                    asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Connection failed")
@@ -692,9 +821,58 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error connecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
 
-    def disconnect_equipment(self):
-        """Disconnect from selected equipment."""
-        if not self.selected_equipment or not self.client:
+    async def _choose_disconnect_state(self, equipment_id: str):
+        """What should the instrument be left doing? Ask only if it matters.
+
+        Disconnecting turns a live output off by default, which used to happen
+        with nothing on screen to say so -- the operator found out at the
+        bench. The question is only worth asking when there is something to
+        lose, so an instrument that is already off disconnects silently.
+
+        Returns "off", "hold", or None if the operator cancelled.
+        """
+        try:
+            client = self._client_for(self.selected_equipment)
+            readings = await call_blocking(client.get_readings, equipment_id)
+            output_live = bool(readings.get("output_enabled"))
+        except Exception as e:
+            # Not knowing is a reason to ask, not a reason to assume.
+            logger.warning(f"Could not read output state before disconnect: {e}")
+            output_live = True
+
+        if not output_live:
+            return "off"
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Disconnect equipment")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("This instrument's output is on.")
+        box.setInformativeText(
+            "Turn it off as part of disconnecting, or leave it running?\n\n"
+            "Leaving it running means LabLink sends no command. The instrument "
+            "keeps its output until something else changes it."
+        )
+        turn_off = box.addButton("Turn output off", QMessageBox.ButtonRole.AcceptRole)
+        leave_on = box.addButton("Leave it running", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(turn_off)
+
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel:
+            return None
+        return "hold" if clicked is leave_on else "off"
+
+    @qasync.asyncSlot()
+    async def disconnect_equipment(self):
+        """Disconnect from selected equipment.
+
+        The decorator is load-bearing. ``clicked`` calling a bare coroutine
+        function just builds a coroutine object and discards it: no request,
+        no dialog, no error -- the button appears to do nothing at all.
+        """
+        client = self._client_for(self.selected_equipment)
+        if not self.selected_equipment or not client:
             return
 
         equipment_id = self.selected_equipment.equipment_id
@@ -704,7 +882,13 @@ class EquipmentPanel(QWidget):
             if equipment_id in self.streaming_equipment:
                 asyncio.create_task(self._stop_equipment_stream(equipment_id))
 
-            result = self.client.disconnect_equipment(equipment_id)
+            on_disconnect = await self._choose_disconnect_state(equipment_id)
+            if on_disconnect is None:
+                return          # operator cancelled
+
+            result = await call_blocking(
+                client.disconnect_equipment, equipment_id, on_disconnect
+            )
 
             # Server returns {"equipment_id": "...", "status": "disconnected"}
             if result.get("status") == "disconnected":
@@ -722,6 +906,7 @@ class EquipmentPanel(QWidget):
                 self.resource_label.clear()
                 self.status_label.clear()
                 self.refresh()
+                self.equipment_changed.emit()
             else:
                 QMessageBox.warning(
                     self, "Failed", result.get("message", "Disconnection failed")
@@ -731,13 +916,17 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error disconnecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Disconnection failed: {str(e)}")
 
-    def refresh_readings(self):
+    @qasync.asyncSlot()
+    async def refresh_readings(self):
         """Refresh current readings from equipment."""
-        if not self.selected_equipment or not self.client:
+        client = self._client_for(self.selected_equipment)
+        if not self.selected_equipment or not client:
             return
 
         try:
-            readings = self.client.get_readings(self.selected_equipment.equipment_id)
+            readings = await call_blocking(
+                client.get_readings, self.selected_equipment.equipment_id
+            )
 
             # Server returns readings data directly (PowerSupplyData, ScopeData, etc.)
             self.selected_equipment.current_readings = readings
@@ -747,9 +936,11 @@ class EquipmentPanel(QWidget):
             logger.error(f"Error getting readings: {e}")
             QMessageBox.warning(self, "Error", f"Failed to get readings: {str(e)}")
 
-    def send_command(self):
+    @qasync.asyncSlot()
+    async def send_command(self):
         """Send custom command to equipment."""
-        if not self.selected_equipment or not self.client:
+        client = self._client_for(self.selected_equipment)
+        if not self.selected_equipment or not client:
             return
 
         command = self.command_input.text().strip()
@@ -757,8 +948,11 @@ class EquipmentPanel(QWidget):
             return
 
         try:
-            result = self.client.send_command(
-                self.selected_equipment.equipment_id, command, {}
+            result = await call_blocking(
+                client.send_command,
+                self.selected_equipment.equipment_id,
+                command,
+                {},
             )
 
             if result.get("success"):

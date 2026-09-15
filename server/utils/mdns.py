@@ -25,7 +25,6 @@ class LabLinkMDNSService:
     def __init__(
         self,
         port: int = 8000,
-        ws_port: int = 8001,
         server_name: Optional[str] = None,
         server_version: str = "1.0.0",
     ):
@@ -34,7 +33,6 @@ class LabLinkMDNSService:
 
         Args:
             port: HTTP API port
-            ws_port: WebSocket port
             server_name: Server name (defaults to hostname)
             server_version: Server version
         """
@@ -45,14 +43,21 @@ class LabLinkMDNSService:
             )
 
         self.port = port
-        self.ws_port = ws_port
         self.server_version = server_version
 
         # Get server name
         if server_name:
             self.server_name = server_name
         else:
-            self.server_name = socket.gethostname()
+            # Try to get FQDN first, fallback to hostname
+            fqdn = socket.getfqdn()
+            # Only use FQDN if it's actually different from the short hostname
+            # and doesn't resolve to localhost
+            hostname = socket.gethostname()
+            if fqdn != hostname and not fqdn.startswith("localhost"):
+                self.server_name = fqdn
+            else:
+                self.server_name = hostname
 
         self.zeroconf: Optional[Zeroconf] = None
         self.service_info: Optional[ServiceInfo] = None
@@ -89,7 +94,9 @@ class LabLinkMDNSService:
             properties = {
                 "version": self.server_version,
                 "api_port": str(self.port),
-                "ws_port": str(self.ws_port),
+                # /ws is a route on the API port; there is no separate
+                # WebSocket port. Advertised for older clients that read it.
+                "ws_port": str(self.port),
                 "hostname": self.server_name,
             }
 
@@ -204,7 +211,7 @@ class LabLinkMDNSService:
             "running": self.running,
             "server_name": self.server_name,
             "port": self.port,
-            "ws_port": self.ws_port,
+            "ws_port": self.port,
             "version": self.server_version,
             "service_type": self.SERVICE_TYPE,
         }

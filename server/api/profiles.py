@@ -239,7 +239,7 @@ async def apply_profile_to_equipment(profile_name: str, equipment_id: str):
         Success status
     """
     try:
-        from equipment.manager import equipment_manager
+        from server.equipment.manager import equipment_manager
 
         equipment = equipment_manager.get_equipment(equipment_id)
         if not equipment:

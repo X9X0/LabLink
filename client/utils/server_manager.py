@@ -45,14 +45,16 @@ class ServerConnection:
         if data.get("last_connected"):
             try:
                 last_connected = datetime.fromisoformat(data["last_connected"])
-            except:
+            except Exception:
                 pass
 
         return cls(
             name=data["name"],
             host=data["host"],
             api_port=data["api_port"],
-            ws_port=data["ws_port"],
+            # /ws is served on the API port; older profiles carry a
+            # separate value that was never used.
+            ws_port=data.get("ws_port", data["api_port"]),
             last_connected=last_connected,
             user=data.get("user"),
             metadata=data.get("metadata", {}),
@@ -289,13 +291,42 @@ class ServerManager:
         """
         return [s for s in self.servers.values() if s.connected]
 
+    def get_client(self, name: str) -> Optional[object]:
+        """The live client for one server, if it is connected.
+
+        Args:
+            name: Server name
+
+        Returns:
+            The LabLinkClient instance, or None when that server is not
+            connected. Callers must handle None: a server can go away between
+            an instrument being listed and being used.
+        """
+        server = self.servers.get(name)
+        if server and server.connected:
+            return server.client
+        return None
+
+    def connected_clients(self) -> Dict[str, object]:
+        """Every live connection, keyed by server name.
+
+        This is the registry the equipment-centric panels fan out over, so
+        the order is the configured order rather than connection order: a
+        list that reshuffles itself as servers reconnect is hard to use.
+        """
+        return {
+            name: server.client
+            for name, server in self.servers.items()
+            if server.connected and server.client is not None
+        }
+
     def disconnect_all(self):
         """Disconnect from all servers."""
         for server in self.servers.values():
             if server.connected and server.client:
                 try:
                     server.client.disconnect()
-                except:
+                except Exception:
                     pass
 
             server.connected = False

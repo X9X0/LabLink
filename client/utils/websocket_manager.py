@@ -1,6 +1,7 @@
 """WebSocket manager for real-time data streaming."""
 
 import asyncio
+from urllib.parse import quote
 import json
 import logging
 from dataclasses import dataclass
@@ -9,7 +10,15 @@ from typing import Any, Callable, Dict, List, Optional
 
 try:
     import websockets
-    from websockets.client import WebSocketClientProtocol
+
+    # websockets 14 replaced the legacy client with the asyncio implementation;
+    # websockets.client.WebSocketClientProtocol still resolves but is deprecated
+    # and slated for removal. Prefer the modern type and fall back for older
+    # installs.
+    try:
+        from websockets.asyncio.client import ClientConnection as WebSocketClientProtocol
+    except ImportError:  # websockets < 14
+        from websockets.client import WebSocketClientProtocol
 except ImportError:
     websockets = None
     WebSocketClientProtocol = None
@@ -77,7 +86,22 @@ class WebSocketManager:
 
         self.host = host
         self.port = port
-        self.url = f"ws://{host}:{port}/ws"
+        self.base_url = f"ws://{host}:{port}/ws"
+        self.url = self.base_url
+
+        #: Returns the current access token, or None. The server closes /ws
+        #: with 4001 unless the token is supplied as a query parameter, and
+        #: nothing here ever supplied one -- so on a secured server the socket
+        #: never connected at all and simply retried every five seconds
+        #: forever. Read at connect time rather than stored, so a token
+        #: renewed elsewhere is picked up by the next attempt.
+        self.token_provider = None
+
+        #: Asks for a new access token after the server rejects this one.
+        self.renew_token = None
+
+        #: Set when the server closed the socket over the credential.
+        self._rejected_for_auth = False
 
         self._connection: Optional[WebSocketClientProtocol] = None
         self._receive_task: Optional[asyncio.Task] = None
@@ -117,6 +141,20 @@ class WebSocketManager:
 
     # ==================== Connection Management ====================
 
+    def _authenticated_url(self) -> str:
+        """The socket URL, carrying the access token when there is one."""
+        token = None
+        if self.token_provider is not None:
+            try:
+                token = self.token_provider()
+            except Exception as e:
+                logger.warning(f"Could not read the access token: {e}")
+
+        if not token:
+            return self.base_url
+        return f"{self.base_url}?token={quote(token, safe='')}"
+
+
     async def connect(self) -> bool:
         """Connect to WebSocket server.
 
@@ -130,7 +168,9 @@ class WebSocketManager:
         self.connecting = True
 
         try:
-            logger.info(f"Connecting to WebSocket at {self.url}")
+            self.url = self._authenticated_url()
+            # The token is a query parameter, so keep it out of the log.
+            logger.info(f"Connecting to WebSocket at {self.base_url}")
             self._connection = await websockets.connect(
                 self.url,
                 ping_interval=20,
@@ -154,7 +194,15 @@ class WebSocketManager:
 
         except Exception as e:
             self.connecting = False
+            # 4001 is the server's own "authentication" close code; a secured
+            # server also refuses the handshake outright with 403. Either way
+            # the credential is the problem, and retrying with the same one
+            # cannot help.
+            detail = str(e)
+            self._rejected_for_auth = "4001" in detail or "403" in detail
             logger.error(f"Failed to connect WebSocket: {e}")
+            if self._rejected_for_auth:
+                logger.info("WebSocket refused the credential; will renew before retrying")
 
             # Start reconnection if enabled
             if self._should_reconnect and not self._reconnect_task:
@@ -232,6 +280,16 @@ class WebSocketManager:
             await asyncio.sleep(self._reconnect_delay)
 
             if self._should_reconnect:
+                # A rejected token will be rejected again on every retry, so
+                # renew before reconnecting rather than reconnecting forever
+                # with the credential the server has already refused.
+                if self._rejected_for_auth and self.renew_token is not None:
+                    try:
+                        self.renew_token()
+                    except Exception as e:
+                        logger.warning(f"Could not renew the token: {e}")
+                    self._rejected_for_auth = False
+
                 await self.connect()
 
     async def _ping_loop(self):

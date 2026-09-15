@@ -1,17 +1,172 @@
 # LabLink
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Tests](https://img.shields.io/badge/tests-499%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1436%20passing-brightgreen.svg)
 ![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
-![Security](https://img.shields.io/badge/security-hardened-yellow.svg)
+![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
 
 A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol and BK Precision scopes, power supplies, and loads).
 
 ## Overview
 
 LabLink enables remote control of lab equipment through a Raspberry Pi server, providing an intuitive graphical client for equipment management, data acquisition, and visualization.
+
+## Quick Start
+
+### 🚀 NEW: GUI Launcher (Recommended)
+
+The easiest way to get started with LabLink is using the new **GUI Launcher**.
+
+**Ubuntu 24.04+ Users** - Fully automated setup:
+```bash
+git clone https://github.com/X9X0/LabLink.git
+cd LabLink
+python3 lablink.py
+```
+
+The launcher will automatically handle everything, including installing system packages with your permission!
+
+**Other Systems** - Install system dependencies first:
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git \
+    libusb-1.0-0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libgl1-mesa-glx
+
+# Then clone and launch
+git clone https://github.com/X9X0/LabLink.git
+cd LabLink
+python3 lablink.py
+```
+
+The **LabLink Launcher** will:
+- ✅ Check your environment automatically
+- ✅ Detect and install missing system packages (Ubuntu 24.04+)
+- ✅ Show LED indicators for system status (Green = OK, Yellow = Warning, Red = Error)
+- ✅ Install missing Python dependencies with one click
+- ✅ Launch server or client with dedicated buttons
+
+**For Ubuntu 24.04 users**: See the detailed [Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md) for more information.
+
+---
+
+### Manual Installation (Alternative)
+
+#### Server Setup
+
+1. Install dependencies:
+   ```bash
+   cd server
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Run the server, from the repository root:
+   ```bash
+   cd ..
+   python -m server.main
+   ```
+
+   Not `python main.py` from inside `server/`: every intra-server import is
+   spelled `server.*`, so from within the package there is nothing above it to
+   import by name and startup fails with `ModuleNotFoundError: No module named
+   'server'`. `./start_server.sh` does this for you.
+
+3. Access API documentation:
+   - Open browser to `http://localhost:8000/docs`
+
+#### GUI Client Setup
+
+**Windows Users** - Automated Installation:
+
+Open PowerShell and run:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1 | iex
+```
+
+There is nothing to download or clone first -- the script fetches LabLink
+itself. It installs Python 3.12 if you do not have it, sets up the client
+environment with both the client and server dependencies, and creates a desktop
+shortcut plus a **Start Menu → LabLink** folder holding three entries:
+**LabLink** (the client), **LabLink Launcher** (environment checks and repair)
+and **LabLink Server** (run the server on this machine).
+
+It asks where to install and whether you want a desktop shortcut; press Enter
+to accept the defaults.
+
+To pass options rather than answer prompts -- installing somewhere other than
+`%USERPROFILE%\LabLink`, or running unattended:
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/X9X0/LabLink/main/install-client.ps1).Content)) -InstallPath 'D:\LabLink' -Unattended
+```
+
+<details>
+<summary>Already have the repository cloned?</summary>
+
+Double-click `install-client.bat`, or run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-client.ps1
+```
+
+Both do exactly what the one-liner does.
+</details>
+
+Then launch from **Start Menu → LabLink**. None of the shortcuts open a
+console window. To remove LabLink later, run `uninstall-client.bat`.
+
+**Note:** Windows blocks PowerShell scripts by default. If you get a security error, see [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
+
+**Linux/macOS Users:**
+
+1. Run the installation script:
+   ```bash
+   ./install-client.sh
+   ```
+
+**Manual Installation (All Platforms):**
+
+Requires **Python 3.12 or newer** — numpy 2.5 and scipy 1.18 both drop 3.11,
+so an older interpreter fails while resolving dependencies rather than saying
+so plainly. The automated installers check this for you.
+
+1. Install dependencies:
+
+   Linux/macOS:
+   ```bash
+   cd client
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+   Windows (the interpreter is `python`; `python3` is often absent or a
+   Microsoft Store stub):
+   ```powershell
+   cd client
+   python -m venv venv
+   venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Run the GUI client, from `client/`:
+   ```bash
+   python main.py
+   ```
+
+3. Connect to server:
+   - Click "Connect to Server..." or press Ctrl+N
+   - Use "Localhost" quick connect for local server
+   - Or enter custom hostname/IP and ports
+
+For detailed setup instructions:
+- **Windows:** See [Windows Installation Guide](docs/WINDOWS_INSTALL.md)
+- **Linux/macOS:** See [Getting Started Guide](docs/GETTING_STARTED.md)
+- **General:** See [Client README](client/README.md)
 
 ## Architecture
 
@@ -329,100 +484,24 @@ LabLink enables remote control of lab equipment through a Raspberry Pi server, p
 
 ## Technology Stack
 
-- **Language**: Python 3.11+
-- **Server**: FastAPI, PyVISA
-- **Client**: PyQt6, pyqtgraph
-- **Communication**: WebSockets, REST API
-- **Data Formats**: CSV, HDF5, NumPy binary
-
-## Quick Start
-
-### 🚀 NEW: GUI Launcher (Recommended)
-
-The easiest way to get started with LabLink is using the new **GUI Launcher**.
-
-**Ubuntu 24.04+ Users** - Fully automated setup:
-```bash
-git clone https://github.com/X9X0/LabLink.git
-cd LabLink
-python3 lablink.py
-```
-
-The launcher will automatically handle everything, including installing system packages with your permission!
-
-**Other Systems** - Install system dependencies first:
-```bash
-# Ubuntu/Debian
-sudo apt update && sudo apt install -y python3 python3-pip python3-venv git \
-    libusb-1.0-0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libgl1-mesa-glx
-
-# Then clone and launch
-git clone https://github.com/X9X0/LabLink.git
-cd LabLink
-python3 lablink.py
-```
-
-The **LabLink Launcher** will:
-- ✅ Check your environment automatically
-- ✅ Detect and install missing system packages (Ubuntu 24.04+)
-- ✅ Show LED indicators for system status (Green = OK, Yellow = Warning, Red = Error)
-- ✅ Install missing Python dependencies with one click
-- ✅ Launch server or client with dedicated buttons
-
-**For Ubuntu 24.04 users**: See the detailed [Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md) for more information.
-
----
-
-### Manual Installation (Alternative)
-
-#### Server Setup
-
-1. Install dependencies:
-   ```bash
-   cd server
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-2. Run the server:
-   ```bash
-   python main.py
-   ```
-
-3. Access API documentation:
-   - Open browser to `http://localhost:8000/docs`
-
-#### GUI Client Setup
-
-1. Install dependencies:
-   ```bash
-   cd client
-   pip install -r requirements.txt
-   ```
-
-2. Run the GUI client:
-   ```bash
-   python main.py
-   ```
-
-3. Connect to server:
-   - Click "Connect to Server..." or press Ctrl+N
-   - Use "Localhost" quick connect for local server
-   - Or enter custom hostname/IP and ports
-
-For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTED.md) and [Client README](client/README.md).
+- **Language**: Python 3.12+ (3.13 in the server container)
+- **Server**: FastAPI 0.141, PyVISA 1.16, uvicorn
+- **Client**: PyQt6 6.11, pyqtgraph 0.14, qasync
+- **Communication**: WebSockets 17, REST API
+- **Data**: NumPy 2.5, pandas 3.0, SciPy 1.18, HDF5
+- **Deployment**: Docker on Raspberry Pi OS Trixie (Debian 13)
 
 ## Documentation
 
-- **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - NEW! Step-by-step guide for Ubuntu 24.04 users
+- **[Windows Installation Guide](docs/WINDOWS_INSTALL.md)** - Complete Windows installation guide (fixes execution policy errors)
+- **[Ubuntu 24.04 Setup Guide](docs/UBUNTU_24.04_SETUP.md)** - Step-by-step guide for Ubuntu 24.04 users
 - [Getting Started Guide](docs/GETTING_STARTED.md) - Installation and setup
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation with examples
 - [Data Acquisition System](server/ACQUISITION_SYSTEM.md) - Comprehensive guide to data acquisition features
 - [Advanced Logging System](server/LOGGING_SYSTEM.md) - Logging configuration and best practices
-- [Alarm & Notification System](server/ALARM_SYSTEM.md) - Alarm configuration and notification setup
-- [Scheduled Operations](server/SCHEDULER_SYSTEM.md) - Job scheduling and automation
-- [Equipment Diagnostics](server/DIAGNOSTICS_SYSTEM.md) - Health monitoring and performance diagnostics
+- Alarm & Notification System - *not yet written* (the system is implemented; see `server/alarm/`)
+- Scheduled Operations - *not yet written* (see `server/scheduler/`)
+- Equipment Diagnostics - *not yet written* (see `server/diagnostics/`)
 - [Waveform Capture & Analysis](server/WAVEFORM_USER_GUIDE.md) - Advanced oscilloscope functionality
 - [Advanced Waveform Analysis Tools](server/ADVANCED_WAVEFORM_ANALYSIS.md) - Spectral analysis, jitter, eye diagrams, masks
 - [Data Analysis Pipeline](server/ANALYSIS_USER_GUIDE.md) - Signal processing, curve fitting, SPC, and reporting
@@ -432,9 +511,15 @@ For detailed setup instructions, see [Getting Started Guide](docs/GETTING_STARTE
 
 ## Project Status
 
-**Current Version**: v1.0.0 (Production Ready) 🎉
+**Current Version**: v2.2.0 (Production Ready) 🎉
 
-**Release Date**: November 14, 2025
+**Release Date**: September 14, 2026
+
+> **Upgrading from 1.x?** 2.0.0 is a deliberate compatibility break — read
+> [docs/BREAKING_CHANGES_2.0.md](docs/BREAKING_CHANGES_2.0.md) first. In short:
+> Python 3.12 is the minimum, every user is logged out on upgrade, and SSH
+> deployment no longer accepts `ssh-rsa` host keys. Upgrade server and client
+> together.
 
 **Development Phases Complete**:
 - ✅ REST API operational (90+ endpoints)

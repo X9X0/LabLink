@@ -12,7 +12,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_multimeter import (RigolDM3058, RigolDM3058E,  # noqa: E402
+from server.equipment.rigol_multimeter import (RigolDM3058, RigolDM3058E,  # noqa: E402
                                         RigolDM3068, normalize_function,
                                         parse_reading)
 from shared.models.equipment import (ConnectionType, EquipmentType,  # noqa: E402

@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 import sys
 sys.path.append("..")
-from equipment.rigol_scope import RigolDS1104
+from server.equipment.rigol_scope import RigolDS1104
 
 
 class TestRigolDS1104:

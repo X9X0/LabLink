@@ -14,19 +14,19 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.12', '3.13']
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip packages
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
@@ -62,11 +62,14 @@ jobs:
           pytest tests/test_mock_equipment.py -v --cov=server/equipment --cov-report=xml --cov-report=term --tb=short
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: unittests
           name: codecov-${{ matrix.python-version }}
+          # As the other two codecov steps already do. A coverage upload that
+          # cannot reach the service should not fail a test job that passed.
+          fail_ci_if_error: false
 
   test-integration:
     name: Integration Tests with Mock Equipment
@@ -75,12 +78,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -98,12 +101,18 @@ jobs:
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
-          # Wait for server to start
+          # Wait for server to start, and fail if it never does -- see the
+          # matching note in comprehensive-tests.yml. A dead server here means
+          # every integration test skips and the job still reports success.
           echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://localhost:8000/health > /dev/null; then
               echo "Server is up!"
               break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::Server did not start within 30s"
+              exit 1
             fi
             echo "Waiting... ($i/30)"
             sleep 1
@@ -126,12 +135,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -142,7 +151,9 @@ jobs:
       - name: Test mock equipment demo (non-interactive)
         env:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
-          PYTHONPATH: ${{ github.workspace }}
+          # The demos live in examples/; the server packages they import
+          # are at the workspace root, so both belong on the path.
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/examples
         run: |
           echo "Testing demo script import..."
           echo "PYTHONPATH=$PYTHONPATH"
@@ -160,12 +171,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install linting tools
         run: |

@@ -41,6 +41,11 @@ class EquipmentLock(BaseModel):
     last_activity: datetime = Field(default_factory=datetime.now)
     timeout_seconds: int = Field(default=300, ge=0)  # 5 minutes default
 
+    # Who holds it, so a person looking at a locked instrument can tell whether
+    # to wait, go and ask, or override. A session id answers none of those.
+    username: Optional[str] = None
+    client_ip: Optional[str] = None
+
     class Config:
         use_enum_values = True
 
@@ -187,6 +192,8 @@ class LockManager:
         lock_mode: LockMode = LockMode.EXCLUSIVE,
         timeout_seconds: int = 300,
         queue_if_busy: bool = False,
+        username: Optional[str] = None,
+        client_ip: Optional[str] = None,
     ) -> dict:
         """
         Acquire a lock on equipment.
@@ -273,6 +280,8 @@ class LockManager:
             session_id=session_id,
             lock_mode=lock_mode,
             timeout_seconds=timeout_seconds,
+            username=username,
+            client_ip=client_ip,
         )
 
         self._locks[equipment_id] = lock
@@ -282,6 +291,8 @@ class LockManager:
             {
                 "event": "lock_acquired",
                 "session_id": session_id,
+                "username": username,
+                "client_ip": client_ip,
                 "lock_id": lock.lock_id,
                 "lock_mode": lock_mode,
                 "timeout_seconds": timeout_seconds,
@@ -493,7 +504,12 @@ class LockManager:
                 "session_id": lock.session_id,
                 "lock_id": lock.lock_id,
                 "acquired_at": lock.acquired_at.isoformat(),
+                "last_activity": lock.last_activity.isoformat(),
                 "time_remaining": lock.time_remaining(),
+                "timeout_seconds": lock.timeout_seconds,
+                "expired": lock.is_expired(),
+                "username": lock.username,
+                "client_ip": lock.client_ip,
                 "queue_length": len(self._lock_queue.get(equipment_id, [])),
             }
 
@@ -590,9 +606,18 @@ class LockManager:
 
     def get_all_locks(self) -> dict:
         """Get all current locks."""
+        def _describe(lock: EquipmentLock) -> dict:
+            # dict() carries the stored fields; a caller rendering a lock also
+            # needs the derived ones, and should not have to reimplement the
+            # expiry arithmetic to show a countdown.
+            data = lock.dict()
+            data["time_remaining"] = lock.time_remaining()
+            data["expired"] = lock.is_expired()
+            return data
+
         return {
             "exclusive_locks": {
-                eq_id: lock.dict() for eq_id, lock in self._locks.items()
+                eq_id: _describe(lock) for eq_id, lock in self._locks.items()
             },
             "observer_locks": {
                 eq_id: list(sessions)

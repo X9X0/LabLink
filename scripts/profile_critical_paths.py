@@ -47,6 +47,13 @@ from server.backup.models import (
 )
 from server.utils.profiling import profile, profile_async, time_block
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 # ============================================================================
 # Critical Path 1: User Login Flow
@@ -177,7 +184,7 @@ async def profile_backup_flow():
             for i in range(50):
                 content = '{"test": true, "id": %d}' % i
                 content = content * 20  # ~1KB per file
-                (config_dir / f"settings_{i}.json").write_text(content)
+                (config_dir / f"settings_{i}.json").write_text(content, encoding="utf-8")
 
         config = BackupConfig(backup_dir=temp_dir)
         manager = BackupManager(config)

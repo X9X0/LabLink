@@ -39,11 +39,16 @@ class TestWebSocketManager:
             mock_ws.closed = False
             mock_connect.return_value = mock_ws
 
-            result = await manager.connect()
+            try:
+                result = await manager.connect()
 
-            assert result is True
-            assert manager.connected is True
-            mock_connect.assert_called_once()
+                assert result is True
+                assert manager.connected is True
+                mock_connect.assert_called_once()
+            finally:
+                # connect() spawns a background _ping_loop task; without this
+                # it stays pending and stalls the rest of the test session.
+                await manager.disconnect()
 
     @pytest.mark.asyncio
     async def test_connect_failure(self, manager):

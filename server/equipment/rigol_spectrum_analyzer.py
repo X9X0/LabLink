@@ -387,7 +387,10 @@ class RigolSABase(BaseEquipment):
         self._data_format = "ASCII"
         self._little_endian = False
         self._mode: Optional[str] = None
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Connection / identity

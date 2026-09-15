@@ -7,6 +7,13 @@ from pathlib import Path
 import json
 import hashlib
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 def print_header(text):
     """Print formatted header."""
     print("\n" + "=" * 70)
@@ -39,16 +46,21 @@ def validate_dockerfile():
     """Validate Dockerfile."""
     print_section("Validating Dockerfile")
 
-    dockerfile = Path("Dockerfile")
+    # The one docker-compose builds and the Pi runs. There used to be a second
+    # Dockerfile in the repo root, which this validated instead -- so it could
+    # pass while the deployed image was the other file entirely.
+    dockerfile = Path("docker/Dockerfile.server")
     if not dockerfile.exists():
-        print("✗ Dockerfile not found")
+        print(f"✗ {dockerfile} not found")
         return False
 
-    with open(dockerfile) as f:
+    with open(dockerfile, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
-        ("FROM python:3.12", "Base image"),
+        # Not pinned to a minor: the base image is bumped by dependabot, and a
+        # check that has to be edited to stay true gets edited without thought.
+        ("FROM python:3.", "Base image"),
         ("WORKDIR /app", "Working directory"),
         ("COPY server/requirements.txt", "Requirements copy"),
         ("RUN pip install", "Dependency installation"),
@@ -76,7 +88,7 @@ def validate_docker_compose():
         print("✗ docker-compose.yml not found")
         return False
 
-    with open(compose_file) as f:
+    with open(compose_file, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
@@ -108,7 +120,7 @@ def validate_pyinstaller_spec():
         print("✗ lablink.spec not found")
         return False
 
-    with open(spec_file) as f:
+    with open(spec_file, encoding="utf-8") as f:
         content = f.read()
 
     checks = [
@@ -279,7 +291,7 @@ def generate_package_manifest():
     }
 
     # Save manifest
-    with open("package_manifest.json", "w") as f:
+    with open("package_manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     print("\n✓ Package manifest saved to: package_manifest.json")
@@ -390,13 +402,13 @@ def create_build_instructions():
 
 ═══════════════════════════════════════════════════════════════════════
 
-For detailed deployment options, see DEPLOYMENT.md
+For detailed deployment options, see docs/DEPLOYMENT.md
 """
 
     print(instructions)
 
     # Save to file
-    with open("BUILD_INSTRUCTIONS.txt", "w") as f:
+    with open("BUILD_INSTRUCTIONS.txt", "w", encoding="utf-8") as f:
         f.write(instructions)
 
     print("\n✓ Build instructions saved to: BUILD_INSTRUCTIONS.txt")
@@ -441,12 +453,12 @@ def main():
     print("\nNext Steps:")
     print("  1. Install Docker: https://docs.docker.com/get-docker/")
     print("  2. Build server: ./build_docker.sh")
-    print("  3. Build client: cd client && ./build_client.sh")
+    print("  3. Build client: ./build_client.sh")
 
     print("\nDocumentation:")
-    print("  • DEPLOYMENT.md - Complete deployment guide")
+    print("  • docs/DEPLOYMENT.md - Complete deployment guide")
     print("  • README.md - Project overview")
-    print("  • TESTING.md - Testing procedures")
+    print("  • docs/TESTING.md - Testing procedures")
 
     print("\nEstimated Package Sizes:")
     print("  • Docker image:      250-350 MB")

@@ -8,6 +8,13 @@ import ast
 import sys
 from pathlib import Path
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Color codes for terminal output
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -77,7 +84,7 @@ class ASTVisitor(ast.NodeVisitor):
 def parse_python_file(filepath: Path):
     """Parse a Python file and extract structure information."""
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read())
         visitor = ASTVisitor()
         visitor.visit(tree)
@@ -302,7 +309,7 @@ def verify_integration():
         print_error("main.py not found")
         return False
 
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
 
     # Check for setup_logging import
     if "from logging_config import" in content and "setup_logging" in content:
@@ -336,7 +343,7 @@ def verify_module_init():
         print_error("logging_config/__init__.py not found")
         return False
 
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
 
     # Check for key exports
     required_exports = [

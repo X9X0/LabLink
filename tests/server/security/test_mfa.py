@@ -15,9 +15,7 @@ from unittest.mock import Mock, patch, MagicMock
 import io
 
 # Add server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../server'))
-
-from security.mfa import (
+from server.security.mfa import (
     generate_totp_secret,
     generate_qr_code,
     generate_provisioning_uri,
@@ -263,8 +261,9 @@ class TestMFAIntegration:
         secret = generate_totp_secret()
         assert secret is not None
 
-        # 2. Generate QR code
-        qr_code = generate_totp_qr_code(secret, "test@example.com", "LabLink")
+        # 2. Generate QR code from the provisioning URI
+        uri = generate_provisioning_uri(secret, "test@example.com", "LabLink")
+        qr_code = generate_qr_code(uri)
         assert qr_code is not None
 
         # 3. Generate backup codes

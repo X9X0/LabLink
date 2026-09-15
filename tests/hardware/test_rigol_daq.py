@@ -13,7 +13,7 @@ import pytest
 
 sys.path.append("..")
 
-from equipment.rigol_daq import (RigolM300, expand_channel_list,  # noqa: E402
+from server.equipment.rigol_daq import (RigolM300, expand_channel_list,  # noqa: E402
                                  format_channel_list, normalize_channel,
                                  normalize_function,
                                  parse_channel_list_response, parse_reading)

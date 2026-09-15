@@ -10,7 +10,7 @@ from .models import (AlarmAcknowledgment, AlarmCondition, AlarmConfig,
                      AlarmEvent, AlarmSeverity, AlarmState, AlarmStatistics)
 
 if TYPE_CHECKING:
-    from websocket_server import StreamManager
+    from server.websocket_server import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -354,7 +354,7 @@ class AlarmManager:
 
                 # Get current value from equipment
                 if config.equipment_id:
-                    from equipment.manager import equipment_manager
+                    from server.equipment.manager import equipment_manager
 
                     equipment = equipment_manager.get_equipment(config.equipment_id)
                     if equipment:

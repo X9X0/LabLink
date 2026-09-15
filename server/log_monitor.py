@@ -29,6 +29,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Set
 
+# A Windows console decodes as cp1252 by default, and this script prints
+# non-ASCII. Without this the first such print raises UnicodeEncodeError --
+# `bump_version.py --help` did exactly that. See issue #192.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 # ANSI color codes
 class Colors:
@@ -127,7 +134,7 @@ class LogMonitor:
             try:
                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                 timestamp = dt.strftime("%H:%M:%S.%f")[:-3]
-            except:
+            except Exception:
                 pass
 
         level = entry.get("level", "UNKNOWN")
@@ -270,7 +277,7 @@ class LogMonitor:
 
         print(f"\nPress Ctrl+C to stop\n{Colors.GRAY}{'─' * 80}{Colors.RESET}\n")
 
-        last_stats_time = time.time()
+        last_stats_time = time.perf_counter()
 
         try:
             while True:
@@ -306,7 +313,7 @@ class LogMonitor:
 
                 # Show periodic stats
                 if show_stats_interval > 0:
-                    current_time = time.time()
+                    current_time = time.perf_counter()
                     if current_time - last_stats_time >= show_stats_interval:
                         self.display_stats()
                         last_stats_time = current_time

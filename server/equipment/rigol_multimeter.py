@@ -247,7 +247,10 @@ class RigolDMMBase(BaseEquipment):
         self._auto_range: Dict[str, bool] = {}
         self._secondary_function: Optional[str] = None
         self._command_set: Optional[str] = None
-        self._io_lock = asyncio.Lock()
+        # Serialises multi-command sequences; BaseEquipment on newer branches already
+        # provides a reentrant lock of this name, so only create one if it is missing.
+        if not hasattr(self, "_io_lock"):
+            self._io_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     # Connection

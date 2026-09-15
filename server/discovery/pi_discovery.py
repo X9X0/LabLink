@@ -362,7 +362,7 @@ class PiDiscovery:
                             "version": version_data.get("version", "unknown"),
                             "name": "LabLink",
                         }
-                except:
+                except Exception:
                     pass
 
                 return True, {"version": "unknown", "name": "LabLink"}
