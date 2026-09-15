@@ -1675,6 +1675,18 @@ class ControlPanel(QWidget):
                 self._mark_selection_disconnected()
                 self._show_not_connected()
                 self.refresh_equipment_list()
+            elif self._readings_unsupported(e):
+                # A permanent "not for this instrument", not a fault. An
+                # oscilloscope has no volts-and-amps setpoints, so this panel
+                # has nothing to poll -- and polling anyway produced the same
+                # storm a stale id did, five times a second, which starves the
+                # connect task and stops *other* instruments connecting.
+                logger.info(
+                    "%s does not report power-supply readings; stopping",
+                    getattr(self.selected_equipment, "equipment_id", "?"),
+                )
+                self._stop_data_acquisition()
+                self._show_no_readings_for_this_instrument()
             else:
                 logger.error(f"Error updating readings: {e}")
         finally:
@@ -1690,6 +1702,34 @@ class ControlPanel(QWidget):
         """
         response = getattr(error, "response", None)
         return getattr(response, "status_code", None) == 404
+
+    @staticmethod
+    def _readings_unsupported(error) -> bool:
+        """Whether the server answered "that instrument cannot do this".
+
+        501 is what the server sends for an instrument whose driver has no
+        readings -- a scope, on a power-supply panel. 405 is the same shape of
+        answer from a server that routes it differently. Neither can be fixed
+        by asking again, so both have to stop the timer: retrying a permanent
+        refusal is what turned selecting a scope into an error storm.
+
+        Deliberately not every 5xx. A 500 or a 503 really is "the server is
+        unwell", and a supply should keep reading through one.
+        """
+        response = getattr(error, "response", None)
+        return getattr(response, "status_code", None) in (405, 501)
+
+    def _show_no_readings_for_this_instrument(self):
+        """Say why the numbers are blank, rather than showing stale ones."""
+        self.voltage_display.setText("--")
+        self.current_display.setText("--")
+        self.voltage_gauge.set_value(0)
+        self.current_gauge.set_value(0)
+        name = getattr(self.selected_equipment, "name", "This instrument")
+        self.status_message.emit(
+            f"{name} does not report voltage and current. "
+            "The Control tab drives power supplies."
+        )
 
     def _mark_selection_disconnected(self):
         """Stop trusting a cached "connected" that the server contradicts.

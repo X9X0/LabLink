@@ -92,3 +92,52 @@ class TestTheCachedStatusIsCorrected:
         panel._refresh_lock_status = lambda: None
         panel.selected_equipment = None
         panel._mark_selection_disconnected()  # would raise if it assumed one
+
+
+class TestAPermanentRefusalAlsoStops:
+    """A scope has no volts and amps, and asking again will not change that.
+
+    The Control tab drives power supplies. Selecting an oscilloscope made it
+    poll `/readings` anyway, and the server answered 501 Not Implemented five
+    times a second, forever. That is the same storm a stale id produced -- it
+    saturates the loop and starves the connect task, so the *other* bench
+    instruments then fail to connect, which is how it was noticed.
+
+    The original fix stopped only on 404 and treated everything else as
+    transient, on the reasoning that a 5xx means the server is unwell and a
+    supply should read through it. That reasoning holds for 500 and 503 and
+    not for 501, which is a permanent statement about this instrument.
+    """
+
+    @pytest.mark.parametrize("status", [501, 405])
+    def test_a_permanent_refusal_is_recognised(self, qapp, status):
+        assert ControlPanel._readings_unsupported(_http_error(status))
+
+    @pytest.mark.parametrize("status", [500, 502, 503])
+    def test_a_real_server_fault_is_not(self, qapp, status):
+        """A supply must keep reading through a sick server."""
+        assert not ControlPanel._readings_unsupported(_http_error(status))
+
+    def test_a_missing_instrument_is_not_a_refusal(self, qapp):
+        """404 has its own handling: gone, rather than incapable."""
+        assert not ControlPanel._readings_unsupported(_http_error(404))
+        assert ControlPanel._equipment_is_gone(_http_error(404))
+
+    def test_a_refusal_is_not_treated_as_the_instrument_vanishing(self, qapp):
+        """The scope is connected and fine -- it just has no setpoints.
+
+        Marking it disconnected would be a lie, and would make the Equipment
+        tab show a connected instrument as gone.
+        """
+        assert not ControlPanel._equipment_is_gone(_http_error(501))
+
+    def test_the_readouts_are_blanked_rather_than_left_stale(self, qapp):
+        panel = ControlPanel(client=None)
+        panel._refresh_lock_status = lambda: None
+        panel.voltage_display.setText("12.00 V")
+        panel.current_display.setText("1.500 A")
+
+        panel._show_no_readings_for_this_instrument()
+
+        assert panel.voltage_display.text() == "--"
+        assert panel.current_display.text() == "--"
