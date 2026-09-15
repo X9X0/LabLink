@@ -52,6 +52,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.client: Optional[LabLinkClient] = None
+        # "host:port" of the connection being established, used to file its
+        # tokens under the right server.
+        self._connecting_server_key: Optional[str] = None
         self.connection_dialog: Optional[ConnectionDialog] = None
         self.login_dialog: Optional[LoginDialog] = None
         self.ws_connected = False
@@ -410,9 +413,10 @@ class MainWindow(QMainWindow):
             return
 
         if server.connected:
-            # Disconnect
-            self.disconnect_from_server()
-            self.server_manager.mark_disconnected(server_name)
+            # Disconnect this server only. Several can be connected at once,
+            # so tearing down whichever client happens to be active would
+            # drop a bench the operator did not ask to leave.
+            self.disconnect_server(server_name)
             self.server_selector.refresh()
         else:
             # Connect
@@ -450,6 +454,9 @@ class MainWindow(QMainWindow):
         """
         try:
             self.client = LabLinkClient(host, api_port, ws_port)
+            # Tokens are stored per server: with two Pis connected, one set of
+            # credentials must not overwrite the other's.
+            self._connecting_server_key = f"{host}:{api_port}"
 
             if self.client.connect():
                 # Get server info
@@ -478,8 +485,11 @@ class MainWindow(QMainWindow):
                     return
 
                 # Try to restore session from stored tokens
-                if self.token_storage.has_tokens():
-                    access_token, refresh_token = self.token_storage.load_tokens()
+                server_key = self._connecting_server_key
+                if self.token_storage.has_tokens(server_key):
+                    access_token, refresh_token = self.token_storage.load_tokens(
+                        server_key
+                    )
                     self.client.access_token = access_token
                     self.client.refresh_token = refresh_token
                     self.client._update_auth_header()
@@ -495,7 +505,10 @@ class MainWindow(QMainWindow):
                     else:
                         # Token refresh failed, clear and require login
                         logger.info("Stored tokens invalid, requiring login")
-                        self.token_storage.clear_all()
+                        # Only this server's tokens: another server's session
+                        # is still good and clearing it would log the operator
+                        # out of a bench they are using.
+                        self.token_storage.clear_tokens(server_key)
 
                 # Show login dialog
                 if self.login_dialog is None:
@@ -511,7 +524,9 @@ class MainWindow(QMainWindow):
                     # Save tokens if login successful
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token, self.client.refresh_token
+                            self.client.access_token,
+                            self.client.refresh_token,
+                            server=self._connecting_server_key,
                         )
                         self.token_storage.save_user_data(user_data)
 
@@ -621,15 +636,56 @@ class MainWindow(QMainWindow):
             logger.error(f"WebSocket connection error: {e}")
             # Don't show error to user - WebSocket is optional
 
+    def disconnect_server(self, server_name: str):
+        """Disconnect one named server, leaving any others connected.
+
+        The panels that span servers re-read the registry, so dropping one
+        connection removes its instruments from the lists and leaves the rest
+        alone.
+        """
+        server = self.server_manager.get_server(server_name)
+        client = self.server_manager.get_client(server_name)
+
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception as e:
+                logger.debug(f"Error disconnecting {server_name}: {e}")
+
+        self.server_manager.mark_disconnected(server_name)
+
+        # If the active connection was the one that went, adopt whatever is
+        # still connected rather than leaving the server-scoped tabs pointing
+        # at a dead client.
+        if client is not None and client is self.client:
+            remaining = self.server_manager.connected_clients()
+            self.client = next(iter(remaining.values()), None)
+            if self.client is None:
+                self.connection_label.setText("Not Connected")
+                self.connection_changed.emit(False)
+
+        self.equipment_panel.refresh()
+        self.control_panel.refresh_equipment_list()
+
+        name = server.name if server else server_name
+        self.status_bar.showMessage(f"Disconnected from {name}", 3000)
+
     @qasync.asyncSlot()
     async def disconnect_from_server(self):
-        """Disconnect from server."""
+        """Disconnect from every server."""
         if self.client:
             try:
                 await self.client.disconnect()
             except Exception as e:
                 logger.debug(f"Error during disconnect: {e}")
             self.client = None
+
+        # Any other connections are live too, and leaving them registered
+        # would keep their instruments in the lists after a full disconnect.
+        try:
+            self.server_manager.disconnect_all()
+        except Exception as e:
+            logger.debug(f"Error disconnecting remaining servers: {e}")
 
         # Reset connection states
         self.ws_connected = False
@@ -666,7 +722,9 @@ class MainWindow(QMainWindow):
                     # Save tokens
                     if self.client.access_token and self.client.refresh_token:
                         self.token_storage.save_tokens(
-                            self.client.access_token, self.client.refresh_token
+                            self.client.access_token,
+                            self.client.refresh_token,
+                            server=getattr(self, "_connecting_server_key", None),
                         )
                         self.token_storage.save_user_data(user_data)
 

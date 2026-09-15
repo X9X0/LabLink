@@ -156,7 +156,9 @@ def control_panel(qapp):
     ]
     for equipment in panel.equipment_list:
         item = QListWidgetItem(equipment.name)
-        item.setData(Qt.ItemDataRole.UserRole, equipment.equipment_id)
+        # Matches what refresh_equipment_list writes: the composite key,
+        # so the same id on two servers stays distinguishable.
+        item.setData(Qt.ItemDataRole.UserRole, equipment.key)
         panel.equipment_list_widget.addItem(item)
 
     panel.client = client
