@@ -15,6 +15,31 @@ class EquipmentType(str, Enum):
     ELECTRONIC_LOAD = "electronic_load"
     MULTIMETER = "multimeter"
     FUNCTION_GENERATOR = "function_generator"
+    SPECTRUM_ANALYZER = "spectrum_analyzer"
+    RF_SIGNAL_GENERATOR = "rf_signal_generator"
+    VECTOR_NETWORK_ANALYZER = "vector_network_analyzer"
+    DATA_ACQUISITION = "data_acquisition"
+
+
+class MultimeterFunction(str, Enum):
+    """Measurement functions offered by a digital multimeter.
+
+    Values are the canonical LabLink names used as acquisition channel names
+    and in ``set_function`` / ``measure`` commands. Vendor drivers map these
+    onto their own SCPI keywords.
+    """
+
+    DCV = "DCV"  # DC voltage
+    ACV = "ACV"  # AC (true RMS) voltage
+    DCI = "DCI"  # DC current
+    ACI = "ACI"  # AC (true RMS) current
+    RES = "RES"  # 2-wire resistance
+    FRES = "FRES"  # 4-wire resistance
+    FREQ = "FREQ"  # Frequency
+    PER = "PER"  # Period
+    CAP = "CAP"  # Capacitance
+    CONT = "CONT"  # Continuity
+    DIODE = "DIODE"  # Diode test
 
 
 class ConnectionType(str, Enum):

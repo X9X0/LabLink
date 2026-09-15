@@ -183,11 +183,12 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
   - Automated report generation
 
 ### Equipment Management
-- ✅ Equipment drivers (Rigol MSO2072A, DS1104, DL3021A, BK 9206B, 9205B, 9130B, 1685B, 1902B)
+- ✅ Equipment drivers (Rigol MSO2072A, DS1104, DL3021A, DM3058/DM3058E/DM3068, BK 9206B, 9205B, 9130B, 1685B, 1902B)
 - ✅ Mock equipment drivers (November 2024):
   - MockOscilloscope - Realistic waveforms (sine, square, triangle, noise) - 376 lines
   - MockPowerSupply - CV/CC modes with load simulation - 264 lines
   - MockElectronicLoad - CC/CV/CR/CP modes with thermal behavior - 349 lines
+  - MockMultimeter - Rigol DM30xx-style DMM with per-function simulated inputs (September 2026)
   - Complete documentation: `docs/MOCK_EQUIPMENT.md`
 - ✅ Equipment discovery (VISA, mDNS/Zeroconf, GPIB):
   - Server-side mDNS broadcasting (`server/utils/mdns.py`)

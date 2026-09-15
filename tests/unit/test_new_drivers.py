@@ -261,3 +261,58 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rigol_dm3058_and_dm3068():
+    """Test Rigol DM3058 / DM3068 multimeter drivers with patched I/O."""
+    from unittest.mock import patch
+    from equipment.rigol_multimeter import RigolDM3058, RigolDM3068
+
+    for cls, model, digits in ((RigolDM3058, "DM3058", 5.5), (RigolDM3068, "DM3068", 6.5)):
+        idn = f"Rigol Technologies,{model},DM3A020080808,01.01.00.02.00.00"
+        mock_inst = create_mock_instrument(idn)
+        mock_rm = create_mock_resource_manager(mock_inst)
+        dmm = cls(mock_rm, "USB0::0x1AB1::0x0C94::DM3A020080808::INSTR")
+
+        responses = {
+            "*IDN?": idn,
+            "CMDSET?": "RIGOL",
+            ":FUNCtion?": "DCV",
+            ":MEASure:VOLTage:DC?": "4.999871e+00",
+            ":MEASure:VOLTage:DC:RANGe?": "2",
+            ":RATE:VOLTage:DC?": "S",
+        }
+
+        async def fake_query(cmd, _r=responses):
+            return _r[cmd]
+
+        with patch.object(dmm, "_query", side_effect=fake_query), \
+             patch.object(dmm, "_write", new_callable=AsyncMock) as mock_write:
+            await dmm.connect()
+            assert dmm.connected is True
+
+            info = await dmm.get_info()
+            assert info.model == model
+            assert info.type.value == "multimeter"
+            assert info.id.startswith("dmm_")
+
+            status = await dmm.get_status()
+            assert status.firmware_version == "01.01.00.02.00.00"
+            assert status.capabilities["digits"] == digits
+
+            reading = await dmm.get_readings()
+            assert reading.value == pytest.approx(4.999871)
+            assert reading.unit == "V"
+            assert reading.range_full_scale == 20.0
+            assert reading.rate == "SLOW"
+
+            sample = await dmm.get_measurement("CH1")
+            assert sample["value"] == pytest.approx(4.999871)
+
+            await dmm.set_range(200.0)
+            mock_write.assert_any_call(":MEASure:VOLTage:DC 3")
+
+            with pytest.raises(ValueError):
+                await dmm.execute_command("unknown_cmd", {})

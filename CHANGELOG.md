@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Rigol digital multimeter drivers** (`server/equipment/rigol_multimeter.py`): `RigolDM3058`, `RigolDM3058E`
+  and `RigolDM3068` built on a shared `RigolDMMBase`, implemented from the RIGOL DM3058/DM3068 programming
+  guides (RIGOL command set). Full remote control: function selection (DCV/ACV/DCI/ACI/2W+4W resistance,
+  frequency, period, capacitance, continuity, diode), manual/auto range, FAST/MEDIUM/SLOW rate, DC input
+  impedance, AC filter, dual display, trigger source/interval/sample count, math (REL, statistics,
+  pass/fail), beeper/brightness, interface settings read-back, `*TST?` self test, error queue.
+- **Self-identification**: `*IDN?` parsing, USB VID/PID table entries for DM3058 (`1ab1:09c4`) and DM3068
+  (`1ab1:0c94`), and multimeter-aware device-type inference in the VISA and mDNS scanners.
+- **Acquisition & streaming**: multimeters implement `get_measurement(channel)`, `get_readings()` and
+  `get_measurements()`, so acquisition sessions can name channels by function (`DCV,RES`) and the
+  WebSocket `readings` stream works unchanged. New shared `MultimeterData` model and
+  `MultimeterFunction` enum.
+- **MockMultimeter** (`MOCK::DMM::n`) with the same command surface, registered in the default mock set,
+  plus four default multimeter profiles.
+- Tests: `tests/hardware/test_rigol_dmm.py` (scripted SCPI simulator), `tests/test_mock_multimeter.py`,
+  and a DM3058/DM3068 case in `tests/unit/test_new_drivers.py`.
+- Docs: `docs/RIGOL_DMM.md` protocol and driver notes.
+- **Rigol catalogue scrape** (2026-09-15): all 421 documents on rigolna.com/support/downloads indexed (420 downloaded) in
+  `docs/rigol/downloads_catalog.json`; 75 programming guides mined into
+  `docs/rigol/programming_guide_inventory.json`; compatibility matrix and implementation order in
+  `docs/RIGOL_EQUIPMENT_CATALOG.md`.
+- `server/discovery/vendor_models.py`: prefix-anchored Rigol model table used by the VISA and mDNS
+  scanners, so DSA/RSA/DSG/DHO/MHO/DNA/DM858 models classify correctly. USB PIDs harvested from the
+  user guides (DG 0x0642, DSA 0x0960, DSG 0x0992/0x099C/0x0993, DP1116A 0x0E10, M300 0x0C80) added to
+  the USB hardware table.
+- Existing scope drivers now accept the whole family they already speak to: `RigolDS1104` for
+  DS1054Z/DS1074Z/DS1104Z, `RigolMSO2072A` for all MSO2000A/DS2000A models.
+
+- **Rigol family drivers** built from the scraped catalogue (each with a scripted-instrument test suite and a protocol doc in `docs/`):
+  - `rigol_power_supply.py`: `RigolDPBase` + DP800/DP700/DP900/DP2000/DP1308A/DP1116A (21-model limits table, dialect table) — `docs/RIGOL_DP.md`
+  - `rigol_modern_scope.py`: `RigolModernScopeBase` + 13 families (DHO800…DS80000, DS1000Z-E), 93-row model table, RAW chunked waveform transfer, screenshots — `docs/RIGOL_SCOPES.md`
+  - `rigol_function_generator.py`: `RigolDGBase` (DG800/900/1000Z/2000/4000/5000) + `RigolDGProBase` (DG800/900 Pro, DG5000 Pro, DG6000), arb upload, modulation/sweep/burst, counter — `docs/RIGOL_DG.md`
+  - `rigol_spectrum_analyzer.py`: `RigolSABase` + DSA800/DSA1000/RSA3000/RSA5000/RSA800/RSA6000, ASCII + REAL,32 trace parsing, markers, TG, RTSA mode — `docs/RIGOL_SA.md`
+  - `rigol_rf_generator.py`: `RigolDSGBase` + DSG800/DSG3000(B)/DSG5000 — `docs/RIGOL_DSG.md`
+  - `rigol_multimeter_dm858.py`: `RigolDM858`/`RigolDM858E` (standard SCPI DMM tree) — `docs/RIGOL_DM858.md`
+  - `rigol_electronic_load.py`: `RigolDL3000Base` model table, `RigolDL3031A`, acquisition hook
+  - `rigol_vna.py`: `RigolVNABase` + `RigolRSAN` (RSA3000N/5000N) and `RigolDNA6000` — `docs/RIGOL_VNA.md`
+  - `rigol_daq.py`: `RigolM300` (scan lists, module detection, switch control) — `docs/RIGOL_M300.md`
+- New equipment types `spectrum_analyzer` (shared enum), `rf_signal_generator`, `vector_network_analyzer`, `data_acquisition` end to end (shared/client/discovery enums, connect dialog, discovery API, safety defaults).
+- New mocks: `MockFunctionGenerator` (`MOCK::FGEN::n`), `MockSpectrumAnalyzer` (`MOCK::SA::n`), `MockRFGenerator` (`MOCK::RFGEN::n`), `MockVNA` (`MOCK::VNA::n`), `MockDAQ` (`MOCK::DAQ::n`); all in the default mock set.
+- Shared data models `FunctionGeneratorData`, `SpectrumData`, `RFGeneratorData`, `NetworkAnalyzerData`, `DataAcquisitionData`.
+- `equipment/manager.py`: keyword-driver registry (`KEYWORD_DRIVER_CLASSES` / `MODEL_KEYWORDS`) replaces per-model `elif` chains for new families.
+- `docs/DRIVER_AUTHORING.md`: the driver contract, integration hooks and per-class command vocabularies.
+- Local manual archive: `~/Manuals/_archive/Rigol-manuals-2026-09-15.tar.gz` + SHA-256 manifest.
+
+### Changed
+- Model list in the connect dialog, `SUPPORTED_MANUFACTURERS`, default safety limits (`multimeter`),
+  and the default `LABLINK_MOCK_EQUIPMENT_TYPES` now include multimeters.
+
+### Fixed
+- `BaseEquipment._query_binary()` passed `datatype=` as a keyword to `run_in_executor` and always raised `TypeError`.
+- `BaseEquipment._determine_connection_type()` reported serial resources such as
+  `ASRL/dev/ttyUSB0::INSTR` as USB because the path contains "USB"; serial is now matched first.
+- Device-type inference could never classify Rigol `DM30xx` model strings as multimeters.
 ## [2.2.0] - 2026-09-14
 
 One client, several benches. Built and tested against two Raspberry Pis with a

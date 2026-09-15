@@ -673,6 +673,7 @@ LabLink supports equipment through:
 **Currently Supported:**
 - Rigol oscilloscopes (DS1000Z, DS1000Z-E series)
 - Rigol electronic loads (DL3000 series)
+- Rigol digital multimeters (DM3058, DM3058E, DM3068)
 - BK Precision power supplies
 - Keysight equipment (various models)
 - Generic SCPI instruments
