@@ -468,6 +468,9 @@ async def get_discovery_info():
                 "multimeter",
                 "function_generator",
                 "spectrum_analyzer",
+                "rf_signal_generator",
+                "vector_network_analyzer",
+                "data_acquisition",
                 "unknown",
             ],
             "features": {

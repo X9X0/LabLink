@@ -147,6 +147,95 @@ USB_HARDWARE_DB = {
         max_voltage=150.0,
         max_current=40.0,
     ),
+    # Rigol Digital Multimeters
+    # DM3068 VID/PID taken from the DM3068 User Guide (USB0::0x1AB1::0x0C94::...).
+    # DM3058/DM3058E PID from public USB-TMC device listings (not in the manual).
+    ("1ab1", "09c4"): USBDeviceInfo(
+        vid="1ab1",
+        pid="09c4",
+        manufacturer="Rigol",
+        model="DM3058",
+        device_type=DeviceType.MULTIMETER,
+        description="5 1/2 digit digital multimeter (DM3058 / DM3058E)",
+        max_voltage=1000.0,
+        max_current=10.0,
+    ),
+    ("1ab1", "0c94"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0c94",
+        manufacturer="Rigol",
+        model="DM3068",
+        device_type=DeviceType.MULTIMETER,
+        description="6 1/2 digit digital multimeter, LXI-C",
+        max_voltage=1000.0,
+        max_current=10.0,
+    ),
+    # Rigol Function / Arbitrary Waveform Generators (DG800, DG900, DG1000Z and
+    # DG2000 user guides all quote PID 0x0642; the DG5000 guide quotes 0x0640,
+    # which is the DG4000 entry above).
+    ("1ab1", "0642"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0642",
+        manufacturer="Rigol",
+        model="DG800/DG900/DG1000Z/DG2000",
+        device_type=DeviceType.FUNCTION_GENERATOR,
+        description="Function/arbitrary waveform generator (DG800, DG900, DG1000Z, DG2000 series)",
+    ),
+    # Rigol Programmable DC Power Supplies
+    # Note: the DP800 user guide quotes PID 0x0e11, the same value the DL3000
+    # load guide quotes; that key is held by the DL3021A entry, so DP800 units
+    # are identified by *IDN? instead.
+    ("1ab1", "0e10"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0e10",
+        manufacturer="Rigol",
+        model="DP1116A",
+        device_type=DeviceType.POWER_SUPPLY,
+        description="Programmable DC power supply",
+    ),
+    # Rigol Spectrum Analyzers
+    ("1ab1", "0960"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0960",
+        manufacturer="Rigol",
+        model="DSA800",
+        device_type=DeviceType.SPECTRUM_ANALYZER,
+        description="Spectrum analyzer (DSA700 / DSA800 / DSA800E series)",
+    ),
+    # Rigol RF Signal Generators
+    ("1ab1", "0992"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0992",
+        manufacturer="Rigol",
+        model="DSG3000",
+        device_type=DeviceType.RF_SIGNAL_GENERATOR,
+        description="RF signal generator, DSG3000 series",
+    ),
+    ("1ab1", "099c"): USBDeviceInfo(
+        vid="1ab1",
+        pid="099c",
+        manufacturer="Rigol",
+        model="DSG3000B",
+        device_type=DeviceType.RF_SIGNAL_GENERATOR,
+        description="RF signal generator, DSG3000B series",
+    ),
+    ("1ab1", "0993"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0993",
+        manufacturer="Rigol",
+        model="DSG5000",
+        device_type=DeviceType.RF_SIGNAL_GENERATOR,
+        description="RF signal generator, DSG5000 series",
+    ),
+    # Rigol Data Acquisition / Switch mainframe
+    ("1ab1", "0c80"): USBDeviceInfo(
+        vid="1ab1",
+        pid="0c80",
+        manufacturer="Rigol",
+        model="M300",
+        device_type=DeviceType.DATA_ACQUISITION,
+        description="M300 data acquisition / switch mainframe",
+    ),
     # Keysight/Agilent
     ("0957", "0588"): USBDeviceInfo(
         vid="0957",

@@ -533,6 +533,22 @@ class VISAScanner:
         model = (device_info.get("model") or "").lower()
         combined = f"{manufacturer} {model}"
 
+        # Vendor model-prefix table (exact families from the vendor catalogue)
+        from .vendor_models import infer_rigol_device_type
+
+        vendor_type = infer_rigol_device_type(model, manufacturer)
+        if vendor_type is not None:
+            return vendor_type
+
+        # Multimeter patterns (checked first: model numbers such as "DM3058"
+        # would otherwise never match, and loose tokens below like "ds"/"dl"
+        # could hijack them)
+        if any(
+            keyword in combined
+            for keyword in ["multimeter", "dmm", "dm3058", "dm3068", "dm30"]
+        ):
+            return DeviceType.MULTIMETER
+
         # Oscilloscope patterns
         if any(
             keyword in combined
@@ -571,6 +587,18 @@ class VISAScanner:
             for keyword in ["function generator", "waveform generator", "dg", "fg"]
         ):
             return DeviceType.FUNCTION_GENERATOR
+
+        # Vector network analyzer patterns
+        if any(keyword in combined for keyword in ["network analyzer", "vna"]):
+            return DeviceType.VECTOR_NETWORK_ANALYZER
+
+        # RF signal generator patterns
+        if any(keyword in combined for keyword in ["rf signal generator", "signal generator"]):
+            return DeviceType.RF_SIGNAL_GENERATOR
+
+        # Data acquisition patterns
+        if any(keyword in combined for keyword in ["data acquisition", "daq", "switch"]):
+            return DeviceType.DATA_ACQUISITION
 
         # Spectrum analyzer patterns
         if any(keyword in combined for keyword in ["spectrum analyzer", "sa", "rsa"]):

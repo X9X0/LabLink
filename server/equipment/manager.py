@@ -12,12 +12,103 @@ from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
 from .base import BaseEquipment
 from .bk_power_supply import BK1685B, BK1902B, BK9130B, BK9205B, BK9206B
 from .mock.mock_electronic_load import MockElectronicLoad
+from .mock.mock_multimeter import MockMultimeter
 from .mock.mock_oscilloscope import MockOscilloscope
 from .mock.mock_power_supply import MockPowerSupply
-from .rigol_electronic_load import RigolDL3021A
+from .rigol_electronic_load import RigolDL3021A, RigolDL3031A
+from .rigol_multimeter import RigolDM3058, RigolDM3058E, RigolDM3068
+from .mock.mock_function_generator import MockFunctionGenerator
+from .mock.mock_daq import MockDAQ
+from .mock.mock_rf_generator import MockRFGenerator
+from .mock.mock_spectrum_analyzer import MockSpectrumAnalyzer
+from .rigol_multimeter_dm858 import RigolDM858, RigolDM858E
+from .rigol_rf_generator import RigolDSG800, RigolDSG3000, RigolDSG5000
+from .mock.mock_vna import MockVNA
+from .rigol_daq import RigolM300
+from .rigol_vna import RigolDNA6000, RigolRSAN
+from .rigol_modern_scope import (RigolDHO800, RigolDHO1000, RigolDHO5000,
+                                 RigolDS1000ZE, RigolDS4000, RigolDS6000,
+                                 RigolDS8000R, RigolDS70000, RigolDS80000,
+                                 RigolMHO900, RigolMSO5000, RigolMSO7000,
+                                 RigolMSO8000)
+from .rigol_spectrum_analyzer import (RigolDSA800, RigolDSA1000, RigolRSA800,
+                                      RigolRSA3000, RigolRSA5000, RigolRSA6000)
+from .rigol_function_generator import (RigolDG800, RigolDG800Pro, RigolDG900,
+                                       RigolDG1000Z, RigolDG2000, RigolDG4000,
+                                       RigolDG5000, RigolDG5000Pro, RigolDG6000)
+from .rigol_power_supply import (RigolDP700, RigolDP800, RigolDP900, RigolDP1116A,
+                                 RigolDP1308A, RigolDP2000)
 from .rigol_scope import RigolDS1102D, RigolDS1104, RigolMSO2072A
 
 logger = logging.getLogger(__name__)
+
+
+# Driver classes that declare ``MODEL_KEYWORDS`` (upper-case model substrings).
+# Matched in order, first hit wins, so put the most specific classes first
+# (e.g. a VNA variant "RSA3030N" before the spectrum analyzer "RSA3030").
+KEYWORD_DRIVER_CLASSES = [
+    # Multimeters (DM858E before DM858; DM30xx handled by the explicit rules below)
+    RigolDM858E,
+    RigolDM858,
+    # Electronic loads (DL3031/DL3041 rows; DL3021 handled by the explicit rule)
+    RigolDL3031A,
+    # RF signal generators
+    RigolDSG5000,
+    RigolDSG3000,
+    RigolDSG800,
+    # Vector network analyzers: RSAxxxxN must precede the RSA spectrum-analyzer classes
+    RigolRSAN,
+    RigolDNA6000,
+    # Data acquisition
+    RigolM300,
+    # Oscilloscopes (modern SCPI tree); 5-digit DS7xxxx/DS8xxxx and -R before plain
+    RigolDS1000ZE,
+    RigolDS80000,
+    RigolDS70000,
+    RigolDS8000R,
+    RigolMSO8000,
+    RigolMSO7000,
+    RigolMSO5000,
+    RigolDHO5000,
+    RigolMHO900,
+    RigolDHO1000,
+    RigolDHO800,
+    RigolDS6000,
+    RigolDS4000,
+    # Spectrum analyzers (RSA before DSA; E/A suffixed models are listed first in each class)
+    RigolRSA6000,
+    RigolRSA800,
+    RigolRSA5000,
+    RigolRSA3000,
+    RigolDSA1000,
+    RigolDSA800,
+    # Function generators: Pro platform before the classic classes
+    RigolDG5000Pro,
+    RigolDG800Pro,
+    RigolDG6000,
+    RigolDG5000,
+    RigolDG4000,
+    RigolDG2000,
+    RigolDG1000Z,
+    RigolDG900,
+    RigolDG800,
+    # Power supplies
+    RigolDP1308A,
+    RigolDP1116A,
+    RigolDP2000,
+    RigolDP900,
+    RigolDP700,
+    RigolDP800,
+]
+
+
+def find_keyword_driver(model_upper: str):
+    """Return the first keyword-registered driver class matching a model string."""
+    for cls in KEYWORD_DRIVER_CLASSES:
+        keywords = getattr(cls, "MODEL_KEYWORDS", ())
+        if any(k.upper() in model_upper for k in keywords):
+            return cls
+    return None
 
 
 class EquipmentManager:
@@ -183,22 +274,82 @@ class EquipmentManager:
                 "LOAD" in model_upper or equipment_type == EquipmentType.ELECTRONIC_LOAD
             ):
                 return MockElectronicLoad(None, resource_string)
+            elif (
+                "DMM" in model_upper
+                or "MULTIMETER" in model_upper
+                or equipment_type == EquipmentType.MULTIMETER
+            ):
+                return MockMultimeter(None, resource_string)
+            elif (
+                "RFGEN" in model_upper
+                or "RF" in model_upper
+                or equipment_type == EquipmentType.RF_SIGNAL_GENERATOR
+            ):
+                return MockRFGenerator(None, resource_string)
+            elif (
+                "FGEN" in model_upper
+                or "FUNCTION" in model_upper
+                or "AWG" in model_upper
+                or equipment_type == EquipmentType.FUNCTION_GENERATOR
+            ):
+                return MockFunctionGenerator(None, resource_string)
+            elif (
+                "SPECTRUM" in model_upper
+                or "MOCKSA" in model_upper
+                or "::SA::" in resource_string.upper()
+                or equipment_type == EquipmentType.SPECTRUM_ANALYZER
+            ):
+                return MockSpectrumAnalyzer(None, resource_string)
+            elif (
+                "VNA" in model_upper
+                or "NETWORK" in model_upper
+                or equipment_type == EquipmentType.VECTOR_NETWORK_ANALYZER
+            ):
+                return MockVNA(None, resource_string)
+            elif (
+                "DAQ" in model_upper
+                or "ACQUISITION" in model_upper
+                or equipment_type == EquipmentType.DATA_ACQUISITION
+            ):
+                return MockDAQ(None, resource_string)
 
         # Real equipment requires resource_manager
         if not self.resource_manager:
             return None
 
         # Rigol oscilloscopes
-        if "MSO2072A" in model_upper or "MSO2072" in model_upper:
+        # MSO2000A / DS2000A share one command tree (2 analog channels)
+        if any(
+            k in model_upper
+            for k in ("MSO2072", "MSO2102", "MSO2202", "MSO2302",
+                      "DS2072", "DS2102", "DS2202", "DS2302", "DS2000A", "MSO2000A")
+        ):
             return RigolMSO2072A(self.resource_manager, resource_string)
-        elif "DS1104" in model_upper or "DS1104Z" in model_upper:
+        # DS1000Z family (4 analog channels) shares the DS1104Z command tree
+        elif any(
+            k in model_upper
+            for k in ("DS1104", "DS1054Z", "DS1074Z", "DS1000Z")
+        ) and "Z-E" not in model_upper:
             return RigolDS1104(self.resource_manager, resource_string)
-        elif "DS1102D" in model_upper or "DS1102" in model_upper:
+        # DS1000D/E legacy family (2 analog channels) shares the DS1102D tree
+        elif any(k in model_upper for k in ("DS1102D", "DS1102E", "DS1052D", "DS1052E", "DS1102", "DS1000D", "DS1000E")):
             return RigolDS1102D(self.resource_manager, resource_string)
 
         # Rigol electronic loads
         elif "DL3021" in model_upper:
             return RigolDL3021A(self.resource_manager, resource_string)
+
+        # Rigol digital multimeters (DM3058E must be tested before DM3058)
+        elif "DM3068" in model_upper:
+            return RigolDM3068(self.resource_manager, resource_string)
+        elif "DM3058E" in model_upper:
+            return RigolDM3058E(self.resource_manager, resource_string)
+        elif "DM3058" in model_upper:
+            return RigolDM3058(self.resource_manager, resource_string)
+
+        # Keyword-registered driver families (Rigol DP, DG, DSA/RSA, DSG, ...)
+        elif find_keyword_driver(model_upper) is not None:
+            return find_keyword_driver(model_upper)(self.resource_manager, resource_string)
 
         # BK Precision power supplies
         elif "9206" in model_upper:

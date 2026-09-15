@@ -14,6 +14,10 @@ class EquipmentType(str, Enum):
     ELECTRONIC_LOAD = "electronic_load"
     MULTIMETER = "multimeter"
     FUNCTION_GENERATOR = "function_generator"
+    SPECTRUM_ANALYZER = "spectrum_analyzer"
+    RF_SIGNAL_GENERATOR = "rf_signal_generator"
+    VECTOR_NETWORK_ANALYZER = "vector_network_analyzer"
+    DATA_ACQUISITION = "data_acquisition"
     UNKNOWN = "unknown"
 
 

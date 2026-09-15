@@ -1,0 +1,3797 @@
+{
+ "source": "https://www.rigolna.com/support/downloads/",
+ "scraped": "2026-09-15",
+ "documents": [
+  {
+   "family": "7000",
+   "type": "User",
+   "title": "7000 & 8000 Open Source Acknowledgement",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1f89a425-10c6-4ec5-90e6-ec981473f422/1/-/-/-/-/MSO%26DS7000%268000%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/7000/User/7000 _ 8000 Open Source Acknowledgement.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "7000",
+   "type": "User",
+   "title": "7000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0857/1/-/-/-/-/MSO7000%26DS7000_QuickGuide_EN%26CN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/7000/User/7000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "7000",
+   "type": "User",
+   "title": "7000 Series User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0856/1/-/-/-/-/MSO7000%26DS7000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/7000/User/7000 Series User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "Arbitrary Waveform Generator Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0163/1/-/-/-/-/file.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the current arbitrary waveform generators.",
+   "local_path": "~/Manuals/Rigol/_General/User/Arbitrary Waveform Generator Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "User",
+   "title": "DG800 & DG900 Open Source Acknowledgement",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c2f0abad-e66a-4f4f-b8b7-4db01a7da7a6/1/-/-/-/-/DG800%26900%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/User/DG800 _ DG900 Open Source Acknowledgement.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800PRO",
+   "type": "User",
+   "title": "DG800 Pro Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-462d4554-bcb3-49f2-9990-81f5c99e5383/1/-/-/-/-/DG800%20Pro%20Series%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800PRO/User/DG800 Pro Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800PRO",
+   "type": "User",
+   "title": "DG800 Pro Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-dbe33f1d-d8eb-4445-bfeb-4706c19e6e55/1/-/-/-/-/DG800%20Pro%20Series%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800PRO/User/DG800 Pro Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "User",
+   "title": "DG800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08eb/1/-/-/-/-/DG800_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/User/DG800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "User",
+   "title": "DG800 Selection Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a3/1/-/-/-/-/DG800_SelectionGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/User/DG800 Selection Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "User",
+   "title": "DG800 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a5/1/-/-/-/-/DG800_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/User/DG800 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900PRO",
+   "type": "User",
+   "title": "DG900 Pro Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e836ceee-e1f9-43e1-9db6-69ba4294f981/1/-/-/-/-/DG900%20Pro%20Series%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900PRO/User/DG900 Pro Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900PRO",
+   "type": "User",
+   "title": "DG900 Pro Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06144fa6-c887-410f-b35a-e11a33deeb5d/1/-/-/-/-/DG900%20Pro%20Series%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900PRO/User/DG900 Pro Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "User",
+   "title": "DG900 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08ea/1/-/-/-/-/DG900_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900/User/DG900 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "User",
+   "title": "DG900 Selection Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a8/1/-/-/-/-/DG900_SelectionGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900/User/DG900 Selection Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "User",
+   "title": "DG900 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a7/1/-/-/-/-/DG900_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900/User/DG900 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "User",
+   "title": "DG1000 Series User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-000e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000/User/DG1000 Series User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "User",
+   "title": "DG1000Z Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4383cd8b-b66d-4d50-8862-9ae3ad590099/1/-/-/-/-/DG1000Z%20Declassification%20Guide.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the DG1000Z Series Arbitrary Waveform Generators.",
+   "local_path": "~/Manuals/Rigol/DG1000Z/User/DG1000Z Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "User",
+   "title": "DG1000Z Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-033b/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000Z/User/DG1000Z Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "User",
+   "title": "DG1000Z User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0450/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000Z/User/DG1000Z User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2000",
+   "type": "User",
+   "title": "DG2000 Open Source Acknowledgement",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a1918bc8-35ea-40e8-8318-12dc3d15132e/1/-/-/-/-/DG2000%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2000/User/DG2000 Open Source Acknowledgement.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2000",
+   "type": "User",
+   "title": "DG2000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-42c8452b-390d-4811-b059-6df9ad1395a6/1/-/-/-/-/DG2000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2000/User/DG2000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2041A",
+   "type": "User",
+   "title": "DG2041A User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0028/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2041A/User/DG2041A User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "User",
+   "title": "DG4000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-015e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/User/DG4000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "User",
+   "title": "DG4000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0167/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/User/DG4000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000PRO",
+   "type": "User",
+   "title": "DG5000 Pro Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e01687dc-dc1d-44c0-a412-8254830018e7/1/-/-/-/-/DG5000%20Pro%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000PRO/User/DG5000 Pro Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000PRO",
+   "type": "User",
+   "title": "DG5000 Pro Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ef3791a7-ef03-409d-9b21-f6b1572b43a6/1/-/-/-/-/DG5000%20Pro%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000PRO/User/DG5000 Pro Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "User",
+   "title": "DG5000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-000f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/User/DG5000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "User",
+   "title": "DG6000 Series Open Source Acknowledgment",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-74995a6b-d956-4715-a170-c511499a9b8d/1/-/-/-/-/DG6000%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/User/DG6000 Series Open Source Acknowledgment.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "User",
+   "title": "DG6000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ff6f1059-05a5-4fa8-9222-818c9be0b293/1/-/-/-/-/DG6000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/User/DG6000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "User",
+   "title": "DG6000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ddbe11b4-7b24-4198-9b50-e7dc4d30e08a/1/-/-/-/-/DG6000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/User/DG6000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG70000",
+   "type": "User",
+   "title": "DG70000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a7eba916-998b-4ff3-9e8b-a0eb4b41d036/1/-/-/-/-/DG70000_QuickGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG70000/User/DG70000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG70000",
+   "type": "User",
+   "title": "DG70000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-49fbbefa-3e3f-42e5-8787-9ec93f7c40c6/1/-/-/-/-/DG70000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG70000/User/DG70000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO_MHO5000",
+   "type": "User",
+   "title": "DHO/MHO5000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2887c555-c4cc-4a71-8027-41eff1bb9902/1/-/-/-/-/DHO-MHO5000%20User%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO_MHO5000/User/DHO_MHO5000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO_MHO5000",
+   "type": "User",
+   "title": "DHO/MHO5000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9fae9d56-c2f6-4391-b91c-09288e7c60fb/1/-/-/-/-/DHO-MHO5000%20User%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO_MHO5000/User/DHO_MHO5000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO800",
+   "type": "User",
+   "title": "DHO800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-55d8bf2b-12b0-42d7-9b47-45af22643a90/1/-/-/-/-/DHO800_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO800/User/DHO800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO800",
+   "type": "User",
+   "title": "DHO800 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cfe231a8-28af-4455-a64f-60017da44177/1/-/-/-/-/DHO800_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO800/User/DHO800 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO900",
+   "type": "User",
+   "title": "DHO900 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c09a738a-601a-415c-a001-cf07df416d7b/1/-/-/-/-/DHO900_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO900/User/DHO900 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO900",
+   "type": "User",
+   "title": "DHO900 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b9a4918d-da06-49ff-8226-0de6d3866ebb/1/-/-/-/-/DHO900_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO900/User/DHO900 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO1000",
+   "type": "User",
+   "title": "DHO1000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e968a8e0-ac8e-44e4-8e54-835cbd74e999/1/-/-/-/-/HDO1000_QuickGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO1000/User/DHO1000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO1000",
+   "type": "User",
+   "title": "DHO1000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6a57ac10-8440-45e9-894d-0667abd46c30/1/-/-/-/-/HDO1000_UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO1000/User/DHO1000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO4000",
+   "type": "User",
+   "title": "DHO4000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-bbea31a6-ff1d-4640-b1c4-5dcd1c13af6a/1/-/-/-/-/HDO4000_QuickGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO4000/User/DHO4000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO4000",
+   "type": "User",
+   "title": "DHO4000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-aa1b4004-76f9-42e0-bc26-ec6af0af6cbb/1/-/-/-/-/HDO4000_UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO4000/User/DHO4000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "User",
+   "title": "DL3000 Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3a451199-f2d3-47d5-9ffb-641e2377ab4d/1/-/-/-/-/DL3000_Declassification%20Guide.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the DL3000 Series Electronic Loads",
+   "local_path": "~/Manuals/Rigol/DL3000/User/DL3000 Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "User",
+   "title": "DL3000 Model Selection Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0789/1/-/-/-/-/RIGOL%20DL3000%20Series%20Electronic%20Load%20Selection%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DL3000/User/DL3000 Model Selection Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "User",
+   "title": "DL3000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0783/1/-/-/-/-/DL3000_QuickGuide_final.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DL3000/User/DL3000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "User",
+   "title": "DL3000 User's guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0777/1/-/-/-/-/DL3000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DL3000/User/DL3000 User_s guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM858",
+   "type": "User",
+   "title": "DM858 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9957e648-84eb-49d9-8d7e-15b90708f42e/1/-/-/-/-/DM858%20Series%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM858/User/DM858 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM858",
+   "type": "User",
+   "title": "DM858 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4bddac94-51cf-499a-ba32-84aa105b2616/1/-/-/-/-/DM858%20Series%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM858/User/DM858 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "User",
+   "title": "DM3058 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-01aa/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/User/DM3058 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "User",
+   "title": "DM3058 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-002b/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/User/DM3058 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "User",
+   "title": "DM3068 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8d2dbb7b-66c1-4297-8a1f-b237523237e6/1/-/-/-/-/DM3068_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/User/DM3068 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "DMM Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0164/1/-/-/-/-/file.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the current DMM's.",
+   "local_path": "~/Manuals/Rigol/_General/User/DMM Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA800",
+   "type": "User",
+   "title": "DNA800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a9a937f0-2e8c-4e5a-9faa-d7448db5c68e/1/-/-/-/-/DNA800_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA800/User/DNA800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA800",
+   "type": "User",
+   "title": "DNA800 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8c021ac1-819f-48f5-8d4b-e9ad078dffae/1/-/-/-/-/DNA800_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA800/User/DNA800 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA5000",
+   "type": "User",
+   "title": "DNA5000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5e13d255-5ece-41b1-8464-62c999d36dd0/1/-/-/-/-/DNA5000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA5000/User/DNA5000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA5000",
+   "type": "User",
+   "title": "DNA5000 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c103def9-4643-4121-bc3d-477d39142f00/1/-/-/-/-/DNA5000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA5000/User/DNA5000 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "User",
+   "title": "DNA6000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-40bf906c-6cee-48d9-9727-f44ec1b82efa/1/-/-/-/-/DNA6000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/User/DNA6000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "User",
+   "title": "DNA6000 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e8926bad-57eb-4fb1-86f8-1d13ab088cd4/1/-/-/-/-/DNA6000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/User/DNA6000 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "User",
+   "title": "DNA6000-R Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-30df5910-1821-487b-8203-13122118023f/1/-/-/-/-/DNA6000-R_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/User/DNA6000-R Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "User",
+   "title": "DNA6000-R Series User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2fa67786-5f55-4bea-995e-5c210c2e40e9/1/-/-/-/-/DNA6000-R_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/User/DNA6000-R Series User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "User",
+   "title": "DP700 Quick Start Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06b4/1/-/-/-/-/DP700%20Quick%20Start%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP700/User/DP700 Quick Start Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "User",
+   "title": "DP700 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06b3/1/-/-/-/-/DP700%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP700/User/DP700 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "User",
+   "title": "DP800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-035e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/User/DP800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "User",
+   "title": "DP800 User's Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-51109861-f287-4419-8011-a7b3faf5a9b5/1/-/-/-/-/DP800_UserGuide_EN_tcm7-3049.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/User/DP800 User_s Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "User",
+   "title": "DP900 & DP2000 Open Source Acknowledgement",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4c8d3048-c758-4e5d-8643-47dd02ca8f49/1/-/-/-/-/DP900_DP2000%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP900/User/DP900 _ DP2000 Open Source Acknowledgement.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "User",
+   "title": "DP900 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c6990d14-4692-4de2-a3af-71fbdf69c1fb/1/-/-/-/-/DP900_QuickGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP900/User/DP900 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "User",
+   "title": "DP900 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8bcd4294-be35-42c8-beda-dc121d720dca/1/-/-/-/-/DP900_UserGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP900/User/DP900 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1116A",
+   "type": "User",
+   "title": "DP1116A User's Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-002d/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1116A/User/DP1116A User_s Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1308A",
+   "type": "User",
+   "title": "DP1308A User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-002c/1/-/-/-/-/DP1308A%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1308A/User/DP1308A User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP2000",
+   "type": "User",
+   "title": "DP2000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4b20824a-dfc4-49c4-99c6-0bc318995669/1/-/-/-/-/DP2000_QuickGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP2000/User/DP2000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP2000",
+   "type": "User",
+   "title": "DP2000 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-bc18d5bb-e834-4216-8d6f-ae9de0ca59d6/1/-/-/-/-/DP2000_UserGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP2000/User/DP2000 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "User",
+   "title": "DS1000B Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-049f/1/-/-/-/-/DS1000B%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/User/DS1000B Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "User",
+   "title": "DS1000B User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-002e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/User/DS1000B User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000CA",
+   "type": "User",
+   "title": "DS1000CA Quickguide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00aa/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000CA/User/DS1000CA Quickguide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000CA",
+   "type": "User",
+   "title": "DS1000CA User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-002f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000CA/User/DS1000CA User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000D",
+   "type": "User",
+   "title": "DS1000D/E User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-02f5/1/-/-/-/-/file.pdf",
+   "note": " [vendor link returned HTTP 400 on 2026-09-15]",
+   "local_path": "~/Manuals/Rigol/DS1000D/User/DS1000D_E User_s Guide.pdf",
+   "downloaded": false
+  },
+  {
+   "family": "DS1000D",
+   "type": "User",
+   "title": "DS1000D_E Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-004b/1/-/-/-/-/DS1000D_E_specs.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000D/User/DS1000D_E Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000E",
+   "type": "User",
+   "title": "DS1000E/D Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050e/1/-/-/-/-/DS1000E%28D%29%20Performance%20Verification%20Guide.pdf",
+   "note": "Here is the procedure for verifying the performance of a DS1000E/D series oscilloscope.",
+   "local_path": "~/Manuals/Rigol/DS1000E/User/DS1000E_D Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000E",
+   "type": "User",
+   "title": "DS1000E/D Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-006b/0/-/-/-/-/DS1000E-D_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000E/User/DS1000E_D Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000E",
+   "type": "User",
+   "title": "DS1000E Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-015f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000E/User/DS1000E Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "User",
+   "title": "DS1000Z-E Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a5e4b851-81f7-4adc-aa64-042aff63c843/1/-/-/-/-/DS1000Z-E_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/User/DS1000Z-E Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "User",
+   "title": "DS1000Z-E Series User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b009365a-8f4b-4cac-a60a-934ab4d4b33a/1/-/-/-/-/DS1000Z-E_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/User/DS1000Z-E Series User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "User",
+   "title": "DS4000 and MSO4000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-031e/1/-/-/-/-/MSO4000%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/User/DS4000 and MSO4000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000E",
+   "type": "User",
+   "title": "DS4000E Quick Start Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c9/1/-/-/-/-/DS4000E%20Quick%20Start%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000E/User/DS4000E Quick Start Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000E",
+   "type": "User",
+   "title": "DS4000E User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06ca/1/-/-/-/-/DS4000E%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000E/User/DS4000E User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "User",
+   "title": "DS6000 Quickguide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00ab/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/User/DS6000 Quickguide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "User",
+   "title": "DS6000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0013/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/User/DS6000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "User",
+   "title": "DS8000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1daf7bc3-2c70-43ec-bdc4-90d865b7cc60/1/-/-/-/-/DS8000-R_QuickGuide_CN%26EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/User/DS8000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "User",
+   "title": "DS8000 Rack Kit Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c157a0b9-ab02-46d4-9a01-ee1d06878266/1/-/-/-/-/RM1011%26RM1012_RackmountKit_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/User/DS8000 Rack Kit Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "User",
+   "title": "DS8000 UltraDaq Lite Help Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2939fb63-2ffd-4fc8-acf4-a7da650aabed/1/-/-/-/-/UltraDAQ_Lite_HelpDocument_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/User/DS8000 UltraDaq Lite Help Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "User",
+   "title": "DS8000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-35e3643c-a776-4606-8403-9e7f048cff66/1/-/-/-/-/DS8000-R_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/User/DS8000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS70000",
+   "type": "User",
+   "title": "DS70000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-47f92a44-acf3-44be-ad9b-ace7ac971f95/1/-/-/-/-/DS70000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS70000/User/DS70000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS70000",
+   "type": "User",
+   "title": "DS70000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a700a785-35be-4014-8360-aa2ec0a4bbdc/1/-/-/-/-/DS70000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS70000/User/DS70000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS80000",
+   "type": "User",
+   "title": "DS80000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1a26af24-9744-4fb8-9c12-05a492981efe/1/-/-/-/-/DS80000%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS80000/User/DS80000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS80000",
+   "type": "User",
+   "title": "DS80000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-63955ac6-cd02-4823-a2ec-8c6403591642/1/-/-/-/-/DS80000%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS80000/User/DS80000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA700",
+   "type": "User",
+   "title": "DSA700 Options and Accessories Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06d4/1/-/-/-/-/DSA700%20Options%20and%20Accessories.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA700/User/DSA700 Options and Accessories Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA700",
+   "type": "User",
+   "title": "DSA700 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06d6/1/-/-/-/-/DSA700%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA700/User/DSA700 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "User",
+   "title": "DSA800 Options and Accessories Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c6/1/-/-/-/-/DSA800%20Options%20and%20Accessories%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/User/DSA800 Options and Accessories Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "User",
+   "title": "DSA800 Series User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9be15540-c791-4857-8168-b2378207dc5c/1/-/-/-/-/DSA800%28E%29_UserGuide_EN.pdf",
+   "note": "DSA800 Series Spectrum Analyzer User's Guide",
+   "local_path": "~/Manuals/Rigol/DSA800/User/DSA800 Series User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "User",
+   "title": "DSA800E Options and Accessories",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06d1/1/-/-/-/-/DSA800E%20Options%20and%20Accessories%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/User/DSA800E Options and Accessories.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "User",
+   "title": "DSA800E Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06e4/1/-/-/-/-/DSA800E_QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/User/DSA800E Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "User",
+   "title": "DSA815 Quickguide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00a5/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/User/DSA815 Quickguide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "User",
+   "title": "DSA1000 Options and Accessories Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0015/1/-/-/-/-/DSA1000%26DSA1000A_Options%26Accessories.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/User/DSA1000 Options and Accessories Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "User",
+   "title": "DSA1000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0356/1/-/-/-/-/DSA1000%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/User/DSA1000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "User",
+   "title": "DSA1000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0017/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/User/DSA1000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "User",
+   "title": "DSA1000A Quick guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0355/1/-/-/-/-/DSA1000A%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000A/User/DSA1000A Quick guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "User",
+   "title": "DSA1000A User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0019/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000A/User/DSA1000A User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "DSA Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3494e202-95f6-4782-bf9f-e523e2429fc3/1/-/-/-/-/DSA%20Declassification%20Document.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the current spectrum analyzers.",
+   "local_path": "~/Manuals/Rigol/_General/User/DSA Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "User",
+   "title": "DSG8 Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1b16a451-a375-4ab1-b985-52a6cc868a39/1/-/-/-/-/DSG800%20Declassification%20Guide.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the DSG800 Series RF Signal Sources.",
+   "local_path": "~/Manuals/Rigol/DSG800/User/DSG8 Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "User",
+   "title": "DSG800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-063c/1/-/-/-/-/DSG800%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/User/DSG800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "User",
+   "title": "DSG800 User's Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-063f/1/-/-/-/-/DSG800%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/User/DSG800 User_s Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "User",
+   "title": "DSG3000 OCXO User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-031c/1/-/-/-/-/DSG3000%20OCXO%20User%27s%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/User/DSG3000 OCXO User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "User",
+   "title": "DSG3000 Quick Start Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-031b/1/-/-/-/-/DSG3000%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/User/DSG3000 Quick Start Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "User",
+   "title": "DSG3000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-031a/1/-/-/-/-/DSG3000%20User%27s%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/User/DSG3000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000B",
+   "type": "User",
+   "title": "DSG3000B Quick Start Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9baffaa7-a431-4abd-a9df-b37e718021ac/1/-/-/-/-/DSG3000B_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000B/User/DSG3000B Quick Start Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000B",
+   "type": "User",
+   "title": "DSG3000B User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-dfa74d93-732e-4718-a53e-52db108f9d57/1/-/-/-/-/DSG3000B_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000B/User/DSG3000B User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG5000",
+   "type": "User",
+   "title": "DSG5000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-42b98be6-4dd8-4f3a-85ff-ad3e8b862a12/1/-/-/-/-/DSG5000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG5000/User/DSG5000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG5000",
+   "type": "User",
+   "title": "DSG5000 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cab433e0-6734-4760-aaa6-3cd602c9563b/1/-/-/-/-/DSG5000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG5000/User/DSG5000 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_Accessories",
+   "type": "User",
+   "title": "ECal Module Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-99dae6ff-70d1-427d-a8e6-e459fcd6c9f3/1/-/-/-/-/ECalModule_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_Accessories/User/ECal Module Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "EMC Overview",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0184/1/-/-/-/-/file.zip",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_General/User/EMC Overview.zip",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "IQ Modulation Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-034f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_General/User/IQ Modulation Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "User",
+   "title": "M300 Quick Start Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0567/1/-/-/-/-/M300%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/User/M300 Quick Start Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "User",
+   "title": "M300 Selection Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0587/1/-/-/-/-/M300%20Selection%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/User/M300 Selection Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "User",
+   "title": "M300 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04e1/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/User/M300 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_Accessories",
+   "type": "User",
+   "title": "Mechanical Calibration Kits Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3d1b7905-3a40-4b3b-9060-b5c3f9a8ffa6/1/-/-/-/-/MechanicalCalibrationKits_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_Accessories/User/Mechanical Calibration Kits Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO98",
+   "type": "User",
+   "title": "MHO98 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1c08e691-8959-4857-9beb-65e37aceefda/1/-/-/-/-/MHO98%20QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO98/User/MHO98 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO98",
+   "type": "User",
+   "title": "MHO98 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c82c0d0f-4a5a-41ec-888a-8f7802e5fb30/1/-/-/-/-/MHO98%20UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO98/User/MHO98 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO900",
+   "type": "User",
+   "title": "MHO900 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-7468ad39-8e40-418c-b526-9841a67f9c55/1/-/-/-/-/MHO900%20QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO900/User/MHO900 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO900",
+   "type": "User",
+   "title": "MHO900 Series User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e5447c4b-f4b8-4d23-937e-36677ec3c88d/1/-/-/-/-/MHO900%20UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO900/User/MHO900 Series User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO2000",
+   "type": "User",
+   "title": "MHO2000 Series User Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-21eab9c8-9c3f-4e7a-a989-63af1205bfb7/1/-/-/-/-/MHO2000%20User%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO2000/User/MHO2000 Series User Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "User",
+   "title": "MSO/DS1000Z Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0506/1/-/-/-/-/MSO1000Z%26DS1000Z_QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/User/MSO_DS1000Z Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "User",
+   "title": "MSO/DS1000Z User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050a/1/-/-/-/-/MSO1000Z%26DS1000Z_UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/User/MSO_DS1000Z User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "User",
+   "title": "MSO/DS2000A Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04b5/1/-/-/-/-/DS2000A%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/User/MSO_DS2000A Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "User",
+   "title": "MSO/DS2000A User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0509/1/-/-/-/-/MSO2000A%26DS2000A_UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/User/MSO_DS2000A User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "User",
+   "title": "MSO/DS4000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-009c/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/User/MSO_DS4000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS9000",
+   "type": "User",
+   "title": "MSO/DS9000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f3790b69-edf5-4777-a112-ce4c6d5f34f1/1/-/-/-/-/MSODS9000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS9000/User/MSO_DS9000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS9000",
+   "type": "User",
+   "title": "MSO/DS9000 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d10e8fe7-1433-48da-b427-2bc42d4295f2/1/-/-/-/-/MSODS9000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS9000/User/MSO_DS9000 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "User",
+   "title": "MSO5000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0904/1/-/-/-/-/MSO5_quick_guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/User/MSO5000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "User",
+   "title": "MSO5000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0905/1/-/-/-/-/MSO5_users_guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/User/MSO5000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "User",
+   "title": "MSO5000&MSO&DS7000&MSO8000(A)&DS8000-R Open Source Acknowledgment",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-68597161-cd49-4c4f-b7a4-dece6862c98c/1/-/-/-/-/MSO5000%26MSO%26DS7000%26MSO8000%28A%29%26DS8000-R%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/User/MSO5000_MSO_DS7000_MSO8000_A_DS8000-R Open Source Acknowledgment.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000E",
+   "type": "User",
+   "title": "MSO5000E Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4c7dee45-74da-4b0b-81f0-12fa07a82f45/1/-/-/-/-/MSO5000-E_QuickGuide_EN%26CN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000E/User/MSO5000E Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000E",
+   "type": "User",
+   "title": "MSO5000E User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e9bcffab-b7c9-49c9-9ace-48598c10ae68/1/-/-/-/-/MSO5000-E_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000E/User/MSO5000E User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "User",
+   "title": "MSO8000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b4561de2-c70c-4f2f-b5cc-ae23b22ba89b/1/-/-/-/-/MSO8000_QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000/User/MSO8000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "User",
+   "title": "MSO8000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0a9f903c-77a7-4021-8093-a1e2a665adf2/1/-/-/-/-/MSO8000_UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000/User/MSO8000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000A",
+   "type": "User",
+   "title": "MSO8000A Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-baff123e-38c0-4c5e-b262-169688f5230f/1/-/-/-/-/MSO8000A%20Quick%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000A/User/MSO8000A Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000A",
+   "type": "User",
+   "title": "MSO8000A User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3566351c-c763-46ef-b7b7-5e2abcad91a8/1/-/-/-/-/MSO8000A%20Users%27%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000A/User/MSO8000A User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "Oscilloscope Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0162/1/-/-/-/-/file.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the current Oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/_General/User/Oscilloscope Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "Power Supply Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-084a/1/-/-/-/-/DP800%20series%20Declassification%20Guide%20.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the current power supplies.",
+   "local_path": "~/Manuals/Rigol/_General/User/Power Supply Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_Accessories",
+   "type": "User",
+   "title": "RF Cable/Adapter/Torque Wrench Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cc471bed-18a3-43ca-8545-5fc21eda4b52/1/-/-/-/-/RF-Cable_Adapter_Torque%20Wrench%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_Accessories/User/RF Cable_Adapter_Torque Wrench Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RM7011",
+   "type": "User",
+   "title": "RM7011 Rackmountkit",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6fb57957-6012-4f48-84e5-d4c559276e19/1/-/-/-/-/RM7011%20Rackmount%20Kit.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RM7011/User/RM7011 Rackmountkit.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RPL2316",
+   "type": "User",
+   "title": "RPL2316 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0639/1/-/-/-/-/RPL2316%20User%20Guide.pdf",
+   "note": "User's guide for logic probe",
+   "local_path": "~/Manuals/Rigol/RPL2316/User/RPL2316 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "User",
+   "title": "RSA5 Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-19d5608d-7d5a-4c26-b990-6386e8097ffa/1/-/-/-/-/RSA5000%20Declassification%20Guide.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the RSA5000 Series Spectrum Analyzers.",
+   "local_path": "~/Manuals/Rigol/RSA5000/User/RSA5 Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e7bff204-549e-4887-8933-b09e4ff40e5c/1/-/-/-/-/RSA800_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800 User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a553a682-0860-42fe-82f5-cc4c77f21888/1/-/-/-/-/RSA800_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800 User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800-ADM User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-7861f83d-0b0a-4c07-a102-32c2dc363bf5/1/-/-/-/-/RSA800_ADM_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800-ADM User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800-EMI User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cdc3ddb1-f828-4930-953c-5542687f70ce/1/-/-/-/-/RSA800_EMI_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800-EMI User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800-POINSE User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8176739f-d019-4abb-8cdd-032a77de0317/1/-/-/-/-/RSA800_PNOISE_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800-POINSE User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "User",
+   "title": "RSA800-VSA User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9448257a-a1ad-4157-aebf-48cb3e0518c1/1/-/-/-/-/RSA800_VSA_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/User/RSA800-VSA User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000",
+   "type": "User",
+   "title": "RSA3000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-084c/1/-/-/-/-/RSA3000_QuickGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000/User/RSA3000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000",
+   "type": "User",
+   "title": "RSA3000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-084d/1/-/-/-/-/RSA3000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000/User/RSA3000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000E",
+   "type": "User",
+   "title": "RSA3000E User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5f1a4f84-85d5-4b4f-8d38-c2e09f00d4a5/1/-/-/-/-/RSA3000E_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000E/User/RSA3000E User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "User",
+   "title": "RSA5000 Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-081a/1/-/-/-/-/RSA5000_QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/User/RSA5000 Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "User",
+   "title": "RSA5000 User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0814/1/-/-/-/-/RSA5000_User_Guide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/User/RSA5000 User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "User",
+   "title": "RSA5000 VSA User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-de8be962-6054-4e62-af4a-87d0155bffff/1/-/-/-/-/VSA_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/User/RSA5000 VSA User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000 Series Quick Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e59ed85f-cf30-44fe-aa91-9df2651e9e8b/1/-/-/-/-/RSA6000%20QuickGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000 Series Quick Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000 Series User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d57c2028-445e-454e-8666-1cd412d5e9c7/1/-/-/-/-/RSA6000%20UserGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000 Series User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-ADM User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5b4db74c-ea12-4a0f-9e18-3144fe2a68f5/1/-/-/-/-/RSA6000ADM_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-ADM User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-BLE User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2ec12fa9-5362-4f58-869a-8ecefe68c9c6/1/-/-/-/-/BLE6000_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-BLE User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-EMI User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-78b16418-eeaf-4a9c-8d43-eabd15d343f5/1/-/-/-/-/RSA6000EMI_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-EMI User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-LoRa User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e673c0e2-2430-45f4-b93c-da8ee0b2444c/1/-/-/-/-/RSA6000LoRa_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-LoRa User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-PNOISE User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5be8ad97-443a-4dd8-908f-bee0f3ee07c4/1/-/-/-/-/RSA6000PNOISE_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-PNOISE User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-PULSE User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-822232bb-2ab9-4e74-9c87-a1d81cd8257f/1/-/-/-/-/RSA6000PULSE_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-PULSE User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-VSA User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8995b863-dd15-4953-8214-413faa479cb4/1/-/-/-/-/RSA6000VSA_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-VSA User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "User",
+   "title": "RSA6000-ZigBee User Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06f24b68-d3e1-4fcd-a05e-47433faafe63/1/-/-/-/-/RSA6000ZigBee_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/User/RSA6000-ZigBee User Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA_EMI_Option",
+   "type": "User",
+   "title": "RSA EMI User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-febc5004-dfb8-4de4-b3dd-9ccdc407ef2d/1/-/-/-/-/EMI_UserGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA_EMI_Option/User/RSA EMI User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSAN",
+   "type": "User",
+   "title": "RSAN VNA User's Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2196ed5d-be3a-4658-a523-102729fc290a/1/-/-/-/-/RSA5000_RSA3000%20VNA%20User%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSAN/User/RSAN VNA User_s Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA_EMI_Option",
+   "type": "User",
+   "title": "RSA Open Source Acknowledgement",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4b0785bd-09dc-4cfc-9dd5-cfcfd9a16f64/1/-/-/-/-/RSA3000%263000E%265000%20Open%20Source%20Acknowledgment.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA_EMI_Option/User/RSA Open Source Acknowledgement.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "User",
+   "title": "UltraVision II Oscilloscope Declassification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2e459e9b-3fb9-4934-948a-4867cbda653b/1/-/-/-/-/MSO5000_MSODS7000_MSO8000%20Declassification%20Guide.pdf",
+   "note": "This document outlines the types of memory, locations, and sanitization process for the UltraVIsion II Oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/_General/User/UltraVision II Oscilloscope Declassification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "7000",
+   "type": "Programming",
+   "title": "7000 Series Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0855/1/-/-/-/-/MSO7000%26DS7000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/7000/Programming/7000 Series Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800PRO",
+   "type": "Programming",
+   "title": "DG800 Pro & DG900 Pro Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8b18f2fb-0d82-4a8d-aa41-c159cc562d36/1/-/-/-/-/DG800%20Pro%20%26%20DG900%20Pro%20Series%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800PRO/Programming/DG800 Pro _ DG900 Pro Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "Programming",
+   "title": "DG800 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a6/1/-/-/-/-/DG800_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/Programming/DG800 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "Programming",
+   "title": "DG900 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08aa/1/-/-/-/-/DG900_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900/Programming/DG900 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "Programming",
+   "title": "DG1000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0038/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000/Programming/DG1000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "Programming",
+   "title": "DG1000Z Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0493/1/-/-/-/-/DG1000Z%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000Z/Programming/DG1000Z Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2000",
+   "type": "Programming",
+   "title": "DG2000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0da93459-3e01-4fff-bd2e-3f078633faed/1/-/-/-/-/DG2000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2000/Programming/DG2000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "Programming",
+   "title": "DG4000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00b8/1/-/-/-/-/file.zip",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/Programming/DG4000 Programming Guide.zip",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "Programming",
+   "title": "DG5000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00c1/1/-/-/-/-/file.zip",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/Programming/DG5000 Programming Guide.zip",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000PRO",
+   "type": "Programming",
+   "title": "DG5000 Pro Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-01146302-e10e-43ae-bfeb-3785df230d21/1/-/-/-/-/DG5000%20Pro%20Programming%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000PRO/Programming/DG5000 Pro Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "Programming",
+   "title": "DG6000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c758783e-72c7-4f60-80d5-a0f742a5d0bf/1/-/-/-/-/DG6000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/Programming/DG6000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG70000",
+   "type": "Programming",
+   "title": "DG70000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d6d3d503-a5d0-46f1-b8b2-2abd4e1c92df/1/-/-/-/-/DG70000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG70000/Programming/DG70000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO_MHO5000",
+   "type": "Programming",
+   "title": "DHO/MHO5000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-909a35bf-6b35-4962-b742-22ce9a165a14/1/-/-/-/-/DHO-MHO5000%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO_MHO5000/Programming/DHO_MHO5000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO800",
+   "type": "Programming",
+   "title": "DHO800/DHO900 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f798be30-18ec-4846-9ffe-40b125f49133/1/-/-/-/-/DHO800900_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO800/Programming/DHO800_DHO900 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO",
+   "type": "Programming",
+   "title": "DHO Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f8ae107a-0a18-4d5d-a575-716e09d993a3/1/-/-/-/-/DHO_programming_manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO/Programming/DHO Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "Programming",
+   "title": "DL3000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0779/1/-/-/-/-/DL3000_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DL3000/Programming/DL3000 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM858",
+   "type": "Programming",
+   "title": "DM858 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-67be822f-ca46-48a8-bd04-8bbdab1efe74/1/-/-/-/-/DM858%20Series%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM858/Programming/DM858 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Programming",
+   "title": "DM3058 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-003f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Programming/DM3058 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "Programming",
+   "title": "DM3068 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00a3/1/-/-/-/-/file.zip",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/Programming/DM3068 Programming Guide.zip",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "Programming",
+   "title": "DNA6000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8f34b893-3e09-4673-be71-23d08f93b9f4/1/-/-/-/-/DNA6000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/Programming/DNA6000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "Programming",
+   "title": "DNA6000-R Series Programming Guide",
+   "url": "https://www.rigol.com/dam/global/downloads/brochures/en/program-guide/vector-network-analyzer/DNA6000-R_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/Programming/DNA6000-R Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "Programming",
+   "title": "DP700 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c4/1/-/-/-/-/DP700%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP700/Programming/DP700 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "Programming",
+   "title": "DP800 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-03a1/1/-/-/-/-/DP800%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/Programming/DP800 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "Programming",
+   "title": "DP900 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-afe5f180-250b-4c00-9496-628f9e0d9371/1/-/-/-/-/DP900_ProgrammingGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP900/Programming/DP900 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1116A",
+   "type": "Programming",
+   "title": "DP1116A Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-003c/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1116A/Programming/DP1116A Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1308A",
+   "type": "Programming",
+   "title": "DP1308A Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-003b/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1308A/Programming/DP1308A Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP2000",
+   "type": "Programming",
+   "title": "DP2000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-db3299e1-a13e-4d2e-87ec-a1f41279a419/1/-/-/-/-/DP2000_ProgrammingGuide_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP2000/Programming/DP2000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "Programming",
+   "title": "DS1000B Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04a0/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/Programming/DS1000B Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000CA",
+   "type": "Programming",
+   "title": "DS1000CA Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-003e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000CA/Programming/DS1000CA Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000D",
+   "type": "Programming",
+   "title": "DS1000D/E Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d4c32b98-6063-42df-9e05-40a97042ba95/1/-/-/-/-/DS1000E%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000D/Programming/DS1000D_E Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Programming",
+   "title": "DS1000Z-E Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-af444326-0551-4fd5-a277-bf8fff6f53cb/1/-/-/-/-/DS1000Z-E_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Programming/DS1000Z-E Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Programming",
+   "title": "DS1000Z Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0386/1/-/-/-/-/DS1000Z_Programming%20Guide_EN.pdf",
+   "note": "Here is the programming guide for the DS1000Z series of oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Programming/DS1000Z Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "Programming",
+   "title": "DS2000A Series Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0508/1/-/-/-/-/MSO2000A%26DS2000A_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/Programming/DS2000A Series Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "Programming",
+   "title": "DS6000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0014/1/-/-/-/-/file.zip",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/Programming/DS6000 Programming Manual.zip",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "Programming",
+   "title": "DS8000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-44a26e82-2f6c-47df-b4ab-561eb44c67b2/1/-/-/-/-/DS8000-R_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/Programming/DS8000 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS70000",
+   "type": "Programming",
+   "title": "DS70000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f74ef65d-8655-4bd1-8517-ce2d88363413/1/-/-/-/-/DS70000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS70000/Programming/DS70000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS80000",
+   "type": "Programming",
+   "title": "DS80000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4e94d3cf-707c-4a57-ac5d-d7b8d4196657/1/-/-/-/-/DS80000%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS80000/Programming/DS80000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA700",
+   "type": "Programming",
+   "title": "DSA700 Programming manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06ed/1/-/-/-/-/DSA700_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA700/Programming/DSA700 Programming manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "Programming",
+   "title": "DSA800 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06f0/1/-/-/-/-/dsa800programpdf.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/Programming/DSA800 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "Programming",
+   "title": "DSA800E Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c1/1/-/-/-/-/DSA800E%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/Programming/DSA800E Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "Programming",
+   "title": "DSA832E Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c6/1/-/-/-/-/DSA832E%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/Programming/DSA832E Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "Programming",
+   "title": "DSA1000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0016/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/Programming/DSA1000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "Programming",
+   "title": "DSA1000A Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0018/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000A/Programming/DSA1000A Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "Programming",
+   "title": "DSG800 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-063b/1/-/-/-/-/DSG800%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/Programming/DSG800 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "Programming",
+   "title": "DSG3000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04bf/1/-/-/-/-/DSG3000%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/Programming/DSG3000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000B",
+   "type": "Programming",
+   "title": "DSG3000B Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cf67f0ac-7da2-4546-9156-4be84f4cac4a/1/-/-/-/-/DSG3000B_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000B/Programming/DSG3000B Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG5000",
+   "type": "Programming",
+   "title": "DSG5000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-63c065b5-ec56-464e-a046-ac236aac776f/1/-/-/-/-/DSG5000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG5000/Programming/DSG5000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS_MSO4000",
+   "type": "Programming",
+   "title": "DS_MSO4000 Programming manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06f3/1/-/-/-/-/MSO%26DS4000_programming.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS_MSO4000/Programming/DS_MSO4000 Programming manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "Programming",
+   "title": "M300 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04e0/1/-/-/-/-/M300_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/Programming/M300 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO98",
+   "type": "Programming",
+   "title": "MHO98 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f9e0b843-d3f6-486f-ab64-1b688af67a0f/1/-/-/-/-/MHO98_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO98/Programming/MHO98 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO900",
+   "type": "Programming",
+   "title": "MHO900 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cc3e78b8-87a1-4629-a97e-3ea99bf0470c/1/-/-/-/-/MHO900%20ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO900/Programming/MHO900 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO2000",
+   "type": "Programming",
+   "title": "MHO2000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b589feb2-89fa-4e2c-9fa0-4d5a37e4014e/1/-/-/-/-/MHO2000%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO2000/Programming/MHO2000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "Programming",
+   "title": "MSO5000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0906/1/-/-/-/-/MSO5_programming_guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/Programming/MSO5000 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000E",
+   "type": "Programming",
+   "title": "MSO5000E Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-be53344d-2dfe-4d0e-88df-9e82217acf28/1/-/-/-/-/MSO5000-E_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000E/Programming/MSO5000E Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "Programming",
+   "title": "MSO8000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e9c24d75-20c5-48c0-970c-d5aedd83bda3/1/-/-/-/-/MSO8000_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000/Programming/MSO8000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000A",
+   "type": "Programming",
+   "title": "MSO8000A Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0084013c-693d-4de8-857c-69f54001e9e6/1/-/-/-/-/MSO8000A%20Programming%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000A/Programming/MSO8000A Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Programming",
+   "title": "RSA800 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d70f06fa-69d1-4250-bc41-256ebb2a198f/1/-/-/-/-/RSA800_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Programming/RSA800 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Programming",
+   "title": "RSA800-ADM Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3daf1c88-10d4-4036-9971-00efe7d02559/1/-/-/-/-/RSA800_ADM_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Programming/RSA800-ADM Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Programming",
+   "title": "RSA800-EMI Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a3952408-93e6-4c0d-97f4-3d79d91dadd9/1/-/-/-/-/RSA800_EMI_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Programming/RSA800-EMI Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Programming",
+   "title": "RSA800-PNOISE Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-84466ec7-59e7-4a22-9051-a787cae73aac/1/-/-/-/-/PNOISE800_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Programming/RSA800-PNOISE Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Programming",
+   "title": "RSA800-VSA Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-212c9829-73a0-4b3c-a1c3-1b275550f4aa/1/-/-/-/-/RSA800_VSA_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Programming/RSA800-VSA Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000",
+   "type": "Programming",
+   "title": "RSA3000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f96eb67d-506e-4134-9b5e-49a7e6e34a2f/1/-/-/-/-/RSA3000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000/Programming/RSA3000 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000E",
+   "type": "Programming",
+   "title": "RSA3000E Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-32412acd-42d8-4de6-a78d-29dedc03d9c5/1/-/-/-/-/RSA3000E_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000E/Programming/RSA3000E Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "Programming",
+   "title": "RSA5000 Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0815/1/-/-/-/-/RSA5_prog_guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/Programming/RSA5000 Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "Programming",
+   "title": "RSA5000 VSA Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-65772943-f5e8-4d41-96ba-72ab3087435f/1/-/-/-/-/RSA5_VSA_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/Programming/RSA5000 VSA Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000 Series Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ed792ace-e657-4eaa-afef-e783d9d4b508/1/-/-/-/-/RSA6000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000 Series Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-ADM Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5bf88b8f-853b-4057-9c5d-8f829d757eaf/1/-/-/-/-/RSA6000ADM_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-ADM Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-BLE Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a46275d3-74c1-4f40-be41-70073e0dfd42/1/-/-/-/-/BLE6000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-BLE Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-EMI Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-21e2771d-e6c0-4e5d-b96c-fb9f05542fbd/1/-/-/-/-/RSA6000EMI_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-EMI Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-LoRa Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-459afa37-72da-4ef9-947e-93d35f8c4615/1/-/-/-/-/RSA6000LoRa_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-LoRa Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-PNOISE Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-7a0de7bf-b0c6-4409-ba33-88356865adfe/1/-/-/-/-/RSA6000PNOISE_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-PNOISE Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-PULSE Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0e5e5bdd-cda6-44a4-bedf-cc4444c7e254/1/-/-/-/-/RSA6000PULSE_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-PULSE Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Programming",
+   "title": "RSA6000-VSA Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5f12397f-3917-46fc-a318-f197701c8736/1/-/-/-/-/RSA6000VSA_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Programming/RSA6000-VSA Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA_EMI_Option",
+   "type": "Programming",
+   "title": "RSA EMI Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2488a6fa-42df-4027-bb43-bf87837145b6/1/-/-/-/-/RSA_EMI_ProgrammingGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA_EMI_Option/Programming/RSA EMI Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSAN",
+   "type": "Programming",
+   "title": "RSAN VNA Programming Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3ef4a32e-bfcb-41a1-b860-ebd3d3d30cca/1/-/-/-/-/VNA_ProgrammingGuide_3N_5N.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSAN/Programming/RSAN VNA Programming Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "Service",
+   "title": "DG800 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4368b301-879e-48e9-8395-0b361947c7e1/1/-/-/-/-/DG800_PerformanceVerificationGuide_EN.pdf",
+   "note": "Instructions for verifying performance of the DG800 Series Waveform Generator",
+   "local_path": "~/Manuals/Rigol/DG800/Service/DG800 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800PRO",
+   "type": "Service",
+   "title": "DG800 Pro Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f26e5d4a-f816-4562-9344-dfc4bc2bfc55/1/-/-/-/-/DG800%20Pro%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DG800 Pro Series Generators.",
+   "local_path": "~/Manuals/Rigol/DG800PRO/Service/DG800 Pro Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "Service",
+   "title": "DG900 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ac0a4084-7340-4829-9b9e-a9e921c92533/1/-/-/-/-/DG900_PerformanceVerificationGuide_EN.pdf",
+   "note": "Instructions for verifying performance of the DG900 Series Waveform Generator",
+   "local_path": "~/Manuals/Rigol/DG900/Service/DG900 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900PRO",
+   "type": "Service",
+   "title": "DG900 Pro Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-ff7a308a-cde4-4822-9093-2f908a0e4e28/1/-/-/-/-/DG900%20Pro%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DG900 Pro Series Generators.",
+   "local_path": "~/Manuals/Rigol/DG900PRO/Service/DG900 Pro Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "Service",
+   "title": "DG1000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050b/1/-/-/-/-/DG1000%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verification of the performance of the DG1000 series of arbitrary waveform generators.",
+   "local_path": "~/Manuals/Rigol/DG1000/Service/DG1000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "Service",
+   "title": "DG1000 Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0668/1/-/-/-/-/DG1000%20Service%20Guide.pdf",
+   "note": "Service guide for the DG1022 and DG1022A series of arbitrary waveform generators.",
+   "local_path": "~/Manuals/Rigol/DG1000/Service/DG1000 Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "Service",
+   "title": "DG1000Z Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050c/1/-/-/-/-/DG1000Z%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of the DG1000Z series of arbitrary waveform generators.",
+   "local_path": "~/Manuals/Rigol/DG1000Z/Service/DG1000Z Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2000",
+   "type": "Service",
+   "title": "DG2000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b86de91d-27ce-4b20-9382-def151fa837e/1/-/-/-/-/DG2000_PerformanceVerificationGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2000/Service/DG2000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "Service",
+   "title": "DG4000 Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04b8/1/-/-/-/-/DG4000%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/Service/DG4000 Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "Service",
+   "title": "DG4000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0495/1/-/-/-/-/DG4000%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/Service/DG4000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "Service",
+   "title": "DG5000 Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0496/1/-/-/-/-/DG5000%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/Service/DG5000 Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "Service",
+   "title": "DG5000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0497/1/-/-/-/-/DG5000%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/Service/DG5000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "Service",
+   "title": "DG6000 Series Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5e5305cc-372f-483d-9f9d-13a9126d71fa/1/-/-/-/-/DG6000_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/Service/DG6000 Series Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO_MHO5000",
+   "type": "Service",
+   "title": "DHO/MHO5000 Series Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-163a3893-39bc-4cd3-8011-67d11f13150b/1/-/-/-/-/DHO-MHO5000%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DHO5000 & MHO5000 Series Oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/DHO_MHO5000/Service/DHO_MHO5000 Series Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO800",
+   "type": "Service",
+   "title": "DHO800 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f48b1e31-767f-425b-a664-9a55ae58f3ca/1/-/-/-/-/DHO800%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DHO800 Series Oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/DHO800/Service/DHO800 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO900",
+   "type": "Service",
+   "title": "DHO900 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-dc50063d-50c4-44aa-bdcc-e1f75af86ac6/1/-/-/-/-/DHO900%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DHO900 Series Oscilloscopes.",
+   "local_path": "~/Manuals/Rigol/DHO900/Service/DHO900 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO1000",
+   "type": "Service",
+   "title": "DHO1000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5422112f-aa19-4d57-900c-c23eb2146fab/1/-/-/-/-/DHO1000_PerformanceVerification.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO1000/Service/DHO1000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO4000",
+   "type": "Service",
+   "title": "DHO4000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6bf63c8f-ebb1-449f-968c-21d93691e3b7/1/-/-/-/-/DHO4000_PerformanceVerification.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO4000/Service/DHO4000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "Service",
+   "title": "DL3000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0809/1/-/-/-/-/DL3000_PerformanceVerificationManual_EN.pdf",
+   "note": "Here are the instructions for verifying the performance of the DL3000 series of Electronic Loads.",
+   "local_path": "~/Manuals/Rigol/DL3000/Service/DL3000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM858",
+   "type": "Service",
+   "title": "DM858 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a1803206-724a-41da-8d51-3a8450eb032a/1/-/-/-/-/DM858%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DM858 Digital Multimeters.",
+   "local_path": "~/Manuals/Rigol/DM858/Service/DM858 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Service",
+   "title": "DM3058 Series Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-059c/1/-/-/-/-/DM3058%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Service/DM3058 Series Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Service",
+   "title": "DM3058 Series Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-059d/1/-/-/-/-/DM3058%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Service/DM3058 Series Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Service",
+   "title": "DM3058 Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0066/1/-/-/-/-/DM3058_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Service/DM3058 Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "Service",
+   "title": "DM3068 Series Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0583/1/-/-/-/-/DM3068%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/Service/DM3068 Series Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "Service",
+   "title": "DM3068 Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0067/1/-/-/-/-/DM3068_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/Service/DM3068 Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA800",
+   "type": "Service",
+   "title": "DNA800 Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-11ca3f25-b099-4de2-88d9-7dd3d286bf93/1/-/-/-/-/DNA800_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA800/Service/DNA800 Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA5000",
+   "type": "Service",
+   "title": "DNA5000 Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b0fa3830-d082-4325-bb10-7d0d23f3a66a/1/-/-/-/-/DNA5000_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA5000/Service/DNA5000 Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA5000",
+   "type": "Service",
+   "title": "DNA5000 Programming Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3795de08-d538-4bf1-9107-25e984a71c04/1/-/-/-/-/DNA5000_ProgrammingGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA5000/Service/DNA5000 Programming Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "Service",
+   "title": "DNA6000 Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-1599491a-8f1f-4016-9c0c-6c270b2cec2c/1/-/-/-/-/DNA6000_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/Service/DNA6000 Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "Service",
+   "title": "DP700 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2db759a3-974b-457f-b664-991645502f74/1/-/-/-/-/DP700_PV.pdf",
+   "note": "Here are the instructions for verifying the performance of the DP700 series of Power Supplies",
+   "local_path": "~/Manuals/Rigol/DP700/Service/DP700 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "Service",
+   "title": "DP800 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050d/1/-/-/-/-/DP800%20Performance%20Verification%20Guide.pdf",
+   "note": "Here is the verification procedure for the DP800 Series of power supplies.",
+   "local_path": "~/Manuals/Rigol/DP800/Service/DP800 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "Service",
+   "title": "DP900 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-77cd92e5-92b8-4338-a1b5-c6583610d5b8/1/-/-/-/-/DP900%20Performance%20Verification%20Guide.pdf",
+   "note": "Here are the instructions for verifying the performance of DP900 Series Power Supplies.",
+   "local_path": "~/Manuals/Rigol/DP900/Service/DP900 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1116A",
+   "type": "Service",
+   "title": "DP1116A Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0499/1/-/-/-/-/DP1116A%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1116A/Service/DP1116A Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1116A",
+   "type": "Service",
+   "title": "DP1116A Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-049a/1/-/-/-/-/DP1116A%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1116A/Service/DP1116A Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1308A",
+   "type": "Service",
+   "title": "DP1308A Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-049e/1/-/-/-/-/DP1308A%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1308A/Service/DP1308A Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1308A",
+   "type": "Service",
+   "title": "DP1308A Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-049b/1/-/-/-/-/DP1308A%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1308A/Service/DP1308A Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "Service",
+   "title": "DS1000B Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0069/1/-/-/-/-/DS1000B%20Service%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/Service/DS1000B Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Service",
+   "title": "DS1000Z-E Series Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3b6d942b-0976-4f1f-84fe-a2c2568688ba/1/-/-/-/-/DS1000Z-E_PerformanceVerificationGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Service/DS1000Z-E Series Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Service",
+   "title": "DS1000Z-E Series Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6e29cc0d-2d95-4fa4-8972-7e57332d8f0f/1/-/-/-/-/DS1000Z-E_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Service/DS1000Z-E Series Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Service",
+   "title": "DS1000Z MSO1000Z Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0564/1/-/-/-/-/DS1000Z%20MSO1000Z%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Service/DS1000Z MSO1000Z Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "Service",
+   "title": "DS2000A MSO2000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0561/1/-/-/-/-/DS2000A%20MSO2000A%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/Service/DS2000A MSO2000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "Service",
+   "title": "DS2000A MSO2000A Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0562/1/-/-/-/-/DS2000A%20MSO2000A%20Service%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/Service/DS2000A MSO2000A Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "Service",
+   "title": "DS4000 Calibration Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04b7/1/-/-/-/-/DS4000%20Calibration%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/Service/DS4000 Calibration Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "Service",
+   "title": "DS4000 MSO4000 Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-015b/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/Service/DS4000 MSO4000 Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "Service",
+   "title": "DS4000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-050f/1/-/-/-/-/DS4000%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/Service/DS4000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS5000PRO",
+   "type": "Service",
+   "title": "DS5000 Pro Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c9cf819d-1605-4170-a92c-f5634c5cb10b/1/-/-/-/-/DG5000%20Pro%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS5000PRO/Service/DS5000 Pro Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "Service",
+   "title": "DS6000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04bd/1/-/-/-/-/DS6000%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/Service/DS6000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "Service",
+   "title": "DS8000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-cc423c40-4923-435e-bba5-c8bec6d8de33/1/-/-/-/-/DS8000-R_PerformanceVerificationGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/Service/DS8000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "Service",
+   "title": "DS8000 Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3a2fec26-30e1-418f-8956-040a90e98fe2/1/-/-/-/-/DS8000-R_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/Service/DS8000 Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS70000",
+   "type": "Service",
+   "title": "DS70000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4e7113f5-0365-44a6-bf79-89d9cbbe57e9/1/-/-/-/-/DS70000_PV.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS70000/Service/DS70000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS80000",
+   "type": "Service",
+   "title": "DS80000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-54ec8233-de04-435f-a9cf-88602500b9d3/1/-/-/-/-/DS80000%20Performance%20Verification.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS80000/Service/DS80000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "Service",
+   "title": "DSA800 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c4/1/-/-/-/-/DSA800%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/Service/DSA800 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "Service",
+   "title": "DSA800 Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c5/1/-/-/-/-/DSA800%20Service%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/Service/DSA800 Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "Service",
+   "title": "DSA800E Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c5/1/-/-/-/-/DSA800%20Service%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/Service/DSA800E Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "Service",
+   "title": "DSA1000 DSA10000A Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c7/1/-/-/-/-/DSA1030%20DSA1030A%20Service%20Manual.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/Service/DSA1000 DSA10000A Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "Service",
+   "title": "DSA1030 DSA1030A Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-048e/1/-/-/-/-/DSA1030%20DSA1030A%20Performance%20Verification%20Guide.pdf",
+   "note": "This document describes how to check the performance of your DSA1030 and DSA1030A spectrum analyzer.",
+   "local_path": "~/Manuals/Rigol/DSA1000A/Service/DSA1030 DSA1030A Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "Service",
+   "title": "DSG800 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0640/1/-/-/-/-/DSG800%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/Service/DSG800 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "Service",
+   "title": "DSG800 Service Manual",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-063e/1/-/-/-/-/DSG800%20Service%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/Service/DSG800 Service Manual.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "Service",
+   "title": "DSG3000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04c8/1/-/-/-/-/DSG3000%20Performance%20Verification%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/Service/DSG3000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000B",
+   "type": "Service",
+   "title": "DSG3000B Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-a1c309c2-c174-4009-b626-df60ba8ef615/1/-/-/-/-/DSG3000B_ServiceGuide_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000B/Service/DSG3000B Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "Service",
+   "title": "M300 Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0563/1/-/-/-/-/M300%20Service%20Guide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/Service/M300 Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO98",
+   "type": "Service",
+   "title": "MHO98 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-106f4440-d708-4216-9458-a9b7d1b31f11/1/-/-/-/-/MHO98_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO98/Service/MHO98 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO900",
+   "type": "Service",
+   "title": "MHO900 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2e55d3d0-0e50-4efe-a75a-1a4beb32a228/1/-/-/-/-/MHO900_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO900/Service/MHO900 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "Service",
+   "title": "MSO5000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-eb59ae97-6ff5-4b65-ae85-899416d2cb98/1/-/-/-/-/MSO5000_PerformanceVerificationGuide_EN.pdf",
+   "note": "Here are the instructions for verifying the performance of the MSO5000 Oscilloscope",
+   "local_path": "~/Manuals/Rigol/MSO5000/Service/MSO5000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000E",
+   "type": "Service",
+   "title": "MSO5000E Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-46a990d2-e097-4b62-b3b9-13fcf72724d2/1/-/-/-/-/MSO5000-E_PerformanceVerificationGuide_EN.pdf",
+   "note": "Here are the instructions for verifying the performance of the MSO5000E Oscilloscope",
+   "local_path": "~/Manuals/Rigol/MSO5000E/Service/MSO5000E Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO7000",
+   "type": "Service",
+   "title": "MSO7000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-72bb34ac-b5a9-49aa-b045-66d1ac14fc2f/1/-/-/-/-/MSO7000%26DS7000_PerformanceVerificationGuide_EN.pdf",
+   "note": "Here are the instructions for verifying the performance of the DS/MSO7000 Oscilloscope",
+   "local_path": "~/Manuals/Rigol/MSO7000/Service/MSO7000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "Service",
+   "title": "MSO8000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0b69f134-5880-4990-98f0-c5a4743c1b16/1/-/-/-/-/MSO8000_PerformanceVerificationGuide.pdf",
+   "note": "Here are the instructions for verifying the performance of the MSO8000 Oscilloscope",
+   "local_path": "~/Manuals/Rigol/MSO8000/Service/MSO8000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "Service",
+   "title": "MSO8000 Service Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-3255adf8-8a76-431f-b499-e94036523218/1/-/-/-/-/MSO8000_ServiceGuide.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000/Service/MSO8000 Service Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Service",
+   "title": "RSA800 Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f712b08a-d717-44b3-81fa-6097256d8a63/1/-/-/-/-/RSA800_PerformanceVerification_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Service/RSA800 Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000",
+   "type": "Service",
+   "title": "RSA3000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b672755e-afa7-4884-afc1-e61a5e3b1906/1/-/-/-/-/RSA3000_Perfomance_Verify.pdf",
+   "note": "Here are the instructions for verifying the performance of the RSA3000 Spectrum Analyzer",
+   "local_path": "~/Manuals/Rigol/RSA3000/Service/RSA3000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000E",
+   "type": "Service",
+   "title": "RSA3000E Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-05762b25-1a74-4fd2-aa26-1a32dcc35529/1/-/-/-/-/RSA3000E_PerformanceVerificationGuide_EN.pdf",
+   "note": "Here are the instructions for verifying the performance of the RSA3000E Spectrum Analyzer",
+   "local_path": "~/Manuals/Rigol/RSA3000E/Service/RSA3000E Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "Service",
+   "title": "RSA5000 Performance Verification Guide",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-5be1c476-438a-4cdf-b29b-7279f1e75ce6/1/-/-/-/-/RSA5000_PerformanceVerificationGuide.pdf",
+   "note": "Here are the instructions for verifying the performance of the RSA5000 Spectrum Analyzer",
+   "local_path": "~/Manuals/Rigol/RSA5000/Service/RSA5000 Performance Verification Guide.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Service",
+   "title": "RSA6000 Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4db32d15-bc04-4c10-847c-198da3c19a4b/1/-/-/-/-/RSA6000_PerformanceVerification-EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Service/RSA6000 Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Service",
+   "title": "RSA6000 Series Performance Verification",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-b7058999-d364-41d2-a1b2-d4fd65a008bf/1/-/-/-/-/RSA6000%20PerformanceVerification.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Service/RSA6000 Series Performance Verification.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "Datasheet",
+   "title": "4000 Series Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00a1/1/-/-/-/-/DS4000%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/Datasheet/4000 Series Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "7000",
+   "type": "Datasheet",
+   "title": "7000 Series Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0854/1/-/-/-/-/MSO7000%26DS7000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/7000/Datasheet/7000 Series Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "_General",
+   "type": "Datasheet",
+   "title": "Automotive Ethernet Compliance Test Solution Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e83b2671-a4b2-41d5-9206-3761d7ebca56/1/-/-/-/-/100%261000%20Base-T1%20Fixture_AETH_DataSheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/_General/Datasheet/Automotive Ethernet Compliance Test Solution Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800",
+   "type": "Datasheet",
+   "title": "DG800 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a0/1/-/-/-/-/DG800%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800/Datasheet/DG800 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG800PRO",
+   "type": "Datasheet",
+   "title": "DG800 Pro Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f3a5ea28-2034-4923-a41e-f90965ba9a1e/1/-/-/-/-/DG800%20Pro%20Series%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG800PRO/Datasheet/DG800 Pro Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900",
+   "type": "Datasheet",
+   "title": "DG900 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-08a1/1/-/-/-/-/DG900%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900/Datasheet/DG900 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG900PRO",
+   "type": "Datasheet",
+   "title": "DG900 Pro Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-61dc313d-f551-4f70-8236-9e2fb9a18cde/1/-/-/-/-/DG900%20Pro%20Series%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG900PRO/Datasheet/DG900 Pro Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "Datasheet",
+   "title": "DG1000Z Series Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-033c/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000Z/Datasheet/DG1000Z Series Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "Datasheet",
+   "title": "DG1022 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-001b/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000/Datasheet/DG1022 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2000",
+   "type": "Datasheet",
+   "title": "DG2000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-77ca02ba-d59d-43be-8be5-fab20b27f26d/1/-/-/-/-/DG2000%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2000/Datasheet/DG2000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2041A",
+   "type": "Datasheet",
+   "title": "DG2041A Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-001c/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2041A/Datasheet/DG2041A Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "Datasheet",
+   "title": "DG4000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00a0/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/Datasheet/DG4000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "Datasheet",
+   "title": "DG5000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-001e/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/Datasheet/DG5000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000PRO",
+   "type": "Datasheet",
+   "title": "DG5000 Pro Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0dc0b792-df29-4b7d-9572-e545199a3deb/1/-/-/-/-/DG5000%20Pro%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000PRO/Datasheet/DG5000 Pro Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG6000",
+   "type": "Datasheet",
+   "title": "DG6000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c4e86ba9-9879-4da7-9422-92171972bce2/1/-/-/-/-/DG6000_Datasheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG6000/Datasheet/DG6000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG70000",
+   "type": "Datasheet",
+   "title": "DG70000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6a07dee1-e8ba-4522-9154-41286694f17b/1/-/-/-/-/DG70000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG70000/Datasheet/DG70000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO_MHO5000",
+   "type": "Datasheet",
+   "title": "DHO/MHO5000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-82f438a4-776f-455d-8fe9-078111e42db8/1/-/-/-/-/DHO-MHO5000%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO_MHO5000/Datasheet/DHO_MHO5000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO800",
+   "type": "Datasheet",
+   "title": "DHO800 datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-11201b15-e890-4a0d-ba67-cbbc4c525562/1/-/-/-/-/DHO800_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO800/Datasheet/DHO800 datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO900",
+   "type": "Datasheet",
+   "title": "DHO900 datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-bea3b849-2334-4a6c-8bb3-ed67dc16b97f/1/-/-/-/-/DHO900_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO900/Datasheet/DHO900 datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO1000",
+   "type": "Datasheet",
+   "title": "DHO1000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c01598f7-be44-44a8-bbfd-1d26998b1427/1/-/-/-/-/HDO1000_DataSheet_en%20.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO1000/Datasheet/DHO1000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DHO4000",
+   "type": "Datasheet",
+   "title": "DHO4000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-41e7ec47-7963-4def-a284-82db9a9ae3ea/1/-/-/-/-/HDO4000_DataSheet_en%20.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DHO4000/Datasheet/DHO4000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DL3000",
+   "type": "Datasheet",
+   "title": "DL3000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4e8cbf14-fd1c-4fb1-97c9-82df4edca2b8/1/-/-/-/-/DL3000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DL3000/Datasheet/DL3000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM858",
+   "type": "Datasheet",
+   "title": "DM858 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-caabf651-ecf7-4abc-8b2e-aff93bce4397/1/-/-/-/-/DM858%20Series%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM858/Datasheet/DM858 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Datasheet",
+   "title": "DM3058/E Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-001f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Datasheet/DM3058_E Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "Datasheet",
+   "title": "DM3068 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0020/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/Datasheet/DM3068 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA800",
+   "type": "Datasheet",
+   "title": "DNA800 Datasheet",
+   "url": "https://cdn-aorpci9.actonsoftware.com/acton/cdna/1579/f-7598371b-5e0d-461e-9dbc-b61ccf45aa18/1/0/DNA800_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA800/Datasheet/DNA800 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA5000",
+   "type": "Datasheet",
+   "title": "DNA5000 Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e4f404dd-ce0b-4b84-a300-b6c9740d9002/1/-/-/-/-/DNA5000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA5000/Datasheet/DNA5000 Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "Datasheet",
+   "title": "DNA6000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-2cfd529d-ff6c-4021-8908-4809a5aa9bfe/1/-/-/-/-/DNA6000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/Datasheet/DNA6000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DNA6000",
+   "type": "Datasheet",
+   "title": "DNA6000-R Series Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-65549b6f-9b45-4f0a-a325-71a82be91cef/1/-/-/-/-/DNA6000-R_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DNA6000/Datasheet/DNA6000-R Series Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "Datasheet",
+   "title": "DP700 Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06b5/1/-/-/-/-/DP700%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP700/Datasheet/DP700 Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "Datasheet",
+   "title": "DP800 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-01c1/1/-/-/-/-/DP800%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/Datasheet/DP800 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP900",
+   "type": "Datasheet",
+   "title": "DP900 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c10f6190-91ef-42e5-b438-5774e25e80de/1/-/-/-/-/DP900_DataSheet_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP900/Datasheet/DP900 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1000A",
+   "type": "Datasheet",
+   "title": "DP1000A Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0021/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1000A/Datasheet/DP1000A Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP2000",
+   "type": "Datasheet",
+   "title": "DP2000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-531346d9-45a9-40b2-9b3e-e9120b59e01d/1/-/-/-/-/DP2000_DataSheet_en.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP2000/Datasheet/DP2000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "Datasheet",
+   "title": "DS1000B Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0022/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/Datasheet/DS1000B Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000CA",
+   "type": "Datasheet",
+   "title": "DS1000CA Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0023/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000CA/Datasheet/DS1000CA Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000E",
+   "type": "Datasheet",
+   "title": "DS1000E/D Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0024/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000E/Datasheet/DS1000E_D Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Datasheet",
+   "title": "DS1000Z-E Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f55c8579-4293-4d7f-aec4-ef7ea08ad8dc/1/-/-/-/-/DS1000Z-E%20Datasheet-EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Datasheet/DS1000Z-E Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Datasheet",
+   "title": "DS1000Z-E Datasheet & Specs (Spanish)",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-6ed50098-b0b3-4829-9545-22b653a82b70/1/-/-/-/-/DS1000Z-E%20Datasheets%20%28Spanish%29.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Datasheet/DS1000Z-E Datasheet _ Specs _Spanish_.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Datasheet",
+   "title": "DS1000Z DataSheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0504/1/-/-/-/-/MSO1000Z_Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Datasheet/DS1000Z DataSheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000Z",
+   "type": "Datasheet",
+   "title": "DS1000Z DataSheet & Specs (Spanish)",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-205052c9-c846-43ad-adce-87e42c3522f1/1/-/-/-/-/DS1000Z%20Datasheets%20%28Spanish%29.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000Z/Datasheet/DS1000Z DataSheet _ Specs _Spanish_.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000E",
+   "type": "Datasheet",
+   "title": "DS4000E Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c8/1/-/-/-/-/DS4000E%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000E/Datasheet/DS4000E Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "Datasheet",
+   "title": "DS6000 Series Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0027/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/Datasheet/DS6000 Series Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS8000",
+   "type": "Datasheet",
+   "title": "DS8000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-614bc6f6-32cc-4338-b151-a2f1a779208c/1/-/-/-/-/DS8000-R_DataSheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS8000/Datasheet/DS8000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS70000",
+   "type": "Datasheet",
+   "title": "DS70000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9e2e4753-aae9-4bd5-a43e-6d0ca7706db1/1/-/-/-/-/DS70000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS70000/Datasheet/DS70000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS80000",
+   "type": "Datasheet",
+   "title": "DS80000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-944b6c05-47ae-417e-a510-34b84d93a131/1/-/-/-/-/DS80000%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS80000/Datasheet/DS80000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA700",
+   "type": "Datasheet",
+   "title": "DSA700 Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06d3/1/-/-/-/-/DSA700%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA700/Datasheet/DSA700 Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "Datasheet",
+   "title": "DSA800 Series Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0502/1/-/-/-/-/DSA800_DataSheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/Datasheet/DSA800 Series Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800E",
+   "type": "Datasheet",
+   "title": "DSA800E Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06c0/1/-/-/-/-/DSA800E%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800E/Datasheet/DSA800E Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "Datasheet",
+   "title": "DSA1000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0025/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/Datasheet/DSA1000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "Datasheet",
+   "title": "DSA1000A Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0026/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000A/Datasheet/DSA1000A Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG800",
+   "type": "Datasheet",
+   "title": "DSG800 Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0664/1/-/-/-/-/DSG800%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG800/Datasheet/DSG800 Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "Datasheet",
+   "title": "DSG3000 Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0319/1/-/-/-/-/DSG3000%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/Datasheet/DSG3000 Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000B",
+   "type": "Datasheet",
+   "title": "DSG3000B Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f0c7305c-fabd-4f2b-af61-1a1376ad99b6/1/-/-/-/-/DSG3000B_datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000B/Datasheet/DSG3000B Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG5000",
+   "type": "Datasheet",
+   "title": "DSG5000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-72678aed-39b0-4141-9b9c-1a83d29e1b75/1/-/-/-/-/DSG5000_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG5000/Datasheet/DSG5000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "Datasheet",
+   "title": "M300 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04e2/1/-/-/-/-/M300_DataSheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/Datasheet/M300 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO98",
+   "type": "Datasheet",
+   "title": "MHO98 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-4f716e29-886a-4ec3-b768-b81a431f084c/1/-/-/-/-/MHO98_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO98/Datasheet/MHO98 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO900",
+   "type": "Datasheet",
+   "title": "MHO900 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-8d3ff804-5dc2-463f-969c-5ee0a24c6335/1/-/-/-/-/MHO900_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO900/Datasheet/MHO900 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MHO2000",
+   "type": "Datasheet",
+   "title": "MHO2000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-c9f9e3e5-7f2c-40be-922a-52ee04c20a75/1/-/-/-/-/MHO2000%20Data%20Sheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MHO2000/Datasheet/MHO2000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS2000A",
+   "type": "Datasheet",
+   "title": "MSO/DS2000A Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0505/1/-/-/-/-/MSO2000A_Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS2000A/Datasheet/MSO_DS2000A Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS9000",
+   "type": "Datasheet",
+   "title": "MSO/DS9000 Datasheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-d85e33de-b0d6-4396-9f53-96a91343d4fb/1/-/-/-/-/MSODS9000_Datasheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS9000/Datasheet/MSO_DS9000 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "Datasheet",
+   "title": "MSO5000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0907/1/-/-/-/-/MSO5000_datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/Datasheet/MSO5000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000",
+   "type": "Datasheet",
+   "title": "MSO5000 Datasheet & Specs (Spanish)",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-fe3355e9-6228-45fd-a1a8-70bcff39ab4f/1/-/-/-/-/MSO5000%20Datasheets%28Spanish%29.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000/Datasheet/MSO5000 Datasheet _ Specs _Spanish_.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO5000E",
+   "type": "Datasheet",
+   "title": "MSO5000E Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-02f386ad-00ad-4159-b01e-f27c0729a71e/1/-/-/-/-/MSO5000E%20Datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO5000E/Datasheet/MSO5000E Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000",
+   "type": "Datasheet",
+   "title": "MSO8000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-f7093de8-907d-4e87-bbe7-198d8e575b57/1/-/-/-/-/MSO8_datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000/Datasheet/MSO8000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "MSO8000A",
+   "type": "Datasheet",
+   "title": "MSO8000A Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-816234ac-7c15-4cfa-87f6-58817cd596a2/1/-/-/-/-/MSO8000A_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/MSO8000A/Datasheet/MSO8000A Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA800",
+   "type": "Datasheet",
+   "title": "RSA800 Datasheet",
+   "url": "https://cdn-aorpci9.actonsoftware.com/acton/cdna/1579/f-c579a1fa-8f68-4bf4-956a-4d32355ad68d/1/0/RSA800_DataSheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA800/Datasheet/RSA800 Datasheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000",
+   "type": "Datasheet",
+   "title": "RSA3000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-084b/1/-/-/-/-/RSA3000_Datasheet_EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000/Datasheet/RSA3000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA3000E",
+   "type": "Datasheet",
+   "title": "RSA3000E Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-9276de63-fd6d-4e04-b9ba-ceb899ccb617/1/-/-/-/-/RSA3000E_%20Datasheet_201908-EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA3000E/Datasheet/RSA3000E Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA5000",
+   "type": "Datasheet",
+   "title": "RSA5000 Datasheet & Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0816/1/-/-/-/-/RSA5_datasheet.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA5000/Datasheet/RSA5000 Datasheet _ Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "RSA6000",
+   "type": "Datasheet",
+   "title": "RSA6000 Series Data Sheet",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-e5eeff6d-8f0d-4150-b91b-465d8d610fc5/1/-/-/-/-/RSA6000-DataSheet-EN.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/RSA6000/Datasheet/RSA6000 Series Data Sheet.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000",
+   "type": "Specifications",
+   "title": "4000 Series Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0169/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000/Specifications/4000 Series Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000Z",
+   "type": "Specifications",
+   "title": "DG1000Z Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-044f/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000Z/Specifications/DG1000Z Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG1000",
+   "type": "Specifications",
+   "title": "DG1022 & DG1022A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0043/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG1000/Specifications/DG1022 _ DG1022A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG2041A",
+   "type": "Specifications",
+   "title": "DG2041A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0044/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG2041A/Specifications/DG2041A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG4000",
+   "type": "Specifications",
+   "title": "DG4000 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0168/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG4000/Specifications/DG4000 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DG5000",
+   "type": "Specifications",
+   "title": "DG5000 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0051/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DG5000/Specifications/DG5000 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3058",
+   "type": "Specifications",
+   "title": "DM3058/E Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0046/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3058/Specifications/DM3058_E Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DM3068",
+   "type": "Specifications",
+   "title": "DM3068 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0052/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DM3068/Specifications/DM3068 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP700",
+   "type": "Specifications",
+   "title": "DP700 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06e2/1/-/-/-/-/DP700_specs.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP700/Specifications/DP700 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "Specifications",
+   "title": "DP800 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-057f/1/-/-/-/-/DP832%20Specs.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/Specifications/DP800 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP800",
+   "type": "Specifications",
+   "title": "DP800A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-01c9/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP800/Specifications/DP800A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1116A",
+   "type": "Specifications",
+   "title": "DP1116A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0047/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1116A/Specifications/DP1116A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DP1308A",
+   "type": "Specifications",
+   "title": "DP1308A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0048/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DP1308A/Specifications/DP1308A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000B",
+   "type": "Specifications",
+   "title": "DS1000B Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0049/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000B/Specifications/DS1000B Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS1000CA",
+   "type": "Specifications",
+   "title": "DS1000CA Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-004a/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS1000CA/Specifications/DS1000CA Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS4000E",
+   "type": "Specifications",
+   "title": "DS4000E Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06e6/1/-/-/-/-/DS4000E%20specs.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS4000E/Specifications/DS4000E Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DS6000",
+   "type": "Specifications",
+   "title": "DS6000 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0050/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DS6000/Specifications/DS6000 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA700",
+   "type": "Specifications",
+   "title": "DSA700 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-06f2/1/-/-/-/-/DSA700_specs.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA700/Specifications/DSA700 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA800",
+   "type": "Specifications",
+   "title": "DSA800 Series Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-00a9/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA800/Specifications/DSA800 Series Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000",
+   "type": "Specifications",
+   "title": "DSA1000 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-004c/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000/Specifications/DSA1000 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSA1000A",
+   "type": "Specifications",
+   "title": "DSA1000A Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-004d/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSA1000A/Specifications/DSA1000A Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "DSG3000",
+   "type": "Specifications",
+   "title": "DSG3000 Specs",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04d0/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/DSG3000/Specifications/DSG3000 Specs.pdf",
+   "downloaded": true
+  },
+  {
+   "family": "M300",
+   "type": "Specifications",
+   "title": "M300 Specifications",
+   "url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-04ec/1/-/-/-/-/file.pdf",
+   "note": "",
+   "local_path": "~/Manuals/Rigol/M300/Specifications/M300 Specifications.pdf",
+   "downloaded": true
+  }
+ ],
+ "downloaded": 420,
+ "total": 421
+}
