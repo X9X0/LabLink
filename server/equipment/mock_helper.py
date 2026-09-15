@@ -32,6 +32,42 @@ class MockEquipmentHelper:
             "model": "MockLoad-1000",
             "name": "Mock Electronic Load 1",
         },
+        {
+            "resource_string": "MOCK::DMM::0",
+            "type": EquipmentType.MULTIMETER,
+            "model": "MockDMM-3068",
+            "name": "Mock Multimeter 1",
+        },
+        {
+            "resource_string": "MOCK::FGEN::0",
+            "type": EquipmentType.FUNCTION_GENERATOR,
+            "model": "MockFGEN-1062Z",
+            "name": "Mock Function Generator 1",
+        },
+        {
+            "resource_string": "MOCK::SA::0",
+            "type": EquipmentType.SPECTRUM_ANALYZER,
+            "model": "MockSA-815",
+            "name": "Mock Spectrum Analyzer 1",
+        },
+        {
+            "resource_string": "MOCK::VNA::0",
+            "type": EquipmentType.VECTOR_NETWORK_ANALYZER,
+            "model": "MockVNA-6000",
+            "name": "Mock Vector Network Analyzer 1",
+        },
+        {
+            "resource_string": "MOCK::DAQ::0",
+            "type": EquipmentType.DATA_ACQUISITION,
+            "model": "MockDAQ-300",
+            "name": "Mock Data Acquisition 1",
+        },
+        {
+            "resource_string": "MOCK::RFGEN::0",
+            "type": EquipmentType.RF_SIGNAL_GENERATOR,
+            "model": "MockRFGEN-830",
+            "name": "Mock RF Signal Generator 1",
+        },
     ]
 
     @staticmethod
@@ -115,6 +151,30 @@ class MockEquipmentHelper:
                 "model": "MockLoad-1000",
                 "resource_prefix": base_resource_string or "MOCK::LOAD::",
             },
+            EquipmentType.MULTIMETER: {
+                "model": "MockDMM-3068",
+                "resource_prefix": base_resource_string or "MOCK::DMM::",
+            },
+            EquipmentType.FUNCTION_GENERATOR: {
+                "model": "MockFGEN-1062Z",
+                "resource_prefix": base_resource_string or "MOCK::FGEN::",
+            },
+            EquipmentType.SPECTRUM_ANALYZER: {
+                "model": "MockSA-815",
+                "resource_prefix": base_resource_string or "MOCK::SA::",
+            },
+            EquipmentType.VECTOR_NETWORK_ANALYZER: {
+                "model": "MockVNA-6000",
+                "resource_prefix": base_resource_string or "MOCK::VNA::",
+            },
+            EquipmentType.DATA_ACQUISITION: {
+                "model": "MockDAQ-300",
+                "resource_prefix": base_resource_string or "MOCK::DAQ::",
+            },
+            EquipmentType.RF_SIGNAL_GENERATOR: {
+                "model": "MockRFGEN-830",
+                "resource_prefix": base_resource_string or "MOCK::RFGEN::",
+            },
         }
 
         if equipment_type not in type_configs:
@@ -160,6 +220,16 @@ class MockEquipmentHelper:
             "MOCK::LOAD::0",
             "MOCK::LOAD::1",
             "MOCK::LOAD::2",
+            "MOCK::DMM::0",
+            "MOCK::DMM::1",
+            "MOCK::DMM::2",
+            "MOCK::FGEN::0",
+            "MOCK::FGEN::1",
+            "MOCK::SA::0",
+            "MOCK::SA::1",
+            "MOCK::VNA::0",
+            "MOCK::DAQ::0",
+            "MOCK::RFGEN::0",
         ]
 
     @staticmethod
@@ -251,6 +321,18 @@ async def setup_demo_lab(equipment_manager) -> Dict[str, str]:
                 equipment_map["power_supply"] = equipment_id
             elif info.type == EquipmentType.ELECTRONIC_LOAD:
                 equipment_map["electronic_load"] = equipment_id
+            elif info.type == EquipmentType.MULTIMETER:
+                equipment_map["multimeter"] = equipment_id
+            elif info.type == EquipmentType.FUNCTION_GENERATOR:
+                equipment_map["function_generator"] = equipment_id
+            elif info.type == EquipmentType.SPECTRUM_ANALYZER:
+                equipment_map["spectrum_analyzer"] = equipment_id
+            elif info.type == EquipmentType.VECTOR_NETWORK_ANALYZER:
+                equipment_map["vector_network_analyzer"] = equipment_id
+            elif info.type == EquipmentType.DATA_ACQUISITION:
+                equipment_map["data_acquisition"] = equipment_id
+            elif info.type == EquipmentType.RF_SIGNAL_GENERATOR:
+                equipment_map["rf_signal_generator"] = equipment_id
 
     return equipment_map
 

@@ -192,6 +192,8 @@ For detailed setup instructions:
   - [x] Real-time connection dialog with equipment type/model selection
   - [x] Automatic device identification and classification
   - [x] BK Precision power supply support (1685B, 9130B, 9205B, 9206B, 1902B)
+  - [x] Rigol digital multimeter support (DM3058, DM3058E, DM3068, DM858) with acquisition-engine integration
+  - [x] Rigol power supplies, modern oscilloscopes, function generators, spectrum analyzers, RF generators, VNAs and M300 DAQ (family drivers built from the full vendor catalogue)
 - [x] Multi-device connection management
 - [x] Equipment readings endpoint (voltage, current, power, status)
 - [x] Configurable data buffering and formats
@@ -463,6 +465,17 @@ For detailed setup instructions:
 - Rigol DS1104 Oscilloscope
 - Rigol DS1102D Oscilloscope (100 MHz, 1 GSa/s, 2 channels)
 - Rigol DL3021A DC Electronic Load
+- Rigol DM3058 / DM3058E 5½-digit Digital Multimeter (USB-TMC, LAN, GPIB, RS-232; E model USB/RS-232 only)
+- Rigol DM3068 6½-digit Digital Multimeter (USB-TMC, LAN/LXI-C, GPIB, RS-232)
+- Rigol DM858 / DM858E 5½-digit Digital Multimeter (standard SCPI DMM tree)
+- Rigol DL3031A DC Electronic Load (and the whole DL3000 family via model table)
+- Rigol DP800 / DP700 / DP900 / DP2000 / DP1308A / DP1116A Programmable DC Power Supplies
+- Rigol DHO800/900, DHO1000/4000, DHO/MHO5000, MHO900/98/2000, MSO5000(-E), MSO7000/DS7000, MSO8000(A), DS8000-R, DS/MSO4000(E), DS6000, DS70000/80000, DS1000Z-E Oscilloscopes
+- Rigol DG800 / DG900 / DG1000Z / DG2000 / DG4000 / DG5000 and DG800 Pro / DG900 Pro / DG5000 Pro / DG6000 Function & Arbitrary Waveform Generators
+- Rigol DSA700 / DSA800(E) / DSA1000(A), RSA3000(E) / RSA5000 / RSA800 / RSA6000 Spectrum & Real-Time Analyzers
+- Rigol DSG800 / DSG3000(B) / DSG5000 RF Signal Generators
+- Rigol RSA3000N / RSA5000N and DNA6000(-R) Vector Network Analyzers
+- Rigol M300 Data Acquisition / Switch Mainframe
 - BK Precision 9206B Multi-Range DC Power Supply
 - BK Precision 9205B Multi-Range DC Power Supply
 - BK Precision 9130 DC Power Supply

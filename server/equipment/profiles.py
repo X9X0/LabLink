@@ -374,6 +374,59 @@ def create_default_profiles():
         ),
     ]
 
+    # Multimeter default profiles (settings map onto RigolDMMBase commands)
+    dmm_profiles = [
+        EquipmentProfile(
+            name="Multimeter - DC Voltage Precision",
+            description="DCV, auto range, slow rate, >10 GOhm input impedance",
+            equipment_type="multimeter",
+            model="generic",
+            settings={
+                "function": "DCV",
+                "range": "AUTO",
+                "rate": "SLOW",
+                "dc_impedance": "10G",
+                "trigger_source": "AUTO",
+            },
+            tags=["dcv", "precision", "default"],
+        ),
+        EquipmentProfile(
+            name="Multimeter - Fast DC Logging",
+            description="DCV, 20 V manual range, fast rate for data acquisition",
+            equipment_type="multimeter",
+            model="generic",
+            settings={
+                "function": "DCV",
+                "range": 20.0,
+                "rate": "FAST",
+                "dc_impedance": "10M",
+                "trigger_source": "AUTO",
+            },
+            tags=["dcv", "fast", "acquisition"],
+        ),
+        EquipmentProfile(
+            name="Multimeter - 4-Wire Resistance",
+            description="FRES, auto range, slow rate for low-resistance work",
+            equipment_type="multimeter",
+            model="generic",
+            settings={"function": "FRES", "range": "AUTO", "rate": "SLOW"},
+            tags=["resistance", "4wire"],
+        ),
+        EquipmentProfile(
+            name="Multimeter - AC Mains Check",
+            description="ACV 750 V range with frequency on the secondary display",
+            equipment_type="multimeter",
+            model="generic",
+            settings={
+                "function": "ACV",
+                "range": 750.0,
+                "rate": "MEDIUM",
+                "secondary_function": "FREQ",
+            },
+            tags=["acv", "mains", "frequency"],
+        ),
+    ]
+
     # Write only the ones that are missing.
     #
     # This used to save all of them on every startup, and save_profile stamps
@@ -382,7 +435,7 @@ def create_default_profiles():
     # and, worse, silently discarding edits a user had made to a default.
     # "Default" should mean the value it starts with, not one restored from
     # under you each time the process restarts.
-    all_profiles = scope_profiles + ps_profiles + load_profiles
+    all_profiles = scope_profiles + ps_profiles + load_profiles + dmm_profiles
     created = [p for p in all_profiles if not profile_manager.profile_exists(p.name)]
     for profile in created:
         profile_manager.save_profile(profile)

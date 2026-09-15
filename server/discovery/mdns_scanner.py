@@ -216,10 +216,16 @@ class MDNSScanner:
             return DeviceType.ELECTRONIC_LOAD
         elif "multimeter" in type_lower or "dmm" in type_lower:
             return DeviceType.MULTIMETER
+        elif "rf" in type_lower and "generator" in type_lower:
+            return DeviceType.RF_SIGNAL_GENERATOR
         elif "generator" in type_lower:
             return DeviceType.FUNCTION_GENERATOR
+        elif "network" in type_lower and "analyzer" in type_lower:
+            return DeviceType.VECTOR_NETWORK_ANALYZER
         elif "analyzer" in type_lower:
             return DeviceType.SPECTRUM_ANALYZER
+        elif "acquisition" in type_lower or "daq" in type_lower:
+            return DeviceType.DATA_ACQUISITION
 
         return DeviceType.UNKNOWN
 
@@ -233,6 +239,16 @@ class MDNSScanner:
             Inferred device type
         """
         model_lower = model.lower()
+
+        from .vendor_models import infer_rigol_device_type
+
+        vendor_type = infer_rigol_device_type(model)
+        if vendor_type is not None:
+            return vendor_type
+
+        # Multimeter patterns (before the loose "ds"/"dl" tokens)
+        if any(keyword in model_lower for keyword in ["dm30", "dmm", "multimeter"]):
+            return DeviceType.MULTIMETER
 
         # Oscilloscope patterns
         if any(keyword in model_lower for keyword in ["mso", "dso", "ds"]):

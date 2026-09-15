@@ -129,6 +129,8 @@ python test_client.py
 - **Rigol MSO2072A** - Mixed Signal Oscilloscope
 - **Rigol DS1104** - Digital Oscilloscope
 - **Rigol DL3021A** - DC Electronic Load
+- **Rigol DM3058 / DM3058E** - 5½-digit Digital Multimeter
+- **Rigol DM3068** - 6½-digit Digital Multimeter (see `docs/RIGOL_DMM.md`)
 - **BK Precision 9206B** - Multi-Range DC Power Supply
 - **BK Precision 9205B** - Multi-Range DC Power Supply
 - **BK Precision 9130B** - Triple Output DC Power Supply

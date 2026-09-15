@@ -55,7 +55,7 @@ class Settings(BaseSettings):
         default=False, description="Auto-register mock equipment on startup"
     )
     mock_equipment_types: str = Field(
-        default="oscilloscope,power_supply,electronic_load",
+        default="oscilloscope,power_supply,electronic_load,multimeter,function_generator,spectrum_analyzer,rf_signal_generator,vector_network_analyzer,data_acquisition",
         description="Comma-separated list of mock equipment types to register",
     )
     visa_backend: str = Field(

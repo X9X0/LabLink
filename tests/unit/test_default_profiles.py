@@ -1,6 +1,6 @@
 """Default profiles are a starting point, not something restored on every boot.
 
-`create_default_profiles()` ran on every startup and saved all seven defaults
+`create_default_profiles()` ran on every startup and saved every default
 unconditionally. `save_profile` stamps `modified_at`, so the shipped JSON was
 rewritten each time -- which dirtied the working tree of anyone running the
 server from a checkout, and silently discarded any edit a user had made to a
@@ -33,12 +33,24 @@ def _snapshot(directory: Path) -> dict:
 
 class TestDefaultsAreWrittenOnce:
     def test_first_run_creates_them(self, profile_dir):
-        create_default_profiles()
+        """As many files as there are defaults, whatever that number is.
 
-        assert len(list(profile_dir.glob("*.json"))) == 7
+        This asserted a literal 7, so adding a driver family with profiles of
+        its own failed a test about *writing defaults once* -- which is not
+        what it is guarding. The count is read back from the directory twice
+        instead: once empty, once populated.
+        """
+        assert list(profile_dir.glob("*.json")) == []
+
+        create_default_profiles()
+        written = list(profile_dir.glob("*.json"))
+
+        assert written, "no default profiles were written at all"
+        # Every default is a distinct file; none silently overwrote another.
+        assert len({p.name for p in written}) == len(written)
 
     def test_a_second_run_changes_nothing_on_disk(self, profile_dir):
-        """The bug: every boot rewrote all seven, timestamps and all."""
+        """The bug: every boot rewrote all of them, timestamps and all."""
         create_default_profiles()
         before = _snapshot(profile_dir)
 

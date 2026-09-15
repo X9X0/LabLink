@@ -403,8 +403,13 @@ class BaseEquipment(ABC):
 
             try:
                 loop = asyncio.get_event_loop()
+                import functools
+
                 response = await loop.run_in_executor(
-                    None, self.instrument.query_binary_values, command, datatype="B"
+                    None,
+                    functools.partial(
+                        self.instrument.query_binary_values, command, datatype="B"
+                    ),
                 )
                 return bytes(response)
             except Exception as e:
@@ -539,14 +544,17 @@ class BaseEquipment(ABC):
     def _determine_connection_type(self) -> ConnectionType:
         """Determine connection type from resource string."""
         resource_upper = self.resource_string.upper()
-        if "USB" in resource_upper:
-            return ConnectionType.USB
-        elif "ASRL" in resource_upper or "COM" in resource_upper:
+        # Serial first: "ASRL/dev/ttyUSB0::INSTR" contains "USB" but is serial.
+        if resource_upper.startswith("ASRL") or resource_upper.startswith("COM"):
             return ConnectionType.SERIAL
         elif "TCPIP" in resource_upper:
             return ConnectionType.ETHERNET
         elif "GPIB" in resource_upper:
             return ConnectionType.GPIB
+        elif "USB" in resource_upper:
+            return ConnectionType.USB
+        elif "ASRL" in resource_upper or "COM" in resource_upper:
+            return ConnectionType.SERIAL
         return ConnectionType.USB  # Default
 
     # ==================== Firmware Update Methods (v0.28.0) ====================

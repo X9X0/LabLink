@@ -455,7 +455,7 @@ async def test_register_default_mock_equipment(equipment_manager):
         equipment_manager
     )
 
-    assert len(equipment_ids) == 3
+    assert len(equipment_ids) >= 5
 
     # Verify types
     types_found = set()
@@ -467,6 +467,7 @@ async def test_register_default_mock_equipment(equipment_manager):
     assert EquipmentType.OSCILLOSCOPE in types_found
     assert EquipmentType.POWER_SUPPLY in types_found
     assert EquipmentType.ELECTRONIC_LOAD in types_found
+    assert EquipmentType.MULTIMETER in types_found
 
 
 # ==================== Performance Tests ====================

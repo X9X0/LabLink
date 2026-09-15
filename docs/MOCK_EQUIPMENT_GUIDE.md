@@ -23,6 +23,12 @@ LabLink includes a complete mock equipment system that simulates real laboratory
 | **Oscilloscope** | MockScope-2000 | 4 channels, realistic waveform generation (sine, square, triangle, noise), configurable frequency/amplitude |
 | **Power Supply** | MockPSU-3000 | Voltage/current control, CV/CC mode simulation, output enable/disable, realistic settling |
 | **Electronic Load** | MockLoad-1000 | CC/CV/CR/CP modes, input enable/disable, realistic load simulation |
+| **Function Generator** | MockFGEN-1062Z | 2 channels, standard waveforms, modulation/sweep/burst state, simulated counter |
+| **Spectrum Analyzer** | MockSA-815 | 9 kHz–1.5 GHz, noise floor + configurable CW peaks, markers, peak search, TG |
+| **RF Signal Generator** | MockRFGEN-830 | Frequency/level/output, AM/FM/PM state |
+| **Vector Network Analyzer** | MockVNA-6000 | S11 ≈ −20 dB match, low-pass S21 with configurable cutoff |
+| **Data Acquisition** | MockDAQ-300 | Two 20-channel multiplexer modules + actuator module, scan lists |
+| **Multimeter** | MockDMM-3068 | 6½-digit DMM: DCV/ACV/DCI/ACI/RES/FRES/FREQ/PER/CAP/CONT/DIODE, auto/manual range, rates, dual display, math, per-function simulated inputs |
 
 ---
 
@@ -102,6 +108,13 @@ Mock equipment uses special resource strings with the `MOCK::` prefix:
 | `MOCK::PSU::1` | Power Supply #1 |
 | `MOCK::LOAD::0` | Electronic Load #0 |
 | `MOCK::LOAD::1` | Electronic Load #1 |
+| `MOCK::DMM::0` | Multimeter #0 |
+| `MOCK::DMM::1` | Multimeter #1 |
+| `MOCK::FGEN::0` | Function Generator #0 |
+| `MOCK::SA::0` | Spectrum Analyzer #0 |
+| `MOCK::RFGEN::0` | RF Signal Generator #0 |
+| `MOCK::VNA::0` | Vector Network Analyzer #0 |
+| `MOCK::DAQ::0` | Data Acquisition #0 |
 
 You can create multiple instances by changing the number.
 
@@ -503,6 +516,17 @@ readings = await psu.measure_all()
 - **Resistance Range**: 0.1 - 10kΩ
 - **Input Enable/Disable**: Yes
 - **Thermal Simulation**: Optional
+
+### Multimeter
+
+- **Resolution**: 6½ digits (simulated)
+- **Functions**: DCV, ACV, DCI, ACI, RES (2-wire), FRES (4-wire), FREQ, PER, CAP, CONT, DIODE
+- **Ranges**: Same tables as the Rigol DM3068; auto or manual (`set_range` by index, value, MIN/MAX/DEF or AUTO)
+- **Rates**: FAST / MEDIUM / SLOW
+- **Dual Display**: Secondary function via `set_secondary_function` (`CH2` channel in acquisition)
+- **Math**: REL/null, MIN/MAX/AVERAGE statistics, pass/fail limits
+- **Simulation Hooks**: `set_simulated_value(function, value)`, `set_noise(fraction)`, `simulate_overload(function)`
+- **Acquisition Channels**: `CH1` (active function), `CH2` (secondary), or any function name such as `DCV,RES`
 
 ---
 

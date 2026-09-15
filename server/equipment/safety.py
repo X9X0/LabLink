@@ -448,6 +448,22 @@ DEFAULT_SAFETY_LIMITS = {
         current_slew_rate=10.0,
         require_interlock=False,
     ),
+    "function_generator": SafetyLimits(
+        # Signal output: keep amplitude within the 50 Ohm / high-Z rating
+        max_voltage=20.0,
+        require_interlock=False,
+    ),
+    "rf_signal_generator": SafetyLimits(require_interlock=False),
+    "spectrum_analyzer": SafetyLimits(require_interlock=False),
+    "vector_network_analyzer": SafetyLimits(require_interlock=False),
+    "data_acquisition": SafetyLimits(require_interlock=False),
+    "multimeter": SafetyLimits(
+        # Measurement-only instrument: these are the input protection ratings
+        # (1000 V DC / 750 V AC input, 10 A fused current input).
+        max_voltage=1000.0,
+        max_current=10.0,
+        require_interlock=False,
+    ),
 }
 
 
