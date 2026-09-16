@@ -100,6 +100,8 @@ class InstrumentPanel(QWidget):
         #: When the in-flight poll started, or None. A time rather than a
         #: flag so a destroyed task cannot stop the readings for good.
         self._poll_started_at = None
+        self._poll_failures = 0
+        self._backoff_ms = 0
         self._interval_ms = self.DEFAULT_INTERVAL_MS
         #: Operator commands in flight, and when the last one finished. Polls
         #: yield to commands: the instrument answers one request at a time,
@@ -258,6 +260,9 @@ class InstrumentPanel(QWidget):
     def set_interval_ms(self, interval_ms: int, remember: bool = True):
         """Change the cadence; a running timer picks it up at once."""
         self._interval_ms = max(int(interval_ms), 10)
+        # An explicit cadence from the operator outranks a back-off.
+        self._poll_failures = 0
+        self._backoff_ms = 0
         if self.poll_timer.isActive():
             self.poll_timer.setInterval(self.interval_ms())
         if remember:
@@ -380,8 +385,44 @@ class InstrumentPanel(QWidget):
             await self.poll()
         except Exception as e:
             self._handle_poll_error(e)
+        else:
+            self._poll_succeeded()
         finally:
             release_slot(self, "_poll_started_at")
+
+    #: A poll that keeps failing is retried on a doubling interval, up to this.
+    #: Ten failing polls at the panel's 2 s cadence used to be ten more entries
+    #: in the instrument's queue; with a bad command costing a ten-second
+    #: timeout each, the client was generating backlog faster than the server
+    #: could drain it, and the bench DS1054Z reached a 205 s queue.
+    POLL_BACKOFF_CAP_MS = 30_000
+
+    def _poll_succeeded(self):
+        """Give up any back-off: the instrument is answering again."""
+        if self._backoff_ms:
+            logger.info("%s is answering again; back to %d ms polling",
+                        self.equipment_id or "?", self.interval_ms())
+        self._poll_failures = 0
+        self._backoff_ms = 0
+        if self.poll_timer.isActive():
+            self.poll_timer.setInterval(self.interval_ms())
+
+    def _back_off(self):
+        """Double the poll interval, to a cap, after a failed poll.
+
+        The operator's chosen cadence in ``_interval_ms`` is left alone, so
+        recovery goes straight back to it.
+        """
+        self._poll_failures += 1
+        backoff = min(self.interval_ms() * (2 ** self._poll_failures),
+                      self.POLL_BACKOFF_CAP_MS)
+        if backoff <= self.interval_ms() or backoff == self._backoff_ms:
+            return
+        self._backoff_ms = backoff
+        if self.poll_timer.isActive():
+            self.poll_timer.setInterval(backoff)
+        logger.info("%s: %d consecutive failed polls; slowing to %d ms",
+                    self.equipment_id or "?", self._poll_failures, backoff)
 
     def _handle_poll_error(self, error: Exception):
         name = self.equipment_id or "?"
@@ -401,7 +442,12 @@ class InstrumentPanel(QWidget):
             self.stop()
             self.show_unsupported()
         else:
+            # Transient: a timeout, a 503 from an instrument with a backlog, a
+            # serial hiccup. Keep polling, but not at full speed -- asking
+            # again every tick is what turns one slow command into a queue
+            # minutes deep.
             logger.error(f"Error polling {name}: {error}")
+            self._back_off()
 
     @staticmethod
     def _equipment_is_gone(error) -> bool:

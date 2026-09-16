@@ -49,13 +49,18 @@ class _ReentrantAsyncLock:
         self._lock = asyncio.Lock()
         self._owner: Optional[asyncio.Task] = None
         self._depth = 0
+        self._waiting = 0
 
     async def __aenter__(self):
         me = asyncio.current_task()
         if self._owner is me:
             self._depth += 1
             return self
-        await self._lock.acquire()
+        self._waiting += 1
+        try:
+            await self._lock.acquire()
+        finally:
+            self._waiting -= 1
         self._owner = me
         self._depth = 1
         return self
@@ -70,6 +75,22 @@ class _ReentrantAsyncLock:
     def locked(self) -> bool:
         return self._lock.locked()
 
+    @property
+    def waiting(self) -> int:
+        """How many tasks are queued for the instrument right now."""
+        return self._waiting
+
+    def held_by_current_task(self) -> bool:
+        return self._owner is asyncio.current_task()
+
+
+class InstrumentBusy(RuntimeError):
+    """Too many requests are already queued for this instrument.
+
+    Raised instead of joining the queue, so that a caller is told now rather
+    than in three minutes. See BaseEquipment.MAX_QUEUED_EXCHANGES.
+    """
+
 
 class BaseEquipment(ABC):
     """Base class for all lab equipment."""
@@ -82,6 +103,20 @@ class BaseEquipment(ABC):
     #: the difference between a responsive panel and a twenty-second lag, and
     #: the bench log is the only place it can be seen.
     SLOW_IO_WARN_SEC = 2.0
+    #: Refuse an exchange when this many tasks are already queued for the
+    #: instrument, rather than making it wait behind all of them.
+    #:
+    #: An instrument speaks to one caller at a time, so a command that stops
+    #: answering turns every later request into a queue entry. A client that
+    #: gives up after ten seconds does not cancel what it asked for: the
+    #: server keeps working through the backlog, so the next request waits for
+    #: all of it. On the bench a single unanswered :MEAS:VAV? every two
+    #: seconds grew the DS1054Z's queue to 205 s, and every request -- even
+    #: /status while picking the instrument in the list -- appeared to hang.
+    #: Eight is well above any legitimate burst (a panel poll, a trace fetch,
+    #: the equipment stream and a front-panel press together are four or five)
+    #: and low enough that a backlog cannot outlive the client that caused it.
+    MAX_QUEUED_EXCHANGES = 8
 
     def __init__(self, resource_manager: ResourceManager, resource_string: str):
         """Initialize equipment."""
@@ -290,6 +325,26 @@ class BaseEquipment(ABC):
                 pass
         return reset
 
+    def _refuse_if_busy(self, command: str):
+        """Raise InstrumentBusy rather than lengthen an already long queue.
+
+        Nested exchanges are never refused: _query -> _ensure_connected ->
+        connect -> _query all run in the one task that already holds the lock,
+        and refusing the inner one would break reconnection.
+        """
+        if self._io_lock.held_by_current_task():
+            return
+        waiting = self._io_lock.waiting
+        if waiting >= self.MAX_QUEUED_EXCHANGES:
+            logger.warning(
+                f"{self.resource_string}: refusing '{command}' -- {waiting} requests "
+                f"already queued for this instrument"
+            )
+            raise InstrumentBusy(
+                f"{waiting} requests are already queued for {self.resource_string}; "
+                f"refusing '{command}'"
+            )
+
     def _note_slow_io(self, command: str, waited: float, held: float):
         """Name the command that made everything else wait."""
         if waited >= self.SLOW_IO_WARN_SEC:
@@ -306,6 +361,7 @@ class BaseEquipment(ABC):
         """Write a command to the instrument."""
         import time
 
+        self._refuse_if_busy(command)
         queued = time.monotonic()
         async with self._io_lock:
             started = time.monotonic()
@@ -327,6 +383,7 @@ class BaseEquipment(ABC):
         """Query the instrument and return response."""
         import time
 
+        self._refuse_if_busy(command)
         queued = time.monotonic()
         async with self._io_lock:
             started = time.monotonic()
@@ -425,6 +482,7 @@ class BaseEquipment(ABC):
 
     async def _query_binary(self, command: str) -> bytes:
         """Query the instrument and return binary response."""
+        self._refuse_if_busy(command)
         async with self._io_lock:
             # Ensure we have a valid connection, reconnect if needed
             await self._ensure_connected()

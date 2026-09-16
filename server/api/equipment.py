@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
 from server.equipment import rigol_registry
+from server.equipment.base import InstrumentBusy
 from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
                                           catalog, resolve_model)
 from server.equipment.locks import lock_manager
@@ -297,6 +298,10 @@ async def get_device_readings(equipment_id: str):
             )
     except HTTPException:
         raise
+    except InstrumentBusy as e:
+        # Not a failure of this request: the instrument has a backlog. Say so
+        # with a status the client can back off on instead of a 500 it retries.
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting device readings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -359,6 +364,8 @@ async def execute_command(equipment_id: str, command: Command):
         )
     except HTTPException:
         raise
+    except InstrumentBusy as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Error executing command: {e}")
         return CommandResponse(

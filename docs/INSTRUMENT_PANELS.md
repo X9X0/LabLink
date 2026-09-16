@@ -69,6 +69,18 @@ long (`'...' took 10.0s on the instrument`, which at 10 s is the VISA
 timeout: a command the instrument did not answer). Look for those two
 lines before changing anything else.
 
+A queue cannot now grow without limit. An instrument answers one caller at a
+time and the server does not cancel a request whose client has given up, so a
+command that stops answering used to turn every later request into a queue
+entry -- the bench DS1054Z reached a 205 s queue, and selecting it in the list
+looked like a hang. Past `BaseEquipment.MAX_QUEUED_EXCHANGES` (8) queued
+requests, an exchange is refused with `InstrumentBusy` and the API answers
+503 (`'...' refusing ':WAV:SOUR CHAN1' -- 8 requests already queued`). A panel
+that sees a failed poll doubles its interval up to
+`InstrumentPanel.POLL_BACKOFF_CAP_MS` (30 s) and returns to the operator's
+cadence on the first good one, so a slow instrument is asked less often rather
+than more. Backing off is not stopping: only a 404 or a 501 stops a timer.
+
 ## The registry
 
 `client/ui/instruments/registry.py` maps `EquipmentType` to a panel class.
@@ -145,6 +157,17 @@ The legacy DS1000Z / MSO2000A / DS1000D drivers (`server/equipment/rigol_scope.p
 did not have `get_waveform_data`, `set_trigger`, `get_state`, `get_measurement`
 or `get_readings`; `LegacyScopeExtras` adds them with the same names and
 shapes as `rigol_modern_scope`, so the bench DS1054Z gets a live trace.
+
+That trace is read in windows, not in one go. The bench DS1054Z declares a
+64-byte bulk max packet where USB 2.0 high speed requires 512, and over
+pyvisa-py/libusb that gives a hard ceiling on one reply: 492 bytes arrives,
+512 never does. A 1200-sample screen read is 1212 bytes, so it always timed
+out and the panel had no trace at all. `:WAV:STARt`/`:WAV:STOP` window the
+read in NORMal mode as well as RAW, so `LegacyScopeExtras._read_trace_in_blocks`
+fetches `trace_block_points` (400) samples at a time and stitches them -- about
+1 s for a full screen, with the scope left running. Windowing is opt-in per
+family: only the DS1000Z has been measured, and the older DS1000D/E tree may
+not window at all. See `docs/HANDOFF_SCOPE_LAG.md` for the measurements.
 
 ### ElectronicLoadPanel
 

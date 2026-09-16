@@ -25,6 +25,19 @@ def _wanted(items, key: str) -> bool:
     return key in wanted
 
 
+#: The measurement items this driver reports, and the DS1000Z ``:MEASure:ITEM``
+#: keyword for each. Insertion order is the order they are queried in.
+DS1000Z_MEASURE_ITEMS = {
+    "vpp": "VPP",
+    "vmax": "VMAX",
+    "vmin": "VMIN",
+    "vavg": "VAVG",
+    "vrms": "VRMS",
+    "freq": "FREQ",
+    "period": "PER",
+}
+
+
 class LegacyScopeExtras:
     """Commands the per-instrument scope panel needs that the original
     DS1000Z / MSO2000A / DS1000D drivers did not expose.
@@ -36,8 +49,60 @@ class LegacyScopeExtras:
     """
 
     #: NORMal-mode waveform reads on these families return at most 1200
-    #: points (the screen), which is what a live trace wants.
+    #: points (the screen), which is what a live trace wants. Also the window
+    #: a blocked read resets to before it starts; see _read_trace_in_blocks.
     WAVEFORM_POINTS = 1200
+
+    #: Samples per :WAV:DATA? read, or None to fetch the trace in one read.
+    #: Only set on a family whose reads have been measured on the bench; see
+    #: _read_trace_in_blocks.
+    trace_block_points: Optional[int] = None
+
+    async def _read_trace_in_blocks(self, total: int) -> bytes:
+        """Read ``total`` samples as several windowed :WAV:DATA? replies.
+
+        The bench DS1054Z declares wMaxPacketSize 64 on both of its bulk
+        endpoints, where USB 2.0 high speed requires 512, and the Pi's kernel
+        says so on plug-in: ``bulk endpoint 0x82 has invalid maxpacket 64``.
+        The measured consequence over pyvisa-py/libusb is a hard ceiling on a
+        single reply: a 492-byte reply arrives, in several packets, while a
+        512-byte one never does and costs the full VISA timeout. A NORMal
+        screen read is 1200 samples in a 1212-byte reply, so it could never
+        succeed -- that is why the scope panel showed no trace, and no change
+        to the command tree could have fixed it.
+
+        :WAV:STARt/:WAV:STOP window the read in NORMal mode as well as in RAW,
+        so the screen comes back in blocks small enough to clear the ceiling
+        with the scope left running. On the bench 1200 samples in three
+        400-sample blocks took 0.80 s.
+        """
+        block_points = int(self.trace_block_points or 0)
+        if total <= 0 or block_points <= 0:
+            return b""
+        out = bytearray()
+        start = 1
+        while start <= total:
+            stop = min(start + block_points - 1, total)
+            await self._write(f":WAV:STAR {start}")
+            await self._write(f":WAV:STOP {stop}")
+            block = bytes(await self._query_binary(":WAV:DATA?"))
+            if not block:
+                logger.warning(
+                    f"{self.resource_string}: empty trace block {start}..{stop}; "
+                    f"returning the {len(out)} samples read so far"
+                )
+                break
+            out.extend(block)
+            if len(block) != stop - start + 1:
+                # Short block: the scope gave what it had, so stop here rather
+                # than walking off the end of the acquisition.
+                logger.warning(
+                    f"{self.resource_string}: trace block {start}..{stop} returned "
+                    f"{len(block)} samples, not {stop - start + 1}"
+                )
+                break
+            start = stop + 1
+        return bytes(out)
 
     async def get_waveform_data(self, channel: int = 1, mode: str = "NORMal",
                                 points: Optional[int] = None, **_ignored) -> Dict[str, Any]:
@@ -56,8 +121,17 @@ class LegacyScopeExtras:
         await self._write(f":WAV:SOUR CHAN{channel}")
         await self._write(":WAV:MODE NORM")
         await self._write(":WAV:FORM BYTE")
+        if self.trace_block_points:
+            # A window may be left over from an earlier read -- it survives a
+            # mode change -- and the preamble reports the window, not the
+            # screen, so set the full screen before reading either.
+            await self._write(":WAV:STAR 1")
+            await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
         preamble = parse_preamble(await self._query(":WAV:PRE?"))
-        raw = await self._query_binary(":WAV:DATA?")
+        if self.trace_block_points:
+            raw = await self._read_trace_in_blocks(int(preamble.get("points") or 0))
+        else:
+            raw = await self._query_binary(":WAV:DATA?")
         volts = raw_to_volts(bytes(raw), preamble, "BYTE")
         x_inc = float(preamble.get("x_increment") or 0.0) or 1e-9
         x_org = float(preamble.get("x_origin") or 0.0)
@@ -540,6 +614,13 @@ class RigolDS1104(LegacyScopeExtras, BaseEquipment):
     which is read from the model name rather than assumed.
     """
 
+    #: 400 samples is a 412-byte reply, clear of the 492-byte ceiling measured
+    #: on the bench DS1054Z's mis-declared bulk endpoints; see
+    #: LegacyScopeExtras._read_trace_in_blocks. Left unset on the other legacy
+    #: families, whose reads have not been measured and whose older command
+    #: trees may not window at all.
+    trace_block_points = 400
+
     def __init__(self, resource_manager, resource_string: str):
         """Initialize Rigol DS1104 scope."""
         super().__init__(resource_manager, resource_string)
@@ -741,28 +822,21 @@ class RigolDS1104(LegacyScopeExtras, BaseEquipment):
 
         measurements = {}
 
-        try:
-            # Set measurement source
-            await self._write(f":MEAS:SOUR CHAN{channel}")
-
-            # Get common measurements
-            if _wanted(items, "vpp"):
-                measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
-            if _wanted(items, "vmax"):
-                measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
-            if _wanted(items, "vmin"):
-                measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
-            if _wanted(items, "vavg"):
-                measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
-            if _wanted(items, "vrms"):
-                measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
-            if _wanted(items, "freq"):
-                measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
-            if _wanted(items, "period"):
-                measurements["period"] = float(await self._query(":MEAS:PER?"))
-
-        except Exception as e:
-            logger.error(f"Error getting measurements: {e}")
+        # :MEASure:ITEM? <item>,<source> is the form the DS1000Z programming
+        # guide documents, and it names its source, so there is no :MEAS:SOUR
+        # write to pay for either. The per-item queries this used to send are
+        # undocumented on this family: :MEAS:VPP? and :MEAS:FREQ? happen to
+        # answer, but :MEAS:VAV? never does -- on the bench DS1054Z every one
+        # of them burned the full 10 s VISA timeout, and with "Basic" polling
+        # vpp/vavg/freq every 2 s that alone built a ~200 s queue.
+        for key, item in DS1000Z_MEASURE_ITEMS.items():
+            if not _wanted(items, key):
+                continue
+            try:
+                value = await self._query(f":MEAS:ITEM? {item},CHAN{channel}")
+                measurements[key] = float(value)
+            except Exception as e:
+                logger.error(f"Error getting measurement {key}: {e}")
 
         return measurements
 
