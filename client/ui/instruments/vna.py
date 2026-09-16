@@ -269,18 +269,11 @@ class VNAPanel(InstrumentPanel):
         if capabilities.get("max_points"):
             self.points_spin.setMaximum(int(capabilities["max_points"]))
         self.series.clear()
-        self._show_current_settings()
-
-    def _show_current_settings(self):
+    async def refresh_settings(self):
         if not (self.client and self.equipment):
             return
-        try:
-            result = self.client.send_command(self.equipment.equipment_id, "get_state", {})
-            if not result.get("success"):
-                return
-            state = result.get("data") or {}
-        except Exception as e:
-            logger.debug(f"Could not read VNA state: {e}")
+        state = await self.send("get_state", {}, priority=False)
+        if not isinstance(state, dict):
             return
         widgets = (self.start_spin, self.stop_spin, self.points_spin, self.parameter_combo,
                    self.format_combo, self.correction_check)

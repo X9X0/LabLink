@@ -430,7 +430,6 @@ class PowerSupplyPanel(InstrumentPanel):
             if not self.autorange_button.isChecked():
                 self.axis_y_voltage.setRange(0, max_voltage)
                 self.axis_y_current.setRange(0, max_current)
-            self._show_setpoints()
         finally:
             for widget in ranged:
                 widget.blockSignals(False)
@@ -440,36 +439,44 @@ class PowerSupplyPanel(InstrumentPanel):
             f"max_voltage={max_voltage}V, max_current={max_current}A"
         )
 
-    def _show_setpoints(self, equipment_id=None):
+    async def refresh_settings(self):
         """Show the instrument's own setpoints on the controls.
 
-        Called with the range widgets' signals already blocked. Without it the
-        panel keeps whatever the previously selected instrument was set to,
-        clamped into the new one's range, which reads like a measurement from
-        the new instrument but is not one.
+        Without it the panel keeps whatever the previously selected instrument
+        was set to, clamped into the new one's range, which reads like a
+        measurement from the new instrument but is not one. The widgets are
+        blocked while set, so re-ranging never commands the instrument.
         """
-        equipment_id = equipment_id or self.equipment_id
-        if not (self.client and equipment_id):
+        if not (self.client and self.equipment):
             return
         try:
-            result = self.client.send_command(equipment_id, "get_setpoints", {"channel": 1})
-            if not result.get("success"):
-                raise RuntimeError(result.get("error") or "command failed")
-            setpoints = result.get("data") or {}
+            setpoints = await self.send("get_setpoints", {"channel": 1}, priority=False)
         except Exception as e:
             logger.warning(
-                f"Could not read setpoints from {equipment_id}; the panel may "
+                f"Could not read setpoints from {self.equipment_id}; the panel may "
                 f"show a stale setpoint until it is next changed: {e}"
             )
             return
-        voltage = setpoints.get("voltage")
-        current = setpoints.get("current")
-        if voltage is not None:
-            self.voltage_spinbox.setValue(voltage)
-            self.voltage_dial.setValue(int(voltage * 10))
-        if current is not None:
-            self.current_spinbox.setValue(current)
-            self.current_dial.setValue(int(current * 10))
+        setpoints = setpoints or {}
+        widgets = (self.voltage_dial, self.voltage_spinbox, self.current_dial, self.current_spinbox)
+        for w in widgets:
+            w.blockSignals(True)
+        try:
+            voltage = setpoints.get("voltage")
+            current = setpoints.get("current")
+            if voltage is not None:
+                self.voltage_spinbox.setValue(voltage)
+                self.voltage_dial.setValue(int(voltage * 10))
+            if current is not None:
+                self.current_spinbox.setValue(current)
+                self.current_dial.setValue(int(current * 10))
+        finally:
+            for w in widgets:
+                w.blockSignals(False)
+
+    def _show_setpoints(self, equipment_id=None):
+        """Pre-extraction name; the read-back is asynchronous now."""
+        self._schedule_refresh_settings()
 
     def set_controls_enabled(self, enabled: bool):
         for name in ("voltage_dial", "voltage_spinbox", "current_dial",

@@ -77,6 +77,11 @@ class BaseEquipment(ABC):
     #: Seconds to let a USB device re-enumerate after a reset before the
     #: exchange that provoked the reset is retried.
     USB_RESET_SETTLE_SEC = 1.0
+    #: Log a warning when one exchange waits this long for the instrument's
+    #: I/O lock, or holds the instrument this long. A single slow command is
+    #: the difference between a responsive panel and a twenty-second lag, and
+    #: the bench log is the only place it can be seen.
+    SLOW_IO_WARN_SEC = 2.0
 
     def __init__(self, resource_manager: ResourceManager, resource_string: str):
         """Initialize equipment."""
@@ -285,33 +290,59 @@ class BaseEquipment(ABC):
                 pass
         return reset
 
+    def _note_slow_io(self, command: str, waited: float, held: float):
+        """Name the command that made everything else wait."""
+        if waited >= self.SLOW_IO_WARN_SEC:
+            logger.warning(
+                f"{self.resource_string}: '{command}' waited {waited:.1f}s for the "
+                f"instrument (queued behind other requests)"
+            )
+        if held >= self.SLOW_IO_WARN_SEC:
+            logger.warning(
+                f"{self.resource_string}: '{command}' took {held:.1f}s on the instrument"
+            )
+
     async def _write(self, command: str):
         """Write a command to the instrument."""
+        import time
+
+        queued = time.monotonic()
         async with self._io_lock:
+            started = time.monotonic()
             try:
-                await self._write_unlocked(command)
-            except Exception as e:
-                if not self._recover_usb_stall(e):
-                    raise
-                logger.info(
-                    f"Retrying '{command}' on {self.resource_string} after USB reset"
-                )
-                await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
-                await self._write_unlocked(command)
+                try:
+                    await self._write_unlocked(command)
+                except Exception as e:
+                    if not self._recover_usb_stall(e):
+                        raise
+                    logger.info(
+                        f"Retrying '{command}' on {self.resource_string} after USB reset"
+                    )
+                    await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
+                    await self._write_unlocked(command)
+            finally:
+                self._note_slow_io(command, started - queued, time.monotonic() - started)
 
     async def _query(self, command: str) -> str:
         """Query the instrument and return response."""
+        import time
+
+        queued = time.monotonic()
         async with self._io_lock:
+            started = time.monotonic()
             try:
-                return await self._query_unlocked(command)
-            except Exception as e:
-                if not self._recover_usb_stall(e):
-                    raise
-                logger.info(
-                    f"Retrying '{command}' on {self.resource_string} after USB reset"
-                )
-                await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
-                return await self._query_unlocked(command)
+                try:
+                    return await self._query_unlocked(command)
+                except Exception as e:
+                    if not self._recover_usb_stall(e):
+                        raise
+                    logger.info(
+                        f"Retrying '{command}' on {self.resource_string} after USB reset"
+                    )
+                    await asyncio.sleep(self.USB_RESET_SETTLE_SEC)
+                    return await self._query_unlocked(command)
+            finally:
+                self._note_slow_io(command, started - queued, time.monotonic() - started)
 
     async def _write_unlocked(self, command: str):
         """_write without the lock. Only _write should call this."""

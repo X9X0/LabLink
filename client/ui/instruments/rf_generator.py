@@ -225,20 +225,12 @@ class RFGeneratorPanel(InstrumentPanel):
         if mods:
             self.modulation_types = [str(m).upper() for m in mods]
             self._fill_modulation_types()
-        self._show_current_settings()
-
-    def _show_current_settings(self):
+    async def refresh_settings(self):
         if not (self.client and self.equipment):
             return
-        try:
-            result = self.client.send_command(self.equipment.equipment_id, "get_readings", {"channel": 1})
-            if not result.get("success"):
-                return
-            data = result.get("data") or {}
-        except Exception as e:
-            logger.debug(f"Could not read RF generator settings: {e}")
-            return
-        self._apply_settings(data, adopt=True)
+        data = await self.send("get_readings", {"channel": 1}, priority=False)
+        if isinstance(data, dict):
+            self._apply_settings(data, adopt=True)
 
     def _apply_settings(self, data: Dict[str, Any], adopt: bool = False):
         import time

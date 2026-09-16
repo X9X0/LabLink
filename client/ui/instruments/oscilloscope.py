@@ -219,6 +219,13 @@ class OscilloscopePanel(InstrumentPanel):
             axis.setLabelsColor(QColor(_c["text"]))
             axis.setTitleBrush(QColor(_c["text"]))
 
+        # Remembered so the standard view can have its chart back after the
+        # front-panel view has drawn it as a screen.
+        self._chart_default_background = self.chart.backgroundBrush()
+        self._chart_default_roundness = self.chart.backgroundRoundness()
+        self._axis_default_grid_pen = self.axis_x.gridLinePen()
+        self._axis_default_line_pen = self.axis_x.linePen()
+
         self.chart_view = ChartWithReadouts(self.chart)
         self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         # The supply-style readouts do not apply; hide them.
@@ -433,23 +440,17 @@ class OscilloscopePanel(InstrumentPanel):
             self.chart.setTitle(f"Live trace — {bandwidth}{' MHz' if isinstance(bandwidth, (int, float)) else ''}")
         else:
             self.chart.setTitle("Live trace")
-        self._show_current_settings()
-
-    def _show_current_settings(self):
+    async def refresh_settings(self):
         """Read the scope's own settings onto the controls without commanding it.
 
-        Best effort and synchronous like the supply's setpoint read-back: the
-        controls are blocked while they are set, so nothing is sent.
+        Off the GUI thread: a DS1000Z answers ``get_state`` with some thirty
+        queries. The controls are blocked while they are set, so nothing is
+        sent back.
         """
         if not (self.client and self.equipment):
             return
-        try:
-            result = self.client.send_command(self.equipment.equipment_id, "get_state", {})
-            if not result.get("success"):
-                return
-            state = result.get("data") or {}
-        except Exception as e:
-            logger.debug(f"Could not read scope state: {e}")
+        state = await self.send("get_state", {}, priority=False)
+        if not isinstance(state, dict):
             return
 
         widgets = [w for row in self.channel_rows for w in row.values()] + [
@@ -781,12 +782,46 @@ class OscilloscopePanel(InstrumentPanel):
         if mode == "front_panel":
             # The live trace moves behind the bezel; it is one widget.
             self.front_panel.set_screen(self.trace_widget)
+            self._style_chart_as_screen(True)
             self.view_stack.setCurrentWidget(self.front_panel)
             self._sync_front_panel()
         else:
             self.trace_widget.setParent(None)
             self.trace_slot.addWidget(self.trace_widget)
+            self._style_chart_as_screen(False)
             self.view_stack.setCurrentIndex(0)
+
+    def _style_chart_as_screen(self, on: bool):
+        """Behind the bezel the chart is a scope screen: black, with a dim graticule.
+
+        Done with brushes and pens, not a chart theme: setting a theme resets
+        every series pen and the channel colours with them.
+        """
+        if on:
+            text = QColor("#e6e6e6")
+            self.chart.setBackgroundBrush(QColor("#0a0a0a"))
+            self.chart.setBackgroundRoundness(0)
+            self.chart.setPlotAreaBackgroundBrush(QColor("#000000"))
+            self.chart.setPlotAreaBackgroundVisible(True)
+            for axis in (self.axis_x, self.axis_y):
+                axis.setGridLinePen(QPen(QColor("#3a3a3a"), 1))
+                axis.setLinePen(QPen(QColor("#5a5a5a"), 1))
+            self.trace_widget.setStyleSheet("QLabel { color: #e6e6e6; }")
+        else:
+            text = QColor(dialog_palette()["text"])
+            self.chart.setBackgroundBrush(self._chart_default_background)
+            self.chart.setBackgroundRoundness(self._chart_default_roundness)
+            self.chart.setPlotAreaBackgroundVisible(False)
+            for axis in (self.axis_x, self.axis_y):
+                axis.setGridLinePen(self._axis_default_grid_pen)
+                axis.setLinePen(self._axis_default_line_pen)
+            self.trace_widget.setStyleSheet("")
+        self.chart.setTitleBrush(text)
+        if self.chart.legend():
+            self.chart.legend().setLabelColor(text)
+        for axis in (self.axis_x, self.axis_y):
+            axis.setLabelsColor(text)
+            axis.setTitleBrush(text)
 
     def _sync_front_panel(self):
         """Lamps follow the standard controls' knowledge of the instrument."""

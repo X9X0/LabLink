@@ -317,18 +317,11 @@ class SpectrumAnalyzerPanel(InstrumentPanel):
         self.preamp_check.setEnabled(bool(capabilities.get("has_preamp", True)))
         self.series.clear()
         self._last_trace = None
-        self._show_current_settings()
-
-    def _show_current_settings(self):
+    async def refresh_settings(self):
         if not (self.client and self.equipment):
             return
-        try:
-            result = self.client.send_command(self.equipment.equipment_id, "get_state", {})
-            if not result.get("success"):
-                return
-            state = result.get("data") or {}
-        except Exception as e:
-            logger.debug(f"Could not read analyzer state: {e}")
+        state = await self.send("get_state", {}, priority=False)
+        if not isinstance(state, dict):
             return
         widgets = (self.center_spin, self.span_spin, self.start_spin, self.stop_spin, self.rbw_combo,
                    self.vbw_combo, self.ref_level_spin, self.attenuation_spin, self.attenuation_auto,

@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
 
 from client.api.client import LabLinkClient, call_blocking
 from client.models.equipment import ConnectionStatus, Equipment
-from client.ui.instruments.base import InstrumentPanel
+from client.ui.instruments.base import InstrumentPanel, run_now_or_soon
 from client.ui.instruments.registry import panel_class_for
 # Re-exported: these lived here before the extraction and are imported from
 # here by tests and by anything else that drew a reading.
@@ -170,17 +170,12 @@ class ControlPanel(QWidget):
 
         key = selected_items[0].data(Qt.ItemDataRole.UserRole)
 
-        # Release the lock on what was selected before -- on its own server,
-        # which is not necessarily the one holding the new selection.
+        # The lock on what was selected before is released -- on its own
+        # server, which is not necessarily the one holding the new selection.
         previous = self.selected_equipment
+        previous_client = None
         if previous is not None and previous.key != key:
             previous_client = self._client_for(previous)
-            if previous_client:
-                try:
-                    previous_client.release_lock(previous.equipment_id)
-                    logger.info(f"Released lock on {previous.equipment_id}")
-                except Exception as e:
-                    logger.error(f"Error releasing lock: {e}")
 
         # Matched on the composite key: two servers can each mint the same
         # equipment id.
@@ -197,36 +192,60 @@ class ControlPanel(QWidget):
 
         panel = self.panel_for(equipment)
         self._show_panel(panel)
-        # Binds the instrument and ranges the controls from its capabilities
-        # -- what the shell itself used to do for supplies only.
+        # Binds the instrument; the capabilities and settings read-back run
+        # off the GUI thread inside the panel.
         panel.set_instrument(equipment, client)
-
-        # Take the lock for control, without taking it from anyone. Overriding
-        # is a deliberate act in the lock dialog, with the holder named.
-        if client:
-            try:
-                status = client.get_lock_status(equipment.equipment_id)
-            except Exception as e:
-                logger.error(f"Could not read lock status: {e}")
-                status = {}
-
-            if status.get("locked") and not client.holds_lock(status):
-                from client.ui.equipment_lock_dialog import describe_holder
-
-                logger.info(f"{equipment.equipment_id} is locked by {describe_holder(status)}; read-only")
-                self._set_controls_enabled(False)
-            else:
-                try:
-                    client.acquire_lock(equipment.equipment_id, lock_mode="exclusive")
-                    logger.info(f"Acquired exclusive lock on {equipment.equipment_id}")
-                    self._set_controls_enabled(True)
-                except Exception as e:
-                    logger.error(f"Error acquiring lock: {e}")
-                    self._set_controls_enabled(False)
-            self._refresh_lock_status()
-
+        # Read-only until the lock is ours. Readings need no lock, so polling
+        # starts now rather than after the lock round-trips.
+        self._set_controls_enabled(False)
         self.equipment_selected.emit(equipment.equipment_id)
         self._start_data_acquisition()
+
+        # Every lock call is a server round-trip. They used to run here on
+        # the GUI thread, and a server busy with the instrument held the
+        # whole window until it answered.
+        run_now_or_soon(self._take_control(equipment, client, previous, previous_client))
+
+    async def _take_control(self, equipment, client, previous, previous_client):
+        """Release the previous lock, then take this one without taking it from anyone.
+
+        Overriding is a deliberate act in the lock dialog, with the holder
+        named; here a lock someone else holds leaves the panel read-only.
+        """
+        if previous is not None and previous_client:
+            try:
+                await call_blocking(previous_client.release_lock, previous.equipment_id)
+                logger.info(f"Released lock on {previous.equipment_id}")
+            except Exception as e:
+                logger.error(f"Error releasing lock: {e}")
+
+        if not client:
+            return
+        try:
+            status = await call_blocking(client.get_lock_status, equipment.equipment_id)
+        except Exception as e:
+            logger.error(f"Could not read lock status: {e}")
+            status = {}
+        status = status or {}
+
+        if self.selected_equipment is not equipment:
+            return  # the operator has moved on; the next selection takes its own lock
+
+        if status.get("locked") and not client.holds_lock(status):
+            from client.ui.equipment_lock_dialog import describe_holder
+
+            logger.info(f"{equipment.equipment_id} is locked by {describe_holder(status)}; read-only")
+            self._set_controls_enabled(False)
+        else:
+            try:
+                await call_blocking(client.acquire_lock, equipment.equipment_id, lock_mode="exclusive")
+                logger.info(f"Acquired exclusive lock on {equipment.equipment_id}")
+                if self.selected_equipment is equipment:
+                    self._set_controls_enabled(True)
+            except Exception as e:
+                logger.error(f"Error acquiring lock: {e}")
+                self._set_controls_enabled(False)
+        self._refresh_lock_status()
 
     def _deselect(self):
         if self.selected_equipment and self._selected_client():

@@ -1492,7 +1492,12 @@ class RigolModernScopeBase(BaseEquipment):
         state: Dict[str, Any] = {"model": self.model, "family": self.family.name, "channels": {}}
         for ch in range(1, self.num_channels + 1):
             try:
-                state["channels"][str(ch)] = await self.get_channel(ch)
+                # One query for a channel that is off; the panel reads this on
+                # every selection and nobody sees the settings of a dark trace.
+                if await self._query_bool(f":CHAN{ch}:DISP?"):
+                    state["channels"][str(ch)] = await self.get_channel(ch)
+                else:
+                    state["channels"][str(ch)] = {"channel": ch, "enabled": False}
             except Exception as e:
                 state["channels"][str(ch)] = {"error": str(e)}
         for key, coro in (("timebase", self.get_timebase()), ("trigger", self.get_trigger()),

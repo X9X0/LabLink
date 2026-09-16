@@ -196,8 +196,6 @@ class MultimeterPanel(InstrumentPanel):
         if current:
             self._select_function(str(current).upper())
         self._fill_ranges()
-        self._show_current_reading()
-
     def _select_function(self, function: str):
         idx = self.function_combo.findData(function)
         if idx >= 0:
@@ -206,16 +204,12 @@ class MultimeterPanel(InstrumentPanel):
             self.function_combo.blockSignals(False)
         self._current_function = function
 
-    def _show_current_reading(self):
+    async def refresh_settings(self):
         """Put the meter's present function/range/rate on the controls without commanding it."""
         if not (self.client and self.equipment):
             return
-        try:
-            readings = self.client.get_readings(self.equipment.equipment_id) or {}
-        except Exception as e:
-            logger.debug(f"Could not read the meter: {e}")
-            return
-        self._apply_readings(readings, adopt_settings=True)
+        readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
+        self._apply_readings(readings or {}, adopt_settings=True)
 
     def set_controls_enabled(self, enabled: bool):
         for w in (self.function_combo, self.range_combo, self.rate_combo,

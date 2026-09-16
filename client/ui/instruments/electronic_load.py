@@ -128,18 +128,12 @@ class ElectronicLoadPanel(InstrumentPanel):
                     self.mode_combo.addItem(f"{key} — {MODES[key][0]}", key)
             self.mode_combo.blockSignals(False)
         self._range_setpoint()
-        self._show_current_settings()
-
-    def _show_current_settings(self):
+    async def refresh_settings(self):
         """Put the load's own mode/setpoint/input on the controls, silently."""
         if not (self.client and self.equipment):
             return
-        try:
-            readings = self.client.get_readings(self.equipment.equipment_id) or {}
-        except Exception as e:
-            logger.debug(f"Could not read the load's state: {e}")
-            return
-        self._apply_readings(readings, adopt_setpoint=True)
+        readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
+        self._apply_readings(readings or {}, adopt_setpoint=True)
 
     def _range_setpoint(self):
         mode = self.mode_combo.currentData() or "CC"

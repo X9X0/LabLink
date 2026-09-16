@@ -187,3 +187,26 @@ def test_unknown_commands_still_raise():
     asyncio.run(scope.connect())
     with pytest.raises(ValueError, match="Unknown command"):
         asyncio.run(scope.execute_command("fly", {}))
+
+
+@pytest.mark.unit
+def test_get_state_asks_one_question_of_a_dark_channel():
+    """The panel reads this on every selection; a channel that is off costs :DISP? only."""
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    original = inst.query
+
+    def query(cmd):
+        if cmd.upper().startswith(":CHAN") and cmd.upper().endswith(":DISP?"):
+            inst.queries.append(cmd)
+            return "1" if cmd.upper().startswith(":CHAN1") else "0"
+        return original(cmd)
+
+    inst.query = query
+    inst.queries.clear()
+    state = asyncio.run(scope.execute_command("get_state", {}))
+    assert state["channels"]["1"]["scale"] == pytest.approx(1.0)
+    assert state["channels"]["2"] == {"channel": 2, "enabled": False}
+    for ch in ("2", "3", "4"):
+        assert not any(q.upper().startswith(f":CHAN{ch}:") and not q.upper().endswith(":DISP?")
+                       for q in inst.queries)

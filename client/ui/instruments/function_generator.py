@@ -308,28 +308,23 @@ class FunctionGeneratorPanel(InstrumentPanel):
         self._fill_waveforms()
         self._range_frequency()
         self.counter_display.setText("")
-        self._show_channel_settings()
-
     def _range_frequency(self):
         wf = self.waveform_combo.currentData() or "SIN"
         top = self.max_frequency.get(wf) or self.max_frequency.get("SIN") or 1e9
         self.frequency_spin.setMaximum(float(top))
         self.duty_spin.setEnabled(wf in ("SQU", "PULS"))
 
-    def _show_channel_settings(self):
+    async def refresh_settings(self):
         """Read the selected channel's settings onto the controls, silently."""
         if not (self.client and self.equipment):
             return
-        try:
-            result = self.client.send_command(self.equipment.equipment_id, "get_readings",
-                                              {"channel": self.channel()})
-            if not result.get("success"):
-                return
-            data = result.get("data") or {}
-        except Exception as e:
-            logger.debug(f"Could not read generator settings: {e}")
-            return
-        self._apply_settings(data, adopt=True)
+        data = await self.send("get_readings", {"channel": self.channel()}, priority=False)
+        if isinstance(data, dict):
+            self._apply_settings(data, adopt=True)
+
+    def _show_channel_settings(self):
+        """Channel switch: read that channel back, off the GUI thread."""
+        self._schedule_refresh_settings()
 
     def _apply_settings(self, data: Dict[str, Any], adopt: bool = False):
         import time

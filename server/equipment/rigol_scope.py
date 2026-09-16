@@ -186,10 +186,20 @@ class LegacyScopeExtras:
         return result
 
     async def get_state(self) -> Dict[str, Any]:
+        """Everything the panel shows, in as few queries as it can.
+
+        A channel that is off gets one query (``:DISP?``), not five: the
+        panel read this on every selection, and on a DS1000Z with one channel
+        in use the other three cost twelve queries for settings nobody sees.
+        """
         state: Dict[str, Any] = {"model": self.model, "channels": {}}
         for ch in range(1, self.num_channels + 1):
             try:
-                state["channels"][str(ch)] = await self.get_channel(ch)
+                shown = (await self._query(f":CHAN{ch}:DISP?")).strip() in ("1", "ON")
+                if shown:
+                    state["channels"][str(ch)] = await self.get_channel(ch)
+                else:
+                    state["channels"][str(ch)] = {"channel": ch, "enabled": False}
             except Exception as e:
                 state["channels"][str(ch)] = {"error": str(e)}
         state["timebase"] = await self.get_timebase()

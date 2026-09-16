@@ -26,6 +26,27 @@ from client.utils.inflight import (READINGS_ABANDONED_AFTER, claim_slot,
 
 logger = logging.getLogger(__name__)
 
+
+def run_now_or_soon(coro):
+    """Run a coroutine on the running event loop, or to completion if none is.
+
+    The application always has qasync's loop running, so this schedules the
+    work and returns at once -- the GUI thread never waits on a server
+    request. Tests bind panels with no loop running; there the coroutine
+    runs to completion before this returns, so a test can assert on what
+    the binding did as it always could.
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None:
+        return loop.create_task(coro)
+    asyncio.run(coro)
+    return None
+
 #: What a panel may declare it polls. ``None`` means the panel never polls.
 POLL_READINGS = "readings"
 POLL_MEASUREMENTS = "measurements"
@@ -135,6 +156,16 @@ class InstrumentPanel(QWidget):
     def clear_instrument(self):
         """Forget the current instrument's values (called on deselect)."""
 
+    async def refresh_settings(self):
+        """Read the instrument's own settings onto the controls.
+
+        Runs off the GUI thread after binding, never inside it: on a DS1000Z a
+        full state read is some thirty SCPI queries, each queued behind the
+        pollers, and doing that synchronously froze the window for as long as
+        it took -- twenty seconds on the bench. Panels implement this with
+        ``await self.send(...)`` and block widget signals while setting them.
+        """
+
     # ------------------------------------------------------------------ #
     # Instrument binding
     # ------------------------------------------------------------------ #
@@ -142,9 +173,12 @@ class InstrumentPanel(QWidget):
     def set_instrument(self, equipment: Optional[Equipment], client) -> None:
         """Bind the panel to an instrument on a particular server connection.
 
-        Stops any polling of the previous instrument first. Reads the new
-        one's capabilities synchronously, as selection always has, so the
-        controls are ranged before the first reading arrives.
+        Stops any polling of the previous instrument first and binds at
+        once. Reading the instrument -- its capabilities, then its settings --
+        happens off the GUI thread (:meth:`_bind`): every one of those is a
+        server request that queues behind whatever the instrument is already
+        doing, and doing them synchronously froze the window for as long as
+        the queue took. Twenty seconds, on a bench with a DS1000Z.
         """
         self.stop()
         self.equipment = equipment
@@ -153,16 +187,38 @@ class InstrumentPanel(QWidget):
         if equipment is None or client is None:
             self.clear_instrument()
             return
+        run_now_or_soon(self._bind(equipment, client))
 
+    async def _bind(self, equipment: Equipment, client) -> None:
+        """Range the controls from the instrument's capabilities, then its settings."""
         try:
-            status = client.get_equipment_status(equipment.equipment_id) or {}
-            self.capabilities = dict(status.get("capabilities") or {})
+            status = await call_blocking(client.get_equipment_status, equipment.equipment_id)
+            capabilities = dict((status or {}).get("capabilities") or {})
         except Exception as e:
             logger.error(f"Could not read capabilities of {equipment.equipment_id}: {e}")
+            capabilities = {}
+        if self.equipment is not equipment:
+            return  # the selection moved on while we were reading
+        self.capabilities = capabilities
         try:
             self.configure(self.capabilities)
         except Exception as e:
             logger.error(f"Error configuring controls from capabilities: {e}")
+        await self._refresh_settings_guarded()
+
+    def _schedule_refresh_settings(self):
+        """Run :meth:`refresh_settings` off the GUI thread."""
+        run_now_or_soon(self._refresh_settings_guarded())
+
+    async def _refresh_settings_guarded(self):
+        equipment = self.equipment
+        if equipment is None or self.client is None:
+            return
+        try:
+            await self.refresh_settings()
+        except Exception as e:
+            if equipment is self.equipment:
+                logger.warning(f"Could not read settings from {self.equipment_id}: {e}")
 
     @property
     def equipment_id(self) -> Optional[str]:

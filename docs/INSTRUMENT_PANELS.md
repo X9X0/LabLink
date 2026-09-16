@@ -33,13 +33,15 @@ class MyPanel(InstrumentPanel):
     def show_not_connected(self): ...              # blank readouts, say why
     def show_unsupported(self): ...                # blank readouts, say why
     def clear_instrument(self): ...                # on deselect
+    async def refresh_settings(self): ...          # read the instrument's own settings onto the controls
 ```
 
 What the base class does for you:
 
 | Concern | Behaviour |
 |---|---|
-| Binding | `set_instrument(equipment, client)` stops the old poll, reads capabilities synchronously, calls `configure()` |
+| Binding | `set_instrument(equipment, client)` stops the old poll and binds at once; `_bind()` then reads capabilities off the GUI thread, calls `configure()`, and awaits `refresh_settings()`. Nothing in selection waits on the server: on a bench DS1000Z the synchronous version froze the window for twenty seconds |
+| Read-back | `refresh_settings()` sends with `priority=False`, blocks widget signals while setting them, and is dropped if the selection has moved on. `run_now_or_soon()` schedules it under a running loop and runs it to completion in tests |
 | Starting | `start()` refuses when `POLLS is None`, no instrument is bound, or the server does not hold it open (`is_connected()`); otherwise waits `SETTLE_MS` (500 ms) on a child timer, then runs `poll_timer` at `interval_ms()` |
 | Stopping | `stop()` halts both timers; `is_polling()` reports either |
 | Ticks | `_poll` skips a tick while one is in flight (`inflight.claim_slot`), calls `poll()`, and interprets failures |
@@ -47,12 +49,25 @@ What the base class does for you:
 | 501 / 405 | this instrument cannot do this: stop, `show_unsupported()` |
 | 500 / 503 / timeout | transient: keep polling |
 | Cadence | `set_rate_hz()` / `set_interval_ms()` apply at once; `_create_rate_control()` gives a spinbox wired to them; overrides are remembered per `SETTINGS_TYPE` via `SettingsManager.get_reading_rate_for` |
-| Commands | `await self.send("set_voltage", {...})` runs `client.send_command` off the GUI thread and raises on `success: false` |
+| Commands | `await self.send("set_voltage", {...})` runs `client.send_command` off the GUI thread and raises on `success: false`. An operator command (`priority=True`, the default) holds polls back until it has finished plus `COMMAND_COOLDOWN_S`; read-backs and polls pass `priority=False` |
 | Messages | `status_message` reaches the main window's status bar through the shell |
 
 The shell only ever calls `set_instrument`, `start`, `stop`, `set_controls_enabled`
 and reads `status_message` / `equipment_gone`. It never assumes an instrument
-can answer anything.
+can answer anything. Its own lock work (release the previous instrument's
+lock, read this one's, acquire it) runs in `_take_control()` off the GUI
+thread; the panel is read-only until the lock is ours, and polling starts
+straight away because readings need no lock.
+
+### Where a lag comes from
+
+Every instrument request on the server queues on that instrument's I/O
+lock. When a panel is slow, the server log now says why: `BaseEquipment`
+warns when an exchange waits more than `SLOW_IO_WARN_SEC` (2 s) for the
+lock (`'...' waited 4.1s for the instrument`) or holds the instrument that
+long (`'...' took 10.0s on the instrument`, which at 10 s is the VISA
+timeout: a command the instrument did not answer). Look for those two
+lines before changing anything else.
 
 ## The registry
 
