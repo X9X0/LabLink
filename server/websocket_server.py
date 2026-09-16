@@ -6,7 +6,8 @@ import logging
 
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
-from typing import Set
+import time
+from typing import Optional, Set
 
 from server.equipment.manager import equipment_manager
 from fastapi import WebSocket, WebSocketDisconnect
@@ -82,9 +83,14 @@ class StreamManager:
             self.disconnect(connection)
 
     async def start_streaming(
-        self, equipment_id: str, stream_type: str, interval_ms: int = 100
+        self, equipment_id: str, stream_type: str, interval_ms: int = 100,
+        parameters: Optional[dict] = None,
     ):
-        """Start streaming data from a device."""
+        """Start streaming data from a device.
+
+        ``parameters`` are handed to the driver command, which is what lets a
+        "trace" stream name its channel and point count.
+        """
         task_key = f"{equipment_id}_{stream_type}"
 
         # Stop existing stream if any
@@ -93,7 +99,8 @@ class StreamManager:
 
         # Create new streaming task
         task = asyncio.create_task(
-            self._stream_data(equipment_id, stream_type, interval_ms)
+            self._stream_data(equipment_id, stream_type, interval_ms,
+                              parameters or {})
         )
         self.streaming_tasks[task_key] = task
         logger.info(f"Started streaming {stream_type} from {equipment_id}")
@@ -107,12 +114,31 @@ class StreamManager:
             del self.streaming_tasks[task_key]
             logger.info(f"Stopped streaming {stream_type} from {equipment_id}")
 
-    async def _stream_data(self, equipment_id: str, stream_type: str, interval_ms: int):
-        """Stream data from a device at regular intervals."""
+    async def _stream_data(self, equipment_id: str, stream_type: str,
+                           interval_ms: int, parameters: Optional[dict] = None):
+        """Stream data from a device on a fixed cadence.
+
+        The cadence is held by deadline rather than by sleeping a fixed gap
+        *after* the work. That matters on an instrument which stalls: this
+        DS1054Z pauses ~150 ms on roughly one exchange in ten, and sleeping a
+        whole interval after a stalled read turns a 150 ms hiccup into a
+        150 ms + interval gap, so stalls compound into visible stutter.
+        A deadline absorbs the stall into the slack instead, and slips only
+        when the work genuinely outruns the interval.
+        """
         interval_sec = interval_ms / 1000.0
+        parameters = parameters or {}
+        next_due = time.monotonic()
 
         while True:
             try:
+                if not self.active_connections:
+                    # Nobody is listening. A stream with no audience still
+                    # takes the instrument's I/O lock and still costs the
+                    # control panel its turn, so idle instead of driving it.
+                    await asyncio.sleep(interval_sec)
+                    next_due = time.monotonic()
+                    continue
                 equipment = equipment_manager.get_equipment(equipment_id)
                 if equipment is None:
                     logger.warning(
@@ -129,7 +155,16 @@ class StreamManager:
                     )
                 elif stream_type == "measurements":
                     data = await equipment.execute_command(
-                        "get_measurements", {"channel": 1}
+                        "get_measurements", parameters or {"channel": 1}
+                    )
+                elif stream_type == "trace":
+                    # The samples, where the "waveform" stream sends only
+                    # metadata. Pushed from here so a live trace costs no HTTP
+                    # round trip per frame and the server can keep the
+                    # instrument busy rather than waiting to be asked.
+                    data = await equipment.execute_command(
+                        "get_waveform_data",
+                        parameters or {"channel": 1, "points": 600},
                     )
                 else:
                     logger.error(f"Unknown stream type: {stream_type}")
@@ -152,8 +187,18 @@ class StreamManager:
                 }
                 await self.broadcast(message)
 
-                # Wait for next interval
-                await asyncio.sleep(interval_sec)
+                # Hold the cadence by deadline: a frame that overran leaves
+                # nothing to wait for rather than pushing the next one out by
+                # a further interval.
+                next_due += interval_sec
+                slack = next_due - time.monotonic()
+                if slack > 0:
+                    await asyncio.sleep(slack)
+                elif slack < -interval_sec:
+                    # Far enough behind that catching up would mean a burst of
+                    # back-to-back frames at the instrument. Drop the lost
+                    # ground instead of trying to make it up.
+                    next_due = time.monotonic()
 
             except asyncio.CancelledError:
                 logger.info(
@@ -295,8 +340,10 @@ async def handle_websocket(websocket: WebSocket):
                 equipment_id = message.get("equipment_id")
                 stream_type = message.get("stream_type", "readings")
                 interval_ms = message.get("interval_ms", 100)
+                # A trace stream names its channel and point count here.
+                parameters = message.get("parameters") or {}
                 await stream_manager.start_streaming(
-                    equipment_id, stream_type, interval_ms
+                    equipment_id, stream_type, interval_ms, parameters
                 )
                 await stream_manager.send_to_client(
                     websocket,
