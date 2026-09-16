@@ -76,6 +76,8 @@ between two supplies keeps the graph history.
 | `oscilloscope` | `OscilloscopePanel` | `measurements` (`get_measurements`), plus the waveform on its own timer (`get_waveform_data`, decimated to 600 points) | 500 ms / 1000 ms |
 | `electronic_load` | `ElectronicLoadPanel` | `readings` (`ElectronicLoadData`) | 200 ms |
 | `multimeter` | `MultimeterPanel` | `readings` (`MultimeterData`), plus `get_statistics` while a statistic math function is selected | 200 ms |
+| `function_generator` | `FunctionGeneratorPanel` | `state` (`get_readings {channel}` + `get_counter` where fitted) | 1000 ms |
+| `rf_signal_generator` | `RFGeneratorPanel` | `state` (`get_readings`) | 1000 ms |
 | everything else | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
 
 ### OscilloscopePanel
@@ -123,8 +125,28 @@ function and math are combo boxes that command immediately (`set_function`,
 `set_rel_offset {offset: "CURR"}`. While MIN/MAX/AVERAGE/TOTAL is selected the
 poll also fetches `get_statistics`. Overload reads `OVLD`, as on the meter.
 
-Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): function
-generator, RF generator, spectrum analyzer, VNA, data acquisition. Each panel's controls follow its
+### FunctionGeneratorPanel
+
+Per channel: waveform, frequency, amplitude with its unit, offset, phase and
+duty, sent together on Apply as `set_amplitude_unit` then `apply {channel,
+waveform, frequency, amplitude, offset, phase}` then `set_duty_cycle` for
+square/pulse. Output ON/OFF (`set_output`), load (`set_load`), and separate
+Apply buttons for sweep (`set_sweep`), burst (`set_burst`) and modulation
+(`set_modulation`). The channel list and waveform list come from
+capabilities (`channels`, `waveforms`, `max_frequency`); the poll reads the
+selected channel back and the frequency counter where the model has one,
+asking for the counter once only when it does not.
+
+### RFGeneratorPanel
+
+Frequency with a unit selector and level in dBm each with a Set button, RF
+ON/OFF, ALC, a modulation group (type from `capabilities["modulation_types"]`,
+depth/deviation, rate, source) and a frequency step-sweep group, each with
+its own Apply. Frequency is range-checked against the model's limits before
+it is sent.
+
+Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): spectrum
+analyzer, VNA, data acquisition. Each panel's controls follow its
 driver family's `set_*` / `get_*` surface (`server/equipment/rigol_*.py`,
 `bk_*.py`) and the family docs (`docs/RIGOL_*.md`).
 
@@ -147,6 +169,9 @@ top-of-scale above a reading). They remain importable from
   client: configuration from capabilities and `get_state`, the exact payload
   of every command, measurement polling, decimated trace fetching and axes,
   one-shot handling of a driver without waveforms.
+- `tests/gui/test_function_generator_panel.py`, `tests/gui/test_rf_generator_panel.py`
+  -- the generator panels: apply payload per waveform, unit-first ordering,
+  counter asked once, frequency range checking, modulation and sweep payloads.
 - `tests/gui/test_electronic_load_panel.py`, `tests/gui/test_multimeter_panel.py`
   -- the load and meter panels against fake clients: payloads, read-back on
   binding without commanding, readouts and annunciators, unsupported commands

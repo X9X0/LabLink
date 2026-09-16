@@ -43,7 +43,9 @@ def _register_defaults():
     # Imported here so the registry module stays importable on its own and
     # the panels can import the registry without a cycle.
     from client.ui.instruments.electronic_load import ElectronicLoadPanel
+    from client.ui.instruments.function_generator import FunctionGeneratorPanel
     from client.ui.instruments.multimeter import MultimeterPanel
+    from client.ui.instruments.rf_generator import RFGeneratorPanel
     from client.ui.instruments.oscilloscope import OscilloscopePanel
     from client.ui.instruments.power_supply import PowerSupplyPanel
 
@@ -51,6 +53,8 @@ def _register_defaults():
     register_panel(EquipmentType.OSCILLOSCOPE, OscilloscopePanel)
     register_panel(EquipmentType.ELECTRONIC_LOAD, ElectronicLoadPanel)
     register_panel(EquipmentType.MULTIMETER, MultimeterPanel)
+    register_panel(EquipmentType.FUNCTION_GENERATOR, FunctionGeneratorPanel)
+    register_panel(EquipmentType.RF_SIGNAL_GENERATOR, RFGeneratorPanel)
 
 
 _register_defaults()

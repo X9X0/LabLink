@@ -4,10 +4,12 @@ from client.ui.instruments.base import (POLL_KINDS, POLL_MEASUREMENTS,
                                         POLL_READINGS, POLL_STATE,
                                         InstrumentPanel)
 from client.ui.instruments.electronic_load import ElectronicLoadPanel
+from client.ui.instruments.function_generator import FunctionGeneratorPanel
 from client.ui.instruments.generic import GenericInstrumentPanel
 from client.ui.instruments.multimeter import MultimeterPanel
 from client.ui.instruments.oscilloscope import OscilloscopePanel
 from client.ui.instruments.power_supply import PowerSupplyPanel
+from client.ui.instruments.rf_generator import RFGeneratorPanel
 from client.ui.instruments.registry import (panel_class_for, register_panel,
                                             registered_panels)
 from client.ui.instruments.widgets import (AnalogGauge, ChartWithReadouts,
@@ -20,6 +22,8 @@ __all__ = [
     "OscilloscopePanel",
     "ElectronicLoadPanel",
     "MultimeterPanel",
+    "FunctionGeneratorPanel",
+    "RFGeneratorPanel",
     "POLL_KINDS",
     "POLL_READINGS",
     "POLL_MEASUREMENTS",

@@ -60,6 +60,13 @@ Per-instrument control panels, phase 1: the shell and the contract.
   range / rate / secondary / math controls, Null, and live statistics while a
   statistic math function is selected. Drives the DM3058, DM3068 and DM858
   drivers through their shared command vocabulary.
+- **`FunctionGeneratorPanel`** (`client/ui/instruments/function_generator.py`):
+  per-channel waveform / frequency / amplitude / offset / phase / duty applied
+  together, output and load, sweep, burst and modulation groups, frequency
+  counter read-back. Drives the DG classic and Pro drivers.
+- **`RFGeneratorPanel`** (`client/ui/instruments/rf_generator.py`): carrier
+  frequency and level with big readouts, RF on/off, ALC, modulation and step
+  sweep. Drives the DSG drivers.
 - `docs/INSTRUMENT_PANELS.md`: the contract and how to add a panel.
 
 ### 🐛 Fixed
