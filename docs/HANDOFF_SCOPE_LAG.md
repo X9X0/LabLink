@@ -198,13 +198,53 @@ USB0::…::INSTR: refusing ':WAV:SOUR CHAN1' -- 8 requests already queued for th
 "waited" is queue depth. "refusing" is the bound doing its job. A healthy
 scope shows none of them.
 
+## Verifying a deploy without poking the bench by hand
+
+`tests/hardware/test_scope_lag_fixes.py` is every verification step that does
+not need a mouse. It is env-gated and skips in a normal run:
+
+```bash
+LABLINK_PI_HOST=192.168.91.191 pytest tests/hardware/test_scope_lag_fixes.py -v
+# add LABLINK_RUN_BURST=1 to also load one instrument with 20 concurrent fetches
+```
+
+It checks, in this order: the Pi is on the commit under test; the container is
+healthy; the scope returns a full 600-point trace inside a time budget, three
+times running, carrying a real signal; every measurement item answers inside a
+budget; every open supply still reads in under 2 s; the log window shows none
+of the four bad signatures; and, opt-in, a burst is refused rather than queued
+and the instrument recovers straight afterwards.
+
+The deploy check gates the rest. Against the pre-fix build the whole run is
+**one failure in 4 s** naming the cause and the fix, rather than 198 s of
+watching each request spend its VISA timeout. Against the fixed build it is
+**10 passed in 57 s**, burst included. Both were measured while writing it.
+
+It reads the same environment variables as `test_live_pi.py`, plus
+`LABLINK_EXPECT_COMMIT` (default: the local `HEAD`), `LABLINK_CONTAINER`,
+`LABLINK_REMOTE_DIR`, `LABLINK_API_PORT` and the time budgets. It connects the
+scope and never disconnects anything -- closing a serial port resets a legacy
+B&K and drops a live output -- and only reads supplies the server already has
+open.
+
 ## What is left
 
-1. **Deploy and verify in the app.** Use the in-app *Update Server* (the Pi
-   tracks `feature/instrument-panels`) and *Update Client*, then check
-   `docs/HANDOFF_INSTRUMENT_PANELS.md` "Verification": live trace on the
-   DS1054Z in both views, supplies unchanged, hidden panels stop polling,
-   clean server log, switching supply↔scope instant.
+1. **Deploy, then run the checks above, then look at the panel.** Use the
+   in-app *Update Server* and *Update Client*.
+
+   **Set the update mode to "Development (all commits)" and pick
+   `feature/instrument-panels` first.** In "Stable (VERSION releases)" mode the
+   ref comes from the version selector (`client/ui/system_panel.py`,
+   `_update_remote_server`), so the button would put the Pi on a release tag,
+   silently moving it off the branch and deploying none of this. The server
+   reports `update_mode: "stable"` and `tracked_branch: null` today. The first
+   automated check catches it if it happens.
+
+   What the checks cannot cover, and still needs eyes on the client: that the
+   panel *draws* the trace in both views, that a hidden panel stops polling,
+   that switching supply↔scope is instant, and that two servers still dispatch
+   to the right panel (`docs/HANDOFF_INSTRUMENT_PANELS.md` "Verification"
+   items 2, 3 and 5).
 2. Only then consider a `VERSION` bump.
 3. *Open, low priority:* the MSO2000A measurement form (cause 1); the reply
    ceiling on `:DISP:DATA?` if a screenshot feature is ever wanted (cause 2).
