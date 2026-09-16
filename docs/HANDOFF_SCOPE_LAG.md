@@ -186,6 +186,41 @@ back-off. Holding the I/O lock across all three blocks would make it atomic
 but would also hold the instrument for a second, which is what `e7f0a54`
 deliberately stopped doing — a front-panel press must not queue behind a poll.
 
+## Open: the DS1054Z beeps about twice a second while the panel runs
+
+Reported from the bench after `00faab6` was deployed: with the scope connected
+and streaming started, the instrument beeps roughly twice a second while the
+Control tab's trace updates normally between the beeps. The data is right; the
+instrument is complaining about something.
+
+A DS1000Z beeps when it refuses a command, so the first move was to find the
+refused command. Three probes, all clean:
+
+| Probe | Hypothesis | Result |
+|---|---|---|
+| `probe_window_order.py` | the windowed read leaves `:WAV:STARt` past `:WAV:STOP` between writes | **wrong** -- both orders accepted, 0 errors, 1200 bytes either way |
+| `probe_panel_beep.py` | one of the panel's calls is refused | **wrong** -- `get_state`, `get_trigger_status`, `get_measurements`, `get_readings` and a windowed trace on all three displayed channels, three cycles, in *both* acquisition states: nothing refused |
+| `probe_stream_collision.py` | the Equipment tab's 10 Hz `get_waveform` stream collides with the trace read between blocks | **wrong** -- panel alone, stream alone, and both together: queue clean in all three |
+
+`ad3ae57` reordered the window writes to `:WAV:STOP` first on the strength of
+the first hypothesis. The probe then showed an inverted window is accepted
+silently, so **that commit does not fix the beeping** -- its message says it
+does, and that is wrong. The reordering is kept because a window that is never
+inverted is unambiguously in range whatever a future firmware does, and the
+test guard that came with it is worth having; but the beep is still unexplained.
+
+What this rules in: the assumption that a beep implies an error-queue entry is
+not safe. A DS1000Z can beep without enqueuing anything, and if it does, no
+amount of reading `:SYST:ERR?` will ever find it. `scripts/probe_beep_bisect.py`
+is the next step -- it drives one operation at a time with announced phases and
+silence between them, to be **run by the operator while listening**, because
+the signal is audible and nothing else has detected it.
+
+Also unexplained and possibly related: the leftover error queue at the start of
+`probe_window_order.py` held three `-113 "Undefined header"` and five
+`-410 "Query INTERRUPTED"`. Those could equally have come from the earlier
+probes in the same session, so they are not attributable to the client.
+
 ## Log lines to look for
 
 ```
