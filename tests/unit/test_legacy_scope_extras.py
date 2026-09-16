@@ -37,6 +37,12 @@ class ScriptedScope:
         self.samples = [128 + int(40 * ((i % 20) - 10) / 10) for i in range(1200)]
         self.start = 1
         self.stop = 1200
+        # The waveform engine's state, which the driver confirms rather than
+        # re-asserting: writing any of these makes a real DS1000Z re-prepare,
+        # and the next query blocks ~100 ms on it.
+        self.source = "CHAN1"
+        self.mode = "NORM"
+        self.fmt = "BYTE"
 
     def close(self):
         pass
@@ -48,6 +54,12 @@ class ScriptedScope:
             self._set_window(start=int(cmd.split()[1]))
         elif c.startswith(":WAV:STOP "):
             self._set_window(stop=int(cmd.split()[1]))
+        elif c.startswith(":WAV:SOUR "):
+            self.source = cmd.split()[1].upper()
+        elif c.startswith(":WAV:MODE "):
+            self.mode = cmd.split()[1].upper()
+        elif c.startswith(":WAV:FORM "):
+            self.fmt = cmd.split()[1].upper()
 
     def _set_window(self, start=None, stop=None):
         """The read window, validated the way the instrument validates it.
@@ -74,13 +86,22 @@ class ScriptedScope:
         c = cmd.upper()
         if c == "*IDN?":
             return "RIGOL TECHNOLOGIES,DS1054Z,DS1ZA171409212,00.04.03"
+        if c == ":WAV:SOUR?":
+            return self.source
+        if c == ":WAV:MODE?":
+            return self.mode
+        if c == ":WAV:FORM?":
+            return self.fmt
         if c == ":WAV:PRE?":
             # format,type,points,count,xinc,xorig,xref,yinc,yorig,yref
-            # Points reports the *window*, not the screen, exactly as the
-            # instrument does -- which is how a stale window silently
-            # truncated a trace on the bench.
+            # Fields 0 and 1 report the format and type, which is how the
+            # driver confirms them without a write. Points reports the
+            # *window*, not the screen, exactly as the instrument does --
+            # which is how a stale window silently truncated a trace.
+            fmt = {"BYTE": 0, "WORD": 1, "ASC": 2}.get(self.fmt, 0)
+            typ = {"NORM": 0, "MAX": 1, "RAW": 2}.get(self.mode, 0)
             points = self.stop - self.start + 1
-            return (f"0,0,{points},1,1.000000e-06,-6.000000e-04,0,"
+            return (f"{fmt},{typ},{points},1,1.000000e-06,-6.000000e-04,0,"
                     f"4.000000e-02,0,128")
         if c == ":TIM:MAIN:SCAL?":
             return "1.000000e-04"
@@ -156,7 +177,11 @@ def test_waveform_data_has_the_modern_shape_and_real_samples():
     assert data["time"][0] == pytest.approx(-6e-4)
     assert data["time"][1] - data["time"][0] == pytest.approx(1e-6)
     assert data["sample_rate"] == pytest.approx(1e6)
-    assert ":WAV:SOUR CHAN1" in inst.writes and ":WAV:FORM BYTE" in inst.writes
+    # The setup is confirmed, not re-asserted: see
+    # test_the_waveform_setup_is_confirmed_rather_than_rewritten.
+    assert ":WAV:SOUR?" in inst.queries
+    assert not any(w.startswith((":WAV:SOUR", ":WAV:MODE", ":WAV:FORM"))
+                   for w in inst.writes)
 
 
 @pytest.mark.unit
@@ -330,6 +355,62 @@ def test_the_other_legacy_families_still_read_the_trace_in_one_go():
     assert data["num_samples"] == 1200
     assert inst.queries.count(":WAV:DATA?") == 1
     assert not any(w.startswith((":WAV:STAR", ":WAV:STOP")) for w in inst.writes)
+
+
+@pytest.mark.unit
+def test_the_waveform_setup_is_confirmed_rather_than_rewritten():
+    """Asking what a setting is costs 1.6 ms; setting it costs about 100.
+
+    Writing :WAV:SOUR, :WAV:MODE or :WAV:FORM makes a DS1000Z re-prepare its
+    waveform engine, and the next query blocks until it has. The driver sent
+    all three on every fetch, which measured ~250 ms of a ~308 ms trace on the
+    bench -- and was why the live trace would not go above about 1 Hz however
+    the rate control was set. Confirming instead brought a fetch to ~37 ms.
+    """
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    inst.writes.clear()
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert ":WAV:SOUR?" in inst.queries, "the source must be read back"
+    assert not any(w.startswith((":WAV:SOUR", ":WAV:MODE", ":WAV:FORM"))
+                   for w in inst.writes), (
+        f"the engine was re-prepared with nothing wrong with it: {inst.writes}")
+
+
+@pytest.mark.unit
+def test_a_channel_change_still_writes_the_source():
+    """Confirming is not the same as never writing."""
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    assert inst.source == "CHAN1"
+    inst.writes.clear()
+    asyncio.run(scope.get_waveform_data(channel=2))
+
+    assert ":WAV:SOUR CHAN2" in inst.writes
+    assert inst.source == "CHAN2"
+
+
+@pytest.mark.unit
+def test_a_mode_left_wrong_by_another_caller_is_corrected():
+    """get_waveform_raw uses RAW, and would not clear anybody's cache.
+
+    The preamble reports the format and type, so the check is free and the
+    correction is driven by what the instrument says rather than by what this
+    driver last remembered writing.
+    """
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    inst.mode, inst.fmt = "RAW", "WORD"      # as another caller left it
+    inst.writes.clear()
+
+    data = asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert ":WAV:MODE NORM" in inst.writes
+    assert ":WAV:FORM BYTE" in inst.writes
+    assert inst.mode == "NORM" and inst.fmt == "BYTE"
+    assert data["num_samples"] == 1200
 
 
 @pytest.mark.unit

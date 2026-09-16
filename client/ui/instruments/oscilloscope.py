@@ -381,7 +381,13 @@ class OscilloscopePanel(InstrumentPanel):
         layout = QHBoxLayout(group)
         layout.addWidget(QLabel("Update Rate (Hz):"))
         self.trace_rate_spinbox = QDoubleSpinBox()
-        self.trace_rate_spinbox.setRange(0.1, 5.0)
+        # 20 Hz, not the old 5: a fetch was ~308 ms while the driver
+        # re-asserted the waveform setup every time, so even 5 Hz was
+        # unreachable and the trace sat at about 1 Hz. Confirming the setup
+        # instead put a single-channel fetch at ~37 ms on the bench, so the
+        # ceiling is now the number of channels shown and the round trip, not
+        # this control.
+        self.trace_rate_spinbox.setRange(0.1, 20.0)
         self.trace_rate_spinbox.setDecimals(1)
         self.trace_rate_spinbox.setSingleStep(0.1)
         self.trace_rate_spinbox.setValue(1000.0 / self.TRACE_INTERVAL_MS)

@@ -150,9 +150,16 @@ class LegacyScopeExtras:
         channel = int(channel)
         if channel < 1 or channel > self.num_channels:
             raise ValueError(f"Invalid channel: {channel}")
-        await self._write(f":WAV:SOUR CHAN{channel}")
-        await self._write(":WAV:MODE NORM")
-        await self._write(":WAV:FORM BYTE")
+        # Confirm the waveform setup rather than re-asserting it. Writing
+        # :WAV:SOUR, :WAV:MODE or :WAV:FORM makes the scope re-prepare its
+        # waveform engine and the next query blocks until it has: measured on
+        # the bench DS1054Z at ~100 ms for one write and ~250 ms for the three
+        # this used to send on every fetch, against 1.6 ms to ask what the
+        # setting already is and 1.9 ms for the preamble itself. That single
+        # habit was three quarters of a 308 ms fetch, and the reason the live
+        # trace could not exceed about 1 Hz however the rate was set.
+        if (await self._query(":WAV:SOUR?")).strip().upper() != f"CHAN{channel}":
+            await self._write(f":WAV:SOUR CHAN{channel}")
         blocks = self._trace_blocks()
         if blocks:
             # A window may be left over from an earlier read -- it survives a
@@ -161,6 +168,15 @@ class LegacyScopeExtras:
             await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
             await self._write(":WAV:STAR 1")
         preamble = parse_preamble(await self._query(":WAV:PRE?"))
+        if preamble.get("format") != 0 or preamble.get("type") != 0:
+            # The preamble reports both, so checking costs nothing: field 0 is
+            # the format (0 = BYTE) and field 1 the type (0 = NORMal). Anything
+            # else means another caller left the engine set up differently --
+            # get_waveform_raw uses RAW -- so correct it and read it back,
+            # rather than trusting a cache that such a caller would not clear.
+            await self._write(":WAV:MODE NORM")
+            await self._write(":WAV:FORM BYTE")
+            preamble = parse_preamble(await self._query(":WAV:PRE?"))
         if not blocks and int(preamble.get("points") or 0) < self.WAVEFORM_POINTS:
             # A window left from another session -- a blocked read over USB, a
             # previous tool, the operator -- survives a mode change and would
