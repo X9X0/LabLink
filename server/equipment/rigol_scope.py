@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 
+def _wanted(items, key: str) -> bool:
+    """Whether a measurement item was asked for (None means all)."""
+    if not items:
+        return True
+    wanted = {str(i).strip().lower() for i in items}
+    return key in wanted
+
+
 class LegacyScopeExtras:
     """Commands the per-instrument scope panel needs that the original
     DS1000Z / MSO2000A / DS1000D drivers did not expose.
@@ -207,9 +215,34 @@ class LegacyScopeExtras:
         return {"value": value, "channel": ch, "item": item}
 
     async def get_readings(self, channel: int = 1) -> Dict[str, Any]:
-        data = await self.get_measurements(int(channel))
-        data["channel"] = int(channel)
-        return data
+        """A cheap status snapshot, not the measurements.
+
+        ``/readings`` is polled by the Equipment tab's WebSocket stream twice a
+        second and by monitors. Answering it with automatic measurements --
+        seven ``:MEAS`` queries, each of which can wait a full acquisition on a
+        DS1000Z -- held the instrument's I/O lock almost continuously, and a
+        front-panel command from the Control tab queued behind it for tens of
+        seconds. Measurements are fetched deliberately, with ``get_measurements``,
+        on the scope panel's own cadence.
+        """
+        out: Dict[str, Any] = {"channel": int(channel)}
+        try:
+            out["trigger_status"] = (await self._query(":TRIG:STAT?")).strip()
+        except Exception:
+            out["trigger_status"] = None
+        try:
+            out["timebase_scale"] = float(await self._query(":TIM:MAIN:SCAL?"))
+        except Exception:
+            out["timebase_scale"] = None
+        try:
+            out["channel_scale"] = float(await self._query(f":CHAN{int(channel)}:SCAL?"))
+        except Exception:
+            out["channel_scale"] = None
+        return out
+
+    async def clear_display(self):
+        """``:CLEar`` -- the front panel's CLEAR key."""
+        await self._write(":CLE")
 
     async def _extra_command(self, command: str, parameters: dict) -> Any:
         """Dispatch for the methods this mixin adds; raises on anything else."""
@@ -224,6 +257,7 @@ class LegacyScopeExtras:
             "get_state": self.get_state,
             "get_measurement": self.get_measurement,
             "get_readings": self.get_readings,
+            "clear": self.clear_display,
             "run": self.trigger_run,
             "stop": self.trigger_stop,
             "single": self.trigger_single,
@@ -428,8 +462,13 @@ class RigolMSO2072A(LegacyScopeExtras, BaseEquipment):
         """Run autoscale."""
         await self._write(":AUT")
 
-    async def get_measurements(self, channel: int = 1) -> Dict[str, float]:
-        """Get automated measurements for a channel."""
+    async def get_measurements(self, channel: int = 1, items=None) -> Dict[str, float]:
+        """Get automated measurements for a channel.
+
+        ``items`` limits the set (e.g. ``["vpp", "freq"]``): every item is a
+        query that can wait an acquisition on this family, so callers that
+        show three numbers should not pay for seven.
+        """
         if channel < 1 or channel > self.num_channels:
             raise ValueError(f"Invalid channel: {channel}")
 
@@ -440,13 +479,20 @@ class RigolMSO2072A(LegacyScopeExtras, BaseEquipment):
             await self._write(f":MEAS:SOUR CHAN{channel}")
 
             # Get common measurements
-            measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
-            measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
-            measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
-            measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
-            measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
-            measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
-            measurements["period"] = float(await self._query(":MEAS:PER?"))
+            if _wanted(items, "vpp"):
+                measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
+            if _wanted(items, "vmax"):
+                measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
+            if _wanted(items, "vmin"):
+                measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
+            if _wanted(items, "vavg"):
+                measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
+            if _wanted(items, "vrms"):
+                measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
+            if _wanted(items, "freq"):
+                measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
+            if _wanted(items, "period"):
+                measurements["period"] = float(await self._query(":MEAS:PER?"))
 
         except Exception as e:
             logger.error(f"Error getting measurements: {e}")
@@ -673,8 +719,13 @@ class RigolDS1104(LegacyScopeExtras, BaseEquipment):
         """Run autoscale."""
         await self._write(":AUT")
 
-    async def get_measurements(self, channel: int = 1) -> Dict[str, float]:
-        """Get automated measurements for a channel."""
+    async def get_measurements(self, channel: int = 1, items=None) -> Dict[str, float]:
+        """Get automated measurements for a channel.
+
+        ``items`` limits the set (e.g. ``["vpp", "freq"]``): every item is a
+        query that can wait an acquisition on this family, so callers that
+        show three numbers should not pay for seven.
+        """
         if channel < 1 or channel > self.num_channels:
             raise ValueError(f"Invalid channel: {channel}")
 
@@ -685,13 +736,20 @@ class RigolDS1104(LegacyScopeExtras, BaseEquipment):
             await self._write(f":MEAS:SOUR CHAN{channel}")
 
             # Get common measurements
-            measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
-            measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
-            measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
-            measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
-            measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
-            measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
-            measurements["period"] = float(await self._query(":MEAS:PER?"))
+            if _wanted(items, "vpp"):
+                measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
+            if _wanted(items, "vmax"):
+                measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
+            if _wanted(items, "vmin"):
+                measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
+            if _wanted(items, "vavg"):
+                measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
+            if _wanted(items, "vrms"):
+                measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
+            if _wanted(items, "freq"):
+                measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
+            if _wanted(items, "period"):
+                measurements["period"] = float(await self._query(":MEAS:PER?"))
 
         except Exception as e:
             logger.error(f"Error getting measurements: {e}")
@@ -961,7 +1019,7 @@ class RigolDS1102D(LegacyScopeExtras, BaseEquipment):
         """Run autoscale to automatically set vertical and horizontal scales."""
         await self._write(":AUT")
 
-    async def get_measurements(self, channel: int = 1) -> Dict[str, float]:
+    async def get_measurements(self, channel: int = 1, items=None) -> Dict[str, float]:
         """Get automated measurements for a channel.
 
         Returns measurements including:
@@ -984,15 +1042,22 @@ class RigolDS1102D(LegacyScopeExtras, BaseEquipment):
             await self._write(f":MEAS:SOUR CHAN{channel}")
 
             # Voltage measurements
-            measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
-            measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
-            measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
-            measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
-            measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
+            if _wanted(items, "vpp"):
+                measurements["vpp"] = float(await self._query(":MEAS:VPP?"))
+            if _wanted(items, "vmax"):
+                measurements["vmax"] = float(await self._query(":MEAS:VMAX?"))
+            if _wanted(items, "vmin"):
+                measurements["vmin"] = float(await self._query(":MEAS:VMIN?"))
+            if _wanted(items, "vavg"):
+                measurements["vavg"] = float(await self._query(":MEAS:VAV?"))
+            if _wanted(items, "vrms"):
+                measurements["vrms"] = float(await self._query(":MEAS:VRMS?"))
 
             # Time measurements
-            measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
-            measurements["period"] = float(await self._query(":MEAS:PER?"))
+            if _wanted(items, "freq"):
+                measurements["freq"] = float(await self._query(":MEAS:FREQ?"))
+            if _wanted(items, "period"):
+                measurements["period"] = float(await self._query(":MEAS:PER?"))
 
             # Timing measurements (may not be available on all signals)
             try:

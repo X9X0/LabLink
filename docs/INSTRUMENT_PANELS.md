@@ -85,7 +85,31 @@ between two supplies keeps the graph history.
 
 ### OscilloscopePanel
 
-Front-panel layout: the live trace and a measurements table on the left;
+Two views, switched at the top of the panel. **Standard** is grouped
+controls; **Front panel** (`client/ui/instruments/scope_front_panel.py`) is
+the instrument's own control surface laid out from the DS1000Z "Front Panel
+Overview" figure -- softkeys either side of the screen (decorative), CLEAR /
+AUTO / RUN-STOP / SINGLE, the multifunction knob and menu keys, and the
+VERTICAL, HORIZONTAL and TRIGGER areas with real knobs. The live trace moves
+behind the bezel. Knobs turn with the mouse wheel while hovered (one notch =
+one detent) or by dragging round them, and click to press, with the presses
+the instrument has: HORIZONTAL POSITION and TRIGGER LEVEL reset to zero,
+VERTICAL POSITION to zero, the SCALE knobs toggle fine steps. Channel keys
+select the channel the vertical knobs act on and, pressed again, turn it off;
+RUN/STOP lights yellow running and red stopped; MODE cycles Auto → Normal →
+Single. Menu keys and softkeys are shown but disabled -- their menus are the
+standard view.
+
+**Polling cost matters on this instrument.** Every automatic measurement is a
+`:MEASure` query the DS1000Z may answer only after a full acquisition, so the
+default set is Basic (Vpp, Vavg, Freq) at 2 s, with Off and All available.
+Polls yield to operator commands (`InstrumentPanel.commands_pending`) and the
+trace and measurement polls never overlap, so a knob turn is never queued
+behind a background fetch. Server-side, `get_readings` on every scope driver
+is a cheap status snapshot, not the measurement set: the Equipment tab's
+readings stream polls it twice a second.
+
+Standard-view layout: the live trace and a measurements table on the left;
 Run / Stop / Single / Force / Auto, per-channel vertical controls (enable,
 scale, offset, coupling, Apply), horizontal (scale, offset) and edge trigger
 (source, level, slope, sweep) on the right. Channel rows and trigger sources

@@ -740,7 +740,12 @@ async def test_execute_command_dispatch_state_and_errors():
     scope, inst = make_driver(RigolMSO5000, "MSO5074")
     await scope.connect()
     readings = await scope.execute_command("get_readings", {"channel": 1})
-    assert readings["vpp"] == pytest.approx(3.2) and readings["channel"] == 1
+    # A cheap snapshot, not the twelve :MEASure:ITEM? queries: /readings is
+    # polled continuously and used to hold the I/O lock against commands.
+    assert readings["channel"] == 1 and "trigger_status" in readings and "timebase" in readings
+    assert "vpp" not in readings
+    limited = await scope.execute_command("get_measurements", {"channel": 1, "items": ["vpp", "freq"]})
+    assert set(limited) == {"vpp", "freq"} and limited["vpp"] == pytest.approx(3.2)
     meta = await scope.execute_command("get_waveform", {"channel": 1})
     assert isinstance(meta, WaveformData) and meta.num_samples == 1000
     raw = await scope.execute_command("get_waveform_raw", {"channel": 1})

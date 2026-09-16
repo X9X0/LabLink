@@ -28,10 +28,11 @@ from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout,
                              QGroupBox, QHBoxLayout, QLabel, QPushButton,
-                             QSizePolicy, QTableWidget, QTableWidgetItem,
-                             QVBoxLayout, QWidget)
+                             QSizePolicy, QStackedWidget, QTableWidget,
+                             QTableWidgetItem, QVBoxLayout, QWidget)
 
 from client.ui.instruments.base import POLL_MEASUREMENTS, InstrumentPanel
+from client.ui.instruments.scope_front_panel import FrontPanelView
 from client.ui.instruments.widgets import ChartWithReadouts  # noqa: F401  (shared look)
 from client.ui.theme import dialog_palette, get_theme_setting
 
@@ -45,6 +46,15 @@ VOLTS_PER_DIV = [v * m for m in (1e-3, 1e-2, 1e-1, 1.0) for v in (1, 2, 5)] + [1
 
 #: 1-2-5 horizontal scales from 1 ns/div to 50 s/div.
 SECONDS_PER_DIV = [v * m for m in (1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0) for v in (1, 2, 5)] + [10.0, 20.0, 50.0]
+
+#: What the measurements poll asks for. Every item is a query that can wait
+#: a full acquisition on a DS1000Z, so the default is the three a bench
+#: usually watches, not all twelve.
+MEASUREMENT_SETS = {
+    "OFF": [],
+    "BASIC": ["vpp", "vavg", "freq"],
+    "ALL": None,   # everything the driver offers
+}
 
 MEASUREMENT_ROWS = [
     ("vpp", "Vpp", "V"), ("vmax", "Vmax", "V"), ("vmin", "Vmin", "V"),
@@ -71,8 +81,10 @@ class OscilloscopePanel(InstrumentPanel):
     """Drive an oscilloscope and watch its trace."""
 
     POLLS = POLL_MEASUREMENTS
-    #: Automatic measurements: each item is a query round trip.
-    DEFAULT_INTERVAL_MS = 500
+    #: Automatic measurements: each item is a query round trip that can wait
+    #: an acquisition, so twice a second was far too often on a DS1054Z --
+    #: it held the instrument's I/O lock and queued the operator's commands.
+    DEFAULT_INTERVAL_MS = 2000
     SETTINGS_TYPE = "oscilloscope"
 
     #: The live trace has its own, slower cadence.
@@ -88,6 +100,12 @@ class OscilloscopePanel(InstrumentPanel):
         self._trace_started_at = None
         self._trace_unsupported = False
         self._last_trace: Dict[int, Dict[str, Any]] = {}
+        # Front-panel state: which channel the vertical knobs act on, fine
+        # step toggles, and what we last saw of the run state.
+        self._fp_channel = 1
+        self._fp_fine = {"v_scale": False, "h_scale": False}
+        self._running: Optional[bool] = None
+        self._last_trigger_status: Optional[str] = None
         super().__init__(parent)
         self.trace_timer = QTimer(self)
         self.trace_timer.timeout.connect(self._poll_trace)
@@ -98,16 +116,36 @@ class OscilloscopePanel(InstrumentPanel):
     # ------------------------------------------------------------------ #
 
     def _build_ui(self):
-        outer = QHBoxLayout(self)
+        outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        # Left: the trace and the measurements under it.
-        left = QVBoxLayout()
-        left.addWidget(self._create_trace(), 3)
-        left.addWidget(self._create_measurements(), 1)
-        outer.addLayout(left, 3)
+        # View toggle: the standard grouped controls, or the instrument's
+        # own front panel with knobs.
+        toggle_row = QHBoxLayout()
+        toggle_row.addWidget(QLabel("View:"))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Standard", "standard")
+        self.view_combo.addItem("Front panel", "front_panel")
+        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
+        toggle_row.addWidget(self.view_combo)
+        toggle_row.addStretch()
+        outer.addLayout(toggle_row)
 
-        # Right: the controls, in front-panel order.
+        self.view_stack = QStackedWidget()
+        outer.addWidget(self.view_stack, 1)
+
+        # -- standard view --------------------------------------------------
+        standard = QWidget()
+        std_layout = QHBoxLayout(standard)
+        std_layout.setContentsMargins(0, 0, 0, 0)
+        left = QVBoxLayout()
+        self.trace_widget = self._create_trace()
+        self.trace_slot = QVBoxLayout()
+        self.trace_slot.setContentsMargins(0, 0, 0, 0)
+        self.trace_slot.addWidget(self.trace_widget)
+        left.addLayout(self.trace_slot, 3)
+        left.addWidget(self._create_measurements(), 1)
+        std_layout.addLayout(left, 3)
         right = QVBoxLayout()
         right.addWidget(self._create_run_controls())
         right.addWidget(self._create_channel_controls())
@@ -118,7 +156,25 @@ class OscilloscopePanel(InstrumentPanel):
         rates.addWidget(self._create_trace_rate_control())
         right.addLayout(rates)
         right.addStretch()
-        outer.addLayout(right, 2)
+        std_layout.addLayout(right, 2)
+        self.view_stack.addWidget(standard)
+
+        # -- front-panel view -----------------------------------------------
+        self.front_panel = FrontPanelView(self.num_channels)
+        self.front_panel.channel_key.connect(self._fp_channel_key)
+        self.front_panel.vertical_position.connect(self._fp_vertical_position)
+        self.front_panel.vertical_position_pressed.connect(self._fp_vertical_position_pressed)
+        self.front_panel.vertical_scale.connect(self._fp_vertical_scale)
+        self.front_panel.vertical_scale_pressed.connect(lambda: self._fp_toggle_fine("v_scale"))
+        self.front_panel.horizontal_position.connect(self._fp_horizontal_position)
+        self.front_panel.horizontal_position_pressed.connect(self._fp_horizontal_position_pressed)
+        self.front_panel.horizontal_scale.connect(self._fp_horizontal_scale)
+        self.front_panel.horizontal_scale_pressed.connect(lambda: self._fp_toggle_fine("h_scale"))
+        self.front_panel.trigger_level.connect(self._fp_trigger_level)
+        self.front_panel.trigger_level_pressed.connect(self._fp_trigger_level_pressed)
+        self.front_panel.key.connect(self._fp_key)
+        self.front_panel.set_selected_channel(self._fp_channel)
+        self.view_stack.addWidget(self.front_panel)
 
     def _create_trace(self) -> QWidget:
         widget = QWidget()
@@ -184,6 +240,18 @@ class OscilloscopePanel(InstrumentPanel):
             self.measure_channel.addItem(f"CH{n}", n)
         self.measure_channel.currentIndexChanged.connect(self._on_measure_channel_changed)
         row.addWidget(self.measure_channel)
+        row.addWidget(QLabel("Items:"))
+        self.measurement_set_combo = QComboBox()
+        self.measurement_set_combo.addItem("Off", "OFF")
+        self.measurement_set_combo.addItem("Basic (Vpp, Vavg, Freq)", "BASIC")
+        self.measurement_set_combo.addItem("All", "ALL")
+        self.measurement_set_combo.setCurrentIndex(1)
+        self.measurement_set_combo.setToolTip(
+            "Each item is a query the scope may answer only after a full acquisition; "
+            "fewer items means knobs and buttons answer sooner."
+        )
+        self.measurement_set_combo.currentIndexChanged.connect(lambda _i: self._clear_measurements())
+        row.addWidget(self.measurement_set_combo)
         row.addStretch()
         layout.addLayout(row)
 
@@ -347,6 +415,9 @@ class OscilloscopePanel(InstrumentPanel):
             n = 4
         self.num_channels = max(1, min(self.MAX_CHANNELS, n))
         self._show_channel_rows()
+        self.front_panel.set_num_channels(self.num_channels)
+        self._fp_channel = 1
+        self.front_panel.set_selected_channel(1)
         self.measure_channel.blockSignals(True)
         self.measure_channel.clear()
         for ch in range(1, self.num_channels + 1):
@@ -487,13 +558,45 @@ class OscilloscopePanel(InstrumentPanel):
     # Polling: measurements on the base timer, the trace on its own
     # ------------------------------------------------------------------ #
 
+    def measurement_items(self) -> Optional[List[str]]:
+        """The items the poll asks for; None means all, [] means none."""
+        return MEASUREMENT_SETS.get(self.measurement_set_combo.currentData() or "BASIC", None)
+
     async def poll(self):
+        if self._trace_started_at is not None:
+            return  # the trace fetch is out; one request at a time per instrument
+        if self.view_stack.currentWidget() is self.front_panel or self._running is None:
+            # Cheap, and the RUN/STOP lamp needs it.
+            try:
+                status = await self.send("get_trigger_status", {}, priority=False)
+                self._note_trigger_status(status)
+            except Exception as e:
+                logger.debug(f"trigger status unavailable: {e}")
+        items = self.measurement_items()
+        if items == []:
+            return
         channel = self.measure_channel.currentData() or 1
-        data = await self.send("get_measurements", {"channel": int(channel)})
+        params: Dict[str, Any] = {"channel": int(channel)}
+        if items is not None:
+            params["items"] = list(items)
+        data = await self.send("get_measurements", params, priority=False)
         self._show_measurements(data or {})
 
+    def _note_trigger_status(self, status: Any):
+        text = str(status or "").strip().upper()
+        if not text:
+            return
+        self._last_trigger_status = text
+        self._running = text != "STOP"
+        self.trigger_status.setText(text)
+        self.front_panel.set_running(self._running)
+
     def _show_measurements(self, data: Dict[str, Any]):
+        wanted = self.measurement_items()
         for i, (key, _label, unit) in enumerate(MEASUREMENT_ROWS):
+            if wanted is not None and key not in wanted:
+                self.measurement_table.item(i, 1).setText("--")
+                continue
             value = data.get(key)
             try:
                 value = float(value) if value is not None else None
@@ -533,12 +636,17 @@ class OscilloscopePanel(InstrumentPanel):
         from client.utils.inflight import (READINGS_ABANDONED_AFTER, claim_slot,
                                            release_slot)
 
+        if self.commands_pending() or self._poll_started_at is not None:
+            return  # a command is out, or the measurements poll is; wait our turn
         if not claim_slot(self, "_trace_started_at", READINGS_ABANDONED_AFTER):
             return
         try:
             for channel in self.enabled_channels():
+                if self.commands_pending():
+                    break  # let the operator's command go before the next channel
                 trace = await self.send(
-                    "get_waveform_data", {"channel": channel, "points": self.TRACE_POINTS}
+                    "get_waveform_data", {"channel": channel, "points": self.TRACE_POINTS},
+                    priority=False,
                 )
                 if isinstance(trace, dict) and trace.get("voltage") is not None:
                     self._last_trace[channel] = trace
@@ -621,6 +729,11 @@ class OscilloscopePanel(InstrumentPanel):
                     {"trigger_run": "RUN", "trigger_stop": "STOP", "trigger_single": "SINGLE",
                      "force_trigger": "FORCED"}[name]
                 )
+                if name == "trigger_run":
+                    self._running = True
+                elif name == "trigger_stop":
+                    self._running = False
+                self.front_panel.set_running(self._running)
             return result
         except Exception as e:
             logger.error(f"{name} failed: {e}")
@@ -658,3 +771,140 @@ class OscilloscopePanel(InstrumentPanel):
 
     def _on_measure_channel_changed(self, _index: int):
         self._clear_measurements()
+
+    # ------------------------------------------------------------------ #
+    # Front-panel view
+    # ------------------------------------------------------------------ #
+
+    def _on_view_changed(self, _index: int):
+        mode = self.view_combo.currentData()
+        if mode == "front_panel":
+            # The live trace moves behind the bezel; it is one widget.
+            self.front_panel.set_screen(self.trace_widget)
+            self.view_stack.setCurrentWidget(self.front_panel)
+            self._sync_front_panel()
+        else:
+            self.trace_widget.setParent(None)
+            self.trace_slot.addWidget(self.trace_widget)
+            self.view_stack.setCurrentIndex(0)
+
+    def _sync_front_panel(self):
+        """Lamps follow the standard controls' knowledge of the instrument."""
+        for n in range(self.num_channels):
+            self.front_panel.set_channel_enabled(n + 1, self.channel_rows[n]["enable"].isChecked())
+        self.front_panel.set_selected_channel(self._fp_channel)
+        self.front_panel.set_running(self._running)
+        self.front_panel.set_sweep(self.trigger_sweep.currentData())
+
+    # -- steps -------------------------------------------------------------
+
+    @staticmethod
+    def _step_index(combo: QComboBox, steps: int) -> int:
+        return max(0, min(combo.count() - 1, combo.currentIndex() + steps))
+
+    def _fp_channel_key(self, channel: int):
+        """First press selects the channel for the vertical knobs; pressing the
+        selected channel again turns it off, as on the instrument."""
+        if channel > self.num_channels:
+            return
+        row = self.channel_rows[channel - 1]
+        if channel == self._fp_channel and row["enable"].isChecked():
+            row["enable"].setChecked(False)
+            self._apply_channel(channel)
+        elif not row["enable"].isChecked():
+            row["enable"].setChecked(True)
+            self._fp_channel = channel
+            self._apply_channel(channel)
+        else:
+            self._fp_channel = channel
+        self.front_panel.set_selected_channel(self._fp_channel)
+        self.front_panel.set_channel_enabled(channel, row["enable"].isChecked())
+
+    def _fp_toggle_fine(self, which: str):
+        self._fp_fine[which] = not self._fp_fine[which]
+        self.status_message.emit(
+            f"{'Vertical' if which == 'v_scale' else 'Horizontal'} SCALE: "
+            f"{'fine' if self._fp_fine[which] else 'coarse'} steps"
+        )
+
+    def _fp_vertical_scale(self, steps: int):
+        """Clockwise = smaller volts/div (zoom in), as on the instrument."""
+        row = self.channel_rows[self._fp_channel - 1]
+        combo = row["scale"]
+        if self._fp_fine["v_scale"]:
+            current = float(combo.currentData())
+            new = current * (0.9 ** steps)
+            new = max(VOLTS_PER_DIV[0], min(VOLTS_PER_DIV[-1], new))
+            self._select_nearest(combo, new)
+            scale = new
+        else:
+            combo.setCurrentIndex(self._step_index(combo, -steps))
+            scale = float(combo.currentData())
+        self._command("set_channel", {"channel": self._fp_channel, "scale": scale})
+
+    def _fp_vertical_position(self, steps: int):
+        row = self.channel_rows[self._fp_channel - 1]
+        scale = float(row["scale"].currentData())
+        increment = scale / 10.0
+        new = row["offset"].value() + increment * steps
+        row["offset"].setValue(new)
+        self._command("set_channel", {"channel": self._fp_channel, "offset": float(row["offset"].value())})
+
+    def _fp_vertical_position_pressed(self):
+        row = self.channel_rows[self._fp_channel - 1]
+        row["offset"].setValue(0.0)
+        self._command("set_channel", {"channel": self._fp_channel, "offset": 0.0})
+
+    def _fp_horizontal_scale(self, steps: int):
+        """Clockwise = smaller s/div (zoom in)."""
+        combo = self.timebase_scale
+        if self._fp_fine["h_scale"]:
+            current = float(combo.currentData())
+            new = max(SECONDS_PER_DIV[0], min(SECONDS_PER_DIV[-1], current * (0.9 ** steps)))
+            self._select_nearest(combo, new)
+            scale = new
+        else:
+            combo.setCurrentIndex(self._step_index(combo, -steps))
+            scale = float(combo.currentData())
+        self._command("set_timebase", {"scale": scale})
+
+    def _fp_horizontal_position(self, steps: int):
+        increment = float(self.timebase_scale.currentData()) / 10.0
+        self.timebase_offset.setValue(self.timebase_offset.value() + increment * steps)
+        self._command("set_timebase", {"offset": float(self.timebase_offset.value())})
+
+    def _fp_horizontal_position_pressed(self):
+        self.timebase_offset.setValue(0.0)
+        self._command("set_timebase", {"offset": 0.0})
+
+    def _fp_trigger_level(self, steps: int):
+        row = self.channel_rows[self._fp_channel - 1]
+        increment = float(row["scale"].currentData()) / 10.0
+        self.trigger_level.setValue(self.trigger_level.value() + increment * steps)
+        self._command("set_trigger", {"level": float(self.trigger_level.value())})
+
+    def _fp_trigger_level_pressed(self):
+        """The instrument resets the level to zero on a press."""
+        self.trigger_level.setValue(0.0)
+        self._command("set_trigger", {"level": 0.0})
+
+    def _fp_key(self, name: str):
+        if name == "CLEAR":
+            self._command("clear")
+        elif name == "AUTO":
+            self._command("autoscale")
+        elif name == "RUN_STOP":
+            self._command("trigger_stop" if self._running else "trigger_run")
+        elif name == "SINGLE":
+            self._command("trigger_single")
+        elif name == "FORCE":
+            self._command("force_trigger")
+        elif name == "MODE":
+            order = ["AUTO", "NORMAL", "SINGLE"]
+            current = self.trigger_sweep.currentData() or "AUTO"
+            nxt = order[(order.index(current) + 1) % 3] if current in order else "AUTO"
+            self.trigger_sweep.blockSignals(True)
+            self.trigger_sweep.setCurrentIndex(self.trigger_sweep.findData(nxt))
+            self.trigger_sweep.blockSignals(False)
+            self.front_panel.set_sweep(nxt)
+            self._command("set_trigger", {"sweep": nxt})

@@ -153,7 +153,32 @@ def test_state_and_measurement_hooks():
     assert sample == {"value": pytest.approx(1.52), "channel": 2, "item": "vpp"}
     assert ":MEAS:SOUR CHAN2" in inst.writes
     readings = asyncio.run(scope.execute_command("get_readings", {"channel": 1}))
-    assert readings["freq"] == pytest.approx(1000.0) and readings["channel"] == 1
+    # A cheap snapshot: /readings is polled twice a second by the Equipment
+    # tab's stream, and answering it with :MEAS queries held the I/O lock and
+    # queued front-panel commands for tens of seconds on the bench.
+    assert readings == {"channel": 1, "trigger_status": "TD", "timebase_scale": pytest.approx(1e-4),
+                        "channel_scale": pytest.approx(1.0)}
+    assert not any(q.startswith(":MEAS") for q in inst.queries[-3:])
+
+
+@pytest.mark.unit
+def test_measurements_can_be_limited_to_the_items_asked_for():
+    """Three items asked for: three :MEAS queries, not seven."""
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    inst.queries.clear()
+    data = asyncio.run(scope.execute_command("get_measurements", {"channel": 1, "items": ["vpp", "freq"]}))
+    assert set(data) == {"vpp", "freq"}
+    meas = [q for q in inst.queries if q.startswith(":MEAS:") and q.endswith("?")]
+    assert meas == [":MEAS:VPP?", ":MEAS:FREQ?"]
+
+
+@pytest.mark.unit
+def test_clear_key_maps_to_cle():
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    asyncio.run(scope.execute_command("clear", {}))
+    assert ":CLE" in inst.writes
 
 
 @pytest.mark.unit

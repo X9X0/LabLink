@@ -220,12 +220,56 @@ class TestPolling:
 
         _run(panel, "_poll")
 
-        assert _sent(client, "get_measurements") == [{"channel": 2}]
+        # The default set is the three a bench watches; every extra item is a
+        # query the DS1000Z may answer only after a full acquisition.
+        assert _sent(client, "get_measurements") == [{"channel": 2, "items": ["vpp", "vavg", "freq"]}]
         values = {panel.measurement_table.item(i, 0).text(): panel.measurement_table.item(i, 1).text()
                   for i in range(panel.measurement_table.rowCount())}
         assert values["Vpp"] == "1.52 V"
         assert values["Frequency"] == "1 kHz"
+        assert values["Vmax"] == "--", "a row not asked for must not show a stale number"
         assert values["Rise time"] == "--"
+
+    def test_all_and_off_measurement_sets(self, qapp):
+        client = FakeScopeClient()
+        panel = OscilloscopePanel()
+        panel.set_instrument(_scope(), client)
+        panel.measurement_set_combo.setCurrentIndex(panel.measurement_set_combo.findData("ALL"))
+        client.commands.clear()
+        _run(panel, "_poll")
+        assert _sent(client, "get_measurements") == [{"channel": 1}]
+        panel.measurement_set_combo.setCurrentIndex(panel.measurement_set_combo.findData("OFF"))
+        client.commands.clear()
+        _run(panel, "_poll")
+        assert _sent(client, "get_measurements") == []
+
+    def test_polls_yield_to_a_command_in_flight(self, qapp):
+        """The 20-second lag: a knob turn queued behind background fetches."""
+        client = FakeScopeClient()
+        panel = OscilloscopePanel()
+        panel.set_instrument(_scope(), client)
+        client.commands.clear()
+        panel._commands_in_flight = 1
+        _run(panel, "_poll")
+        _run(panel, "_poll_trace")
+        assert client.commands == [], "a poll went out while the operator's command was waiting"
+        panel._commands_in_flight = 0
+        import time
+        panel._last_command_finished_at = time.monotonic()
+        _run(panel, "_poll")
+        assert client.commands == [], "the cooldown after a command was not honoured"
+
+    def test_the_trace_waits_while_the_measurements_poll_is_out(self, qapp):
+        client = FakeScopeClient()
+        panel = OscilloscopePanel()
+        panel.set_instrument(_scope(), client)
+        client.commands.clear()
+        panel._poll_started_at = 1e12
+        _run(panel, "_poll_trace")
+        assert _sent(client, "get_waveform_data") == []
+        panel._poll_started_at = None
+        _run(panel, "_poll_trace")
+        assert len(_sent(client, "get_waveform_data")) >= 1
 
     def test_the_trace_fetches_only_enabled_channels_decimated(self, qapp):
         client = FakeScopeClient()
@@ -282,3 +326,127 @@ class TestFormatting:
     ])
     def test_si_format(self, value, unit, text):
         assert si_format(value, unit) == text
+
+
+class TestFrontPanelView:
+    """The instrument's own control surface: knobs that turn with the wheel
+    and press with a click, mapped onto the same driver commands."""
+
+    @pytest.fixture
+    def bound(self, qapp):
+        client = FakeScopeClient()
+        panel = OscilloscopePanel()
+        panel.set_instrument(_scope(), client)
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData("front_panel"))
+        sent = []
+        panel._command = lambda name, params=None: sent.append((name, params if params is not None else {}))
+        return panel, client, sent
+
+    def test_switching_views_moves_the_live_trace_behind_the_bezel(self, bound):
+        panel, _, _ = bound
+        assert panel.view_stack.currentWidget() is panel.front_panel
+        assert panel.trace_widget.parent() is panel.front_panel.screen
+        panel.view_combo.setCurrentIndex(0)
+        assert panel.view_stack.currentIndex() == 0
+        assert panel.trace_widget.parent() is not panel.front_panel.screen
+
+    def test_a_knob_turns_with_the_wheel_and_presses_with_a_click(self, qapp):
+        from PyQt6.QtCore import QPoint, QPointF, Qt
+        from PyQt6.QtGui import QMouseEvent, QWheelEvent
+
+        from client.ui.instruments.scope_front_panel import KnobWidget
+
+        knob = KnobWidget("TEST")
+        turns, presses = [], []
+        knob.turned.connect(turns.append)
+        knob.pressed.connect(lambda: presses.append(True))
+        centre = QPointF(knob.width() / 2, knob.height() / 2)
+        knob.wheelEvent(QWheelEvent(centre, centre, QPoint(0, 120), QPoint(0, 120),
+                                    Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                    Qt.ScrollPhase.NoScrollPhase, False))
+        knob.wheelEvent(QWheelEvent(centre, centre, QPoint(0, -240), QPoint(0, -240),
+                                    Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                    Qt.ScrollPhase.NoScrollPhase, False))
+        assert turns == [1, -2]
+        press = QMouseEvent(QMouseEvent.Type.MouseButtonPress, centre, Qt.MouseButton.LeftButton,
+                            Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        release = QMouseEvent(QMouseEvent.Type.MouseButtonRelease, centre, Qt.MouseButton.LeftButton,
+                              Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+        knob.mousePressEvent(press)
+        knob.mouseReleaseEvent(release)
+        assert presses == [True]
+        knob.deleteLater()
+
+    def test_vertical_scale_knob_steps_the_selected_channel(self, bound):
+        panel, _, sent = bound
+        before = panel.channel_rows[0]["scale"].currentData()       # 0.5 V/div from get_state
+        panel.front_panel.vertical_scale.emit(1)                    # clockwise = zoom in
+        after = panel.channel_rows[0]["scale"].currentData()
+        assert after < before
+        assert sent[-1] == ("set_channel", {"channel": 1, "scale": after})
+
+    def test_vertical_position_knob_moves_by_a_tenth_of_a_division_and_press_zeroes(self, bound):
+        panel, _, sent = bound
+        scale = float(panel.channel_rows[0]["scale"].currentData())
+        start = panel.channel_rows[0]["offset"].value()
+        panel.front_panel.vertical_position.emit(3)
+        assert panel.channel_rows[0]["offset"].value() == pytest.approx(start + 0.3 * scale)
+        assert sent[-1][0] == "set_channel" and sent[-1][1]["channel"] == 1
+        panel.front_panel.vertical_position_pressed.emit()
+        assert sent[-1] == ("set_channel", {"channel": 1, "offset": 0.0})
+
+    def test_channel_keys_select_then_toggle_as_on_the_instrument(self, bound):
+        panel, _, sent = bound
+        panel.front_panel.channel_key.emit(2)              # CH2 was off: turns on and selects
+        assert panel.channel_rows[1]["enable"].isChecked()
+        assert panel._fp_channel == 2
+        assert sent[-1][0] == "set_channel" and sent[-1][1]["channel"] == 2 and sent[-1][1]["enabled"] is True
+        panel.front_panel.channel_key.emit(2)              # pressed again: off
+        assert not panel.channel_rows[1]["enable"].isChecked()
+        assert sent[-1][1]["enabled"] is False
+
+    def test_horizontal_knobs(self, bound):
+        panel, _, sent = bound
+        before = panel.timebase_scale.currentData()
+        panel.front_panel.horizontal_scale.emit(-1)        # counter-clockwise = slower
+        assert panel.timebase_scale.currentData() > before
+        assert sent[-1] == ("set_timebase", {"scale": panel.timebase_scale.currentData()})
+        panel.front_panel.horizontal_position.emit(2)
+        assert sent[-1][0] == "set_timebase" and "offset" in sent[-1][1]
+        panel.front_panel.horizontal_position_pressed.emit()
+        assert sent[-1] == ("set_timebase", {"offset": 0.0})
+
+    def test_trigger_level_knob_and_its_press_reset_to_zero(self, bound):
+        panel, _, sent = bound
+        panel.front_panel.trigger_level.emit(4)
+        assert sent[-1][0] == "set_trigger" and sent[-1][1]["level"] != 0.0
+        panel.front_panel.trigger_level_pressed.emit()
+        assert sent[-1] == ("set_trigger", {"level": 0.0})
+
+    def test_common_keys_and_mode_cycle(self, bound):
+        panel, _, sent = bound
+        panel._running = True
+        for key in ("CLEAR", "AUTO", "RUN_STOP", "SINGLE", "FORCE"):
+            panel.front_panel.key.emit(key)
+        assert [name for name, _ in sent[-5:]] == ["clear", "autoscale", "trigger_stop", "trigger_single", "force_trigger"]
+        panel._running = False
+        panel.front_panel.key.emit("RUN_STOP")
+        assert sent[-1][0] == "trigger_run"
+        panel.front_panel.key.emit("MODE")                 # NORMAL (from get_state) -> SINGLE
+        assert sent[-1] == ("set_trigger", {"sweep": "SINGLE"})
+        assert panel.trigger_sweep.currentData() == "SINGLE"
+
+    def test_fine_steps_toggle_on_scale_knob_press(self, bound):
+        panel, _, sent = bound
+        panel.front_panel.vertical_scale_pressed.emit()
+        assert panel._fp_fine["v_scale"] is True
+        before = float(panel.channel_rows[0]["scale"].currentData())
+        panel.front_panel.vertical_scale.emit(1)
+        assert sent[-1][1]["scale"] == pytest.approx(before * 0.9)
+
+    def test_run_stop_lamp_follows_the_trigger_status(self, bound):
+        panel, _, _ = bound
+        panel._note_trigger_status("STOP")
+        assert panel.front_panel.run_stop_key.is_lit() and panel._running is False
+        panel._note_trigger_status("TD")
+        assert panel._running is True

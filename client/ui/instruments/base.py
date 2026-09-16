@@ -80,6 +80,11 @@ class InstrumentPanel(QWidget):
         #: flag so a destroyed task cannot stop the readings for good.
         self._poll_started_at = None
         self._interval_ms = self.DEFAULT_INTERVAL_MS
+        #: Operator commands in flight, and when the last one finished. Polls
+        #: yield to commands: the instrument answers one request at a time,
+        #: and a knob turn must not queue behind a background fetch.
+        self._commands_in_flight = 0
+        self._last_command_finished_at = 0.0
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self._poll)
@@ -300,6 +305,11 @@ class InstrumentPanel(QWidget):
         """One timer tick: run :meth:`poll` and interpret any failure."""
         if self.equipment is None or self.client is None:
             return
+        # Commands first. A background fetch that can take seconds on a slow
+        # instrument must not be issued while the operator's command is
+        # waiting, nor right after it -- the instrument is still settling.
+        if self.commands_pending():
+            return
         # A tick in flight when the selection changed would otherwise 404
         # and keep the loop too busy for the connect task to start.
         if not self.is_connected():
@@ -365,18 +375,44 @@ class InstrumentPanel(QWidget):
     # Helpers for subclasses
     # ------------------------------------------------------------------ #
 
-    async def send(self, command: str, parameters: Optional[Dict[str, Any]] = None) -> Any:
+    #: Polls stay quiet for this long after an operator command completes,
+    #: so a run of knob clicks is not interleaved with fetches.
+    COMMAND_COOLDOWN_S = 0.75
+
+    def commands_pending(self) -> bool:
+        """Whether a command is in flight or has just finished."""
+        import time
+
+        if self._commands_in_flight > 0:
+            return True
+        return (time.monotonic() - self._last_command_finished_at) < self.COMMAND_COOLDOWN_S
+
+    async def send(self, command: str, parameters: Optional[Dict[str, Any]] = None,
+                   priority: bool = True) -> Any:
         """Send a driver command to the bound instrument, off the GUI thread.
+
+        ``priority`` marks an operator command: polls are held back while it
+        is out and for a short cooldown afterwards. Polls call with
+        ``priority=False`` so they do not hold each other back.
 
         Raises RuntimeError when the server reports the command failed, so a
         subclass can decide whether that is worth telling the operator.
         """
         if self.equipment is None or self.client is None:
             return None
-        result = await call_blocking(
-            self.client.send_command, self.equipment.equipment_id, command,
-            parameters or {},
-        )
+        if priority:
+            self._commands_in_flight += 1
+        try:
+            result = await call_blocking(
+                self.client.send_command, self.equipment.equipment_id, command,
+                parameters or {},
+            )
+        finally:
+            if priority:
+                import time
+
+                self._commands_in_flight -= 1
+                self._last_command_finished_at = time.monotonic()
         if isinstance(result, dict) and result.get("success") is False:
             raise RuntimeError(result.get("error") or f"{command} failed")
         if isinstance(result, dict) and "data" in result:

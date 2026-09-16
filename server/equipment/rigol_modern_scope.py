@@ -1182,12 +1182,20 @@ class RigolModernScopeBase(BaseEquipment):
             raw = await self._query(f":MEAS:ITEM? {item},{source}")
         return parse_measurement(raw)
 
-    async def get_measurements(self, channel: int = 1) -> Dict[str, float]:
-        """Streaming hook: common voltage/time parameters for one channel."""
+    async def get_measurements(self, channel: int = 1, items=None) -> Dict[str, float]:
+        """Common voltage/time parameters for one channel.
+
+        ``items`` limits the set (``["vpp", "freq"]``); each item is a
+        ``:MEASure:ITEM?`` round trip, so a caller showing three numbers should
+        not pay for twelve.
+        """
         ch = self._check_channel(channel)
         source = f"CHAN{ch}"
+        wanted = {str(i).strip().lower() for i in items} if items else None
         measurements: Dict[str, float] = {}
         for key, item in _STREAM_ITEMS:
+            if wanted is not None and key not in wanted:
+                continue
             try:
                 measurements[key] = await self._measure_item(item, source)
             except Exception as e:
@@ -1196,9 +1204,24 @@ class RigolModernScopeBase(BaseEquipment):
         return measurements
 
     async def get_readings(self, channel: int = 1) -> Dict[str, Any]:
-        data = await self.get_measurements(channel)
-        data["channel"] = channel
-        return data
+        """A cheap status snapshot, not the twelve measurements.
+
+        ``/readings`` is polled continuously (the Equipment tab's stream,
+        monitors); answering it with ``:MEASure:ITEM?`` queries held the
+        instrument's I/O lock and queued front-panel commands for tens of
+        seconds on the bench. Measurements are fetched deliberately with
+        ``get_measurements`` on the scope panel's own cadence.
+        """
+        ch = self._check_channel(channel)
+        out: Dict[str, Any] = {"channel": ch}
+        for key, coro in (("trigger_status", self.get_trigger_status()),
+                          ("timebase", self.get_timebase())):
+            try:
+                out[key] = await coro
+            except Exception as e:
+                logger.debug(f"{key} unavailable: {e}")
+                out[key] = None
+        return out
 
     def _parse_measure_channel(self, channel: str) -> Tuple[str, str]:
         text = (channel or "CH1").strip().upper()

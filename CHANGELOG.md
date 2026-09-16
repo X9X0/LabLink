@@ -38,6 +38,12 @@ Per-instrument control panels, phase 1: the shell and the contract.
 - `client/ui/instruments/widgets.py`: `FittedReadout`, `AnalogGauge`,
   `ChartWithReadouts` and `nice_range` shared by every panel (still importable
   from `client.ui.control_panel`).
+- **Front-panel view for oscilloscopes** (`client/ui/instruments/scope_front_panel.py`):
+  the DS1000Z control surface with real knobs -- wheel to turn while hovered, drag to
+  turn, click to press, with the instrument's own press actions (position and level
+  reset to zero, scale knobs toggle fine steps), channel keys that select then
+  toggle, a RUN/STOP lamp that follows the trigger status, MODE cycling the sweep.
+  Switched from the standard view at the top of the scope panel.
 - **`OscilloscopePanel` with a live trace** (`client/ui/instruments/oscilloscope.py`).
   Per-channel vertical controls, horizontal, edge trigger, Run / Stop / Single /
   Force / Auto, an automatic-measurements table on the panel's poll timer, and
@@ -79,6 +85,16 @@ Per-instrument control panels, phase 1: the shell and the contract.
 
 ### 🐛 Fixed
 
+- **Scope buttons took up to 20 s to reach the instrument.** Three things
+  stacked on the DS1054Z's single I/O lock: the Equipment tab's readings
+  stream polled `get_readings` twice a second, which on the scope drivers ran
+  seven (legacy) or twelve (modern) `:MEASure` queries each answered only
+  after a full acquisition; the scope panel polled the same set twice a second;
+  and nothing gave an operator's command priority, so it queued behind them.
+  `get_readings` on every scope driver is now a cheap status snapshot;
+  `get_measurements` takes an `items` list and the panel asks for three by
+  default at 2 s; and `InstrumentPanel` holds all polls back while a command
+  is in flight and for a short cooldown after it.
 - A panel's settle delay before the first poll was a `QTimer.singleShot` with
   a lambda holding the panel, which could fire into a widget that had since
   been deselected or destroyed. It is a child timer now, stopped by `stop()`
