@@ -414,6 +414,61 @@ def test_a_mode_left_wrong_by_another_caller_is_corrected():
 
 
 @pytest.mark.unit
+def test_the_axis_scaling_is_read_once_and_reused():
+    """Fewer exchanges per frame, because each one can stall the scope.
+
+    The DS1054Z stalls ~150 ms on a random exchange, about one in ten. Six
+    exchanges per trace stalled 18 times in 40 on the bench; the data read
+    alone, 4 in 40. The three scaling queries are the easiest to remove.
+    """
+    scope, inst = make()
+    asyncio.run(scope.connect())
+
+    asyncio.run(scope.get_waveform_data(channel=1))
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert not any(q in (":TIM:MAIN:SCAL?", ":CHAN1:SCAL?", ":CHAN1:OFFS?")
+                   for q in inst.queries), inst.queries
+    assert ":WAV:DATA?" in inst.queries      # the trace itself still happens
+
+
+@pytest.mark.unit
+def test_a_scale_changed_through_lablink_takes_effect_at_once():
+    """Only a knob on the instrument waits for the cache to expire."""
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    asyncio.run(scope.get_waveform_data(channel=1))
+
+    asyncio.run(scope.execute_command("set_timebase", {"scale": 1e-3}))
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+    assert ":TIM:MAIN:SCAL?" in inst.queries, (
+        "a timebase change must not wait for the cache to expire")
+
+
+@pytest.mark.unit
+def test_each_channel_caches_its_own_scaling():
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    asyncio.run(scope.get_waveform_data(channel=1))
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=2))
+    assert ":CHAN2:SCAL?" in inst.queries, "CH2 must not reuse CH1's scaling"
+
+
+@pytest.mark.unit
+def test_stale_scaling_is_re_read_once_it_expires(monkeypatch):
+    scope, inst = make()
+    scope.SCALING_CACHE_SEC = 0.0        # as if a knob were turned
+    asyncio.run(scope.connect())
+    asyncio.run(scope.get_waveform_data(channel=1))
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+    assert ":TIM:MAIN:SCAL?" in inst.queries
+
+
+@pytest.mark.unit
 def test_waveform_data_is_decimated_server_side():
     """600 points asked for, 1200 available: every second sample, times too."""
     scope, inst = make()

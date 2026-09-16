@@ -58,6 +58,48 @@ class LegacyScopeExtras:
     #: _read_trace_in_blocks.
     trace_block_points: Optional[int] = None
 
+    #: How long the axis scaling (timebase, volts/div, offset) is reused before
+    #: being read again. Not about the ~9 ms the three queries cost: this scope
+    #: stalls ~150 ms on a random exchange, measured at roughly one exchange in
+    #: ten, so every exchange in a fetch is another chance of one. Six
+    #: exchanges per trace stalled 18 times in 40 against 4 in 40 for the data
+    #: read alone. Cutting exchanges is worth far more than the milliseconds.
+    #: The cost: a scale changed on the instrument's own front panel can
+    #: mis-scale the plot for up to this long. A change made through LabLink
+    #: clears the cache at once, so only a physical knob is affected.
+    SCALING_CACHE_SEC = 1.0
+
+    async def _scaling_for(self, channel: int):
+        """Timebase, volts/div and offset, re-read only when stale."""
+        import time as _time
+
+        cache = getattr(self, "_scaling_cache", None)
+        if cache is None:
+            cache = self._scaling_cache = {}
+        channel = int(channel)
+        cached = cache.get(channel)
+        if cached and (_time.monotonic() - cached[0]) < self.SCALING_CACHE_SEC:
+            return cached[1:]
+
+        scaling = (
+            float(await self._query(":TIM:MAIN:SCAL?")),
+            float(await self._query(f":CHAN{channel}:SCAL?")),
+            float(await self._query(f":CHAN{channel}:OFFS?")),
+        )
+        cache[channel] = (_time.monotonic(), *scaling)
+        return scaling
+
+    async def _write(self, command: str):
+        """A write that moves the axes drops the cached scaling at once.
+
+        The time-based expiry is only a backstop for a knob turned on the
+        instrument itself; anything LabLink does to the axes is known exactly,
+        so it takes effect on the very next trace.
+        """
+        if str(command).upper().lstrip().startswith((":TIM", ":CHAN")):
+            getattr(self, "_scaling_cache", {}).clear()
+        return await super()._write(command)
+
     def _trace_blocks(self) -> int:
         """Samples per :WAV:DATA? on this link, or 0 to read the trace whole.
 
@@ -201,9 +243,7 @@ class LegacyScopeExtras:
             volts = volts[::step]
             times = times[::step]
 
-        time_scale = float(await self._query(":TIM:MAIN:SCAL?"))
-        volt_scale = float(await self._query(f":CHAN{channel}:SCAL?"))
-        volt_offset = float(await self._query(f":CHAN{channel}:OFFS?"))
+        time_scale, volt_scale, volt_offset = await self._scaling_for(channel)
         return {
             "equipment_id": self.cached_info.id if self.cached_info else "unknown",
             "channel": channel,
