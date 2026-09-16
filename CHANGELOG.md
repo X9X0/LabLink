@@ -51,6 +51,15 @@ Per-instrument control panels, phase 1: the shell and the contract.
   same names and shapes as the modern driver -- so the bench DS1054Z gets a
   live trace. The only server change in this release, and it adds commands
   rather than altering any.
+- **`ElectronicLoadPanel`** (`client/ui/instruments/electronic_load.py`): mode,
+  a setpoint whose unit and ceiling follow the mode, Input ON/OFF, and live V/A/W
+  readouts; the setpoint is sent on Apply (`set_mode` then `set_current` /
+  `set_voltage` / `set_resistance` / `set_power`).
+- **`MultimeterPanel`** (`client/ui/instruments/multimeter.py`): a readout large
+  enough to read across the bench with the meter's annunciators, function /
+  range / rate / secondary / math controls, Null, and live statistics while a
+  statistic math function is selected. Drives the DM3058, DM3068 and DM858
+  drivers through their shared command vocabulary.
 - `docs/INSTRUMENT_PANELS.md`: the contract and how to add a panel.
 
 ### 🐛 Fixed

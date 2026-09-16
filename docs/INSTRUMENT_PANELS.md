@@ -74,6 +74,8 @@ between two supplies keeps the graph history.
 |---|---|---|---|
 | `power_supply` | `PowerSupplyPanel` | `readings` (`GET /equipment/{id}/readings`) | 100 ms |
 | `oscilloscope` | `OscilloscopePanel` | `measurements` (`get_measurements`), plus the waveform on its own timer (`get_waveform_data`, decimated to 600 points) | 500 ms / 1000 ms |
+| `electronic_load` | `ElectronicLoadPanel` | `readings` (`ElectronicLoadData`) | 200 ms |
+| `multimeter` | `MultimeterPanel` | `readings` (`MultimeterData`), plus `get_statistics` while a statistic math function is selected | 200 ms |
 | everything else | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
 
 ### OscilloscopePanel
@@ -100,9 +102,29 @@ did not have `get_waveform_data`, `set_trigger`, `get_state`, `get_measurement`
 or `get_readings`; `LegacyScopeExtras` adds them with the same names and
 shapes as `rigol_modern_scope`, so the bench DS1054Z gets a live trace.
 
-Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): electronic load,
-multimeter, function generator, RF generator, spectrum analyzer, VNA, data
-acquisition. Each panel's controls follow its
+### ElectronicLoadPanel
+
+Mode (CC/CV/CR/CP), one setpoint whose unit and ceiling follow the mode
+(`max_current` / `max_voltage` / `max_power` from capabilities), an Input
+ON/OFF button, and three readouts (V, A, W). The setpoint is sent on Apply as
+`set_mode {mode}` followed by `set_current` / `set_voltage` / `set_resistance`
+/ `set_power`, so a device switch can never command the instrument. On
+binding the load's own mode, setpoint and input state are read from
+`/readings` onto the controls, silently.
+
+### MultimeterPanel
+
+One large readout with the instrument's annunciators (function, AUTO or the
+range, rate) and an optional secondary display. Function, range (Auto plus
+the per-function table from `capabilities["ranges"]`), rate, secondary
+function and math are combo boxes that command immediately (`set_function`,
+`set_range` / `set_auto_range`, `set_rate`, `set_secondary_function` /
+`clear_secondary_function`, `set_math_function`); a Null button sends
+`set_rel_offset {offset: "CURR"}`. While MIN/MAX/AVERAGE/TOTAL is selected the
+poll also fetches `get_statistics`. Overload reads `OVLD`, as on the meter.
+
+Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): function
+generator, RF generator, spectrum analyzer, VNA, data acquisition. Each panel's controls follow its
 driver family's `set_*` / `get_*` surface (`server/equipment/rigol_*.py`,
 `bk_*.py`) and the family docs (`docs/RIGOL_*.md`).
 
@@ -125,6 +147,10 @@ top-of-scale above a reading). They remain importable from
   client: configuration from capabilities and `get_state`, the exact payload
   of every command, measurement polling, decimated trace fetching and axes,
   one-shot handling of a driver without waveforms.
+- `tests/gui/test_electronic_load_panel.py`, `tests/gui/test_multimeter_panel.py`
+  -- the load and meter panels against fake clients: payloads, read-back on
+  binding without commanding, readouts and annunciators, unsupported commands
+  reported rather than retried.
 - `tests/unit/test_legacy_scope_extras.py` -- the legacy drivers' new
   commands against a scripted DS1054Z, including waveform scaling and
   server-side decimation.

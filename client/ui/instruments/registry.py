@@ -42,11 +42,15 @@ def registered_panels() -> Dict[EquipmentType, Type[InstrumentPanel]]:
 def _register_defaults():
     # Imported here so the registry module stays importable on its own and
     # the panels can import the registry without a cycle.
+    from client.ui.instruments.electronic_load import ElectronicLoadPanel
+    from client.ui.instruments.multimeter import MultimeterPanel
     from client.ui.instruments.oscilloscope import OscilloscopePanel
     from client.ui.instruments.power_supply import PowerSupplyPanel
 
     register_panel(EquipmentType.POWER_SUPPLY, PowerSupplyPanel)
     register_panel(EquipmentType.OSCILLOSCOPE, OscilloscopePanel)
+    register_panel(EquipmentType.ELECTRONIC_LOAD, ElectronicLoadPanel)
+    register_panel(EquipmentType.MULTIMETER, MultimeterPanel)
 
 
 _register_defaults()
