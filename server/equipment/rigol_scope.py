@@ -58,6 +58,28 @@ class LegacyScopeExtras:
     #: _read_trace_in_blocks.
     trace_block_points: Optional[int] = None
 
+    def _trace_blocks(self) -> int:
+        """Samples per :WAV:DATA? on this link, or 0 to read the trace whole.
+
+        The reply-size ceiling is a property of *this instrument's USB link*,
+        not of the instrument. The bench DS1054Z declares a 64-byte bulk max
+        packet where USB 2.0 high speed requires 512, and over libusb that
+        caps one reply at 492 bytes. Over LAN the same scope returns all 1200
+        samples in a single read in 0.003 s -- measured, with USB unplugged,
+        because this model offers LAN for remote I/O only when USB is not
+        physically connected.
+
+        That matters beyond speed. Windowing costs a :WAV:STOP write per block,
+        and every one of those makes the instrument beep and flash "Stop point
+        changed!" on its own display. Nothing in the logs or the data shows it;
+        the operator hears it. So the blocks are used only where the link
+        actually needs them.
+        """
+        if not self.trace_block_points:
+            return 0
+        link = str(self.resource_string or "").upper().lstrip("/")
+        return int(self.trace_block_points) if link.startswith("USB") else 0
+
     async def _read_trace_in_blocks(self, total: int) -> bytes:
         """Read ``total`` samples as several windowed :WAV:DATA? replies.
 
@@ -76,7 +98,7 @@ class LegacyScopeExtras:
         with the scope left running. On the bench 1200 samples in three
         400-sample blocks took 0.80 s.
         """
-        block_points = int(self.trace_block_points or 0)
+        block_points = self._trace_blocks()
         if total <= 0 or block_points <= 0:
             return b""
         out = bytearray()
@@ -131,14 +153,25 @@ class LegacyScopeExtras:
         await self._write(f":WAV:SOUR CHAN{channel}")
         await self._write(":WAV:MODE NORM")
         await self._write(":WAV:FORM BYTE")
-        if self.trace_block_points:
+        blocks = self._trace_blocks()
+        if blocks:
             # A window may be left over from an earlier read -- it survives a
             # mode change -- and the preamble reports the window, not the
             # screen, so set the full screen before reading either.
             await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
             await self._write(":WAV:STAR 1")
         preamble = parse_preamble(await self._query(":WAV:PRE?"))
-        if self.trace_block_points:
+        if not blocks and int(preamble.get("points") or 0) < self.WAVEFORM_POINTS:
+            # A window left from another session -- a blocked read over USB, a
+            # previous tool, the operator -- survives a mode change and would
+            # silently hand back a fraction of the trace. Correct it when the
+            # preamble shows it is wrong, rather than writing the window before
+            # every trace: each :WAV:STOP write makes the instrument beep and
+            # flash "Stop point changed!", so in steady state we write none.
+            await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
+            await self._write(":WAV:STAR 1")
+            preamble = parse_preamble(await self._query(":WAV:PRE?"))
+        if blocks:
             raw = await self._read_trace_in_blocks(int(preamble.get("points") or 0))
         else:
             raw = await self._query_binary(":WAV:DATA?")

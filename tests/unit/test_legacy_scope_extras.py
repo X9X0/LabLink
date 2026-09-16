@@ -76,7 +76,12 @@ class ScriptedScope:
             return "RIGOL TECHNOLOGIES,DS1054Z,DS1ZA171409212,00.04.03"
         if c == ":WAV:PRE?":
             # format,type,points,count,xinc,xorig,xref,yinc,yorig,yref
-            return "0,0,1200,1,1.000000e-06,-6.000000e-04,0,4.000000e-02,0,128"
+            # Points reports the *window*, not the screen, exactly as the
+            # instrument does -- which is how a stale window silently
+            # truncated a trace on the bench.
+            points = self.stop - self.start + 1
+            return (f"0,0,{points},1,1.000000e-06,-6.000000e-04,0,"
+                    f"4.000000e-02,0,128")
         if c == ":TIM:MAIN:SCAL?":
             return "1.000000e-04"
         if c == ":TIM:MAIN:OFFS?":
@@ -228,6 +233,78 @@ def test_a_short_block_stops_the_read_instead_of_running_off_the_end():
     data = asyncio.run(scope.execute_command("get_waveform_data", {"channel": 1}))
     assert data["num_samples"] == 500          # 400 whole + 100 short, then stop
     assert inst.queries.count(":WAV:DATA?") == 2
+
+
+@pytest.mark.unit
+def test_over_lan_the_trace_is_read_whole_and_the_window_is_left_alone():
+    """The ceiling belongs to the USB link, not to the instrument.
+
+    Measured on the bench with USB unplugged (this model offers LAN for remote
+    I/O only when USB is not physically connected): the same DS1054Z returns
+    all 1200 samples in one read in 0.003 s over TCPIP, against ~1.0 s for
+    three windowed reads over USB.
+
+    Windowing there would be worse than merely slow. Each block costs a
+    :WAV:STOP write, and every one of those makes the scope beep and flash
+    "Stop point changed!" on its own display -- invisible in the logs and in
+    the data, which is why it took an operator's ears and eyes to find.
+    """
+    inst = ScriptedScope()
+    inst.packet_ceiling = None          # a link that is not crippled
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+    assert scope.trace_block_points == 400      # still declared for USB
+    assert scope._trace_blocks() == 0           # but not used on this link
+
+    inst.writes.clear()
+    inst.queries.clear()
+    data = asyncio.run(scope.execute_command("get_waveform_data", {"channel": 1}))
+
+    assert data["num_samples"] == 1200
+    assert inst.queries.count(":WAV:DATA?") == 1
+    assert not any(w.startswith((":WAV:STAR", ":WAV:STOP")) for w in inst.writes), (
+        f"the window was touched over LAN: {inst.writes}")
+
+
+@pytest.mark.unit
+def test_a_stale_window_is_corrected_once_not_on_every_trace():
+    """A leftover window must not silently truncate the trace.
+
+    Found on the bench: with the window left at 1..400 by an earlier USB
+    session, the LAN path returned 400 samples and reported them as the whole
+    trace. It has to self-heal -- but by checking the preamble, not by writing
+    the window every time, because each :WAV:STOP write beeps.
+    """
+    inst = ScriptedScope()
+    inst.packet_ceiling = None
+    inst.start, inst.stop = 1, 400          # left over from an earlier read
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    inst.writes.clear()
+    first = asyncio.run(scope.get_waveform_data(channel=1))
+    assert first["num_samples"] == 1200, "a stale window truncated the trace"
+    assert [w for w in inst.writes if w.startswith((":WAV:STAR", ":WAV:STOP"))] == [
+        ":WAV:STOP 1200", ":WAV:STAR 1"], inst.writes
+
+    # Now that the window is right, later traces touch it not at all.
+    inst.writes.clear()
+    again = asyncio.run(scope.get_waveform_data(channel=1))
+    assert again["num_samples"] == 1200
+    assert not any(w.startswith((":WAV:STAR", ":WAV:STOP")) for w in inst.writes), (
+        f"the window was rewritten with nothing wrong with it: {inst.writes}")
+
+
+@pytest.mark.unit
+def test_the_usb_link_still_windows():
+    """The bench scope on USB cannot read 1212 bytes, so it must still block."""
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    assert scope._trace_blocks() == 400
 
 
 @pytest.mark.unit

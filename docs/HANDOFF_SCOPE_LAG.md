@@ -4,11 +4,13 @@ Started 2026-09-16 by the WSL-side session as a handoff; continued and closed
 the same day by the Windows-side session. Everything below was measured on the
 bench, not inferred, unless marked *open*.
 
-**Status:** all three causes found and fixed on `feature/instrument-panels`.
-The two driver fixes and the queue bound are verified against the bench
-DS1054Z, including through a full server instance. Not yet verified: the panel
-itself in the running Windows client, which needs the in-app *Update Server* /
-*Update Client* buttons to deploy. `VERSION` deliberately not bumped.
+**Status:** all three original causes fixed, plus a fourth found by the
+operator after deployment -- the windowed USB read made the instrument beep
+twice a second. All four are fixed on `feature/instrument-panels` and verified
+against the bench DS1054Z, over both USB and LAN. The recommended link for
+this scope is now **LAN**: one read per trace instead of three, no window
+writes, no beeping. Not yet verified: the panel itself in the running Windows
+client. `VERSION` deliberately not bumped.
 
 ## Ground rules (from the operator)
 
@@ -186,7 +188,80 @@ back-off. Holding the I/O lock across all three blocks would make it atomic
 but would also hold the instrument for a second, which is what `e7f0a54`
 deliberately stopped doing — a front-panel press must not queue behind a poll.
 
-## Open: the DS1054Z beeps about twice a second while the panel runs
+## Solved: the beeping, and why LAN is the right link for this scope
+
+**The beeping was the windowed read.** Every `:WAV:STOP` write makes the
+DS1054Z beep and flash **"Stop point changed!"** on its own display. It is a
+*notification*, not an error, so it never appears in `:SYST:ERR?` -- which is
+why four probes that read the error queue all came back clean while the bench
+beeped twice a second. The operator's eyes found it in one message. Recorded
+here because the same blindness will recur: **this instrument reports some
+conditions only on its own screen.**
+
+**LAN removes the whole problem class.** Measured with USB unplugged:
+
+| | USB (libusb) | LAN (VXI-11) |
+|---|---|---|
+| one reply | 492 bytes max | no ceiling found |
+| 1200-sample screen | impossible in one read | **1200 bytes in 0.003 s**, 7/7 |
+| reads per trace | 3 windowed | 1 |
+| `:WAV:STOP` writes per trace | 4 | **0** |
+| beeps | ~2/s | none |
+| preamble | truncated over `/dev/usbtmc0` | all 10 fields |
+
+The scope is at `192.168.91.37` (DHCP), reports `:LAN:STAT? CONFIGURED` and
+advertises its own `TCPIP::192.168.91.37::INSTR`. Through the server:
+`POST /api/equipment/connect` with `TCPIP0::192.168.91.37::inst0::INSTR`
+connects it as a *new* equipment id (`scope_cee816af` -- the id is derived
+from the resource string, so the USB and LAN ids differ; saved profiles and
+locks naming the old one will not match).
+
+**This model serves LAN for remote I/O only while USB is physically
+unplugged.** That is why VXI-11 timed out on every resource spelling even with
+the container stopped: the cable was still in. It is either/or, not both.
+
+So the windowed read is now gated to the link that needs it
+(`LegacyScopeExtras._trace_blocks`): USB blocks, LAN reads the trace whole.
+A window left behind by an earlier session would silently truncate the trace
+-- seen on the bench, 400 samples reported as a whole trace -- so the LAN path
+corrects it when the preamble shows it is wrong, once, rather than writing the
+window before every trace. Measured after the gate: first trace 2 window
+writes, every trace after it none, 600 samples in 0.15--0.29 s, error queue
+clean.
+
+### Whose fault was what
+
+Worth stating plainly, because the question was asked directly.
+
+*The wall is the instrument's.* The DS1054Z declares `wMaxPacketSize 64` on
+both bulk endpoints while running at USB 2.0 high speed, where the spec
+requires 512, and the kernel says so unprompted. Two independent host stacks
+fail on it differently: libusb stops completing replies past 492 bytes, and
+the kernel `usbtmc` driver truncates every reply to one 52-byte packet and
+never delivers the rest. No LabLink code is in that path. (Both stacks tested
+are Linux; a stack that ignores the descriptor and assumes 512 may well work,
+which would explain Rigol's own Windows software being fine over USB.)
+
+*The cost was ours.* Three of the four faults here were LabLink's: a command
+that does not exist on this family (`:MEAS:VAV?`), an unbounded queue that
+turned one slow command into a 205 s backlog, and a workaround built on
+undocumented NORM-mode windowing that was audible on the instrument and still
+failed intermittently. And two architectural gaps made a device defect
+expensive:
+
+- **No transport abstraction.** The driver uses whatever resource string
+  discovery handed it. This scope was reachable over LAN the whole time and
+  nothing could prefer it, fall back to it, or even notice -- though the
+  instrument reports its own `TCPIP::...::INSTR` when asked.
+- **No transport-level diagnosis.** A 1212-byte read failed with a bare
+  `VI_ERROR_TMO`. Everything needed to say "replies over ~492 bytes never
+  complete on this link" was available, and nothing said it.
+
+Worth doing, in that order: prefer LAN where an instrument advertises it, and
+probe a link's reply-size limit once and record it against the device, so an
+oversized read is refused immediately with a real message.
+
+## How the beeping was found (kept for the method, not the conclusion)
 
 Reported from the bench after `00faab6` was deployed: with the scope connected
 and streaming started, the instrument beeps roughly twice a second while the
@@ -206,20 +281,20 @@ refused command. Three probes, all clean:
 the first hypothesis. The probe then showed an inverted window is accepted
 silently, so **that commit does not fix the beeping** -- its message says it
 does, and that is wrong. The reordering is kept because a window that is never
-inverted is unambiguously in range whatever a future firmware does, and the
-test guard that came with it is worth having; but the beep is still unexplained.
+inverted is unambiguously in range whatever a future firmware does.
 
-What this rules in: the assumption that a beep implies an error-queue entry is
-not safe. A DS1000Z can beep without enqueuing anything, and if it does, no
-amount of reading `:SYST:ERR?` will ever find it. `scripts/probe_beep_bisect.py`
-is the next step -- it drives one operation at a time with announced phases and
-silence between them, to be **run by the operator while listening**, because
-the signal is audible and nothing else has detected it.
+The lesson is the fifth probe, `scripts/probe_beep_bisect.py`: it drove one
+operation at a time with announced phases for the operator to run *while
+listening*, and it too reported nothing. What actually solved it was the
+operator reading the scope's screen -- "stop point changed!" -- which named the
+command in one line after four probes had failed. Every `:WAV:STOP` write does
+it. The mistake underneath all four was assuming a beep implies an error-queue
+entry; this instrument reports some conditions only on its own display, and no
+amount of `:SYST:ERR?` will ever show those.
 
-Also unexplained and possibly related: the leftover error queue at the start of
-`probe_window_order.py` held three `-113 "Undefined header"` and five
-`-410 "Query INTERRUPTED"`. Those could equally have come from the earlier
-probes in the same session, so they are not attributable to the client.
+One loose end closed: the `-113 "Undefined header"` entries found in leftover
+queues were probe commands of mine (`:LAN:GATE?`, `:SYST:COMM:LAN:IPAD?`,
+`:LAN:APPL` -- none of which exist on this firmware), not the client's.
 
 ## Log lines to look for
 
@@ -263,6 +338,12 @@ B&K and drops a live output -- and only reads supplies the server already has
 open.
 
 ## What is left
+
+0. **Connect this scope over LAN, not USB.** With USB physically unplugged,
+   connect `TCPIP0::192.168.91.37::inst0::INSTR` (Equipment tab, or
+   `POST /api/equipment/connect`). One transfer per trace, no window writes,
+   no beeping. LAN serves remote I/O only while USB is unplugged on this model,
+   and the equipment id differs from the USB one.
 
 1. **Deploy, then run the checks above, then look at the panel.** Use the
    in-app *Update Server* and *Update Client*.
