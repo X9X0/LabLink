@@ -21,6 +21,8 @@ and ``LABLINK_PI_CREDS`` if you keep them in a file):
     LABLINK_API_PORT         LabLink API port                  (default: 8000)
     LABLINK_REMOTE_DIR       the Pi's checkout                 (default: /opt/lablink)
     LABLINK_EXPECT_COMMIT    commit the Pi should be on        (default: local HEAD)
+    LABLINK_SCOPE_RESOURCE   the scope's resource string, for a
+                             LAN scope that discovery cannot see
     LABLINK_TRACE_BUDGET_S   slowest acceptable trace fetch    (default: 4.0)
     LABLINK_RUN_BURST        set to 1 to run the queue-bound burst
 
@@ -76,6 +78,12 @@ CONTAINER = os.environ.get("LABLINK_CONTAINER", "lablink-server")
 TRACE_BUDGET_S = float(os.environ.get("LABLINK_TRACE_BUDGET_S", "4.0"))
 MEAS_BUDGET_S = float(os.environ.get("LABLINK_MEAS_BUDGET_S", "3.0"))
 RUN_BURST = os.environ.get("LABLINK_RUN_BURST", "") not in ("", "0", "false", "no")
+#: A resource string to use for the oscilloscope instead of whatever discovery
+#: finds. Needed for a LAN scope: discovery enumerates VISA resources, which on
+#: this server means USB, and this DS1054Z serves LAN for remote I/O only while
+#: USB is physically unplugged -- so the link we now recommend is the one
+#: discovery cannot see. e.g. TCPIP0::192.168.91.37::inst0::INSTR
+SCOPE_RESOURCE = os.environ.get("LABLINK_SCOPE_RESOURCE", "")
 
 BASE_URL = f"http://{PI_HOST}:{API_PORT}"
 API = f"{BASE_URL}/api/equipment"
@@ -182,10 +190,20 @@ def scope(inventory):
     Never disconnected -- see the module docstring. Opening it is necessary
     and harmless: a scope has no output to drop.
     """
-    scopes = [d for d in inventory if d.get("type") == "oscilloscope"]
-    if not scopes:
-        pytest.skip("no oscilloscope on this bench")
-    found = dict(scopes[0])
+    if SCOPE_RESOURCE:
+        # Named explicitly, because a LAN scope is invisible to discovery.
+        already = [d for d in inventory
+                   if d.get("resource_string") == SCOPE_RESOURCE]
+        found = dict(already[0]) if already else {
+            "id": None, "type": "oscilloscope", "model": "",
+            "resource_string": SCOPE_RESOURCE, "connected": False,
+        }
+    else:
+        scopes = [d for d in inventory if d.get("type") == "oscilloscope"]
+        if not scopes:
+            pytest.skip("no oscilloscope on this bench (set "
+                        "LABLINK_SCOPE_RESOURCE for one on LAN)")
+        found = dict(scopes[0])
 
     # A server that has just restarted -- which is to say, one that has just
     # been deployed to -- has the instrument registered but not open, and
