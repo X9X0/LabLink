@@ -45,9 +45,29 @@ class ScriptedScope:
         self.writes.append(cmd)
         c = cmd.upper()
         if c.startswith(":WAV:STAR "):
-            self.start = int(cmd.split()[1])
+            self._set_window(start=int(cmd.split()[1]))
         elif c.startswith(":WAV:STOP "):
-            self.stop = int(cmd.split()[1])
+            self._set_window(stop=int(cmd.split()[1]))
+
+    def _set_window(self, start=None, stop=None):
+        """The read window, validated the way the instrument validates it.
+
+        A DS1000Z holds one window and checks each write against the other end
+        of it, so a start past the current stop is out of range: it is refused
+        and the scope beeps. The first version of the windowed read set the new
+        start before the new stop, which inverted the window twice per trace.
+        The trace still arrived -- the window is valid again before
+        :WAV:DATA? -- so nothing failed and nothing logged; the only symptom
+        was the instrument beeping twice a second on the bench.
+        """
+        new_start = self.start if start is None else start
+        new_stop = self.stop if stop is None else stop
+        if new_start > new_stop:
+            raise ValueError(
+                f"window inverted: :WAV:STAR {new_start} with :WAV:STOP "
+                f"{new_stop}. Write :WAV:STOP first when reading forward."
+            )
+        self.start, self.stop = new_start, new_stop
 
     def query(self, cmd):
         self.queries.append(cmd)
@@ -157,11 +177,40 @@ def test_the_trace_is_read_in_windows_small_enough_to_arrive():
     assert [pytest.approx(v) for v in data["voltage"]] == [
         pytest.approx((s - 128) * 0.04) for s in inst.samples]
     windows = [w for w in inst.writes if w.startswith((":WAV:STAR", ":WAV:STOP"))]
-    assert windows == [":WAV:STAR 1", ":WAV:STOP 1200",       # full screen, for the preamble
-                       ":WAV:STAR 1", ":WAV:STOP 400",
-                       ":WAV:STAR 401", ":WAV:STOP 800",
-                       ":WAV:STAR 801", ":WAV:STOP 1200"]
+    # :WAV:STOP leads every pair: see test_the_read_window_is_never_inverted.
+    assert windows == [":WAV:STOP 1200", ":WAV:STAR 1",       # full screen, for the preamble
+                       ":WAV:STOP 400", ":WAV:STAR 1",
+                       ":WAV:STOP 800", ":WAV:STAR 401",
+                       ":WAV:STOP 1200", ":WAV:STAR 801"]
     assert inst.queries.count(":WAV:DATA?") == 3
+
+
+@pytest.mark.unit
+def test_the_read_window_is_never_inverted():
+    """Every window write must be in range at the moment it is sent.
+
+    ScriptedScope refuses an inverted window because the instrument does. The
+    scope answered anyway -- the window is valid again before :WAV:DATA? --
+    so the only sign on the bench was the DS1054Z beeping twice per trace,
+    which no log or test would ever have shown.
+    """
+    scope, inst = make()
+    asyncio.run(scope.connect())
+    inst.writes.clear()
+    data = asyncio.run(scope.execute_command("get_waveform_data", {"channel": 1}))
+    assert data["num_samples"] == 1200
+
+    # Replay the window writes and check each one against the running state,
+    # rather than trusting the fake to have raised.
+    start, stop = 1, 1200
+    for write in inst.writes:
+        if write.startswith(":WAV:STAR "):
+            start = int(write.split()[1])
+        elif write.startswith(":WAV:STOP "):
+            stop = int(write.split()[1])
+        else:
+            continue
+        assert start <= stop, f"{write} left the window at {start}..{stop}"
 
 
 @pytest.mark.unit

@@ -83,8 +83,18 @@ class LegacyScopeExtras:
         start = 1
         while start <= total:
             stop = min(start + block_points - 1, total)
-            await self._write(f":WAV:STAR {start}")
+            # :WAV:STOP before :WAV:STARt, always. The scope holds one window
+            # and validates each write against the other end of it, so setting
+            # the new start first leaves start > stop for as long as it takes
+            # the next write to arrive -- an out-of-range value, which a
+            # DS1000Z rejects with a beep. It still read correctly, because the
+            # window is valid again by the time :WAV:DATA? is sent, so this
+            # cost nothing but two beeps per trace on the bench: audible at the
+            # instrument, invisible everywhere else. Reading the blocks forward
+            # means stop only ever grows, so writing it first is always in
+            # range.
             await self._write(f":WAV:STOP {stop}")
+            await self._write(f":WAV:STAR {start}")
             block = bytes(await self._query_binary(":WAV:DATA?"))
             if not block:
                 logger.warning(
@@ -125,8 +135,8 @@ class LegacyScopeExtras:
             # A window may be left over from an earlier read -- it survives a
             # mode change -- and the preamble reports the window, not the
             # screen, so set the full screen before reading either.
-            await self._write(":WAV:STAR 1")
             await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
+            await self._write(":WAV:STAR 1")
         preamble = parse_preamble(await self._query(":WAV:PRE?"))
         if self.trace_block_points:
             raw = await self._read_trace_in_blocks(int(preamble.get("points") or 0))
