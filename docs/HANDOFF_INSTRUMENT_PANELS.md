@@ -1,5 +1,14 @@
 # Handoff — per-instrument control panels
 
+> **Status (2026-09-15, branch `feature/instrument-panels`, VERSION 2.4.0):**
+> all five phases are implemented and green (2648 tests). The shell, contract,
+> registry and all nine panels are in `client/ui/instruments/`; see
+> `docs/INSTRUMENT_PANELS.md`. What remains is the bench verification in the
+> "Verification" section below -- the DS1054Z live trace, both supplies
+> behaving as before, hidden panels stopping, a clean log -- which needs the
+> branch running on the Lab Server and the Windows client, moved there with
+> the in-app Update Client button.
+
 **To:** the session on `/home/stevecap/Lablink` (SKL Robotics Enterprise,
 Claude Fable 5.1), which has `~/Manuals/Rigol/` locally.
 **From:** the Windows session on `C:\dev\LabLink`.

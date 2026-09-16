@@ -67,6 +67,14 @@ Per-instrument control panels, phase 1: the shell and the contract.
 - **`RFGeneratorPanel`** (`client/ui/instruments/rf_generator.py`): carrier
   frequency and level with big readouts, RF on/off, ALC, modulation and step
   sweep. Drives the DSG drivers.
+- **`SpectrumAnalyzerPanel`**, **`VNAPanel`** and **`DAQPanel`**
+  (`client/ui/instruments/spectrum_analyzer.py`, `vna.py`, `daq.py`): the
+  analyzer's trace drawn against its own start/stop with frequency, bandwidth,
+  amplitude, sweep, marker and tracking-generator groups; the VNA's S-parameter
+  trace with stimulus, format, marker and calibration; the DAQ's modules,
+  channel configuration, scan list, trigger, switch control and a per-channel
+  readings table. Every one of the nine instrument types now has its own
+  panel; only `unknown` falls back to the generic one.
 - `docs/INSTRUMENT_PANELS.md`: the contract and how to add a panel.
 
 ### 🐛 Fixed

@@ -78,7 +78,10 @@ between two supplies keeps the graph history.
 | `multimeter` | `MultimeterPanel` | `readings` (`MultimeterData`), plus `get_statistics` while a statistic math function is selected | 200 ms |
 | `function_generator` | `FunctionGeneratorPanel` | `state` (`get_readings {channel}` + `get_counter` where fitted) | 1000 ms |
 | `rf_signal_generator` | `RFGeneratorPanel` | `state` (`get_readings`) | 1000 ms |
-| everything else | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
+| `spectrum_analyzer` | `SpectrumAnalyzerPanel` | `measurements` (`get_trace {trace: 1}`) | 1000 ms |
+| `vector_network_analyzer` | `VNAPanel` | `measurements` (`get_trace {trace: 1}`) | 1000 ms |
+| `data_acquisition` | `DAQPanel` | `readings` (`DataAcquisitionData`, the last scan) | 2000 ms |
+| everything else (`unknown`) | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
 
 ### OscilloscopePanel
 
@@ -145,8 +148,37 @@ depth/deviation, rate, source) and a frequency step-sweep group, each with
 its own Apply. Frequency is range-checked against the model's limits before
 it is sent.
 
-Planned, in order (see `docs/HANDOFF_INSTRUMENT_PANELS.md`): spectrum
-analyzer, VNA, data acquisition. Each panel's controls follow its
+### SpectrumAnalyzerPanel
+
+The trace is the reading: each poll fetches trace 1 and draws it against
+the start/stop it came with, the amplitude axis hung from the reference
+level. Groups follow the analyzer's own: Frequency (center/span,
+start/stop, full span), Bandwidth (RBW, VBW with Auto, detector), Amplitude
+(reference level, attenuation with Auto, preamp), Sweep/Trace (continuous,
+single, trace mode, GPSA/RTSA where the model has it), Marker 1 (peak
+search, next peak, marker to center, set at frequency) and the tracking
+generator group, shown only when `capabilities["has_tracking_generator"]`.
+
+### VNAPanel
+
+One trace against the stimulus frequencies the instrument reports. The
+Stimulus group sends one `set_sweep {start, stop, points, power,
+if_bandwidth}`; Parameter (S11…S22) and Format command immediately; Marker 1
+and a calibration group (`calibrate_start` / `calibrate_acquire` /
+`calibrate_save` / `calibrate_abort`, correction on/off). Two-value formats
+draw the primary value and say so.
+
+### DAQPanel
+
+Modules fitted (from capabilities, refreshed from each scan), a channel
+configuration group (channels such as `101, 102:110`, function, range or
+temperature sensor and type → `configure_channel`), scan list and trigger
+(`set_scan_list`, `set_trigger`), a Scan Now button, switch-module Close /
+Open, and a readings table -- one row per channel with value, unit and
+function -- filled from the last scan on each poll.
+
+All nine instrument types now have a panel of their own; only `unknown`
+falls back to the generic one. Each panel's controls follow its
 driver family's `set_*` / `get_*` surface (`server/equipment/rigol_*.py`,
 `bk_*.py`) and the family docs (`docs/RIGOL_*.md`).
 
@@ -169,6 +201,10 @@ top-of-scale above a reading). They remain importable from
   client: configuration from capabilities and `get_state`, the exact payload
   of every command, measurement polling, decimated trace fetching and axes,
   one-shot handling of a driver without waveforms.
+- `tests/gui/test_spectrum_analyzer_panel.py`, `tests/gui/test_vna_panel.py`,
+  `tests/gui/test_daq_panel.py` -- the analyzer and DAQ panels: trace drawing
+  and axes from the returned data, marker and calibration payloads, channel
+  configuration and scan-list payloads, the readings table.
 - `tests/gui/test_function_generator_panel.py`, `tests/gui/test_rf_generator_panel.py`
   -- the generator panels: apply payload per waveform, unit-first ordering,
   counter asked once, frequency range checking, modulation and sweep payloads.
