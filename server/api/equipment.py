@@ -238,6 +238,30 @@ async def disconnect_device(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{equipment_id}")
+async def forget_device(equipment_id: str):
+    """Remove a remembered instrument from the register.
+
+    Disconnecting closes the port; this drops the entry. Without it the list
+    only grows -- a scope moved from USB to LAN appears twice, because the id
+    is derived from the resource string, and the stale one can never be
+    cleared. Refused while the instrument is open, so this cannot strand a
+    live session.
+    """
+    try:
+        removed = await equipment_manager.forget_device(equipment_id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error removing {equipment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    if not removed:
+        raise HTTPException(
+            status_code=404, detail=f"{equipment_id} is not in the register"
+        )
+    return {"equipment_id": equipment_id, "status": "removed"}
+
+
 @router.get("/list", response_model=List[EquipmentInfo])
 async def list_devices():
     """List all connected devices."""

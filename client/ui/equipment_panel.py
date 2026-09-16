@@ -255,6 +255,18 @@ class EquipmentPanel(QWidget):
         self.disconnect_btn.setEnabled(False)
         connection_layout.addWidget(self.disconnect_btn)
 
+        # Disconnecting closes the port; removing drops the entry. Without
+        # this the list only grew, and an instrument moved from USB to LAN
+        # appeared twice with no way to clear the stale one.
+        self.remove_btn = QPushButton("Remove")
+        self.remove_btn.clicked.connect(self.remove_equipment)
+        self.remove_btn.setEnabled(False)
+        self.remove_btn.setToolTip(
+            "Forget this instrument. Disconnect it first; rediscovering or "
+            "reconnecting it brings it back."
+        )
+        connection_layout.addWidget(self.remove_btn)
+
         connection_group.setLayout(connection_layout)
         layout.addWidget(connection_group)
 
@@ -617,10 +629,14 @@ class EquipmentPanel(QWidget):
             )
             self.connect_btn.setEnabled(False)
             self.disconnect_btn.setEnabled(True)
+            # Removing an open instrument would strand the session; the
+            # server refuses it too.
+            self.remove_btn.setEnabled(False)
         else:
             self.status_label.setText(f"<span style='color: red;'>{status_text}</span>")
             self.connect_btn.setEnabled(True)
             self.disconnect_btn.setEnabled(False)
+            self.remove_btn.setEnabled(True)
 
         # Update readings if available
         if eq.current_readings:
@@ -919,6 +935,66 @@ class EquipmentPanel(QWidget):
         except Exception as e:
             logger.error(f"Error disconnecting equipment: {e}")
             QMessageBox.critical(self, "Error", f"Disconnection failed: {str(e)}")
+
+    @qasync.asyncSlot()
+    async def remove_equipment(self):
+        """Forget the selected instrument, so the list stops only growing.
+
+        Disconnecting closes the port and leaves the entry behind. Nothing
+        removed one, so a bench accumulated an entry per resource string it
+        had ever seen -- the same scope twice once it moved from USB to LAN,
+        since the id is derived from the resource string.
+
+        The decorator is load-bearing: ``clicked`` calling a bare coroutine
+        function builds a coroutine and discards it, so the button would
+        appear to do nothing at all.
+        """
+        client = self._client_for(self.selected_equipment)
+        if not self.selected_equipment or not client:
+            return
+
+        eq = self.selected_equipment
+        equipment_id = eq.equipment_id
+        confirmed = QMessageBox.question(
+            self,
+            "Remove This Instrument?",
+            f"Remove {eq.manufacturer} {eq.model} ({equipment_id}) from the "
+            f"equipment list?\n\n"
+            f"{eq.resource_string}\n\n"
+            f"Nothing on the instrument changes. Discovering or connecting it "
+            f"again brings it back.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            await call_blocking(client.remove_equipment, equipment_id)
+        except Exception as e:
+            # 409 is the server refusing to strand a live session, which is
+            # worth saying plainly rather than as a stack trace.
+            detail = str(e)
+            if "409" in detail:
+                QMessageBox.warning(
+                    self, "Still Connected",
+                    "Disconnect this instrument before removing it.",
+                )
+            else:
+                logger.error(f"Error removing equipment: {e}")
+                QMessageBox.critical(self, "Error", f"Could not remove: {detail}")
+            return
+
+        self.selected_equipment = None
+        self.readings_display.clear()
+        for label in (self.name_label, self.type_label, self.manufacturer_label,
+                      self.model_label, self.resource_label, self.status_label):
+            label.clear()
+        self.connect_btn.setEnabled(False)
+        self.disconnect_btn.setEnabled(False)
+        self.remove_btn.setEnabled(False)
+        self.refresh()
+        self.equipment_changed.emit()
 
     @qasync.asyncSlot()
     async def refresh_readings(self):

@@ -669,6 +669,29 @@ class EquipmentManager:
 
             return devices
 
+    async def forget_device(self, equipment_id: str) -> bool:
+        """Drop a remembered instrument from the register.
+
+        The register only ever grew: connecting remembered an instrument and
+        nothing removed it, so a bench accumulated entries for every resource
+        string it had ever seen -- including the same scope twice once it moved
+        from USB to LAN, since the id is derived from the resource string.
+        Disconnecting is not removing; it closes the port and leaves the entry.
+
+        Refuses while the instrument is open, so removal cannot silently strand
+        a live session. Returns False when there was nothing to forget.
+        """
+        async with self._lock:
+            if equipment_id in self.equipment:
+                raise ValueError(
+                    f"{equipment_id} is connected; disconnect it before removing it"
+                )
+            if equipment_id not in self.inventory:
+                return False
+            self.inventory.forget(equipment_id)
+            logger.info(f"Forgot remembered equipment {equipment_id}")
+            return True
+
     async def get_device_status(self, equipment_id: str) -> Optional[EquipmentStatus]:
         """Get status of a specific device."""
         equipment = self.get_equipment(equipment_id)

@@ -580,6 +580,24 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def remove_equipment(self, equipment_id: str) -> Dict[str, Any]:
+        """Remove a remembered instrument from the server's register.
+
+        Disconnecting closes the port and leaves the entry; this drops it. The
+        server refuses (409) while the instrument is open.
+
+        Args:
+            equipment_id: Equipment ID
+
+        Returns:
+            Response dictionary
+        """
+        response = self._session.delete(
+            f"{self.api_base_url}/equipment/{equipment_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
     def send_command(
         self, equipment_id: str, command: str, parameters: Optional[Dict] = None
     ) -> Dict[str, Any]:
