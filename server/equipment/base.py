@@ -195,6 +195,15 @@ class BaseEquipment(ABC):
             # Reconnect
             await self.connect()
 
+    def _open_resource(self):
+        """Open the transport. Subclasses may answer with their own.
+
+        Separated so a driver can supply a session PyVISA does not provide --
+        the Rigol raw-socket one, whose p90 is about eighty times better than
+        VXI-11's on this instrument -- without any other code knowing.
+        """
+        return self.resource_manager.open_resource(self.resource_string)
+
     async def connect(self):
         """Connect to the equipment."""
         async with self._lock:
@@ -214,9 +223,7 @@ class BaseEquipment(ABC):
                     self.instrument = None
 
                 # Open the resource
-                self.instrument = self.resource_manager.open_resource(
-                    self.resource_string
-                )
+                self.instrument = self._open_resource()
 
                 # Set timeout (10 seconds)
                 self.instrument.timeout = 10000
