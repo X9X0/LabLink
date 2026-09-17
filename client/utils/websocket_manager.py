@@ -30,8 +30,9 @@ class StreamType(str, Enum):
     """Types of data streams."""
 
     READINGS = "readings"
-    WAVEFORM = "waveform"
+    WAVEFORM = "waveform"        # metadata only: no samples
     MEASUREMENTS = "measurements"
+    TRACE = "trace"              # the samples, pushed for a live trace
 
 
 class MessageType(str, Enum):
@@ -394,7 +395,8 @@ class WebSocketManager:
     # ==================== Equipment Streaming ====================
 
     async def start_equipment_stream(
-        self, equipment_id: str, stream_type: str = "readings", interval_ms: int = 100
+        self, equipment_id: str, stream_type: str = "readings",
+        interval_ms: int = 100, parameters: Optional[dict] = None,
     ):
         """Start streaming data from equipment.
 
@@ -402,6 +404,8 @@ class WebSocketManager:
             equipment_id: Equipment ID
             stream_type: Type of data to stream (string or StreamType enum)
             interval_ms: Update interval in milliseconds
+            parameters: passed to the driver command; a trace stream names
+                its channel and point count here
         """
         # Convert StreamType enum to string if needed
         if isinstance(stream_type, StreamType):
@@ -414,6 +418,7 @@ class WebSocketManager:
             "equipment_id": equipment_id,
             "stream_type": stream_type_str,
             "interval_ms": interval_ms,
+            "parameters": parameters or {},
         }
 
         await self._send_message(message)

@@ -361,14 +361,17 @@ class LabLinkClient:
         return await self.ws_manager.connect()
 
     async def start_equipment_stream(
-        self, equipment_id: str, stream_type: str = "readings", interval_ms: int = 100
+        self, equipment_id: str, stream_type: str = "readings",
+        interval_ms: int = 100, parameters: Optional[dict] = None,
     ):
         """Start streaming data from equipment.
 
         Args:
             equipment_id: Equipment ID
-            stream_type: Type of data (readings, waveform, measurements)
+            stream_type: Type of data (readings, waveform, measurements, trace)
             interval_ms: Update interval in milliseconds
+            parameters: passed to the driver command; a trace stream names its
+                channel and point count here
         """
         if not self.ws_manager:
             raise RuntimeError("WebSocket manager not available")
@@ -378,7 +381,8 @@ class LabLinkClient:
             stream_type = StreamType(stream_type)
 
         await self.ws_manager.start_equipment_stream(
-            equipment_id=equipment_id, stream_type=stream_type, interval_ms=interval_ms
+            equipment_id=equipment_id, stream_type=stream_type,
+            interval_ms=interval_ms, parameters=parameters,
         )
 
     async def stop_equipment_stream(

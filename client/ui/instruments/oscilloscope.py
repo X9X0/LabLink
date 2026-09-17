@@ -18,6 +18,7 @@ DS1000Z / MSO2000A / DS1000D drivers gained the ones they lacked in
 ``rigol_scope.LegacyScopeExtras``.
 """
 
+import asyncio
 import logging
 import math
 from typing import Any, Dict, List, Optional
@@ -110,6 +111,9 @@ class OscilloscopePanel(InstrumentPanel):
         self.trace_timer = QTimer(self)
         self.trace_timer.timeout.connect(self._poll_trace)
         self._trace_interval_ms = self.TRACE_INTERVAL_MS
+        #: True while the server is pushing trace frames, in which case the
+        #: trace timer stays stopped.
+        self._trace_streaming = False
 
     # ------------------------------------------------------------------ #
     # UI
@@ -614,11 +618,97 @@ class OscilloscopePanel(InstrumentPanel):
     def _start_now(self):
         super()._start_now()
         if self.poll_timer.isActive() and not self._trace_unsupported:
-            self.trace_timer.start(self.trace_interval_ms())
+            if not self._start_trace_stream():
+                self.trace_timer.start(self.trace_interval_ms())
 
     def stop(self):
         super().stop()
         self.trace_timer.stop()
+        self._stop_trace_stream()
+
+    # -- the pushed trace ---------------------------------------------- #
+    #
+    # Asking for each frame over HTTP costs a round trip the instrument does
+    # not need, and leaves the client waiting through every stall the scope
+    # takes -- ~150 ms on about one exchange in ten on the bench DS1054Z. The
+    # server can hold a cadence against the instrument and push frames as they
+    # arrive; the panel just draws what turns up. The timer remains the
+    # fallback for a server too old to know the "trace" stream type.
+
+    def _trace_stream_client(self):
+        """The websocket-capable client for the bound instrument, or None."""
+        client = getattr(self, "client", None)
+        if client is None or self.equipment is None:
+            return None
+        return client if getattr(client, "ws_manager", None) else None
+
+    def _start_trace_stream(self) -> bool:
+        """Subscribe to pushed trace frames. False means fall back to polling.
+
+        One channel only. A stream carries one source, and switching source
+        costs a :WAV:SOUR write -- ~100 ms on the bench, because the scope
+        re-prepares its waveform engine and the next query blocks on it. So
+        several channels are still polled, which draws them all correctly at
+        the old rate, and a single channel is streamed, which is the case
+        worth making fast.
+        """
+        if self._trace_streaming:
+            return True
+        channels = self.enabled_channels()
+        if len(channels) != 1:
+            return False
+        client = self._trace_stream_client()
+        if client is None:
+            return False
+        try:
+            client.register_stream_data_handler(self._on_stream_frame)
+            asyncio.ensure_future(client.start_equipment_stream(
+                equipment_id=self.equipment.equipment_id,
+                stream_type="trace",
+                interval_ms=self.trace_interval_ms(),
+                parameters={"channel": int(channels[0]),
+                            "points": self.TRACE_POINTS},
+            ))
+        except Exception as e:
+            logger.info("Trace streaming unavailable, polling instead: %s", e)
+            try:
+                client.unregister_stream_data_handler(self._on_stream_frame)
+            except Exception:
+                pass
+            return False
+        self._trace_streaming = True
+        return True
+
+    def _stop_trace_stream(self):
+        if not self._trace_streaming:
+            return
+        self._trace_streaming = False
+        client = self._trace_stream_client()
+        if client is None:
+            return
+        try:
+            client.unregister_stream_data_handler(self._on_stream_frame)
+            asyncio.ensure_future(client.stop_equipment_stream(
+                equipment_id=self.equipment.equipment_id, stream_type="trace"))
+        except Exception as e:
+            logger.debug("Could not stop the trace stream cleanly: %s", e)
+
+    def _on_stream_frame(self, message: Dict[str, Any]):
+        """A pushed frame: draw it. Called from the websocket reader."""
+        if not isinstance(message, dict):
+            return
+        if message.get("stream_type") != "trace":
+            return
+        if self.equipment is None:
+            return
+        if message.get("equipment_id") != self.equipment.equipment_id:
+            return
+        trace = message.get("data")
+        if not isinstance(trace, dict) or trace.get("voltage") is None:
+            return
+        channel = int(trace.get("channel") or 1)
+        self._last_trace[channel] = trace
+        self._redraw_trace()
 
     def is_polling(self) -> bool:
         return super().is_polling() or self.trace_timer.isActive()
@@ -630,6 +720,29 @@ class OscilloscopePanel(InstrumentPanel):
         self._trace_interval_ms = int(round(1000.0 / max(float(value), 0.1)))
         if self.trace_timer.isActive():
             self.trace_timer.setInterval(self.trace_interval_ms())
+        if self._trace_streaming:
+            # The cadence lives on the server, so the stream is restarted at
+            # the new one rather than adjusted from here.
+            self._retune_trace_source(force_restart=True)
+
+    def _retune_trace_source(self, force_restart: bool = False):
+        """Pick streaming or polling for the channels now shown.
+
+        Called when the shown channels or the rate change. Streaming carries
+        one channel; anything else polls, which is slower but draws them all.
+        """
+        if not self.is_polling() and not self._trace_streaming:
+            return                      # not running; _start_now will decide
+        if self._trace_unsupported:
+            return
+        if self._trace_streaming:
+            self._stop_trace_stream()
+        elif not force_restart and len(self.enabled_channels()) != 1:
+            return                      # already polling, and still should be
+        if self._start_trace_stream():
+            self.trace_timer.stop()
+        elif not self.trace_timer.isActive():
+            self.trace_timer.start(self.trace_interval_ms())
 
     def enabled_channels(self) -> List[int]:
         return [n + 1 for n in range(self.num_channels) if self.channel_rows[n]["enable"].isChecked()]
@@ -761,6 +874,9 @@ class OscilloscopePanel(InstrumentPanel):
         if not checked:
             self._last_trace.pop(channel, None)
             self.series[channel - 1].clear()
+        # A stream carries one channel, so which channels are shown decides
+        # whether it can be used at all.
+        self._retune_trace_source()
 
     def _apply_timebase(self):
         self._command("set_timebase", {
