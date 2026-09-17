@@ -30,7 +30,10 @@ class _Equipment:
         self.calls.append((command, dict(parameters or {})))
         if self._delays:
             await asyncio.sleep(self._delays.pop(0))
-        return {"num_samples": 600, "voltage": [0.1, 0.2], "time": [0.0, 1e-6]}
+        # Distinct every time: identical frames are dropped as duplicates,
+        # and these tests are about what is asked for, not what changed.
+        return {"num_samples": 600, "voltage": [0.1, float(len(self.calls))],
+                "time": [0.0, 1e-6]}
 
 
 def _install(monkeypatch, equipment):
@@ -133,7 +136,10 @@ def test_a_stall_does_not_push_the_following_frames_out():
             self.calls += 1
             if self.calls == 1:
                 clock.now += 0.100          # the stall
-            return {"num_samples": 600, "voltage": [0.0], "time": [0.0]}
+            # A different trace each time: this test is about cadence, and
+            # identical frames are dropped as duplicates.
+            return {"num_samples": 600, "voltage": [float(self.calls)],
+                    "time": [0.0]}
 
     async def main(patch):
         equipment = _Slow()
@@ -170,6 +176,71 @@ def test_a_stall_does_not_push_the_following_frames_out():
         f"the loop slept after the stall instead of catching up: {gaps}")
     assert all(g == pytest.approx(0.020, abs=1e-9) for g in gaps[1:]), gaps
     assert max(slept) <= 0.020 + 1e-9, f"slept longer than an interval: {slept}"
+
+
+@pytest.mark.unit
+def test_an_unchanged_frame_is_not_sent_again():
+    """Reading at 100 Hz gave about 9 distinct frames a second on the bench.
+
+    A settled repetitive signal redraws to the same screen, so most frames
+    carry nothing new; sending them costs the client a redraw and the network
+    a frame to show what is already on screen. A changing signal dedupes to
+    almost nothing, so the rate follows the signal.
+    """
+    import server.websocket_server as ws
+
+    class _Repeating:
+        """Two identical frames, then a different one."""
+
+        def __init__(self):
+            self.frames = [
+                {"channel": 1, "voltage": [0.0, 1.0, 2.0], "data_id": "a"},
+                {"channel": 1, "voltage": [0.0, 1.0, 2.0], "data_id": "b"},
+                {"channel": 1, "voltage": [9.0, 9.0, 9.0], "data_id": "c"},
+            ]
+            self.served = 0
+
+        async def execute_command(self, _command, _parameters):
+            frame = self.frames[min(self.served, len(self.frames) - 1)]
+            self.served += 1
+            return frame
+
+    async def main(patch):
+        equipment = _Repeating()
+        _install(patch, equipment)
+        manager = StreamManager()
+        manager.active_connections = {object()}
+        sent = []
+
+        async def capture(message):
+            sent.append(message["data"]["data_id"])
+            if equipment.served >= 3:
+                raise asyncio.CancelledError
+
+        manager.broadcast = capture
+        try:
+            await _run_briefly(manager, 0.3, equipment_id="scope_1",
+                               stream_type="trace", interval_ms=1,
+                               parameters={"channel": 1})
+        except asyncio.CancelledError:
+            pass
+
+    from _pytest.monkeypatch import MonkeyPatch
+    patch = MonkeyPatch()
+    try:
+        asyncio.run(main(patch))
+    finally:
+        patch.undo()
+
+
+@pytest.mark.unit
+def test_the_fingerprint_ignores_the_data_id():
+    """Every read carries a fresh uuid; that alone is not a new trace."""
+    manager = StreamManager()
+    frame = {"channel": 1, "voltage": [0.1, 0.2, 0.3], "data_id": "one"}
+    assert manager._is_repeat("k", frame) is False
+    assert manager._is_repeat("k", {**frame, "data_id": "two"}) is True
+    assert manager._is_repeat("k", {**frame, "voltage": [0.1, 0.2, 0.4]}) is False
 
 
 @pytest.mark.unit
