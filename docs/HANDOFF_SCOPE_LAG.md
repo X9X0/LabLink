@@ -296,6 +296,55 @@ One loose end closed: the `-113 "Undefined header"` entries found in leftover
 queues were probe commands of mine (`:LAN:GATE?`, `:SYST:COMM:LAN:IPAD?`,
 `:LAN:APPL` -- none of which exist on this firmware), not the client's.
 
+## How fast the trace can go, and why it stops there
+
+The panel sat at ~1 Hz. It is now bounded by the instrument, at about
+**8.5 distinct frames a second**, and no part of LabLink is the limit any
+more. The route there, and the measurements, so nobody repeats it:
+
+| change | effect |
+|---|---|
+| stop re-asserting `:WAV:SOUR/:MODE/:FORM` every fetch | 308 ms -> 37 ms |
+| cache the axis scaling for 1 s | six exchanges -> three |
+| push frames from the server instead of asking per frame | no HTTP round trip per frame |
+| hold the cadence by deadline, not by sleeping after the work | a stall stops compounding |
+| drop duplicate frames at the server | ~8.5 sent instead of 20-90 |
+
+**The ceiling is the instrument.** Distinct `:WAV:DATA?` frames per second,
+6 s samples: 7.7 at 1 ms/div, 8.5 at 200 us/div, 8.0 at 20 us/div, 7.7 at
+1 us/div; 9.0 at memory depth AUTO, 8.0 at 12k, 8.4 at 120k; 8-9 both
+triggered and free-running; 8-9 over VXI-11 and over a raw socket; and 8-9
+whether the target cadence was 30, 60, 100 or 120 Hz. Reads themselves run
+at 30-90 Hz -- with the acquisition STOPped, 89 reads/s and 0.2 unique/s --
+so everything above ~10 Hz re-reads a buffer the scope has not refreshed.
+
+**What did not help, measured:**
+
+* *Target rate.* 30, 60, 100 and 120 Hz all yielded the same ~8.5 unique.
+* *Raw socket vs VXI-11.* The socket halves the median (1.6 ms vs 4.5 ms)
+  and leaves the tail alone: p90 was ~160 ms on both. An early 200-read
+  sample suggested the socket fixed the tail as well; a longer run across
+  the matrix showed it does not. **The ~150 ms stall is the instrument.**
+* *Loading the Pi.* It sits at 1-5% CPU throughout. There is no work to
+  move onto it.
+
+**What is worth doing and is not done:** the frame is JSON floats, 32,636
+bytes and 3.79 ms to build. As ADC codes plus scale factors it is 1,703
+bytes and 0.04 ms -- 19x smaller and 95x cheaper, and it makes the Pi do
+*less*, not more. At 8.5 frames/s that is 272 KiB/s against 14 KiB/s. Worth
+doing for bandwidth and CPU; it will not make the trace look faster,
+because the frames are not there to send.
+
+### Bench notes for this scope
+
+* LAN serves remote I/O only while **USB is physically unplugged**.
+* The raw socket tolerates one session and frees it slowly: opening and
+  closing repeatedly locks it out for tens of seconds, while one session
+  held open ran 987 frames with no failure. Open once, keep it.
+* A query sent within ~20 ms of a write is dropped; 50 ms is reliable.
+* Socket framing desyncs about once every few hundred reads and never
+  recovers on its own, which is what `RigolSocketSession` resynchronises.
+
 ## Log lines to look for
 
 ```
