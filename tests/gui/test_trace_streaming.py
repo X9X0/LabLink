@@ -14,6 +14,7 @@ rather than a blank one, which is exactly the kind of failure that looks like
 """
 
 import asyncio
+import base64
 import os
 import sys
 
@@ -178,6 +179,73 @@ class TestItFallsBackRatherThanGoingBlank:
         panel._start_trace_stream()
         panel._stop_trace_stream()
         assert not panel._trace_streaming
+
+
+class TestTheCodesPayload:
+    """Streamed frames carry ADC codes, not floats.
+
+    1200 samples are 1,703 bytes and 0.04 ms to build as codes plus scale
+    factors, against 32,636 bytes and 3.79 ms as JSON floats -- 19x the size
+    and 95x the work on the Pi, per frame. The panel multiplies them out,
+    which costs a pass over samples it has to walk anyway to draw them.
+    """
+
+    def test_codes_are_turned_into_volts(self, panel):
+        client = _Client()
+        _bind(panel, client, channels=(1,))
+        panel._start_trace_stream()
+        # code 128 is 0 V here; 138 is +0.4 V at 0.04 V per code
+        codes = bytes([128, 138, 118, 128])
+        panel._on_stream_frame({
+            "equipment_id": "scope_cee816af", "stream_type": "trace",
+            "data": {"channel": 1, "codes": base64.b64encode(codes).decode(),
+                     "y_increment": 0.04, "y_origin": 0.0, "y_reference": 128.0,
+                     "x_increment": 1e-6, "x_origin": -6e-4, "num_samples": 4},
+        })
+        drawn = panel._last_trace[1]
+        assert drawn["num_samples"] == 4
+        assert drawn["voltage"] == pytest.approx([0.0, 0.4, -0.4, 0.0])
+        assert drawn["time"][0] == pytest.approx(-6e-4)
+        assert drawn["time"][1] - drawn["time"][0] == pytest.approx(1e-6)
+
+    def test_a_long_frame_is_decimated_to_what_can_be_drawn(self, panel):
+        client = _Client()
+        _bind(panel, client, channels=(1,))
+        panel._start_trace_stream()
+        codes = bytes([128] * 1200)
+        panel._on_stream_frame({
+            "equipment_id": "scope_cee816af", "stream_type": "trace",
+            "data": {"channel": 1, "codes": base64.b64encode(codes).decode(),
+                     "y_increment": 0.04, "y_origin": 0.0, "y_reference": 128.0,
+                     "x_increment": 1e-6, "x_origin": 0.0},
+        })
+        drawn = panel._last_trace[1]
+        assert drawn["num_samples"] <= panel.TRACE_POINTS
+        # Decimating must stretch the time step, or the axis lies.
+        assert drawn["x_increment"] == pytest.approx(2e-6)
+
+    def test_a_frame_of_floats_still_works(self, panel):
+        """An older server sends voltages; it must keep working."""
+        client = _Client()
+        _bind(panel, client, channels=(1,))
+        panel._start_trace_stream()
+        panel._on_stream_frame({
+            "equipment_id": "scope_cee816af", "stream_type": "trace",
+            "data": {"channel": 1, "voltage": [0.0, 1.0], "time": [0.0, 1e-6],
+                     "num_samples": 2},
+        })
+        assert panel._last_trace[1]["voltage"] == [0.0, 1.0]
+
+    def test_an_undecodable_frame_is_dropped_not_drawn(self, panel):
+        client = _Client()
+        _bind(panel, client, channels=(1,))
+        panel._start_trace_stream()
+        panel._on_stream_frame({
+            "equipment_id": "scope_cee816af", "stream_type": "trace",
+            "data": {"channel": 1, "codes": "not base64 !!",
+                     "y_increment": "nonsense"},
+        })
+        assert 1 not in panel._last_trace
 
 
 class TestFramesForOtherInstruments:

@@ -56,7 +56,7 @@ async def _run_briefly(manager, seconds, **kwargs):
 @pytest.mark.unit
 def test_a_trace_stream_sends_the_samples_not_the_metadata():
     """The "waveform" stream type answers with get_waveform, which carries no
-    samples at all. A live trace needs get_waveform_data."""
+    samples at all. A live trace needs the codes."""
 
     async def main(monkeypatch):
         equipment = _Equipment()
@@ -70,8 +70,10 @@ def test_a_trace_stream_sends_the_samples_not_the_metadata():
                            parameters={"channel": 2, "points": 600})
         assert equipment.calls, "the stream sent nothing"
         command, parameters = equipment.calls[0]
-        assert command == "get_waveform_data"
-        assert parameters == {"channel": 2, "points": 600}
+        # Codes, not floats: 1,703 bytes and 0.04 ms against 32,636 and
+        # 3.79 ms for the same samples.
+        assert command == "get_waveform_codes"
+        assert parameters == {"channel": 2}
         assert sent and sent[0]["stream_type"] == "trace"
 
     from _pytest.monkeypatch import MonkeyPatch
