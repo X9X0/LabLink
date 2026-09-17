@@ -335,6 +335,47 @@ bytes and 0.04 ms -- 19x smaller and 95x cheaper, and it makes the Pi do
 doing for bandwidth and CPU; it will not make the trace look faster,
 because the frames are not there to send.
 
+### Everything tried against the ~8.5 Hz ceiling, and what it did
+
+Time-boxed edge exploration, so the search is not repeated. Distinct frames
+per second, 5-8 s samples each:
+
+| tried | result |
+|---|---|
+| target cadence 30 / 60 / 100 / 120 Hz | 8.3-9.2 in every case |
+| raw socket vs VXI-11 | 8-9 both; socket halves the median, not the tail |
+| one exchange per frame vs three | 8-9 both |
+| timebase 1 ms/div to 1 us/div | 7.7-8.5 |
+| memory depth AUTO / 12k / 120k | 9.0 / 8.0 / 8.4 |
+| triggered vs free-running | 8-9 both |
+| acquisition NORMal / PEAK / AVERage | 9.0 / 8.8 / 8.6 |
+| display VECTors vs DOTS, persistence, brightness | 8.8-9.0 |
+| one channel vs two displayed | 9.0 both |
+| `:SINGle` per frame | **3.8/s**, every frame distinct, 265 ms to arm and trigger |
+| internal recorder (`:FUNC:WRECord`) | captures to memory, but reading frames back is **3.5/s** -- slower than live |
+| acquisition STOPped (the control) | 89 reads/s, 0.2 unique/s |
+
+Nothing moves it. The rate is independent of everything acquisition- or
+display-related, which puts it in the scope's internal publish of the remote
+waveform buffer rather than in acquiring, drawing, or transferring.
+
+Two ideas that sound right and are not: `:SINGle` guarantees a fresh frame
+and delivers fewer than half as many, and the scope's own frame recorder --
+the obvious store-and-forward -- reads back slower than reading live.
+
+**The one untested lever is firmware.** This scope runs **00.04.03**. sigrok
+records that Ethernet capture needs at least 00.04.03.02; DSRemote cites
+00.04.04.SP3 as current; EEVblog's buglist thread starts at 00.04.04.03.02.
+We have been fighting `-410 Query INTERRUPTED` and dropped queries after
+writes on firmware several releases old. Worth updating before any more
+work here.
+
+External corroboration found while looking: the USB fault is described
+elsewhere as "a hardware-related Rigol bug related to USB 2.0 buffer size
+specifications" (the mis-declared 64-byte maxpacket), and "VXI11 is pretty
+slow on the DS1054Z, raw TCP works much faster". No source documents the
+~8.5 Hz ceiling; it appears to be original to this bench.
+
 ### Bench notes for this scope
 
 * LAN serves remote I/O only while **USB is physically unplugged**.
