@@ -370,10 +370,26 @@ Through the driver, socket transport, 49 s: 3026 frames at 61.5 fetches/s,
 `::INSTR` form works and is slower. The equipment id differs between them,
 because it is derived from the resource string.
 
-*Not re-tested on the new firmware:* USB. The 492-byte ceiling came from a
-mis-declared 64-byte bulk max packet, which a firmware update could in
-principle fix. Testing it means unplugging LAN, since this model serves LAN
-only while USB is disconnected.
+**USB on 00.06.04: still broken, and still for the same reason.** Tested by
+swapping the cable. The descriptor is unchanged -- `wMaxPacketSize 0x0040` on
+both bulk endpoints -- and the kernel logs `invalid maxpacket 64` on this
+plug-in as it always did. The windowed sweep reproduces the old boundary
+exactly: 250 samples fine, 480 fine, **500 fails**, 600 and 1200 fail. A full
+1212-byte read succeeded twice at ~7 ms and then failed and stayed failed,
+which is the same intermittency as before.
+
+So the firmware fixed the stalls, the dropped query and the desync, and did
+not fix the descriptor. Through the driver's windowed path, which is what a
+USB link gets: **2.5 frames/s, median 402 ms** -- against LAN's 18.7
+distinct/s at a 7 ms median. LAN is about seven times faster, and USB also
+pays the `:WAV:STOP` writes that make the instrument beep.
+
+**Use LAN for this scope.** USB works and is honest about it; it is just slow.
+
+One consequence of the update: **the USB product id changed from `04ce` to
+`0517`**, so the resource string is now
+`USB0::6833::1303::DS1ZA171409212::0::INSTR`. Any entry naming `...::1230::...`
+is stale and will never connect again -- exactly what the Remove button is for.
 
 ### Everything tried against the ~8.5 Hz ceiling, and what it did
 
