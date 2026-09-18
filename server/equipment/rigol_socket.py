@@ -64,9 +64,19 @@ def socket_address(resource_string: str):
 class RigolSocketSession:
     """A PyVISA-shaped session over a raw SCPI socket."""
 
-    #: Smallest settle after a write that answered 12 of 12 on the bench.
-    #: Below it the next query is silently dropped; 20 ms managed 9 of 12.
-    WRITE_SETTLE_SEC = 0.05
+    #: Settle after a write before the next query.
+    #:
+    #: On firmware 00.04.03 a query sent straight after a write was silently
+    #: dropped -- 0 of 12 answered with no settle, 9 of 12 at 20 ms, 12 of 12
+    #: at 50. On 00.06.04 the same test answers 12 of 12 with no settle at
+    #: all, so the fault was the scope's and Rigol fixed it. A small settle is
+    #: kept because a bench may still be on old firmware, and `query` retries
+    #: after a full 50 ms if one is dropped anyway -- so old firmware costs a
+    #: retry rather than a wrong answer, and new firmware costs 10 ms.
+    WRITE_SETTLE_SEC = 0.01
+
+    #: The settle to fall back to when a query after a write goes unanswered.
+    RETRY_SETTLE_SEC = 0.05
 
     #: How long to keep draining when resynchronising before giving up.
     RESYNC_SEC = 0.5
@@ -109,7 +119,17 @@ class RigolSocketSession:
     def query(self, command: str) -> str:
         self._await_settle()
         self._send(f"{command}\n".encode())
-        return self._read_line().decode(errors="replace").strip()
+        try:
+            return self._read_line().decode(errors="replace").strip()
+        except (socket.timeout, TimeoutError):
+            # Old firmware drops a query that arrives too soon after a write.
+            # Settle properly and ask once more rather than failing the call.
+            logger.debug(f"{self.resource_string}: no answer to {command!r}; "
+                         f"settling and asking again")
+            self._drain()
+            time.sleep(self.RETRY_SETTLE_SEC)
+            self._send(f"{command}\n".encode())
+            return self._read_line().decode(errors="replace").strip()
 
     def query_binary_values(self, command: str, datatype: str = "B",
                             container=list, **_ignored):

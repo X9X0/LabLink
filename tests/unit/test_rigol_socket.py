@@ -178,6 +178,31 @@ class TestTheWriteSettle:
         assert slept == [], f"the hot path paid a settle it did not owe: {slept}"
 
 
+class TestTheRetryAfterAWrite:
+    def test_a_dropped_query_is_asked_again_after_a_full_settle(self, session,
+                                                                monkeypatch):
+        """Old firmware drops a query sent too soon after a write.
+
+        00.04.03 answered 0 of 12; 00.06.04 answers 12 of 12 with no settle at
+        all. The settle is small so new firmware pays almost nothing, and the
+        retry is what keeps an old bench correct rather than merely slow.
+        """
+        slept = []
+        monkeypatch.setattr("server.equipment.rigol_socket.time.sleep",
+                            lambda s: slept.append(s))
+        session.write(":WAV:SOUR CHAN1")
+        # Nothing queued for the first read, then the answer for the retry.
+        session.fake._replies.append(b"")
+        session.fake._replies.append(b"CHAN1\n")
+        assert session.query(":WAV:SOUR?") == "CHAN1"
+        assert session.RETRY_SETTLE_SEC in slept, slept
+
+    def test_a_query_that_answers_first_time_does_not_retry(self, session):
+        session.fake._replies.append(b"CHAN1\n")
+        assert session.query(":WAV:SOUR?") == "CHAN1"
+        assert session.fake.sent.count(b":WAV:SOUR?\n") == 1
+
+
 class TestTheSessionSurface:
     def test_it_looks_open_to_the_validity_check(self, session):
         assert session.session

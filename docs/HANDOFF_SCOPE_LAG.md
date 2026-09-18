@@ -32,7 +32,7 @@ client. `VERSION` deliberately not bumped.
 | Server runtime | Docker, containers `lablink-server` (image `lablink-server:latest`, privileged, `/dev/bus/usb` mapped) and `lablink-web`; compose at `/opt/lablink/docker-compose.yml`; code at `/app` in the container |
 | Server version | 2.4.1 = `feature/instrument-panels` @ `43183db` at the time of these measurements |
 | Windows client | `192.168.91.122`, `C:\LabLinkTest` |
-| Instruments | `ps_56fdd3df` B&K 1685B (`ASRL/dev/ttyUSB0`), `ps_36509eb5` B&K 9205B (USB), `scope_a62f42e9` Rigol DS1054Z `USB0::6833::1230::DS1ZA171409212::0::INSTR`, firmware 00.04.03 |
+| Instruments | `ps_56fdd3df` B&K 1685B (`ASRL/dev/ttyUSB0`), `ps_36509eb5` B&K 9205B (USB), Rigol DS1054Z — now on LAN at `192.168.91.37`, firmware **00.06.04** (was 00.04.03; see "The firmware update changed the answer") |
 | Stack in container | PyVISA 1.16.2, PyVISA-py 0.8.1, pyusb 1.3.1, libusb (the kernel `usbtmc` module is loaded but binds nothing — there is no `/dev/usbtmc0`) |
 
 Useful commands on the Pi:
@@ -334,6 +334,46 @@ bytes and 0.04 ms -- 19x smaller and 95x cheaper, and it makes the Pi do
 *less*, not more. At 8.5 frames/s that is 272 KiB/s against 14 KiB/s. Worth
 doing for bandwidth and CPU; it will not make the trace look faster,
 because the frames are not there to send.
+
+### The firmware update changed the answer
+
+The scope was on **00.04.03** and is now on **00.06.04**. Everything below the
+firmware line in this document was measured on the old one, and the update
+moved most of it. Re-measured the same way:
+
+| | 00.04.03 | 00.06.04 |
+|---|---|---|
+| distinct frames, raw socket | 8.5/s | **20.9/s** |
+| distinct frames, VXI-11 | 8.3-9.0/s | 14.7/s |
+| socket reads | 146/s | **331/s** |
+| socket p90 | ~160 ms | **1.7 ms** |
+| socket reads over 50 ms | 9 in 200 | **0 in 200** |
+| query straight after a write | 0 of 12 answered | **12 of 12** |
+| socket framing desync | died after ~445 reads | **9541 reads, 0 failures** |
+| error queue after a run | `-410 Query INTERRUPTED` | clean |
+
+So the ~150 ms stall, the dropped query after a write, and the framing desync
+were all the scope's firmware, and all three are gone. The ceiling roughly
+doubled.
+
+**This inverts the earlier conclusion about the transport.** On old firmware
+the socket halved the median and left the tail alone, so it looked barely
+worth having. On 00.06.04 it is not close: 20.9 distinct frames a second
+against VXI-11's 14.7, and a p90 of 1.7 ms against 115.8. VXI-11's median is
+now 55.85 ms -- it has become the bottleneck.
+
+Through the driver, socket transport, 49 s: 3026 frames at 61.5 fetches/s,
+18.7 distinct/s, median 6.97 ms, p90 34 ms, **one** read over 50 ms against
+220 of 987 before, zero failures, zero resyncs, error queue clean.
+
+**Connect this scope as `TCPIP0::192.168.91.37::5555::SOCKET`.** The
+`::INSTR` form works and is slower. The equipment id differs between them,
+because it is derived from the resource string.
+
+*Not re-tested on the new firmware:* USB. The 492-byte ceiling came from a
+mis-declared 64-byte bulk max packet, which a firmware update could in
+principle fix. Testing it means unplugging LAN, since this model serves LAN
+only while USB is disconnected.
 
 ### Everything tried against the ~8.5 Hz ceiling, and what it did
 

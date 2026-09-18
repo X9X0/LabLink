@@ -91,14 +91,12 @@ class OscilloscopePanel(InstrumentPanel):
     SETTINGS_TYPE = "oscilloscope"
 
     #: The live trace has its own, slower cadence.
-    #: 10 Hz, because that is about what the instrument can actually produce.
-    #: Measured on the bench DS1054Z: 7.7-9.0 *distinct* frames a second at
-    #: every timebase from 1 ms/div to 1 us/div, at memory depths AUTO, 12k
-    #: and 120k, triggered and free-running, over both VXI-11 and a raw
-    #: socket. Reads themselves run at 30-90 Hz, so everything above ~10 Hz
-    #: re-reads a buffer the scope has not refreshed. Duplicates are dropped
-    #: at the server, so asking faster costs little -- it just gains nothing.
-    TRACE_INTERVAL_MS = 100
+    #: 20 Hz, which is about what the instrument produces on firmware
+    #: 00.06.04. On 00.04.03 it was 7.7-9.0 *distinct* frames a second
+    #: whatever we did; the firmware update took that to 20.9 over a raw
+    #: socket, with every read distinct and no stalls at all. Duplicates are
+    #: dropped at the server, so asking a little faster costs little.
+    TRACE_INTERVAL_MS = 50
     #: Points per channel per fetch; decimated by the server.
     TRACE_POINTS = 600
     MAX_CHANNELS = 8
