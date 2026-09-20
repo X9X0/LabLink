@@ -11,6 +11,7 @@ The join is best effort: losing it costs two descriptive columns, and must
 never cost the health table itself.
 """
 
+import asyncio
 import os
 import sys
 
@@ -75,6 +76,19 @@ def panel(qapp):
     return DiagnosticsPanel()
 
 
+def refresh(panel):
+    """Drive one refresh to completion.
+
+    The panel's refresh is a coroutine now: the health query asks the server
+    to benchmark every instrument, which measured 20.5s against two serial
+    supplies on the bench, and running that on the GUI thread froze the
+    window. Called as a plain method it would only ever create a coroutine
+    and drop it, so these tests would pass against an empty table.
+    """
+    slot = type(panel).refresh
+    return asyncio.run(getattr(slot, "__wrapped__", slot)(panel))
+
+
 def headers(table):
     return [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
 
@@ -110,7 +124,7 @@ class TestTheColumnsExist:
 class TestTheRowsAreIdentified:
     def test_each_row_names_its_instrument(self, panel):
         panel.set_client(FakeClient())
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert cell(panel.health_table, row, 1) == "BK Precision"
@@ -120,7 +134,7 @@ class TestTheRowsAreIdentified:
         """The columns shifted by two; the wrong health against a name is
         worse than no name at all."""
         panel.set_client(FakeClient())
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert cell(panel.health_table, row, 3) == "degraded"
@@ -134,7 +148,7 @@ class TestTheRowsAreIdentified:
     def test_the_status_cell_is_still_coloured(self, panel):
         """apply_status_colors moved column; it must have moved with it."""
         panel.set_client(FakeClient())
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_36509eb5")
         item = panel.health_table.item(row, 3)
@@ -146,7 +160,7 @@ class TestTheRowsAreIdentified:
 
     def test_the_id_keeps_the_full_description_as_a_tooltip(self, panel):
         panel.set_client(FakeClient())
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert panel.health_table.item(row, 0).toolTip() == "BK Precision 1685B"
@@ -158,14 +172,14 @@ class TestTheJoinIsForgiving:
         panel.set_client(FakeClient(equipment=[
             {"equipment_id": "ps_56fdd3df", "manufacturer": "BK", "model": "1685B"},
         ]))
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert cell(panel.health_table, row, 2) == "1685B"
 
     def test_equipment_missing_from_the_list_leaves_the_row_readable(self, panel):
         panel.set_client(FakeClient(equipment=[]))
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert cell(panel.health_table, row, 1) == ""
@@ -175,7 +189,7 @@ class TestTheJoinIsForgiving:
     def test_a_failed_lookup_does_not_cost_the_health_table(self, panel):
         """The health is what the operator came to read."""
         panel.set_client(FakeClient(fail_list=True))
-        panel.refresh()
+        refresh(panel)
 
         assert panel.health_table.rowCount() == len(HEALTH)
         row = row_for(panel.health_table, "ps_36509eb5")
@@ -186,7 +200,7 @@ class TestTheJoinIsForgiving:
         panel.set_client(FakeClient(equipment=[
             {"id": "ps_56fdd3df", "manufacturer": None, "model": None},
         ]))
-        panel.refresh()
+        refresh(panel)
 
         row = row_for(panel.health_table, "ps_56fdd3df")
         assert cell(panel.health_table, row, 1) == ""

@@ -141,8 +141,25 @@ class MainWindow(QMainWindow):
         self.system_panel = SystemPanel()
         self.tab_widget.addTab(self.system_panel, "System")
 
+        # Bringing a tab to the front loads it at once, rather than leaving
+        # it stale until the five-second timer comes round. Only the visible
+        # tab is refreshed -- on connect and on the timer alike -- so this
+        # is what makes a tab switch show current data.
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
         # Connect signals
         self.connection_changed.connect(self._on_connection_changed)
+
+    def _on_tab_changed(self, _index: int):
+        """Refresh whichever panel has just been brought to the front."""
+        if not self.client or not self.client.connected:
+            return
+        current = self.tab_widget.currentWidget()
+        try:
+            if hasattr(current, "refresh"):
+                current.refresh()
+        except Exception as e:
+            logger.error(f"Error refreshing the tab just opened: {e}")
 
     def _setup_menus(self):
         """Set up menu bar."""
@@ -751,18 +768,28 @@ class MainWindow(QMainWindow):
     # ==================== Data Refresh ====================
 
     def refresh_all(self):
-        """Refresh all panels."""
+        """Load the equipment list and whichever tab is on screen.
+
+        Not every panel. Most of these refreshes are blocking HTTP calls on
+        the GUI thread, and running six of them at connect meant the window
+        was frozen for the sum of them before the operator could touch
+        anything. The diagnostics one alone measured 20.5s against two
+        serial supplies on a cold server cache, of which the client waited
+        its full 10s timeout and then had nothing to show.
+
+        Refreshing a tab nobody is looking at buys nothing: the periodic
+        timer already refreshes only the visible one, and a tab now loads
+        as it is brought to the front. The equipment list is the exception,
+        because the Control tab and the equipment panel both read from it.
+        """
         if not self.client or not self.client.connected:
             return
 
         try:
-            # Refresh each panel
             self.equipment_panel.refresh()
-            self.acquisition_panel.refresh()
-            self.alarm_panel.refresh()
-            self.scheduler_panel.refresh()
-            self.diagnostics_panel.refresh()
-            self.sync_panel.refresh()
+            current = self.tab_widget.currentWidget()
+            if current is not self.equipment_panel and hasattr(current, "refresh"):
+                current.refresh()
 
         except Exception as e:
             logger.error(f"Error refreshing data: {e}")

@@ -10,7 +10,10 @@ from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                              QPushButton, QTableWidget, QTableWidgetItem,
                              QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+import qasync
+from client.api.client import LabLinkClient, call_blocking
+from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,8 @@ class DiagnosticsPanel(QWidget):
         super().__init__(parent)
 
         self.client: Optional[LabLinkClient] = None
+        #: When the in-flight health fetch started, or None.
+        self._refresh_started_at = None
 
         self._setup_ui()
 
@@ -85,7 +90,7 @@ class DiagnosticsPanel(QWidget):
         """Set API client."""
         self.client = client
 
-    def _equipment_descriptions(self) -> dict:
+    async def _equipment_descriptions(self) -> dict:
         """Make and model for each equipment id, for labelling health rows.
 
         Best effort by design: a failure here costs the two descriptive
@@ -96,7 +101,7 @@ class DiagnosticsPanel(QWidget):
             ``{equipment_id: (manufacturer, model)}``, empty if unavailable.
         """
         try:
-            equipment = self.client.list_equipment()
+            equipment = await call_blocking(self.client.list_equipment)
         except Exception as e:
             logger.warning(f"Could not label health rows with make and model: {e}")
             return {}
@@ -113,21 +118,49 @@ class DiagnosticsPanel(QWidget):
                 )
         return descriptions
 
-    def refresh(self):
-        """Refresh diagnostics data."""
+    @qasync.asyncSlot()
+    async def refresh(self):
+        """Refresh diagnostics data, off the GUI thread.
+
+        This is the most expensive request the client makes. The server
+        answers ``/diagnostics/health`` by running a connection check, a
+        communication check, a performance benchmark and a functionality
+        check against every instrument, one after another. Measured on the
+        bench against two serial supplies: 20.5s cold, 9-20ms warm, because
+        the server caches the result for 30 seconds.
+
+        Run synchronously on the GUI thread, as it was, that froze the whole
+        window until the client's 10s read timeout gave up -- and then had
+        nothing to show for it. It happened on every connect, because the
+        initial load refreshed every tab whether or not anyone was looking
+        at one.
+
+        The slot is also guarded: a 5s timer drives this, and the request
+        can take far longer than 5s.
+        """
         if not self.client:
             return
-
+        if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
+            return
         try:
-            health_data = self.client.get_all_equipment_health()
-            self.health_table.setRowCount(len(health_data))
-
+            health_data = await call_blocking(self.client.get_all_equipment_health)
             # The health payload carries no make or model -- it is keyed by id
             # and nothing else -- so rows read as "ps_56fdd3df" with no way to
             # tell which instrument on the bench that is. The equipment list
             # has both, so join here rather than widening the server's health
             # model, which would mean every client needing a matching server.
-            descriptions = self._equipment_descriptions()
+            descriptions = await self._equipment_descriptions()
+        except Exception as e:
+            logger.error(f"Error refreshing diagnostics: {e}")
+            return
+        finally:
+            release_slot(self, "_refresh_started_at")
+        self._show_health(health_data, descriptions)
+
+    def _show_health(self, health_data: dict, descriptions: dict):
+        """Fill the table from an already-fetched health payload."""
+        try:
+            self.health_table.setRowCount(len(health_data))
 
             row = 0
             for eq_id, health in health_data.items():
@@ -169,7 +202,7 @@ class DiagnosticsPanel(QWidget):
                 row += 1
 
         except Exception as e:
-            logger.error(f"Error refreshing diagnostics: {e}")
+            logger.error(f"Error showing diagnostics: {e}")
 
     def run_full_diagnostics(self):
         """Run full diagnostic report."""
