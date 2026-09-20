@@ -56,7 +56,6 @@ class RFGeneratorPanel(InstrumentPanel):
         self.level_min = -130.0
         self.level_max = 20.0
         self.modulation_types: List[str] = ["AM", "FM", "PM"]
-        self._last_output_command_time = 0.0
         super().__init__(parent)
 
     # ------------------------------------------------------------------ #
@@ -233,8 +232,6 @@ class RFGeneratorPanel(InstrumentPanel):
             self._apply_settings(data, adopt=True)
 
     def _apply_settings(self, data: Dict[str, Any], adopt: bool = False):
-        import time
-
         freq = data.get("frequency")
         level = data.get("level")
         unit = data.get("level_unit") or "dBm"
@@ -249,8 +246,14 @@ class RFGeneratorPanel(InstrumentPanel):
             flags.append("ALC")
         self.annunciator.setText("   ".join(flags))
 
-        if time.monotonic() - self._last_output_command_time > 2.0:
-            enabled = bool(data.get("output_enabled", False))
+        # Unless the operator has just clicked the button and the generator
+        # has not caught up: until it agrees, the click is what is true. A
+        # reading with no output state in it says nothing, rather than
+        # "off" -- showing RF OFF on a live output is the dangerous
+        # direction to be wrong in.
+        reported = data.get("output_enabled")
+        if reported is not None and self.may_show("output", reported):
+            enabled = bool(reported)
             self.output_button.blockSignals(True)
             self.output_button.setChecked(enabled)
             self.output_button.setText("RF: ON" if enabled else "RF: OFF")
@@ -343,9 +346,7 @@ class RFGeneratorPanel(InstrumentPanel):
         self._command("set_level", {"level": float(self.level_spin.value()), "unit": "dBm"})
 
     def _on_output_toggled(self, checked: bool):
-        import time
-
-        self._last_output_command_time = time.monotonic()
+        self.commanded("output", bool(checked))
         self.output_button.setText("RF: ON" if checked else "RF: OFF")
         self._command("set_output", {"enabled": bool(checked)})
 

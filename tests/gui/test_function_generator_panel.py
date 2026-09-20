@@ -200,3 +200,70 @@ def test_a_model_without_a_counter_is_asked_once(qapp):
     _run(panel, "_poll")
     assert [c for c, _ in client.commands].count("get_counter") == 1
     assert panel.poll_timer is not None  # still a live panel; only the counter was dropped
+
+
+class TestTheOutputButtonAgainstStaleReadings:
+    """The panel polls while it commands, and the two are not ordered.
+
+    A reading taken before the click arrives after it, carrying the state
+    from before. The panel used to ignore readings for two seconds after a
+    click, which also hid a command that never landed and stopped a change
+    made at the front panel reaching the display. It now holds the click
+    only until the generator is seen to agree with it.
+
+    Reporting a live output as off is the dangerous direction to be wrong
+    in, so a reading that carries no output state says nothing at all.
+    """
+
+    def panel(self, qapp):
+        made = FunctionGeneratorPanel()
+        made.set_instrument(_gen(), FakeDGClient())
+        made._command = lambda name, params=None: None
+        return made
+
+    def test_a_stale_reading_does_not_undo_a_click(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                      # ON -> OFF
+        assert panel.output_button.isChecked() is False
+        panel._apply_settings({"output_enabled": True})  # taken before the click
+        assert panel.output_button.isChecked() is False, (
+            "a reading older than the click put the output back on in the display")
+
+    def test_the_generator_gets_the_last_word_once_it_agrees(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                       # ON -> OFF
+        panel._apply_settings({"output_enabled": False})  # it agrees
+        panel._apply_settings({"output_enabled": True})   # switched at the front panel
+        assert panel.output_button.isChecked() is True, (
+            "agreement must hand authority back, rather than a timer expiring")
+
+    def test_a_reading_with_no_output_state_says_nothing(self, qapp):
+        panel = self.panel(qapp)
+        assert panel.output_button.isChecked() is True
+        panel._apply_settings({"waveform": "SQU", "frequency": 2500.0})
+        assert panel.output_button.isChecked() is True, (
+            "a missing field was read as off, showing Output OFF on a live channel")
+
+    def test_a_command_the_generator_never_took_stops_being_believed(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                      # ON -> OFF
+        pending = panel._pending["output"]
+        panel._pending["output"] = pending._replace(
+            at=pending.at - panel.PENDING_TIMEOUT_SEC - 1)
+        panel._apply_settings({"output_enabled": True})
+        assert panel.output_button.isChecked() is True, (
+            "the display would have gone on claiming the output was off")
+
+    def test_a_click_on_one_channel_does_not_speak_for_another(self, qapp):
+        """Channel 1 is on and channel 2 is off in the fake.
+
+        Switching channel re-reads, and that reading is about the channel
+        now selected -- so a command to the one being left must not
+        suppress it.
+        """
+        panel = self.panel(qapp)
+        panel.output_button.click()                      # channel 1: ON -> OFF
+        panel.channel_combo.setCurrentIndex(1)           # channel 2, which is off
+        assert panel._pending.get("output") is None
+        panel._apply_settings({"output_enabled": True})
+        assert panel.output_button.isChecked() is True

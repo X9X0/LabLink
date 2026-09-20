@@ -46,7 +46,6 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.max_current = 40.0
         self.max_power = 200.0
         self.max_resistance = 15000.0
-        self._last_input_command_time = 0.0
         super().__init__(parent)
 
     # ------------------------------------------------------------------ #
@@ -205,8 +204,14 @@ class ElectronicLoadPanel(InstrumentPanel):
                 self.setpoint_spin.setValue(float(setpoint))
                 self.setpoint_spin.blockSignals(False)
 
-        if time.monotonic() - self._last_input_command_time > 2.0:
-            enabled = bool(readings.get("load_enabled", False))
+        # Unless the operator has just clicked the button and the load has
+        # not caught up: until it agrees, the click is what is true. A
+        # reading with no input state in it says nothing, rather than
+        # "off" -- reporting a load that is still sinking as off is the
+        # dangerous direction to be wrong in.
+        reported = readings.get("load_enabled")
+        if reported is not None and self.may_show("input", reported):
+            enabled = bool(reported)
             self.input_button.blockSignals(True)
             self.input_button.setChecked(enabled)
             self.input_button.setText("Input: ON" if enabled else "Input: OFF")
@@ -237,14 +242,15 @@ class ElectronicLoadPanel(InstrumentPanel):
             self.status_message.emit(f"Setting the load failed: {e}")
 
     def _on_input_toggled(self, checked: bool):
+        # Recorded here, not in the slot below: an @asyncSlot only
+        # schedules, and by the time its body runs a reading taken before
+        # the click can already have been applied.
+        self.commanded("input", bool(checked))
         self.input_button.setText("Input: ON" if checked else "Input: OFF")
         self._send_input(bool(checked))
 
     @qasync.asyncSlot(bool)
     async def _send_input(self, enabled: bool):
-        import time
-
-        self._last_input_command_time = time.monotonic()
         try:
             await self.send("set_input", {"enabled": enabled})
         except Exception as e:

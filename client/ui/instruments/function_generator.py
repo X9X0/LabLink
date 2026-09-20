@@ -56,7 +56,6 @@ class FunctionGeneratorPanel(InstrumentPanel):
         self.max_frequency: Dict[str, float] = {}
         self.max_amplitude_vpp = 20.0
         self._has_counter: Optional[bool] = None
-        self._last_output_command_time = 0.0
         super().__init__(parent)
 
     # ------------------------------------------------------------------ #
@@ -327,8 +326,6 @@ class FunctionGeneratorPanel(InstrumentPanel):
         self._schedule_refresh_settings()
 
     def _apply_settings(self, data: Dict[str, Any], adopt: bool = False):
-        import time
-
         wf = str(data.get("waveform") or "").upper()
         freq = data.get("frequency")
         amp = data.get("amplitude")
@@ -351,8 +348,14 @@ class FunctionGeneratorPanel(InstrumentPanel):
             details.append(str(data["modulation"]))
         self.detail_display.setText("   ".join(details))
 
-        if time.monotonic() - self._last_output_command_time > 2.0:
-            enabled = bool(data.get("output_enabled", False))
+        # Unless the operator has just clicked the button and the generator
+        # has not caught up: until it agrees, the click is what is true. A
+        # reading with no output state in it says nothing, rather than
+        # "off" -- reporting a live output as off is the dangerous
+        # direction to be wrong in.
+        reported = data.get("output_enabled")
+        if reported is not None and self.may_show("output", reported):
+            enabled = bool(reported)
             self.output_button.blockSignals(True)
             self.output_button.setChecked(enabled)
             self.output_button.setText("Output: ON" if enabled else "Output: OFF")
@@ -527,12 +530,13 @@ class FunctionGeneratorPanel(InstrumentPanel):
         self._range_frequency()
 
     def _on_channel_changed(self, _index: int):
+        # The button now means a different channel's output, and a command
+        # to the one being left says nothing about this one.
+        self.forget_commanded("output")
         self._show_channel_settings()
 
     def _on_output_toggled(self, checked: bool):
-        import time
-
-        self._last_output_command_time = time.monotonic()
+        self.commanded("output", bool(checked))
         self.output_button.setText("Output: ON" if checked else "Output: OFF")
         self._command("set_output", {"enabled": bool(checked), "channel": self.channel()})
 

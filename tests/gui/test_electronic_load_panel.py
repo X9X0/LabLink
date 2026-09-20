@@ -154,3 +154,58 @@ def test_lock_gating(qapp):
     assert not panel.apply_button.isEnabled() and not panel.input_button.isEnabled()
     panel.set_controls_enabled(True)
     assert panel.apply_button.isEnabled()
+
+
+class TestTheInputButtonAgainstStaleReadings:
+    """The panel polls five times a second while it commands, unordered.
+
+    A reading taken before the click arrives after it, carrying the state
+    from before. The panel used to ignore readings for two seconds after a
+    click -- and recorded that moment inside the async slot, which only
+    runs after the click has been handled, so a reading applied in between
+    slipped through the window entirely. It now records the click where the
+    click happens, and holds it only until the load is seen to agree.
+
+    Reporting a load that is still sinking current as off is the dangerous
+    direction to be wrong in, so a reading with no input state in it says
+    nothing at all.
+    """
+
+    def panel(self, qapp):
+        made = ElectronicLoadPanel()
+        made.set_instrument(_load(), FakeLoadClient())
+        made._send_input = lambda enabled: None
+        return made
+
+    def test_a_stale_reading_does_not_undo_a_click(self, qapp):
+        panel = self.panel(qapp)
+        panel.input_button.click()                          # ON -> OFF
+        assert panel.input_button.isChecked() is False
+        panel._apply_readings({"load_enabled": True})       # taken before the click
+        assert panel.input_button.isChecked() is False, (
+            "a reading older than the click put the input back on in the display")
+
+    def test_the_load_gets_the_last_word_once_it_agrees(self, qapp):
+        panel = self.panel(qapp)
+        panel.input_button.click()                          # ON -> OFF
+        panel._apply_readings({"load_enabled": False})      # it agrees
+        panel._apply_readings({"load_enabled": True})       # switched at the front panel
+        assert panel.input_button.isChecked() is True, (
+            "agreement must hand authority back, rather than a timer expiring")
+
+    def test_a_reading_with_no_input_state_says_nothing(self, qapp):
+        panel = self.panel(qapp)
+        assert panel.input_button.isChecked() is True
+        panel._apply_readings({"voltage": 12.01, "current": 0.255})
+        assert panel.input_button.isChecked() is True, (
+            "a missing field was read as off, on a load that is still sinking")
+
+    def test_a_command_the_load_never_took_stops_being_believed(self, qapp):
+        panel = self.panel(qapp)
+        panel.input_button.click()                          # ON -> OFF
+        pending = panel._pending["input"]
+        panel._pending["input"] = pending._replace(
+            at=pending.at - panel.PENDING_TIMEOUT_SEC - 1)
+        panel._apply_readings({"load_enabled": True})
+        assert panel.input_button.isChecked() is True, (
+            "the display would have gone on claiming the input was off")

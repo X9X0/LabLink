@@ -143,6 +143,59 @@ def test_modulation_sweep_output_and_alc_payloads(qapp):
     ]
 
 
+class TestTheRFButtonAgainstStaleReadings:
+    """The panel polls while it commands, and the two are not ordered.
+
+    A reading taken before the click arrives after it, carrying the state
+    from before. The panel used to ignore readings for two seconds after a
+    click, which also hid a command that never landed and stopped the
+    front panel reaching the display. It now holds the click only until
+    the generator is seen to agree with it.
+
+    Showing RF OFF on a live output is the dangerous direction to be wrong
+    in, so a reading that carries no output state says nothing at all.
+    """
+
+    def panel(self, qapp):
+        made = RFGeneratorPanel()
+        made.set_instrument(_rf(), FakeDSGClient())
+        made._command = lambda name, params=None: None
+        return made
+
+    def test_a_stale_reading_does_not_undo_a_click(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                     # ON -> OFF
+        assert panel.output_button.isChecked() is False
+        panel._apply_settings({"output_enabled": True})  # taken before the click
+        assert panel.output_button.isChecked() is False, (
+            "a reading older than the click put RF back on in the display")
+
+    def test_the_generator_gets_the_last_word_once_it_agrees(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                      # ON -> OFF
+        panel._apply_settings({"output_enabled": False})  # it agrees
+        panel._apply_settings({"output_enabled": True})   # switched at the front panel
+        assert panel.output_button.isChecked() is True, (
+            "agreement must hand authority back, rather than a timer expiring")
+
+    def test_a_reading_with_no_output_state_says_nothing(self, qapp):
+        panel = self.panel(qapp)
+        assert panel.output_button.isChecked() is True
+        panel._apply_settings({"frequency": 433.92e6})
+        assert panel.output_button.isChecked() is True, (
+            "a missing field was read as off, showing RF OFF on a live output")
+
+    def test_a_command_the_generator_never_took_stops_being_believed(self, qapp):
+        panel = self.panel(qapp)
+        panel.output_button.click()                     # ON -> OFF
+        pending = panel._pending["output"]
+        panel._pending["output"] = pending._replace(
+            at=pending.at - panel.PENDING_TIMEOUT_SEC - 1)
+        panel._apply_settings({"output_enabled": True})
+        assert panel.output_button.isChecked() is True, (
+            "the display would have gone on claiming RF was off")
+
+
 @pytest.mark.parametrize("hz,text", [(433.92e6, "433.92 MHz"), (2.4e9, "2.4 GHz"), (9e3, "9 kHz"), (50.0, "50 Hz"), (None, "--")])
 def test_format_frequency(hz, text):
     assert format_frequency(hz) == text
