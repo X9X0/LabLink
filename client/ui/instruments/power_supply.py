@@ -8,7 +8,6 @@ so the shell no longer has to know what a supply is.
 """
 
 import logging
-import time
 from collections import deque
 from typing import Any, Dict
 
@@ -61,14 +60,8 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_data = deque(maxlen=100)
         self.time_data = deque(maxlen=100)
 
-        # Don't let readings overwrite the output button for a moment after
-        # the operator clicked it.
-        self._last_output_command_time = 0.0
         #: Consecutive readings that disagree with the indicator.
         self._output_state_streak = 0
-        #: When a setpoint was last commanded, so a reading older than it
-        #: cannot move the controls back to what they said before.
-        self._last_setpoint_command_time = 0.0
 
         super().__init__(parent)
 
@@ -465,23 +458,40 @@ class PowerSupplyPanel(InstrumentPanel):
             )
             return
         setpoints = setpoints or {}
-        if self.editing_in_progress() or self._setpoint_in_flight():
-            return          # never overwrite a value being entered or just sent
-        widgets = (self.voltage_dial, self.voltage_spinbox, self.current_dial, self.current_spinbox)
-        for w in widgets:
-            w.blockSignals(True)
+        if self.editing_in_progress():
+            return          # never overwrite a value being entered
+        self._show_reported_setpoints(setpoints.get("voltage"),
+                                      setpoints.get("current"))
+
+    def _show_reported_setpoints(self, voltage, current) -> None:
+        """Put the instrument's own setpoints on the controls, where they win.
+
+        A control this panel has just commanded keeps the commanded value
+        until the instrument is seen to agree with it -- see
+        :meth:`~client.ui.instruments.base.InstrumentPanel.may_show`. The two
+        are reconciled separately, so setting the voltage does not freeze the
+        current field as well.
+        """
+        if voltage is not None and self.may_show("voltage", voltage):
+            self._show_setpoint(self.voltage_dial, self.voltage_spinbox, voltage)
+        if current is not None and self.may_show("current", current):
+            self._show_setpoint(self.current_dial, self.current_spinbox, current)
+
+    @staticmethod
+    def _show_setpoint(dial, spinbox, value: float) -> None:
+        """Move the knob and the field together, commanding nothing.
+
+        blockSignals is what stops the display writing back to the
+        instrument; without it, showing a reading would send it.
+        """
+        for widget in (dial, spinbox):
+            widget.blockSignals(True)
         try:
-            voltage = setpoints.get("voltage")
-            current = setpoints.get("current")
-            if voltage is not None:
-                self.voltage_spinbox.setValue(voltage)
-                self.voltage_dial.setValue(int(voltage * 10))
-            if current is not None:
-                self.current_spinbox.setValue(current)
-                self.current_dial.setValue(int(current * 10))
+            dial.setValue(int(value * 10))
+            spinbox.setValue(value)
         finally:
-            for w in widgets:
-                w.blockSignals(False)
+            for widget in (dial, spinbox):
+                widget.blockSignals(False)
 
     def _show_setpoints(self, equipment_id=None):
         """Pre-extraction name; the read-back is asynchronous now."""
@@ -534,12 +544,10 @@ class PowerSupplyPanel(InstrumentPanel):
 
     def _apply_readings(self, readings: Dict[str, Any]):
         voltage_actual = readings.get("voltage_actual", 0.0)
-        voltage_set = readings.get("voltage_set", 0.0)
         current_actual = readings.get("current_actual", 0.0)
-        current_set = readings.get("current_set", 0.0)
 
-        # Show the setpoints on the knobs without triggering the send slots
-        # -- and not at all while the operator is typing into them.
+        # Show the setpoints on the knobs -- but not while the operator is
+        # typing into them.
         #
         # This panel polls ten times a second. Writing the instrument's
         # current setpoint into the field someone is part-way through typing
@@ -547,19 +555,12 @@ class PowerSupplyPanel(InstrumentPanel):
         # the next reading overwrites it, and what is finally committed is
         # whatever survived the race. blockSignals stops the send, not the
         # overwrite.
-        if not self.editing_in_progress() and not self._setpoint_in_flight():
-            for widget in (self.voltage_dial, self.voltage_spinbox,
-                           self.current_dial, self.current_spinbox):
-                widget.blockSignals(True)
-            try:
-                self.voltage_dial.setValue(int(voltage_set * 10))
-                self.voltage_spinbox.setValue(voltage_set)
-                self.current_dial.setValue(int(current_set * 10))
-                self.current_spinbox.setValue(current_set)
-            finally:
-                for widget in (self.voltage_dial, self.voltage_spinbox,
-                               self.current_dial, self.current_spinbox):
-                    widget.blockSignals(False)
+        #
+        # A reading older than a command this panel sent is handled a layer
+        # down, by reconciling against what was commanded.
+        if not self.editing_in_progress():
+            self._show_reported_setpoints(readings.get("voltage_set"),
+                                          readings.get("current_set"))
 
         self.voltage_display.setText(f"{voltage_actual:.{self.voltage_decimals}f} V")
         self.voltage_gauge.set_value(voltage_actual)
@@ -577,9 +578,11 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_data.append(current_actual)
         self.time_data.append(len(self.time_data))
 
-        # Only if the operator has not just clicked the button.
-        if time.monotonic() - self._last_output_command_time > 2.0:
-            self._show_output_state(readings.get("output_enabled"))
+        # Unless the operator has just clicked the button and the supply has
+        # not caught up: until it agrees, the click is what is true.
+        output_enabled = readings.get("output_enabled")
+        if self.may_show("output", output_enabled):
+            self._show_output_state(output_enabled)
 
         if readings.get("in_cv_mode"):
             self.cv_indicator.setText("CV: ON")
@@ -603,43 +606,40 @@ class PowerSupplyPanel(InstrumentPanel):
         self.voltage_spinbox.blockSignals(True)
         self.voltage_spinbox.setValue(voltage)
         self.voltage_spinbox.blockSignals(False)
-        self._send_voltage_command(voltage)
+        self._command_voltage(voltage)
 
     def _on_voltage_spinbox_changed(self, value):
         self.voltage_dial.blockSignals(True)
         self.voltage_dial.setValue(int(value * 10))
         self.voltage_dial.blockSignals(False)
-        self._send_voltage_command(value)
+        self._command_voltage(value)
 
     def _on_current_dial_changed(self, value):
         current = value / 10.0
         self.current_spinbox.blockSignals(True)
         self.current_spinbox.setValue(current)
         self.current_spinbox.blockSignals(False)
-        self._send_current_command(current)
+        self._command_current(current)
 
     def _on_current_spinbox_changed(self, value):
         self.current_dial.blockSignals(True)
         self.current_dial.setValue(int(value * 10))
         self.current_dial.blockSignals(False)
-        self._send_current_command(value)
+        self._command_current(value)
 
-    #: How long after commanding a setpoint to ignore what readings say it
-    #: is. Sending is asynchronous and the panel keeps polling, so a reading
-    #: already in flight carries the setpoint from before the command and
-    #: arrives after it.
-    #:
-    #: Scrolling a dial across a wide range made that visible and dangerous:
-    #: the supply reached 32.49 V while a stale reading put 22.19 back in the
-    #: field, so the two disagreed -- and the next click then sent 22.19,
-    #: actually dropping the supply ten volts to match the display. The
-    #: display appeared to "correct itself", by moving the instrument.
-    SETPOINT_SETTLE_SEC = 2.0
+    # Intent is recorded here, synchronously, rather than inside the send
+    # coroutines below. An @asyncSlot only schedules: by the time its body
+    # runs, the poll may already have applied a reading taken before the
+    # operator moved the control, which is the stale value we are guarding
+    # against in the first place.
 
-    def _setpoint_in_flight(self) -> bool:
-        """Whether a setpoint was commanded too recently to trust a reading."""
-        return (time.monotonic() - self._last_setpoint_command_time
-                < self.SETPOINT_SETTLE_SEC)
+    def _command_voltage(self, voltage: float) -> None:
+        self.commanded("voltage", voltage)
+        self._send_voltage_command(voltage)
+
+    def _command_current(self, current: float) -> None:
+        self.commanded("current", current)
+        self._send_current_command(current)
 
     #: Readings that must agree before the output indicator changes. One
     #: contrary reading is not enough to say a live supply has gone off.
@@ -676,14 +676,12 @@ class PowerSupplyPanel(InstrumentPanel):
 
     def _on_output_toggled(self, checked):
         self.output_button.setText("Output: ON" if checked else "Output: OFF")
+        self.commanded("output", bool(checked))
+        self._output_state_streak = 0
         self._send_output_command(bool(checked))
 
     @qasync.asyncSlot(float)
     async def _send_voltage_command(self, voltage: float):
-        # Marked before the send, not after: the window has to cover the
-        # readings already in flight, which is where the stale value comes
-        # from.
-        self._last_setpoint_command_time = time.monotonic()
         if not (self.equipment and self.client):
             return
         try:
@@ -696,10 +694,6 @@ class PowerSupplyPanel(InstrumentPanel):
 
     @qasync.asyncSlot(float)
     async def _send_current_command(self, current: float):
-        # Marked before the send, not after: the window has to cover the
-        # readings already in flight, which is where the stale value comes
-        # from.
-        self._last_setpoint_command_time = time.monotonic()
         if not (self.equipment and self.client):
             return
         try:
@@ -715,7 +709,6 @@ class PowerSupplyPanel(InstrumentPanel):
         if not (self.equipment and self.client):
             return
         try:
-            self._last_output_command_time = time.monotonic()
             await call_blocking(
                 self.client.send_command, self.equipment.equipment_id,
                 "set_output", {"enabled": enabled, "channel": 1},

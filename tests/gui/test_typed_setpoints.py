@@ -97,10 +97,26 @@ def loop():
 
 
 def settle(qapp, loop, times=4):
-    """Let Qt deliver its signals and asyncio run what they scheduled."""
+    """Let Qt deliver its signals and asyncio *finish* what they scheduled.
+
+    Waiting a fixed number of turns is a race, and this file lost it about
+    half the time: ``call_blocking`` is ``asyncio.to_thread``, so a send
+    runs on a worker thread, and whether it has finished after four
+    zero-length sleeps depends on how the scheduler felt. The failures were
+    "stepping sent nothing" and "a scrolled value is sent once" -- both
+    assertions that a command arrived, failing because it had not arrived
+    *yet*. Running the pending tasks to completion makes it a fact rather
+    than a likelihood.
+    """
     for _ in range(times):
         qapp.processEvents()
-        loop.run_until_complete(asyncio.sleep(0))
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        if pending:
+            loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True))
+        else:
+            loop.run_until_complete(asyncio.sleep(0))
+    qapp.processEvents()
 
 
 @pytest.fixture
@@ -300,21 +316,126 @@ class TestAStaleReadingCannotMoveTheSetpoint:
             "sent it and dropped the supply")
 
     def test_the_field_tracks_the_instrument_again_once_things_settle(
-            self, panel, qapp, loop, monkeypatch):
+            self, panel, qapp, loop):
+        """A knob turned on the instrument itself must reach the panel.
+
+        Nothing is faked here: the first reading confirms what was
+        commanded, which is what hands authority back to the instrument.
+        """
         panel.voltage_spinbox.setValue(12.0)
         settle(qapp, loop)
-        # As if the last command were long ago: a knob turned on the
-        # instrument itself must still reach the panel.
-        monkeypatch.setattr(panel, "_setpoint_in_flight", lambda: False)
-        panel._apply_readings({"voltage_set": 5.0, "current_set": 1.0,
-                               "voltage_actual": 5.0, "current_actual": 0.0,
-                               "output_enabled": True})
+        reading = {"voltage_set": 12.0, "current_set": 1.0,
+                   "voltage_actual": 12.0, "current_actual": 0.0,
+                   "output_enabled": True}
+        panel._apply_readings(reading)          # the supply agrees
+        panel._apply_readings({**reading, "voltage_set": 5.0,
+                               "voltage_actual": 5.0})   # then someone turns it
         qapp.processEvents()
         assert panel.voltage_spinbox.value() == pytest.approx(5.0)
 
-    def test_the_window_opens_on_sending_not_on_the_reply(self, panel, qapp, loop):
+    def test_the_guard_closes_on_sending_not_on_the_reply(self, panel, qapp, loop):
         """The stale reading is already in flight when the command is sent."""
-        assert panel._setpoint_in_flight() is False
+        assert "voltage" not in panel._pending
         panel.voltage_spinbox.setValue(3.0)
+        assert panel._pending["voltage"].value == pytest.approx(3.0), (
+            "recorded only once the send coroutine ran; by then a reading "
+            "taken beforehand can already have been applied")
+
+
+class TestReconcilingAgainstWhatWasCommanded:
+    """What the pending-state model buys over a fixed ignore-readings window.
+
+    The panel was patched three times, on three widgets, each with its own
+    two-second window after a command. A window ignores the instrument for a
+    fixed time whether or not the command landed. These are the cases where
+    that is the wrong answer.
+    """
+
+    def test_one_confirming_reading_hands_control_straight_back(
+            self, panel, qapp, loop):
+        """No waiting out a timer: agreement is what ends the guard."""
+        panel.voltage_spinbox.setValue(4.0)
         settle(qapp, loop)
-        assert panel._setpoint_in_flight() is True
+        panel._apply_readings({"voltage_set": 4.0, "voltage_actual": 4.0,
+                               "current_set": 1.0, "current_actual": 0.0})
+        assert "voltage" not in panel._pending
+
+    def test_a_supply_that_rounds_still_counts_as_agreeing(self, panel, qapp, loop):
+        """Ask a 0.1 V supply for 22.19 and it reports 22.2."""
+        panel.voltage_spinbox.setValue(22.19)
+        settle(qapp, loop)
+        panel._apply_readings({"voltage_set": 22.2, "voltage_actual": 22.2,
+                               "current_set": 1.0, "current_actual": 0.0})
+        assert "voltage" not in panel._pending, (
+            "an exact comparison never confirms, so every command times out")
+
+    def test_setting_the_voltage_does_not_freeze_the_current_field(
+            self, panel, qapp, loop):
+        """One window covered both controls; the current reading is not stale."""
+        panel.voltage_spinbox.setValue(30.0)
+        settle(qapp, loop)
+        panel._apply_readings({"voltage_set": 1.0, "voltage_actual": 1.0,
+                               "current_set": 2.5, "current_actual": 0.0})
+        qapp.processEvents()
+        assert panel.voltage_spinbox.value() == pytest.approx(30.0)
+        assert panel.current_spinbox.value() == pytest.approx(2.5)
+
+    def test_a_command_the_supply_never_took_stops_being_believed(
+            self, panel, qapp, loop, caplog, monkeypatch):
+        """Showing an unreachable setpoint for ever would be the worse bug.
+
+        A window hides it for two seconds and then snaps with no
+        explanation. Here the instrument wins and the log says why.
+        """
+        import logging
+
+        panel.voltage_spinbox.setValue(99.0)    # above what the supply allows
+        settle(qapp, loop)
+        pending = panel._pending["voltage"]
+        monkeypatch.setitem(
+            panel._pending, "voltage",
+            pending._replace(at=pending.at - panel.PENDING_TIMEOUT_SEC - 1))
+
+        with caplog.at_level(logging.WARNING,
+                             logger="client.ui.instruments.base"):
+            panel._apply_readings({"voltage_set": 30.0, "voltage_actual": 30.0,
+                                   "current_set": 1.0, "current_actual": 0.0})
+        qapp.processEvents()
+
+        assert panel.voltage_spinbox.value() == pytest.approx(30.0)
+        assert any("still reads" in r.message for r in caplog.records), (
+            "the panel silently gave up on a command that never landed")
+
+    def test_selecting_another_instrument_forgets_what_was_commanded(
+            self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(15.0)
+        settle(qapp, loop)
+        assert panel._pending
+        panel.set_instrument(None, None)
+        assert panel._pending == {}, (
+            "a command to one supply would suppress the next one's readings")
+
+
+class TestTheOutputButtonUsesTheSameModel:
+    def test_a_stale_off_does_not_undo_a_click(self, panel, qapp, loop):
+        panel.output_button.setChecked(True)
+        panel._on_output_toggled(True)
+        settle(qapp, loop)
+        for _ in range(panel.OUTPUT_STATE_CONFIRMATIONS + 1):
+            panel._apply_readings({"voltage_set": 1.0, "voltage_actual": 1.0,
+                                   "current_set": 1.0, "current_actual": 0.0,
+                                   "output_enabled": False})
+        assert panel.output_button.isChecked() is True
+
+    def test_once_the_supply_agrees_it_can_report_a_real_change(
+            self, panel, qapp, loop):
+        panel.output_button.setChecked(True)
+        panel._on_output_toggled(True)
+        settle(qapp, loop)
+        reading = {"voltage_set": 1.0, "voltage_actual": 1.0,
+                   "current_set": 1.0, "current_actual": 0.0}
+        panel._apply_readings({**reading, "output_enabled": True})
+        for _ in range(panel.OUTPUT_STATE_CONFIRMATIONS):
+            panel._apply_readings({**reading, "output_enabled": False})
+        assert panel.output_button.isChecked() is False, (
+            "a supply that trips off must still be able to say so")

@@ -13,7 +13,8 @@ its own window (issue #248) is reparenting rather than a rewrite.
 """
 
 import logging
-from typing import Any, Dict, Optional
+import time
+from typing import Any, Dict, NamedTuple, Optional
 
 import qasync
 from PyQt6.QtCore import QTimer, pyqtSignal
@@ -26,6 +27,13 @@ from client.utils.inflight import (READINGS_ABANDONED_AFTER, claim_slot,
                                    release_slot)
 
 logger = logging.getLogger(__name__)
+
+
+class Commanded(NamedTuple):
+    """What a panel last asked one control to be, and when it asked."""
+
+    value: Any
+    at: float
 
 
 def run_now_or_soon(coro):
@@ -109,6 +117,9 @@ class InstrumentPanel(QWidget):
         #: and a knob turn must not queue behind a background fetch.
         self._commands_in_flight = 0
         self._last_command_finished_at = 0.0
+        #: Controls this panel has commanded and the instrument has not yet
+        #: been seen to agree with. See :meth:`commanded`.
+        self._pending: Dict[str, Commanded] = {}
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self._poll)
@@ -185,6 +196,9 @@ class InstrumentPanel(QWidget):
         """
         self.stop()
         self.commit_typed_values_on_enter_only()
+        # What was commanded belonged to the instrument being left. Carried
+        # over, it would suppress the new one's readings.
+        self.forget_commanded()
         self.equipment = equipment
         self.client = client
         self.capabilities = {}
@@ -222,6 +236,99 @@ class InstrumentPanel(QWidget):
         if focused is None:
             return False
         return focused is self or self.isAncestorOf(focused)
+
+    # ------------------------------------------------------------------ #
+    # Commands against readings
+    # ------------------------------------------------------------------ #
+    #
+    # A panel both commands an instrument and polls it, and the two are not
+    # ordered against each other. Sending is asynchronous; the poll keeps
+    # running; so a reading taken *before* a command routinely arrives
+    # *after* it, carrying the value from before. Believing it walks the
+    # control back to where it was -- and on the next operator nudge the
+    # panel sends that stale value, moving the instrument to match the
+    # display. The supply panel hit this three times, on three widgets, and
+    # was patched three times with a two-second "ignore readings" window per
+    # widget.
+    #
+    # A window is the wrong shape for it. It ignores the instrument for a
+    # fixed time whether or not the command landed, so a knob turned on the
+    # front panel cannot reach the display for two seconds, and a command
+    # the instrument *refused* is hidden for two seconds and then snaps.
+    #
+    # What the panel actually knows is narrower: "I asked for this and have
+    # not yet seen the instrument agree." That is what these record. A
+    # reading that confirms the commanded value clears the entry at once --
+    # no waiting -- and readings rule again. A reading that contradicts it
+    # is ignored until the instrument has had long enough to have taken it,
+    # after which the instrument wins and says so in the log, because a
+    # command that never landed is something the operator needs to see.
+
+    #: How long to keep believing the panel over the instrument while the
+    #: two disagree. Long enough to cover a command in flight and the
+    #: readings already in flight behind it; short enough that a command
+    #: that never landed does not stay hidden.
+    PENDING_TIMEOUT_SEC = 3.0
+
+    #: How far a reading may sit from what was commanded and still count as
+    #: agreement. Supplies round to their own resolution -- ask a 0.1 V
+    #: supply for 22.19 and it reports 22.2 -- and an exact comparison would
+    #: never confirm, leaving every command to time out instead.
+    #:
+    #: Erring loose is the safe direction. Confirming too readily only ever
+    #: shows what the instrument reports, which is the truth; confirming too
+    #: reluctantly keeps showing a value the instrument does not hold, which
+    #: is the bug this exists to stop.
+    CONFIRM_TOLERANCE = 0.1
+
+    def commanded(self, control: str, value: Any) -> None:
+        """Record that this panel has asked ``control`` to become ``value``.
+
+        Call it synchronously, at the moment the operator acts, rather than
+        inside the coroutine that sends: the readings that carry the stale
+        value are already in flight by then.
+        """
+        self._pending[control] = Commanded(value, time.monotonic())
+
+    def may_show(self, control: str, reported: Any) -> bool:
+        """Whether a reading may be shown, or the commanded value still stands.
+
+        Consumes one reading for that control, so call it once per reading:
+        it is what clears the pending entry when the instrument agrees.
+        """
+        pending = self._pending.get(control)
+        if pending is None:
+            return True                 # nothing commanded; the instrument rules
+        if reported is None:
+            return False                # says nothing, so changes nothing
+        if self._confirms(pending.value, reported):
+            del self._pending[control]
+            return True
+        if time.monotonic() - pending.at >= self.PENDING_TIMEOUT_SEC:
+            del self._pending[control]
+            logger.warning(
+                f"{self.describe()}: asked {control} for {pending.value!r} and it "
+                f"still reads {reported!r} after {self.PENDING_TIMEOUT_SEC:g}s; "
+                f"showing what the instrument says"
+            )
+            return True
+        return False
+
+    def forget_commanded(self, control: Optional[str] = None) -> None:
+        """Drop pending state -- for one control, or all of them."""
+        if control is None:
+            self._pending.clear()
+        else:
+            self._pending.pop(control, None)
+
+    def _confirms(self, wanted: Any, reported: Any) -> bool:
+        """Whether a reading agrees with what was commanded."""
+        if isinstance(wanted, bool) or isinstance(reported, bool):
+            return bool(reported) is bool(wanted)
+        try:
+            return abs(float(reported) - float(wanted)) <= self.CONFIRM_TOLERANCE
+        except (TypeError, ValueError):
+            return reported == wanted
 
     async def _bind(self, equipment: Equipment, client) -> None:
         """Range the controls from the instrument's capabilities, then its settings."""
