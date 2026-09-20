@@ -12,9 +12,10 @@ Panels are self-contained -- own client, own timer -- so detaching one into
 its own window (issue #248) is reparenting rather than a rewrite.
 """
 
+import inspect
 import logging
 import time
-from typing import Any, Dict, NamedTuple, Optional
+from typing import Any, Dict, NamedTuple, Optional, Set
 
 import qasync
 from PyQt6.QtCore import QTimer, pyqtSignal
@@ -120,6 +121,10 @@ class InstrumentPanel(QWidget):
         #: Controls this panel has commanded and the instrument has not yet
         #: been seen to agree with. See :meth:`commanded`.
         self._pending: Dict[str, Commanded] = {}
+        #: The value each control should end up at, and which controls have
+        #: a write in flight. See :meth:`write_latest`.
+        self._write_targets: Dict[str, Any] = {}
+        self._writing: Set[str] = set()
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self._poll)
@@ -275,11 +280,20 @@ class InstrumentPanel(QWidget):
     #: supply for 22.19 and it reports 22.2 -- and an exact comparison would
     #: never confirm, leaving every command to time out instead.
     #:
-    #: Erring loose is the safe direction. Confirming too readily only ever
-    #: shows what the instrument reports, which is the truth; confirming too
-    #: reluctantly keeps showing a value the instrument does not hold, which
-    #: is the bug this exists to stop.
-    CONFIRM_TOLERANCE = 0.1
+    #: It has to sit in a window with a floor and a ceiling, and the first
+    #: version of this got the ceiling wrong.
+    #:
+    #: The floor is half the instrument's resolution: 0.05 for the 0.1 V
+    #: setpoints these supplies store. Below that, rounding never confirms.
+    #:
+    #: The ceiling is the smallest step the operator can command, which for
+    #: a dial notch is 0.10. At 0.1 the tolerance *equalled* the notch, so
+    #: a reading exactly one notch behind counted as agreement -- and by
+    #: floating point it did so about half the time, which is why the
+    #: mismatch was intermittent. Accepting it wrote the stale value back
+    #: into the field, and since the next notch is computed from the field,
+    #: the scroll rewound a notch each time it happened.
+    CONFIRM_TOLERANCE = 0.06
 
     def commanded(self, control: str, value: Any) -> None:
         """Record that this panel has asked ``control`` to become ``value``.
@@ -313,6 +327,64 @@ class InstrumentPanel(QWidget):
             )
             return True
         return False
+
+    # ------------------------------------------------------------------ #
+    # One write at a time, carrying the latest value
+    # ------------------------------------------------------------------ #
+
+    def write_latest(self, control: str, value: Any, send) -> None:
+        """Send ``value`` for ``control``, coalescing while one is in flight.
+
+        A continuous control sends on every change, and a dial sends on
+        every notch. Fired straight at the server that is one HTTP request
+        per notch, against an instrument that answers one at a time -- a
+        B&K supply on a 9600-baud serial line. Scrolled across a wide
+        range, the requests pile up, the server's bounded instrument queue
+        refuses the overflow, and those notches are simply lost::
+
+            19:25:36,860  Error sending voltage command: 503 Service Unavailable
+            19:25:36,879  Error sending voltage command: 503 Service Unavailable
+            19:25:36,895  Error sending voltage command: 503 Service Unavailable
+            19:25:36,913  Error sending voltage command: 503 Service Unavailable
+            19:25:44,201  asked voltage for 27.1 and it still reads 16.1 after 3s
+
+        The operator had scrolled to 27.1 V and the supply sat at 16.1 V.
+
+        Nothing wanted those intermediate values anyway: while a knob is
+        moving, only where it stops matters. So each control keeps one
+        target and one writer. A change made while a write is out replaces
+        the target rather than starting a second write, and the writer
+        picks it up when the current one returns. Twenty notches become
+        two or three writes, in order, ending on the value the operator
+        actually chose -- which unordered concurrent writes could not
+        guarantee even when none of them was refused.
+        """
+        self._write_targets[control] = value
+        if control in self._writing:
+            return                  # the writer already running will take it
+        self._writing.add(control)
+        run_now_or_soon(self._drain_writes(control, send))
+
+    async def _drain_writes(self, control: str, send) -> None:
+        """Write the target for ``control`` until nothing new has arrived."""
+        try:
+            while control in self._write_targets:
+                value = self._write_targets.pop(control)
+                result = send(value)
+                # The panels' senders are asyncSlots, which return a task.
+                # Awaiting it is what serialises the writes; a plain
+                # function (a test's recorder) has nothing to wait for.
+                if inspect.isawaitable(result):
+                    await result
+        except Exception as e:
+            logger.error(f"{self.describe()}: writing {control} failed: {e}")
+        finally:
+            self._writing.discard(control)
+            self._write_targets.pop(control, None)
+
+    def writes_in_flight(self) -> bool:
+        """Whether any control still has a value on its way to the instrument."""
+        return bool(self._writing)
 
     def forget_commanded(self, control: Optional[str] = None) -> None:
         """Drop pending state -- for one control, or all of them."""

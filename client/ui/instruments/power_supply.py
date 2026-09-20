@@ -635,11 +635,11 @@ class PowerSupplyPanel(InstrumentPanel):
 
     def _command_voltage(self, voltage: float) -> None:
         self.commanded("voltage", voltage)
-        self._send_voltage_command(voltage)
+        self.write_latest("voltage", voltage, self._send_voltage_command)
 
     def _command_current(self, current: float) -> None:
         self.commanded("current", current)
-        self._send_current_command(current)
+        self.write_latest("current", current, self._send_current_command)
 
     #: Readings that must agree before the output indicator changes. One
     #: contrary reading is not enough to say a live supply has gone off.
@@ -691,6 +691,7 @@ class PowerSupplyPanel(InstrumentPanel):
             )
         except Exception as e:
             logger.error(f"Error sending voltage command: {e}")
+            self._say_a_setpoint_was_refused("voltage", voltage, e)
 
     @qasync.asyncSlot(float)
     async def _send_current_command(self, current: float):
@@ -703,6 +704,19 @@ class PowerSupplyPanel(InstrumentPanel):
             )
         except Exception as e:
             logger.error(f"Error sending current command: {e}")
+            self._say_a_setpoint_was_refused("current", current, e)
+
+    def _say_a_setpoint_was_refused(self, what: str, value: float, error) -> None:
+        """Tell the operator, not just the log.
+
+        A refused setpoint used to be a line in a file nobody was reading,
+        and the only sign on screen was the field quietly correcting itself
+        a few seconds later. On a live bench the operator needs to know the
+        supply did not take what they asked for.
+        """
+        self.status_message.emit(
+            f"The supply did not accept {what} {value:g}: {error}"
+        )
 
     @qasync.asyncSlot(bool)
     async def _send_output_command(self, enabled: bool):

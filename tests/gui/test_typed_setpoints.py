@@ -439,3 +439,132 @@ class TestTheOutputButtonUsesTheSameModel:
             panel._apply_readings({**reading, "output_enabled": False})
         assert panel.output_button.isChecked() is False, (
             "a supply that trips off must still be able to say so")
+
+
+class TestScrollingFastDoesNotOutrunTheSupply:
+    """Reported twice from the bench, and the second time with a log.
+
+    Scrolling the dial across a wide range left the field and the supply
+    far apart -- 27.10 V in the field against 16.09 V on the display. It
+    was never a display race. The panel sent one HTTP request per notch at
+    an instrument that answers one at a time on a 9600-baud serial line,
+    the server's bounded queue refused the overflow, and those notches
+    were lost::
+
+        19:25:36,860  Error sending voltage command: 503 Service Unavailable
+        19:25:36,879  Error sending voltage command: 503 Service Unavailable
+        19:25:36,895  Error sending voltage command: 503 Service Unavailable
+        19:25:36,913  Error sending voltage command: 503 Service Unavailable
+        19:25:44,201  asked voltage for 27.1 and it still reads 16.1 after 3s
+
+    Nothing wanted the values passed on the way: while a knob is moving,
+    only where it stops matters.
+    """
+
+    @staticmethod
+    def burst(panel, loop, command, values):
+        """Turn the dial, from inside a running loop.
+
+        The notches have to be issued while the loop runs, as they are in
+        the application: with no loop running the writer runs to completion
+        before the next notch arrives, nothing ever overlaps, and the test
+        would pass against no coalescing at all.
+        """
+        async def scroll():
+            for value in values:
+                command(value)
+            for _ in range(50):
+                others = [t for t in asyncio.all_tasks()
+                          if t is not asyncio.current_task() and not t.done()]
+                if not others:
+                    break
+                await asyncio.gather(*others, return_exceptions=True)
+
+        loop.run_until_complete(scroll())
+
+    NOTCHES = [round(20.0 + n / 10, 2) for n in range(20)]
+
+    def test_a_burst_of_notches_does_not_become_a_burst_of_requests(
+            self, panel, qapp, loop):
+        self.burst(panel, loop, panel._command_voltage, self.NOTCHES)
+
+        sent = voltage_sends(panel.client)
+        assert len(sent) < 20, (
+            f"one request per notch: {len(sent)} of them. This is what the "
+            f"server refused with 503 and what lost the operator's volts")
+
+    def test_the_value_it_settles_on_is_the_one_asked_for_last(
+            self, panel, qapp, loop):
+        """Coalescing is worthless if it keeps the wrong value."""
+        self.burst(panel, loop, panel._command_voltage, self.NOTCHES)
+
+        sent = voltage_sends(panel.client)
+        assert sent[-1] == pytest.approx(21.9), (
+            f"ended on {sent[-1]}, not where the dial stopped")
+
+    def test_the_writes_are_ordered(self, panel, qapp, loop):
+        """Concurrent requests could land in any order, so even with none
+        refused the supply could be left on a value passed through."""
+        self.burst(panel, loop, panel._command_voltage, self.NOTCHES)
+
+        sent = voltage_sends(panel.client)
+        assert sent == sorted(sent), f"written out of order: {sent}"
+
+    def test_a_single_change_is_still_sent_immediately(self, panel, qapp, loop):
+        """Coalescing must not add latency to one deliberate change."""
+        panel._command_voltage(12.5)
+        settle(qapp, loop)
+        assert voltage_sends(panel.client) == [pytest.approx(12.5)]
+
+    def test_voltage_and_current_do_not_block_each_other(self, panel, qapp, loop):
+        panel._command_voltage(12.5)
+        panel._command_current(1.5)
+        settle(qapp, loop)
+        assert voltage_sends(panel.client) == [pytest.approx(12.5)]
+        currents = [p.get("current") for n, p in panel.client.commands
+                    if n == "set_current"]
+        assert currents == [pytest.approx(1.5)]
+
+    def test_nothing_is_left_in_flight_afterwards(self, panel, qapp, loop):
+        panel._command_voltage(12.5)
+        settle(qapp, loop)
+        assert panel.writes_in_flight() is False
+
+
+class TestAReadingOneNotchBehindIsNotAgreement:
+    """The tolerance was set to 0.1 -- exactly one scroll notch.
+
+    So a reading one notch stale counted as the supply agreeing, and by
+    floating point it did about half the time, which is why the mismatch
+    came and went. Accepting it wrote the stale value into the field, and
+    the next notch is computed from the field, so the scroll rewound.
+
+    The tolerance exists for a supply rounding to its own resolution --
+    0.05 at most, for the 0.1 V setpoints these store. It has to be above
+    that and below a notch.
+    """
+
+    def test_a_notch_is_wider_than_the_tolerance(self, panel):
+        assert panel.CONFIRM_TOLERANCE < panel.WHEEL_STEP
+
+    def test_rounding_to_the_instruments_resolution_still_confirms(self, panel):
+        """Ask a 0.1 V supply for 22.19 and it reports 22.2."""
+        assert panel._confirms(22.19, 22.2) is True
+        assert panel._confirms(22.15, 22.2) is True, "half a step is the worst case"
+
+    def test_one_notch_behind_does_not_confirm(self, panel):
+        for i in range(400):
+            stale = round(i * 0.10, 2)
+            asked = round(stale + 0.10, 2)
+            assert panel._confirms(asked, stale) is False, (
+                f"a reading of {stale} counted as agreeing with {asked}")
+
+    def test_a_stale_reading_one_notch_back_leaves_the_field_alone(
+            self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(22.20)
+        settle(qapp, loop)
+        panel._apply_readings({"voltage_set": 22.10, "voltage_actual": 22.1,
+                               "current_set": 1.0, "current_actual": 0.0})
+        qapp.processEvents()
+        assert panel.voltage_spinbox.value() == pytest.approx(22.20), (
+            "the field rewound a notch, and the next notch starts from it")
