@@ -458,6 +458,8 @@ class PowerSupplyPanel(InstrumentPanel):
             )
             return
         setpoints = setpoints or {}
+        if self.editing_in_progress():
+            return          # never overwrite a value being typed
         widgets = (self.voltage_dial, self.voltage_spinbox, self.current_dial, self.current_spinbox)
         for w in widgets:
             w.blockSignals(True)
@@ -529,19 +531,28 @@ class PowerSupplyPanel(InstrumentPanel):
         current_actual = readings.get("current_actual", 0.0)
         current_set = readings.get("current_set", 0.0)
 
-        # Show the setpoints on the knobs without triggering the send slots.
-        for widget in (self.voltage_dial, self.voltage_spinbox,
-                       self.current_dial, self.current_spinbox):
-            widget.blockSignals(True)
-        try:
-            self.voltage_dial.setValue(int(voltage_set * 10))
-            self.voltage_spinbox.setValue(voltage_set)
-            self.current_dial.setValue(int(current_set * 10))
-            self.current_spinbox.setValue(current_set)
-        finally:
+        # Show the setpoints on the knobs without triggering the send slots
+        # -- and not at all while the operator is typing into them.
+        #
+        # This panel polls ten times a second. Writing the instrument's
+        # current setpoint into the field someone is part-way through typing
+        # replaces what they have entered: aiming for 12.5 V, they type "1",
+        # the next reading overwrites it, and what is finally committed is
+        # whatever survived the race. blockSignals stops the send, not the
+        # overwrite.
+        if not self.editing_in_progress():
             for widget in (self.voltage_dial, self.voltage_spinbox,
                            self.current_dial, self.current_spinbox):
-                widget.blockSignals(False)
+                widget.blockSignals(True)
+            try:
+                self.voltage_dial.setValue(int(voltage_set * 10))
+                self.voltage_spinbox.setValue(voltage_set)
+                self.current_dial.setValue(int(current_set * 10))
+                self.current_spinbox.setValue(current_set)
+            finally:
+                for widget in (self.voltage_dial, self.voltage_spinbox,
+                               self.current_dial, self.current_spinbox):
+                    widget.blockSignals(False)
 
         self.voltage_display.setText(f"{voltage_actual:.{self.voltage_decimals}f} V")
         self.voltage_gauge.set_value(voltage_actual)

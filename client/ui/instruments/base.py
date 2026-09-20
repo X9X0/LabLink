@@ -17,7 +17,8 @@ from typing import Any, Dict, Optional
 
 import qasync
 from PyQt6.QtCore import QTimer, pyqtSignal
-from PyQt6.QtWidgets import QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QWidget
+from PyQt6.QtWidgets import (QAbstractSpinBox, QApplication, QDoubleSpinBox,
+                             QGroupBox, QHBoxLayout, QLabel, QWidget)
 
 from client.api.client import call_blocking
 from client.models.equipment import ConnectionStatus, Equipment
@@ -183,6 +184,7 @@ class InstrumentPanel(QWidget):
         the queue took. Twenty seconds, on a bench with a DS1000Z.
         """
         self.stop()
+        self.commit_typed_values_on_enter_only()
         self.equipment = equipment
         self.client = client
         self.capabilities = {}
@@ -190,6 +192,36 @@ class InstrumentPanel(QWidget):
             self.clear_instrument()
             return
         run_now_or_soon(self._bind(equipment, client))
+
+    def commit_typed_values_on_enter_only(self) -> None:
+        """Report a typed value when the operator has finished typing it.
+
+        A QDoubleSpinBox emits ``valueChanged`` on every keystroke by
+        default, so typing 12.5 into a supply's voltage field emitted 1,
+        then 12, then 12.5 -- and the panel sends each one to the
+        instrument. The supply really was commanded to 1 V and 12 V on the
+        way to 12.5. On a live bench that is not a cosmetic bug.
+
+        Turning keyboard tracking off makes Qt emit once, when the edit is
+        finished: Enter, Tab, focus leaving the field, or a press of the
+        arrows or step buttons. Applied here rather than in each panel so a
+        panel written later cannot forget it, and at binding time because
+        that is the moment a panel becomes able to command hardware.
+        """
+        for box in self.findChildren(QAbstractSpinBox):
+            box.setKeyboardTracking(False)
+
+    def editing_in_progress(self) -> bool:
+        """Whether the operator is part-way through typing a value.
+
+        Polled readings overwrite the setpoint widgets, which while someone
+        is typing replaces what they have entered so far -- so a half-typed
+        number could be left in the field and then committed.
+        """
+        focused = QApplication.focusWidget()
+        if focused is None:
+            return False
+        return focused is self or self.isAncestorOf(focused)
 
     async def _bind(self, equipment: Equipment, client) -> None:
         """Range the controls from the instrument's capabilities, then its settings."""
