@@ -66,6 +66,9 @@ class PowerSupplyPanel(InstrumentPanel):
         self._last_output_command_time = 0.0
         #: Consecutive readings that disagree with the indicator.
         self._output_state_streak = 0
+        #: When a setpoint was last commanded, so a reading older than it
+        #: cannot move the controls back to what they said before.
+        self._last_setpoint_command_time = 0.0
 
         super().__init__(parent)
 
@@ -462,8 +465,8 @@ class PowerSupplyPanel(InstrumentPanel):
             )
             return
         setpoints = setpoints or {}
-        if self.editing_in_progress():
-            return          # never overwrite a value being typed
+        if self.editing_in_progress() or self._setpoint_in_flight():
+            return          # never overwrite a value being entered or just sent
         widgets = (self.voltage_dial, self.voltage_spinbox, self.current_dial, self.current_spinbox)
         for w in widgets:
             w.blockSignals(True)
@@ -544,7 +547,7 @@ class PowerSupplyPanel(InstrumentPanel):
         # the next reading overwrites it, and what is finally committed is
         # whatever survived the race. blockSignals stops the send, not the
         # overwrite.
-        if not self.editing_in_progress():
+        if not self.editing_in_progress() and not self._setpoint_in_flight():
             for widget in (self.voltage_dial, self.voltage_spinbox,
                            self.current_dial, self.current_spinbox):
                 widget.blockSignals(True)
@@ -621,6 +624,23 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_dial.blockSignals(False)
         self._send_current_command(value)
 
+    #: How long after commanding a setpoint to ignore what readings say it
+    #: is. Sending is asynchronous and the panel keeps polling, so a reading
+    #: already in flight carries the setpoint from before the command and
+    #: arrives after it.
+    #:
+    #: Scrolling a dial across a wide range made that visible and dangerous:
+    #: the supply reached 32.49 V while a stale reading put 22.19 back in the
+    #: field, so the two disagreed -- and the next click then sent 22.19,
+    #: actually dropping the supply ten volts to match the display. The
+    #: display appeared to "correct itself", by moving the instrument.
+    SETPOINT_SETTLE_SEC = 2.0
+
+    def _setpoint_in_flight(self) -> bool:
+        """Whether a setpoint was commanded too recently to trust a reading."""
+        return (time.monotonic() - self._last_setpoint_command_time
+                < self.SETPOINT_SETTLE_SEC)
+
     #: Readings that must agree before the output indicator changes. One
     #: contrary reading is not enough to say a live supply has gone off.
     OUTPUT_STATE_CONFIRMATIONS = 2
@@ -660,6 +680,10 @@ class PowerSupplyPanel(InstrumentPanel):
 
     @qasync.asyncSlot(float)
     async def _send_voltage_command(self, voltage: float):
+        # Marked before the send, not after: the window has to cover the
+        # readings already in flight, which is where the stale value comes
+        # from.
+        self._last_setpoint_command_time = time.monotonic()
         if not (self.equipment and self.client):
             return
         try:
@@ -672,6 +696,10 @@ class PowerSupplyPanel(InstrumentPanel):
 
     @qasync.asyncSlot(float)
     async def _send_current_command(self, current: float):
+        # Marked before the send, not after: the window has to cover the
+        # readings already in flight, which is where the stale value comes
+        # from.
+        self._last_setpoint_command_time = time.monotonic()
         if not (self.equipment and self.client):
             return
         try:

@@ -268,3 +268,53 @@ class TestScrollingADial:
         scroll(panel, panel.voltage_dial)
         settle(qapp, loop)
         assert voltage_sends(panel.client) == [pytest.approx(1.10)]
+
+
+class TestAStaleReadingCannotMoveTheSetpoint:
+    """Scrolling across a wide range left the field and the supply disagreeing.
+
+    Sending is asynchronous and the panel keeps polling, so a reading
+    already in flight carries the setpoint from before the command and
+    arrives after it. On the bench the supply reached 32.49 V while a stale
+    reading put 22.19 back in the field -- and the next click then sent
+    22.19, dropping the supply ten volts to match the display. It looked
+    like the display correcting itself; it was the instrument moving.
+    """
+
+    def test_a_reading_after_a_command_does_not_move_the_field(self, panel,
+                                                               qapp, loop):
+        panel.voltage_spinbox.setValue(22.19)
+        settle(qapp, loop)
+        # Scrolled up to 32.49, each notch commanding as it went.
+        panel.voltage_spinbox.setValue(32.49)
+        settle(qapp, loop)
+
+        # A reading issued before that command, arriving after it.
+        panel._apply_readings({"voltage_set": 22.19, "current_set": 10.0,
+                               "voltage_actual": 22.19, "current_actual": 0.01,
+                               "output_enabled": True})
+        qapp.processEvents()
+
+        assert panel.voltage_spinbox.value() == pytest.approx(32.49), (
+            "a stale reading moved the field back; the next click would have "
+            "sent it and dropped the supply")
+
+    def test_the_field_tracks_the_instrument_again_once_things_settle(
+            self, panel, qapp, loop, monkeypatch):
+        panel.voltage_spinbox.setValue(12.0)
+        settle(qapp, loop)
+        # As if the last command were long ago: a knob turned on the
+        # instrument itself must still reach the panel.
+        monkeypatch.setattr(panel, "_setpoint_in_flight", lambda: False)
+        panel._apply_readings({"voltage_set": 5.0, "current_set": 1.0,
+                               "voltage_actual": 5.0, "current_actual": 0.0,
+                               "output_enabled": True})
+        qapp.processEvents()
+        assert panel.voltage_spinbox.value() == pytest.approx(5.0)
+
+    def test_the_window_opens_on_sending_not_on_the_reply(self, panel, qapp, loop):
+        """The stale reading is already in flight when the command is sent."""
+        assert panel._setpoint_in_flight() is False
+        panel.voltage_spinbox.setValue(3.0)
+        settle(qapp, loop)
+        assert panel._setpoint_in_flight() is True
