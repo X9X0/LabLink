@@ -25,7 +25,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 try:
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PyQt6.QtGui import QWheelEvent
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import QAbstractSpinBox, QApplication
 
@@ -198,3 +199,72 @@ class TestPollingDoesNotOverwriteWhatIsBeingTyped:
         qapp.processEvents()
         assert panel.client.commands == [], (
             f"displaying a reading sent {panel.client.commands}")
+
+
+def scroll(panel, dial, notches=1, modifier=Qt.KeyboardModifier.NoModifier):
+    """One wheel notch over a dial, delivered the way Qt delivers it.
+
+    Sent to the dial rather than handed to eventFilter directly, so the
+    filter has to actually be installed. Calling the filter by hand would
+    pass even if nothing had hooked it up -- and the handler this replaced
+    was exactly that: correct-looking code that never ran.
+    """
+    centre = QPointF(dial.rect().center())
+    event = QWheelEvent(
+        centre, centre, QPoint(0, 0), QPoint(0, 120 * notches),
+        Qt.MouseButton.NoButton, modifier, Qt.ScrollPhase.NoScrollPhase, False)
+    QApplication.sendEvent(dial, event)
+
+
+class TestScrollingADial:
+    """The step sizes an operator asked for, after Qt's were wrong.
+
+    QAbstractSlider moves by singleStep times the platform's scroll-lines
+    setting -- three here -- and a dial unit is 0.1 V, so a notch moved
+    0.30. It also treats Ctrl and Shift alike, both using pageStep, so Shift
+    could not be finer than Ctrl.
+    """
+
+    def test_a_plain_notch_moves_a_tenth(self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        scroll(panel, panel.voltage_dial)
+        assert panel.voltage_spinbox.value() == pytest.approx(1.10)
+
+    def test_ctrl_moves_a_whole_unit(self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        scroll(panel, panel.voltage_dial,
+               modifier=Qt.KeyboardModifier.ControlModifier)
+        assert panel.voltage_spinbox.value() == pytest.approx(2.00)
+
+    def test_shift_moves_a_hundredth(self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        scroll(panel, panel.voltage_dial,
+               modifier=Qt.KeyboardModifier.ShiftModifier)
+        assert panel.voltage_spinbox.value() == pytest.approx(1.01)
+
+    def test_scrolling_down_goes_down(self, panel, qapp, loop):
+        panel.voltage_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        scroll(panel, panel.voltage_dial, notches=-1)
+        assert panel.voltage_spinbox.value() == pytest.approx(0.90)
+
+    def test_the_current_dial_uses_the_same_steps(self, panel, qapp, loop):
+        panel.current_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        scroll(panel, panel.current_dial)
+        assert panel.current_spinbox.value() == pytest.approx(1.10)
+        scroll(panel, panel.current_dial,
+               modifier=Qt.KeyboardModifier.ShiftModifier)
+        assert panel.current_spinbox.value() == pytest.approx(1.11)
+
+    def test_a_scrolled_value_is_sent_once(self, panel, qapp, loop):
+        """Scrolling is a finished value, so it commands straight away."""
+        panel.voltage_spinbox.setValue(1.00)
+        settle(qapp, loop)
+        panel.client.commands.clear()
+        scroll(panel, panel.voltage_dial)
+        settle(qapp, loop)
+        assert voltage_sends(panel.client) == [pytest.approx(1.10)]

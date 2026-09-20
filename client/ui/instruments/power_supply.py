@@ -13,7 +13,7 @@ from collections import deque
 from typing import Any, Dict
 
 from PyQt6.QtCharts import QChart, QLineSeries, QValueAxis
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (QButtonGroup, QDial, QDoubleSpinBox, QGroupBox,
                              QHBoxLayout, QLabel, QPushButton, QRadioButton,
@@ -159,6 +159,7 @@ class PowerSupplyPanel(InstrumentPanel):
         self.voltage_dial.setNotchesVisible(True)
         self.voltage_dial.setWrapping(False)
         self.voltage_dial.valueChanged.connect(self._on_voltage_dial_changed)
+        self.voltage_dial.installEventFilter(self)
         voltage_layout.addWidget(self.voltage_dial)
         voltage_input = QHBoxLayout()
         voltage_input.addWidget(QLabel("Voltage (V):"))
@@ -180,6 +181,7 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_dial.setNotchesVisible(True)
         self.current_dial.setWrapping(False)
         self.current_dial.valueChanged.connect(self._on_current_dial_changed)
+        self.current_dial.installEventFilter(self)
         current_layout.addWidget(self.current_dial)
         current_input = QHBoxLayout()
         current_input.addWidget(QLabel("Current (A):"))
@@ -772,12 +774,43 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_series.clear()
         self.axis_x.setRange(0, 100)
 
-    def wheelEvent(self, event):
-        """Scrolling over a dial changes its value."""
-        widget = self.childAt(event.position().toPoint())
-        if isinstance(widget, QDial):
-            step = 1 if event.angleDelta().y() > 0 else -1
-            widget.setValue(widget.value() + step)
-            event.accept()
-        else:
-            event.ignore()
+    #: What one notch of the wheel over a dial changes the setpoint by, in
+    #: volts or amps. Plain scrolling is the adjustment wanted most often;
+    #: Ctrl is the coarse one; Shift is finer than the dial itself can go.
+    WHEEL_STEP = 0.10
+    WHEEL_STEP_COARSE = 1.00        # Ctrl
+    WHEEL_STEP_FINE = 0.01          # Shift
+
+    def eventFilter(self, watched, event):
+        """Take the wheel over a dial, because QDial's own handling is wrong
+        for this panel.
+
+        QAbstractSlider moves by singleStep times the platform's
+        scroll-lines setting -- three here -- so one notch moved three dial
+        units, and a dial unit is 0.1 V: 0.30 a notch. It also treats Ctrl
+        and Shift alike, both using pageStep, which is where the 1.0 came
+        from and why Shift could not be finer.
+
+        The panel had a wheelEvent meaning to do this, but it never ran: the
+        dial accepts the event, so it never reaches the parent.
+
+        The step is applied to the spin box, not the dial. The spin box
+        carries two decimals, so Shift reaches 0.01; the dial's integer
+        units stop at 0.1, and it follows along rounded.
+        """
+        if event.type() == QEvent.Type.Wheel and watched in (
+                self.voltage_dial, self.current_dial):
+            box = (self.voltage_spinbox if watched is self.voltage_dial
+                   else self.current_spinbox)
+            modifiers = event.modifiers()
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                step = self.WHEEL_STEP_COARSE
+            elif modifiers & Qt.KeyboardModifier.ShiftModifier:
+                step = self.WHEEL_STEP_FINE
+            else:
+                step = self.WHEEL_STEP
+            if event.angleDelta().y() < 0:
+                step = -step
+            box.setValue(round(box.value() + step, box.decimals()))
+            return True
+        return super().eventFilter(watched, event)
