@@ -30,6 +30,34 @@ from client.ui.instruments.power_supply import PowerSupplyPanel  # noqa: E402
 
 BLOCK_S = 0.3
 
+#: What "it blocked" costs. Every SlowClient call sleeps BLOCK_S, so a
+#: selection that waits on even one of them takes at least that long. The
+#: threshold has to sit between "no blocking call" and "one blocking call",
+#: and the useful evidence is which calls landed on the GUI thread, not the
+#: stopwatch -- see the note on _assert_did_not_block.
+#:
+#: It was BLOCK_S / 2, which is 0.15 s, and a clean run on a loaded machine
+#: measured 0.172 s: the bar was below the honest time, so the test failed
+#: for being busy rather than for blocking.
+BLOCKED_IF_OVER_S = BLOCK_S
+
+
+def _assert_did_not_block(client, elapsed, what):
+    """The GUI thread ran nothing slow.
+
+    Two assertions, and the first is the real one. ``called_on_gui_thread``
+    names every blocking call that happened on the GUI thread, which is the
+    property exactly and does not depend on how fast the machine is. The
+    stopwatch stays as a backstop for blocking that never reaches the client
+    -- a long synchronous computation, say -- with a threshold derived from
+    what the failure costs rather than from an arbitrary fraction of it.
+    """
+    assert client.called_on_gui_thread == [], (
+        f"{what} made {client.called_on_gui_thread} on the GUI thread")
+    assert elapsed < BLOCKED_IF_OVER_S, (
+        f"{what} held the GUI thread for {elapsed:.2f}s without calling the "
+        f"client, so something else on that path blocks")
+
 
 @pytest.fixture(scope="module")
 def qapp():
@@ -146,7 +174,7 @@ def test_binding_returns_before_the_server_answers(qapp, cleanup, panel_cls, kin
         started = time.monotonic()
         panel.set_instrument(_equipment(kind), client)
         elapsed = time.monotonic() - started
-        assert elapsed < BLOCK_S / 2, f"set_instrument blocked for {elapsed:.2f}s"
+        _assert_did_not_block(client, elapsed, "set_instrument")
         assert client.calls == []            # nothing has been asked yet
         await _drain(BLOCK_S * 4)
         # ...and then everything was, off the GUI thread.
@@ -223,7 +251,7 @@ def test_the_shell_selects_without_waiting_on_locks(qapp, cleanup):
         shell.equipment_list_widget.setCurrentRow(1)
         shell._on_equipment_selected()
         elapsed = time.monotonic() - started
-        assert elapsed < BLOCK_S / 2, f"selection blocked the GUI thread for {elapsed:.2f}s"
+        _assert_did_not_block(client, elapsed, "selecting in the shell")
         await _drain(BLOCK_S * 8)
         names = [name for name, _ in client.calls]
         assert "acquire_lock" in names
