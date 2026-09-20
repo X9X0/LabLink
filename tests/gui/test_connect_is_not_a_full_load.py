@@ -201,3 +201,65 @@ class TestTheDiagnosticsPanelDoesNotBlockTheGuiThread:
         source = inspect.getsource(getattr(slot, "__wrapped__", slot))
         assert "claim_slot" in source, (
             "without the guard a slow server queues a refresh per tick")
+
+
+class TestTheStatusBarSaysWhichServerVersion:
+    """Read once at connect, it went stale when the server changed.
+
+    Not a rare case: updating the server is something this client does
+    itself, from the System tab, and the client stays up while the
+    container restarts. On the bench the bar read "LabLink Server v2.1.3"
+    against a server answering 2.4.1 on both /api and /api/system/version.
+    """
+
+    def window(self, qapp):
+        from PyQt6.QtWidgets import QLabel
+
+        from client.ui.main_window import MainWindow
+
+        win = type("W", (), {})()
+        win.server_info_label = QLabel("")
+        win._show_server_identity = MainWindow._show_server_identity.__get__(win)
+        return win
+
+    def test_the_name_and_version_are_shown(self, qapp):
+        win = self.window(qapp)
+        win._show_server_identity({"name": "LabLink Server", "version": "2.4.1"})
+        assert win.server_info_label.text() == "LabLink Server v2.4.1"
+
+    def test_a_later_reading_replaces_an_earlier_one(self, qapp):
+        """The bug, in one assertion: the label must follow the server."""
+        win = self.window(qapp)
+        win._show_server_identity({"name": "LabLink Server", "version": "2.1.3"})
+        win._show_server_identity({"name": "LabLink Server", "version": "2.4.1"})
+        assert win.server_info_label.text() == "LabLink Server v2.4.1"
+
+    def test_a_server_that_gives_no_version_is_still_named(self, qapp):
+        win = self.window(qapp)
+        win._show_server_identity({"name": "LabLink Server"})
+        assert win.server_info_label.text() == "LabLink Server"
+
+    def test_an_empty_answer_does_not_show_the_word_none(self, qapp):
+        win = self.window(qapp)
+        win._show_server_identity(None)
+        assert "None" not in win.server_info_label.text()
+
+    def test_the_version_is_re_read_off_the_gui_thread(self):
+        """A status label is not worth freezing the window for."""
+        import inspect
+
+        from client.ui.main_window import MainWindow
+
+        slot = MainWindow._refresh_server_identity
+        underlying = getattr(slot, "__wrapped__", slot)
+        assert inspect.iscoroutinefunction(underlying)
+        assert "call_blocking" in inspect.getsource(underlying)
+
+    def test_the_periodic_tick_re_reads_it(self):
+        import inspect
+
+        from client.ui.main_window import MainWindow
+
+        source = inspect.getsource(MainWindow.periodic_refresh)
+        assert "_refresh_server_identity" in source, (
+            "nothing re-reads the version, so it stays as it was at connect")

@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QDockWidget, QHBoxLayout, QLabel, QMainWindow,
                              QMenu, QMenuBar, QMessageBox, QPushButton,
                              QStatusBar, QTabWidget, QVBoxLayout, QWidget)
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 from client.ui.acquisition_panel import AcquisitionPanel
 from client.ui.alarm_panel import AlarmPanel
 from client.ui.connection_dialog import ConnectionDialog
@@ -28,6 +28,8 @@ from client.ui.server_selector import ServerSelector
 from client.ui.ssh_deploy_wizard import SSHDeployWizard
 from client.ui.sync_panel import SyncPanel
 from client.ui.test_sequence_panel import TestSequencePanel
+from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 from client.utils.server_manager import get_server_manager
 from client.utils.token_storage import get_token_storage
 from client.ui.theme import save_theme_setting, get_app_stylesheet
@@ -58,6 +60,8 @@ class MainWindow(QMainWindow):
         self.connection_dialog: Optional[ConnectionDialog] = None
         self.login_dialog: Optional[LoginDialog] = None
         self.ws_connected = False
+        #: When the in-flight server-version read started, or None.
+        self._identity_started_at = None
         self.token_storage = get_token_storage()
         self.server_manager = get_server_manager()
 
@@ -486,9 +490,7 @@ class MainWindow(QMainWindow):
                 )
 
                 self.connection_label.setText(f"Connected: {host}:{api_port}")
-                self.server_info_label.setText(
-                    f"{server_info.get('name', 'LabLink')} v{server_info.get('version', '')}"
-                )
+                self._show_server_identity(server_info)
 
                 # Check if server has security enabled
                 security_enabled = server_info.get('security_enabled', True)
@@ -804,6 +806,44 @@ class MainWindow(QMainWindow):
                 current_widget.refresh()
         except Exception as e:
             logger.error(f"Error in periodic refresh: {e}")
+
+        self._refresh_server_identity()
+
+    def _show_server_identity(self, info):
+        """Put the server's name and version in the status bar."""
+        info = info or {}
+        name = info.get("name") or "LabLink"
+        version = info.get("version") or ""
+        self.server_info_label.setText(f"{name} v{version}" if version else name)
+
+    @qasync.asyncSlot()
+    async def _refresh_server_identity(self):
+        """Keep the status bar's server version current.
+
+        It was read once, at connect, and never again -- so it went stale
+        the moment the server changed underneath a running client. That is
+        not a rare case: updating the server is something this client does
+        itself, from the System tab, and the client stays up while the
+        container restarts. On the bench the status bar read "LabLink
+        Server v2.1.3" against a server answering 2.4.1 on both /api and
+        /api/system/version.
+
+        One small GET, off the GUI thread, on the tick that is already
+        running. Failures are ignored on purpose: a version that cannot be
+        re-read is not worth a dialog, and the label keeps what it had.
+        """
+        if not self.client or not self.client.connected:
+            return
+        if not claim_slot(self, "_identity_started_at", REFRESH_ABANDONED_AFTER):
+            return
+        try:
+            info = await call_blocking(self.client.get_server_info)
+        except Exception as e:
+            logger.debug(f"Could not re-read the server version: {e}")
+            return
+        finally:
+            release_slot(self, "_identity_started_at")
+        self._show_server_identity(info)
 
     # ==================== Actions ====================
 
