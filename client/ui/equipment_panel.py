@@ -960,7 +960,7 @@ class EquipmentPanel(QWidget):
             "Remove This Instrument?",
             f"Remove {eq.manufacturer} {eq.model} ({equipment_id}) from the "
             f"equipment list?\n\n"
-            f"{eq.resource_string}\n\n"
+            f"{eq.resource_name}\n\n"
             f"Nothing on the instrument changes. Discovering or connecting it "
             f"again brings it back.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

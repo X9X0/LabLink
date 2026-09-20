@@ -46,7 +46,9 @@ class _Equipment:
     name = "DS1054Z"
     manufacturer = "RIGOL"
     model = "DS1054Z"
-    resource_string = "TCPIP0::192.168.91.37::inst0::INSTR"
+    # resource_name, as the real Equipment dataclass calls it. A fake with
+    # the wrong field name is how the Remove button shipped broken.
+    resource_name = "TCPIP0::192.168.91.37::inst0::INSTR"
     connection_status = ConnectionStatus.CONNECTED
 
 

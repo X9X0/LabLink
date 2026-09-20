@@ -152,21 +152,42 @@ class TestConnectingUsesTheModelsOwnFieldNames:
     """
 
     def test_the_attributes_asked_for_exist(self):
-        """Every attribute connect_equipment reads must be on the model."""
-        import inspect
+        """Every attribute the panel reads off the model must be on it.
+
+        This checked only ``connect_equipment``, via
+        ``inspect.getsource`` on the method. Two things then let the same
+        mistake ship again in ``remove_equipment``: it aliases
+        ``eq = self.selected_equipment`` and read ``eq.resource_string``, and
+        it is wrapped in ``@qasync.asyncSlot()``, so walking the class's
+        functions reaches the decorator's wrapper rather than the handler.
+
+        The Remove button therefore raised AttributeError inside an async
+        slot, which logs and swallows it: the button silently did nothing.
+
+        So this reads the module's own source, which no decorator can hide,
+        and follows the alias.
+        """
         import re
+        from pathlib import Path
 
         from client.models.equipment import Equipment
-        from client.ui.equipment_panel import EquipmentPanel
+        import client.ui.equipment_panel as panel_module
 
-        body = inspect.getsource(EquipmentPanel.connect_equipment)
-        asked = set(re.findall(r"self\.selected_equipment\.(\w+)", body))
-        available = set(Equipment.__dataclass_fields__)
+        source = Path(panel_module.__file__).read_text(encoding="utf-8")
+        available = set(Equipment.__dataclass_fields__) | {
+            name for name in dir(Equipment) if not name.startswith("__")
+        }
 
-        missing = asked - available
+        asked = set(re.findall(r"self\.selected_equipment\.(\w+)", source))
+        for alias in set(re.findall(r"^\s*(\w+)\s*=\s*self\.selected_equipment\s*$",
+                                    source, re.MULTILINE)):
+            asked |= set(re.findall(rf"\b{alias}\.(\w+)\b", source))
+
+        missing = {a for a in asked if a not in available}
         assert not missing, (
-            f"connect_equipment reads {sorted(missing)}, which Equipment does "
-            f"not have; it has {sorted(available)}"
+            f"the panel reads {sorted(missing)} off the selected instrument, "
+            f"which Equipment does not have; it has "
+            f"{sorted(set(Equipment.__dataclass_fields__))}"
         )
 
     def test_a_remembered_instrument_can_be_connected(self):
