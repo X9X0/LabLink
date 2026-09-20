@@ -31,6 +31,28 @@ from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
 logger = logging.getLogger(__name__)
 
 
+def _output_is_on(response: str, resource: str, query: str) -> bool:
+    """Whether an output-state reply means on, saying so when it means neither.
+
+    ``response.strip() in ("1", "ON")`` reads anything unexpected as "off".
+    A supply that is on then appears off in the panel, which is the more
+    dangerous direction to be wrong in, and it is silent -- the operator sees
+    Output OFF with nothing in the log. Replies do come back unexpected: a
+    setpoint write interleaved with a reading can leave the answers out of
+    step, which is what scrolling a dial does.
+    """
+    answer = (response or "").strip().upper()
+    if answer in ("1", "ON", "TRUE"):
+        return True
+    if answer in ("0", "OFF", "FALSE"):
+        return False
+    logger.warning(
+        f"{resource}: {query} answered {response!r}, which is neither on nor "
+        f"off; reporting the output as off"
+    )
+    return False
+
+
 @dataclass(frozen=True)
 class FixedWidthDialect:
     """Field scaling and polarity for one fixed-width protocol variant.
@@ -476,7 +498,18 @@ class BKPowerSupplyBase(BaseEquipment):
 
         # GOUT mirrors SOUT, so its polarity is dialect-specific too.
         gout_response = await self._bk_query("GOUT")
-        output_enabled = gout_response.strip() == self.dialect.sout_on
+        answer = gout_response.strip()
+        output_enabled = answer == self.dialect.sout_on
+        if not output_enabled and answer != self.dialect.sout_off:
+            # Neither of the two answers GOUT is allowed to give. Reporting
+            # that as "off" is a confident lie about a supply that may be
+            # live, and it is indistinguishable in the panel from a real
+            # off, so say so here.
+            logger.warning(
+                f"{self.resource_string}: GOUT answered {answer!r}, which is "
+                f"neither {self.dialect.sout_on!r} nor "
+                f"{self.dialect.sout_off!r}; reporting the output as off"
+            )
 
         # Get setpoints: GETS returns VVVCCC (voltage*10, current*10)
         gets_response = await self._bk_query("GETS")
@@ -826,7 +859,8 @@ class BK9205B(BaseEquipment):
 
         # Query output state
         output_response = await self._query("OUTP?")
-        output_enabled = output_response.strip() in ["1", "ON"]
+        output_enabled = _output_is_on(output_response, self.resource_string,
+                                       "OUTP?")
 
         # Determine CV/CC mode based on actual vs setpoint
         # If actual voltage is close to setpoint, we're in CV mode

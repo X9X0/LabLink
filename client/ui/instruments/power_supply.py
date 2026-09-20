@@ -64,6 +64,8 @@ class PowerSupplyPanel(InstrumentPanel):
         # Don't let readings overwrite the output button for a moment after
         # the operator clicked it.
         self._last_output_command_time = 0.0
+        #: Consecutive readings that disagree with the indicator.
+        self._output_state_streak = 0
 
         super().__init__(parent)
 
@@ -574,11 +576,7 @@ class PowerSupplyPanel(InstrumentPanel):
 
         # Only if the operator has not just clicked the button.
         if time.monotonic() - self._last_output_command_time > 2.0:
-            output_enabled = bool(readings.get("output_enabled", False))
-            self.output_button.blockSignals(True)
-            self.output_button.setChecked(output_enabled)
-            self.output_button.setText("Output: ON" if output_enabled else "Output: OFF")
-            self.output_button.blockSignals(False)
+            self._show_output_state(readings.get("output_enabled"))
 
         if readings.get("in_cv_mode"):
             self.cv_indicator.setText("CV: ON")
@@ -622,6 +620,39 @@ class PowerSupplyPanel(InstrumentPanel):
         self.current_dial.setValue(int(value * 10))
         self.current_dial.blockSignals(False)
         self._send_current_command(value)
+
+    #: Readings that must agree before the output indicator changes. One
+    #: contrary reading is not enough to say a live supply has gone off.
+    OUTPUT_STATE_CONFIRMATIONS = 2
+
+    def _show_output_state(self, reported) -> None:
+        """Move the indicator only once consecutive readings agree.
+
+        A single reading used to flip it. Scrolling a dial interleaves a
+        setpoint write per notch with this panel's 10 Hz poll, and the
+        supply's answer to the output query can come back out of step; the
+        driver reads anything it does not recognise as "off". The operator
+        then sees Output flash OFF on a supply that is still on, which is
+        the more dangerous direction to be wrong in -- it invites touching
+        something live.
+
+        A reading with no output state at all says nothing, so nothing
+        changes; it does not mean off.
+        """
+        if reported is None:
+            return
+        reported = bool(reported)
+        if reported == self.output_button.isChecked():
+            self._output_state_streak = 0
+            return
+        self._output_state_streak += 1
+        if self._output_state_streak < self.OUTPUT_STATE_CONFIRMATIONS:
+            return
+        self._output_state_streak = 0
+        self.output_button.blockSignals(True)
+        self.output_button.setChecked(reported)
+        self.output_button.setText("Output: ON" if reported else "Output: OFF")
+        self.output_button.blockSignals(False)
 
     def _on_output_toggled(self, checked):
         self.output_button.setText("Output: ON" if checked else "Output: OFF")
