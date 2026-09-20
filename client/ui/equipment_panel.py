@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
 from client.api.client import LabLinkClient, call_blocking
 from client.utils.server_manager import get_server_manager
 from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
-                                   release_slot)
+                                   note_missed, release_slot, take_missed)
 
 logger = logging.getLogger(__name__)
 
@@ -503,11 +503,19 @@ class EquipmentPanel(QWidget):
             return
 
         # Skip this tick if the last fan-out has not come back yet -- unless
-        # it has been out so long that it is not coming back.
+        # it has been out so long that it is not coming back. A request that
+        # arrives meanwhile is remembered rather than dropped: connecting an
+        # instrument refreshes the list to show its dot, and colliding with
+        # a periodic refresh used to lose that entirely.
         if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
+            note_missed(self, "_refresh_started_at")
             return
         try:
             await self._refresh_from(connections)
+            while take_missed(self, "_refresh_started_at"):
+                # Terminates because each pass clears the record first and
+                # only a fresh request sets it again.
+                await self._refresh_from(self._connections())
         finally:
             release_slot(self, "_refresh_started_at")
 

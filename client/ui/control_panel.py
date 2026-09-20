@@ -28,7 +28,7 @@ from client.ui.instruments.registry import panel_class_for
 from client.ui.instruments.widgets import (AnalogGauge,  # noqa: F401
                                            ChartWithReadouts, FittedReadout)
 from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
-                                   release_slot)
+                                   note_missed, release_slot, take_missed)
 from client.utils.server_manager import get_server_manager
 
 logger = logging.getLogger(__name__)
@@ -361,13 +361,26 @@ class ControlPanel(QWidget):
         if not connections:
             return
         # Skip this tick if the last fan-out has not come back yet -- unless
-        # it has been out so long that it is not coming back.
+        # it has been out so long that it is not coming back. A request that
+        # arrives meanwhile is remembered rather than dropped: the equipment
+        # panel tells this list when an instrument connects, and colliding
+        # with a refresh already in flight used to lose that entirely.
         if not claim_slot(self, "_list_refresh_started_at", REFRESH_ABANDONED_AFTER):
+            note_missed(self, "_list_refresh_started_at")
             return
         try:
             await self._refresh_list_from(connections)
+            while take_missed(self, "_list_refresh_started_at"):
+                # Terminates because each pass clears the record first and
+                # only a fresh request sets it again.
+                await self._refresh_list_from(self._connections())
         finally:
             release_slot(self, "_list_refresh_started_at")
+
+    #: The name the shell's periodic refresh and its tab-change handler look
+    #: for. Without it this tab was the one panel they skipped: sitting on
+    #: the Control tab, nothing refreshed the list at all.
+    refresh = refresh_equipment_list
 
     async def _refresh_list_from(self, connections):
         """Merge the equipment lists of every given server."""

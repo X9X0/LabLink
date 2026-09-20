@@ -67,3 +67,38 @@ def claim_slot(owner, attribute: str, abandoned_after: float) -> bool:
 def release_slot(owner, attribute: str) -> None:
     """Release a slot taken by :func:`claim_slot`."""
     setattr(owner, attribute, None)
+
+
+# ---------------------------------------------------------------------- #
+# Coalescing
+# ---------------------------------------------------------------------- #
+#
+# Refusing an overlapping request is right for a timer tick: the answer it
+# would have fetched is the one already on its way. It is wrong for a
+# request that follows an event, because the state it is asking about
+# changed *after* the in-flight fetch was sent.
+#
+# Connecting an instrument is exactly that. The handler refreshes the list
+# so the connected dot appears, but if a periodic refresh happened to be in
+# flight the request was dropped and never retried, so the dot did not
+# appear until something else asked -- up to a five-second tick away, or a
+# tab switch. Recording the miss and running once more when the current
+# fetch returns costs one extra pass and makes the list current.
+#
+# Opt-in, and deliberately not folded into claim_slot: the instrument panels
+# guard their readings with the same slot, and there a missed tick really is
+# better dropped than run late.
+
+
+def note_missed(owner, attribute: str) -> None:
+    """Record that a request arrived while ``attribute``'s slot was held."""
+    setattr(owner, f"{attribute}_missed", True)
+
+
+def take_missed(owner, attribute: str) -> bool:
+    """Whether a request was missed, clearing the record."""
+    name = f"{attribute}_missed"
+    missed = bool(getattr(owner, name, False))
+    if missed:
+        setattr(owner, name, False)
+    return missed
