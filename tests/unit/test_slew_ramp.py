@@ -51,7 +51,15 @@ class Supply:
         move = max(-self.step, min(self.step, target - self.value))
         self.value = round(self.value + move, 6)
         self.writes.append(self.value)
+        # A real setter awaits the instrument here, and that is the window
+        # in which another request can arrive. Without somewhere to
+        # interleave, a test cannot reproduce one target overwriting a
+        # newer one and will pass against the bug.
+        await self.midwrite()
         self.ramps.note("voltage", target, self.value, self.set_voltage)
+
+    async def midwrite(self):
+        """Overridden by a test that needs to interleave a request."""
 
 
 async def settle(limit=5.0):
@@ -201,3 +209,71 @@ class TestParametersAreIndependent:
 
         assert state["voltage"] == pytest.approx(5.0)
         assert state["current"] == pytest.approx(3.0)
+
+
+class TestANewTargetSetMidStepIsNotClobbered:
+    """The supply ramped to one notch behind where the dial stopped.
+
+    Watched twice on the bench, both exactly one notch short: "asked
+    voltage for 40.2 and it still reads 39.2", "asked current for 7.2 and
+    it still reads 6.2". The server log showed the target going
+    backwards, after the operator's value had already arrived:
+
+        requested 6.2, limited to 3.57
+        requested 7.2, limited to 3.75   <- the operator's value
+        requested 6.2, limited to 3.58   <- the step that was in flight
+        requested 6.2 ...                   putting the old one back
+
+    Every step goes back through the driver's setter, so it lands in
+    note() again carrying the target that step began with. A request
+    arriving while that write is in flight is newer, and the step's
+    completion used to overwrite it. Always the last notch, because that
+    is the one still in flight when the ramp catches up.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_target_set_during_a_step_wins(self):
+        supply = Supply(value=0.0, step=1.0)
+        fired = []
+
+        async def operator_moves_the_dial():
+            # Inside the write, before it records its own target: the only
+            # interleaving that can produce the clobber.
+            if supply.value >= 2.0 and not fired:
+                fired.append(True)
+                supply.ramps.note("voltage", 9.0, supply.value,
+                                  supply.set_voltage)
+
+        supply.midwrite = operator_moves_the_dial
+        await supply.set_voltage(5.0)
+        await settle()
+
+        assert fired, "the test never interleaved anything"
+        assert supply.value == pytest.approx(9.0), (
+            f"ended at {supply.value}; the step in flight put its own older "
+            f"target back over the one that arrived during it")
+
+    @pytest.mark.asyncio
+    async def test_the_ramp_still_reaches_an_uninterrupted_target(self):
+        """The guard must not stop an ordinary ramp finishing."""
+        supply = Supply(value=0.0, step=1.0)
+        await supply.set_voltage(4.0)
+        await settle()
+        assert supply.value == pytest.approx(4.0)
+        assert supply.ramps.travelling() is False
+
+    @pytest.mark.asyncio
+    async def test_a_continuation_does_not_resurrect_a_finished_target(self):
+        supply = Supply(value=0.0, step=1.0)
+        await supply.set_voltage(2.0)
+        await settle()
+        assert supply.ramps.target("voltage") is None, (
+            "the ramp left its target behind after arriving")
+
+    @pytest.mark.asyncio
+    async def test_stopping_clears_the_continuation_mark(self):
+        supply = Supply(value=0.0, step=1.0)
+        await supply.set_voltage(50.0)
+        await asyncio.sleep(0.12)
+        supply.ramps.stop()
+        assert supply.ramps._continuing == {}

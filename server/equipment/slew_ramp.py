@@ -58,6 +58,12 @@ class SlewRamps:
         self._describe = describe
         self._targets: Dict[str, float] = {}
         self._tasks: Dict[str, asyncio.Task] = {}
+        #: For a parameter mid-step, the exact target that step is
+        #: re-applying. Keyed on the value and not merely "a step is in
+        #: flight": a request that arrives during a step is the operator's
+        #: and must be honoured, and a flag cannot tell the two apart --
+        #: it would discard the very thing it is meant to protect.
+        self._continuing: Dict[str, float] = {}
 
     def note(
         self,
@@ -74,6 +80,29 @@ class SlewRamps:
             written: what actually went to the instrument.
             again: re-applies the target, normally the driver's own setter.
         """
+        if self._continuing.get(parameter) == target:
+            # This is the ramp re-applying a target it already had, not
+            # somebody asking for a new one -- every step goes back
+            # through the driver's setter, which lands here again.
+            #
+            # If the operator moved the control while this step was in
+            # flight, the target is now theirs and this call must not put
+            # the old one back. It did, and the supply ramped to where the
+            # dial had been one notch ago:
+            #
+            #   requested 6.2, limited to 3.57
+            #   requested 7.2, limited to 3.75   <- the operator's value
+            #   requested 6.2, limited to 3.58   <- the step that was in
+            #   requested 6.2 ...                   flight, overwriting it
+            #
+            # Always exactly one notch short, because it is always the
+            # last notch that gets clobbered.
+            if self._targets.get(parameter) != target:
+                return                  # superseded; leave the new one alone
+            if self._reached(target, written):
+                self._targets.pop(parameter, None)
+            return
+
         if self._reached(target, written):
             # Arrived. Clearing the target is what stops a running ramp;
             # cancelling would mean a step cancelling the task it is
@@ -106,7 +135,14 @@ class SlewRamps:
                     )
                     self._targets.pop(parameter, None)
                     return
-                await again(target)
+                # Marked for the duration of the write, so the note() this
+                # setter makes on its way out knows it is this ramp
+                # continuing rather than a fresh request.
+                self._continuing[parameter] = target
+                try:
+                    await again(target)
+                finally:
+                    self._continuing.pop(parameter, None)
         except asyncio.CancelledError:
             self._targets.pop(parameter, None)
             raise
@@ -151,6 +187,7 @@ class SlewRamps:
         names = [parameter] if parameter is not None else list(self._tasks)
         for name in names:
             self._targets.pop(name, None)
+            self._continuing.pop(name, None)
             task = self._tasks.pop(name, None)
             if task is not None and not task.done():
                 task.cancel()
