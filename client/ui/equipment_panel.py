@@ -3,6 +3,7 @@
 import asyncio
 import qasync
 import logging
+import time
 from typing import Dict, List, Optional, Set
 
 from models.equipment import ConnectionStatus, Equipment
@@ -550,14 +551,41 @@ class EquipmentPanel(QWidget):
         self._update_equipment_list_widget()
         self._report_unreachable(unreachable)
 
+    #: Longest a single server may take to list its instruments. Above the
+    #: client's own 10s request timeout, so a server that merely answers
+    #: slowly still gets to answer, and well under the 45s after which the
+    #: in-flight guard assumes the whole refresh is lost.
+    LIST_TIMEOUT_SEC = 20.0
+
     async def _list_equipment_from(self, server_name, client):
         """List one server's instruments, reporting rather than raising.
 
         Returned as a triple so the caller can keep the rows it did get and
         still say which servers went quiet.
+
+        Bounded, because on the bench this fan-out has hung long enough for
+        the in-flight guard to give up on it at 45s, holding the slot and
+        stalling every later refresh. The request layer already applies a
+        10s timeout, so whatever caused that was not a slow reply, and a
+        wait with no limit on it is worth removing whether or not it is the
+        cause. The name of the server that ran out of time is logged --
+        that is the thing worth knowing next time.
         """
+        started = time.monotonic()
         try:
-            return server_name, await call_blocking(client.list_equipment), None
+            listed = await asyncio.wait_for(
+                call_blocking(client.list_equipment),
+                timeout=self.LIST_TIMEOUT_SEC,
+            )
+            return server_name, listed, None
+        except asyncio.TimeoutError:
+            waited = time.monotonic() - started
+            logger.warning(
+                f"Listing equipment on {server_name} gave no answer in "
+                f"{waited:.0f}s; carrying on without it"
+            )
+            return server_name, [], TimeoutError(
+                f"no answer in {waited:.0f}s")
         except Exception as e:
             return server_name, [], e
 
@@ -861,14 +889,25 @@ class EquipmentPanel(QWidget):
                 QMessageBox.information(
                     self, "Success", "Equipment connected successfully"
                 )
-                # Awaited, not fired and forgotten. refresh() is an
-                # asyncSlot: calling it only schedules the fetch, so the
-                # details pane used to be redrawn from the list as it was
-                # *before* the connect -- reporting "Disconnected" about an
-                # instrument that had just connected. The refresh restores
-                # the selection and redraws the pane itself once the new
-                # state is actually in hand.
-                await self.refresh()
+                # Say so now, from what the server just told us, rather
+                # than waiting to be told again by a fan-out over every
+                # instrument on every server.
+                #
+                # The first attempt at this awaited that fan-out. It is the
+                # authoritative answer, but it is not a fast one and it is
+                # not always an answer at all: on the bench it has hung
+                # long enough for the in-flight guard to give up on it at
+                # 45s, and while it hung the pane kept saying DISCONNECTED
+                # about an instrument that had connected. The reply to the
+                # connect is enough to redraw one row honestly; the refresh
+                # still follows and corrects anything else.
+                self.selected_equipment.connection_status = (
+                    ConnectionStatus.CONNECTED
+                )
+                self._update_details_panel()
+                self._update_equipment_list_widget()
+
+                self.refresh()
                 self.equipment_changed.emit()
 
                 # Auto-start WebSocket streaming for connected equipment

@@ -211,3 +211,90 @@ class TestARefreshKeepsTheOperatorsPlace:
         drive(panel, "refresh")          # must not raise
 
         assert panel.equipment_list_widget.count() == 0
+
+
+class TestTheRowIsHonestWithoutWaitingForAFanOut:
+    """Second report, after the first fix: "they are successfully
+    connecting but the connected dot and text still shows disconnected."
+
+    The first attempt awaited a refresh -- a fan-out over every instrument
+    on every connected server -- before redrawing. That is the
+    authoritative answer but not a fast one, and on the bench it hung long
+    enough for the in-flight guard to give up on it at 45 seconds. While
+    it hung, the pane went on saying DISCONNECTED about an instrument that
+    had just connected.
+
+    The reply to the connect already says the instrument is connected.
+    That is enough to redraw one row honestly.
+    """
+
+    def test_the_status_does_not_wait_for_the_list(self, panel):
+        """A refresh that never answers must not hold the status hostage."""
+        client = _Client()
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        drive(panel, "refresh")
+        panel.equipment_list_widget.setCurrentRow(0)
+        panel._on_equipment_selected()
+
+        hung = asyncio.Event()
+
+        def never_answers():
+            raise AssertionError("the fan-out should not be awaited")
+
+        # Any refresh after the connect must not be what redraws the row.
+        panel.refresh = lambda: None
+        drive(panel, "connect_equipment")
+
+        assert "CONNECTED" in status(panel), (
+            f"pane reads {status(panel)!r} -- it is waiting on the list "
+            f"rather than believing the reply it already has")
+        assert panel.equipment_list_widget.item(0).text().startswith("●")
+
+    def test_a_server_that_never_answers_does_not_stall_the_refresh(self, panel):
+        """Bounded, so the in-flight slot cannot be held indefinitely."""
+        client = _Client()
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        panel.LIST_TIMEOUT_SEC = 0.05
+
+        def hangs():
+            import time as _t
+            _t.sleep(5)
+            return []
+
+        client.list_equipment = hangs
+
+        # Timed inside the loop. Timing asyncio.run() would also count the
+        # executor waiting for the stuck worker thread on shutdown, which
+        # the application never does -- what matters is that the coroutine
+        # returns, because that is what releases the in-flight slot.
+        import time as _t
+
+        async def timed():
+            slot = type(panel).refresh
+            began = _t.monotonic()
+            await getattr(slot, "__wrapped__", slot)(panel)
+            return _t.monotonic() - began
+
+        waited = asyncio.run(timed())
+
+        assert waited < 2.0, (
+            f"the refresh took {waited:.1f}s for a server that never "
+            f"answered; the in-flight slot is held for all of it")
+
+    def test_the_slow_server_is_named(self, panel, caplog):
+        import logging as _logging
+
+        client = _Client()
+        panel.client = client
+        panel._connections = lambda: {"Bench 2": client}
+        panel.LIST_TIMEOUT_SEC = 0.05
+        client.list_equipment = lambda: __import__("time").sleep(5)
+
+        with caplog.at_level(_logging.WARNING,
+                             logger="client.ui.equipment_panel"):
+            drive(panel, "refresh")
+
+        assert any("Bench 2" in r.message for r in caplog.records), (
+            "nothing says which server ran out of time")
