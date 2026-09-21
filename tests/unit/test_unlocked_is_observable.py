@@ -73,10 +73,15 @@ class TestALiveLockIsStillRespected:
         self._hold(locks, "owner")
         assert locks.can_observe_equipment("ps_1", "owner") is True
 
-    def test_someone_else_still_cannot(self, locks):
+    def test_someone_else_is_not_granted_observer_status(self, locks):
+        """can_observe_equipment still answers what it says on the tin.
+
+        The endpoint no longer asks it for reads -- see
+        TestReadsAreNeverRefused -- but the question "does this session
+        have observer or control rights" still has the same answer.
+        """
         self._hold(locks, "owner")
-        assert locks.can_observe_equipment("ps_1", "intruder") is False, (
-            "this change was meant to cover the unlocked case only")
+        assert locks.can_observe_equipment("ps_1", "intruder") is False
 
     def test_an_explicit_observer_still_can(self, locks):
         self._hold(locks, "owner")
@@ -86,3 +91,53 @@ class TestALiveLockIsStillRespected:
     def test_another_instrument_being_locked_changes_nothing(self, locks):
         self._hold(locks, "owner")
         assert locks.can_observe_equipment("ps_2", "anyone") is True
+
+
+class TestReadsAreNeverRefused:
+    """A lock is a claim on changing an instrument, not on watching one.
+
+    Reported from the bench: switching supplies gave 403s on the setpoint
+    read, and the log showed why -- a second session held the lock.
+
+        00:18:43  Could not read setpoints from ps_58f4c6c0: 403
+        00:18:43  Lost the lock on the selected equipment to admin
+        00:18:49  Overrode lock on ps_58f4c6c0 previously held by admin
+
+    Both sessions were the operator's own machine: every client restart
+    mints a new session id and the old lock lives on until it times out,
+    so eight restarts in an evening makes this routine. The panel showed
+    live readings while refusing to say what the instrument was set to,
+    because GET /readings never consulted a lock and get_setpoints, which
+    goes through the command endpoint, did.
+    """
+
+    def test_the_command_endpoint_does_not_gate_reads_on_a_lock(self):
+        import inspect
+
+        from server.api import equipment as api
+
+        source = inspect.getsource(api.execute_command)
+        after_control = source[source.index("else:"):]
+        assert "can_observe_equipment" not in after_control, (
+            "a read is still refused when somebody else holds the lock")
+        assert "No observer or control access" not in after_control
+
+    def test_control_still_requires_the_lock(self):
+        """The half that must not change."""
+        import inspect
+
+        from server.api import equipment as api
+
+        source = inspect.getsource(api.execute_command)
+        assert "can_control_equipment" in source
+        assert "Acquire exclusive lock before control commands" in source
+
+    def test_a_read_still_keeps_a_holder_s_lock_alive(self):
+        import inspect
+
+        from server.api import equipment as api
+
+        source = inspect.getsource(api.execute_command)
+        assert source.count("update_lock_activity") >= 2, (
+            "a holder reading their own instrument should not have their "
+            "lock time out underneath them")

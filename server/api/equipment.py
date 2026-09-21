@@ -366,17 +366,26 @@ async def execute_command(equipment_id: str, command: Command):
                 lock_manager.update_lock_activity(equipment_id, command.session_id)
 
             else:
-                # Read-only commands require at least observer access
+                # A read is never refused. A lock is a claim on changing an
+                # instrument, not on looking at one -- the panels put it
+                # that way themselves: "not holding the lock means you
+                # cannot change the instrument, not that you cannot watch
+                # it" -- and GET /readings has never consulted a lock at
+                # all. Only reads that come through this endpoint did,
+                # which made get_setpoints the odd one out.
+                #
+                # On the bench that meant a second session holding a lock
+                # blanked the setpoints for everyone else, and a client
+                # restart was enough to create one: every restart mints a
+                # new session id and the old lock lives on until it times
+                # out. The operator could see the instrument's readings
+                # while being told nothing about what it was set to.
+                #
+                # Control still requires the lock; that is the branch
+                # above, and it is unchanged.
                 if command.session_id:
-                    if not lock_manager.can_observe_equipment(
-                        equipment_id, command.session_id
-                    ):
-                        raise HTTPException(
-                            status_code=403,
-                            detail=f"No observer or control access to equipment {equipment_id}",
-                        )
-
-                    # Update lock activity if session has a lock
+                    # Keeps a genuine holder's lock alive while they are
+                    # using the instrument, which is what this call is for.
                     lock_manager.update_lock_activity(equipment_id, command.session_id)
 
         result = await equipment.execute_command(command.action, command.parameters)
