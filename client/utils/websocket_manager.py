@@ -472,15 +472,25 @@ class WebSocketManager:
             "parameters": parameters or {},
         }
 
-        await self._send_message(message)
-
-        # Track active stream
+        # Recorded before sending, not after. This list is what the
+        # operator has asked for, not what happened to succeed, and it is
+        # what _restart_streams replays once the socket is back. Recording
+        # it afterwards meant a start that failed *because* the socket had
+        # just died was never remembered -- so the reconnect restored the
+        # connection and not the stream, and the readings stayed off with
+        # nothing saying so:
+        #
+        #   22:42:19  Could not start equipment stream: keepalive ping timeout
+        #   22:42:19  WebSocket connection lost: ping failed
+        #   22:42:24  WebSocket connected successfully   (and no stream)
         stream_key = f"{equipment_id}_{stream_type_str}"
         self._active_streams[stream_key] = StreamConfig(
             equipment_id=equipment_id,
             stream_type=stream_type_str,
             interval_ms=interval_ms,
         )
+
+        await self._send_message(message)
 
         logger.info(f"Started {stream_type_str} stream for {equipment_id}")
 

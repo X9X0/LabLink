@@ -160,3 +160,64 @@ async def _ping_once(ws):
         await ws._ping_loop()
     finally:
         asyncio.sleep = real_sleep
+
+
+class TestAStreamSurvivesBeingStartedOnADeadSocket:
+    """A reconnect restored the connection and not the streams.
+
+    On the bench the socket died at the moment a stream was being
+    started:
+
+        22:42:19  Could not start equipment stream: keepalive ping timeout
+        22:42:19  WebSocket connection lost: ping failed
+        22:42:24  WebSocket connected successfully
+
+    and the readings stayed off. start_equipment_stream recorded the
+    stream in _active_streams *after* sending, so a send that failed left
+    nothing for _restart_streams to replay. That list should say what the
+    operator asked for, not what happened to succeed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_failed_start_is_still_remembered(self):
+        ws = manager()
+        ws._send_message = _raises("keepalive ping timeout")
+
+        with pytest.raises(Exception):
+            await ws.start_equipment_stream("ps_1", "readings", 200)
+
+        assert ws._active_streams, (
+            "the stream was forgotten because the send failed, so the "
+            "reconnect had nothing to restore")
+
+    @pytest.mark.asyncio
+    async def test_the_reconnect_replays_it(self):
+        ws = manager()
+        ws._send_message = _raises("keepalive ping timeout")
+        with pytest.raises(Exception):
+            await ws.start_equipment_stream("ps_1", "readings", 200)
+
+        sent = []
+
+        async def works(message):
+            sent.append(message)
+
+        ws._send_message = works
+        await ws._restart_streams()
+
+        assert any(m.get("equipment_id") == "ps_1" for m in sent), (
+            f"restart sent {sent}")
+
+    @pytest.mark.asyncio
+    async def test_a_successful_start_is_recorded_once(self):
+        ws = manager()
+        sent = []
+
+        async def works(message):
+            sent.append(message)
+
+        ws._send_message = works
+        await ws.start_equipment_stream("ps_1", "readings", 200)
+
+        assert len(ws._active_streams) == 1
+        assert len(sent) == 1

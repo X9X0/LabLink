@@ -513,9 +513,18 @@ class EquipmentPanel(QWidget):
             return
         try:
             await self._refresh_from(connections)
-            while take_missed(self, "_refresh_started_at"):
-                # Terminates because each pass clears the record first and
-                # only a fresh request sets it again.
+            # One extra pass, not a loop. A loop here does not
+            # terminate: the periodic refresh fires every five seconds
+            # and records a miss each time, so "run again if someone
+            # asked while I was working" means running for ever and
+            # holding the in-flight slot for all of it. That is the 45s
+            # stall -- the fetches were always finishing; this loop was
+            # starting another one before the slot could be released.
+            #
+            # One pass is all coalescing needs: it covers every request
+            # that arrived during the first fetch. Anything arriving
+            # during this one is a tick away from being served anyway.
+            if take_missed(self, "_refresh_started_at"):
                 await self._refresh_from(self._connections())
         finally:
             release_slot(self, "_refresh_started_at")

@@ -371,3 +371,83 @@ class TestRunNowOrSoonLeavesTheLoopAsItFoundIt:
         finally:
             made.close()
             asyncio.set_event_loop(None)
+
+
+class TestCoalescingDoesNotRunForEver:
+    """The 45-second stall, and it was this.
+
+    The coalescing added earlier ran "again if someone asked while I was
+    working" as a while loop. A periodic refresh fires every five seconds
+    and records a miss each time, so there was always someone who had
+    asked: the loop never exited and held the in-flight slot for as long
+    as it ran. claim_slot then refused every other refresh until its 45s
+    backstop gave up.
+
+    The giveaway in the log was that the per-server timeout added to catch
+    a hanging fetch never fired once, while the 45s warning fired seven
+    times. Nothing was hanging. The fetches all finished; this loop kept
+    starting another one before the slot could be released.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_does_not_loop_while_requests_keep_arriving(self, qapp):
+        panel = EquipmentPanel()
+        client = _SlowClient(None)
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+
+        # A request arrives during every pass, as the 5s timer does.
+        real = panel._refresh_from
+
+        async def refresh_and_ask_again(connections):
+            note_missed(panel, "_refresh_started_at")
+            return await real(connections)
+
+        panel._refresh_from = refresh_and_ask_again
+
+        slot = type(panel).refresh
+        await asyncio.wait_for(
+            getattr(slot, "__wrapped__", slot)(panel), timeout=5)
+
+        panel.deleteLater()
+        qapp.processEvents()
+
+        assert client.calls <= 2, (
+            f"ran {client.calls} passes without releasing the slot; with a "
+            f"tick every five seconds this never ends")
+
+    @pytest.mark.asyncio
+    async def test_the_slot_is_released_afterwards(self, qapp):
+        panel = EquipmentPanel()
+        client = _SlowClient(None)
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        note_missed(panel, "_refresh_started_at")
+
+        slot = type(panel).refresh
+        await asyncio.wait_for(
+            getattr(slot, "__wrapped__", slot)(panel), timeout=5)
+
+        assert panel._refresh_started_at is None, (
+            "the slot is still held, so the next refresh waits out the "
+            "45s backstop")
+        panel.deleteLater()
+        qapp.processEvents()
+
+    @pytest.mark.asyncio
+    async def test_a_single_miss_is_still_served(self, qapp):
+        """Bounding it must not undo the coalescing itself."""
+        panel = EquipmentPanel()
+        client = _SlowClient(None)
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        note_missed(panel, "_refresh_started_at")
+
+        slot = type(panel).refresh
+        await asyncio.wait_for(
+            getattr(slot, "__wrapped__", slot)(panel), timeout=5)
+
+        assert client.calls == 2, (
+            f"the missed request was not served: {client.calls} pass(es)")
+        panel.deleteLater()
+        qapp.processEvents()
