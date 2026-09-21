@@ -60,8 +60,21 @@ def loop():
     asyncio.set_event_loop(previous)
 
 
-def pump(loop, times=4):
+def pump(loop, times=8):
+    """Let Qt deliver its events and asyncio run what they scheduled.
+
+    Both, alternately. The confirmation is shown from a QTimer now and
+    awaited, so the handler only advances once Qt has fired that timer:
+    stepping asyncio on its own waits for ever.
+
+    That indirection is not incidental. A modal opened inline runs a
+    nested Qt loop while its own coroutine is still the current asyncio
+    task, and anything the nested loop then tries to step dies with
+    "Cannot enter into task" -- which is what stranded the equipment
+    refresh for 45s at a time on the bench.
+    """
     for _ in range(times):
+        QApplication.processEvents()
         loop.run_until_complete(asyncio.sleep(0))
 
 

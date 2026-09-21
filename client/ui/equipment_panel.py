@@ -900,6 +900,65 @@ class EquipmentPanel(QWidget):
             # User cancelled, still refresh in case something changed
             self.refresh()
 
+    def _say_later(self, show, title: str, text: str):
+        """Put a dialog up once this coroutine has let go of the loop.
+
+        A modal runs a nested Qt event loop, and qasync pumps asyncio from
+        it -- so a dialog opened *inside* a coroutine lets the loop try to
+        step other tasks while this one is still the current task. asyncio
+        will not have that::
+
+            RuntimeError: Cannot enter into task <EquipmentPanel.refresh()>
+              while another task <EquipmentPanel.connect_equipment()
+              running at equipment_panel.py:924> is being executed
+
+        Line 924 was ``QMessageBox.information(... "Equipment connected
+        successfully")``. The refresh it blocked had already *finished*
+        its fan-out -- "wait_for=<_GatheringFuture finished result=[...]>"
+        -- and could never be resumed to use it. Its in-flight slot then
+        stayed held until the 45s backstop, and every refresh in between
+        was refused. Two of those stalls lasted 310s and 177s: a dialog
+        left open that long.
+
+        The 20s timeout around the fetch could not save it either, since
+        its timer callback has to step the same blocked task.
+
+        A zero-delay timer shows the dialog on the next pass of the loop,
+        by which time this coroutine has finished and is nobody's current
+        task. The discovery handlers in this file already did it this way.
+        """
+        QTimer.singleShot(0, lambda: show(self, title, text))
+
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop.
+
+        A prompt cannot simply be deferred like :meth:`_say_later` -- the
+        coroutine needs what the operator chose. But it must not open the
+        dialog inline either, for the reason described there: the nested
+        Qt event loop would step other asyncio tasks while this coroutine
+        is still the current one, and asyncio refuses to enter them.
+
+        Showing it from a timer and awaiting the answer gets both. While
+        this coroutine waits on the future it is suspended and is nobody's
+        current task, so the nested loop is free to run everything else --
+        including the refresh that used to be stranded here.
+
+        Args:
+            put_it_up: called on the Qt thread; returns the operator's answer.
+        """
+        answer = asyncio.get_running_loop().create_future()
+
+        def show():
+            if answer.done():           # the panel went away meanwhile
+                return
+            try:
+                answer.set_result(put_it_up())
+            except Exception as e:      # a dialog that cannot even open
+                answer.set_exception(e)
+
+        QTimer.singleShot(0, show)
+        return await answer
+
     @qasync.asyncSlot()
     async def connect_equipment(self):
         """Connect to selected equipment."""
@@ -921,9 +980,8 @@ class EquipmentPanel(QWidget):
             )
 
             if result.get("status") == "connected":
-                QMessageBox.information(
-                    self, "Success", "Equipment connected successfully"
-                )
+                self._say_later(QMessageBox.information,
+                                 "Success", "Equipment connected successfully")
                 # Say so now, from what the server just told us, rather
                 # than waiting to be told again by a fan-out over every
                 # instrument on every server.
@@ -950,13 +1008,13 @@ class EquipmentPanel(QWidget):
                 if equipment_id:
                     asyncio.create_task(self._start_equipment_stream(equipment_id))
             else:
-                QMessageBox.warning(
-                    self, "Failed", result.get("message", "Connection failed")
-                )
+                self._say_later(QMessageBox.warning, "Failed",
+                                 result.get("message", "Connection failed"))
 
         except Exception as e:
             logger.error(f"Error connecting equipment: {e}")
-            QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
+            self._say_later(QMessageBox.critical, "Error",
+                            f"Connection failed: {str(e)}")
 
     async def _choose_disconnect_state(self, equipment_id: str):
         """What should the instrument be left doing? Ask only if it matters.
@@ -980,25 +1038,30 @@ class EquipmentPanel(QWidget):
         if not output_live:
             return "off"
 
-        box = QMessageBox(self)
-        box.setWindowTitle("Disconnect equipment")
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setText("This instrument's output is on.")
-        box.setInformativeText(
-            "Turn it off as part of disconnecting, or leave it running?\n\n"
-            "Leaving it running means LabLink sends no command. The instrument "
-            "keeps its output until something else changes it."
-        )
-        turn_off = box.addButton("Turn output off", QMessageBox.ButtonRole.AcceptRole)
-        leave_on = box.addButton("Leave it running", QMessageBox.ButtonRole.DestructiveRole)
-        cancel = box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(turn_off)
+        def put_it_up():
+            box = QMessageBox(self)
+            box.setWindowTitle("Disconnect equipment")
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setText("This instrument's output is on.")
+            box.setInformativeText(
+                "Turn it off as part of disconnecting, or leave it running?"
+                "\n\nLeaving it running means LabLink sends no command. The "
+                "instrument keeps its output until something else changes it."
+            )
+            turn_off = box.addButton("Turn output off",
+                                     QMessageBox.ButtonRole.AcceptRole)
+            leave_on = box.addButton("Leave it running",
+                                     QMessageBox.ButtonRole.DestructiveRole)
+            cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(turn_off)
 
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is cancel:
-            return None
-        return "hold" if clicked is leave_on else "off"
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is cancel:
+                return None
+            return "hold" if clicked is leave_on else "off"
+
+        return await self._ask(put_it_up)
 
     @qasync.asyncSlot()
     async def disconnect_equipment(self):
@@ -1029,9 +1092,8 @@ class EquipmentPanel(QWidget):
 
             # Server returns {"equipment_id": "...", "status": "disconnected"}
             if result.get("status") == "disconnected":
-                QMessageBox.information(
-                    self, "Success", "Equipment disconnected successfully"
-                )
+                self._say_later(QMessageBox.information,
+                                 "Success", "Equipment disconnected successfully")
                 # The same way round as connecting: say what the server
                 # just told us, now, rather than blanking the pane and
                 # waiting for a fan-out to say it again.
@@ -1056,13 +1118,13 @@ class EquipmentPanel(QWidget):
                 self.refresh()
                 self.equipment_changed.emit()
             else:
-                QMessageBox.warning(
-                    self, "Failed", result.get("message", "Disconnection failed")
-                )
+                self._say_later(QMessageBox.warning, "Failed",
+                                 result.get("message", "Disconnection failed"))
 
         except Exception as e:
             logger.error(f"Error disconnecting equipment: {e}")
-            QMessageBox.critical(self, "Error", f"Disconnection failed: {str(e)}")
+            self._say_later(QMessageBox.critical, "Error",
+                            f"Disconnection failed: {str(e)}")
 
     @qasync.asyncSlot()
     async def remove_equipment(self):
@@ -1083,7 +1145,7 @@ class EquipmentPanel(QWidget):
 
         eq = self.selected_equipment
         equipment_id = eq.equipment_id
-        confirmed = QMessageBox.question(
+        confirmed = await self._ask(lambda: QMessageBox.question(
             self,
             "Remove This Instrument?",
             f"Remove {eq.manufacturer} {eq.model} ({equipment_id}) from the "
@@ -1093,7 +1155,7 @@ class EquipmentPanel(QWidget):
             f"again brings it back.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
-        )
+        ))
         if confirmed != QMessageBox.StandardButton.Yes:
             return
 
@@ -1104,13 +1166,14 @@ class EquipmentPanel(QWidget):
             # worth saying plainly rather than as a stack trace.
             detail = str(e)
             if "409" in detail:
-                QMessageBox.warning(
-                    self, "Still Connected",
+                self._say_later(
+                    QMessageBox.warning, "Still Connected",
                     "Disconnect this instrument before removing it.",
                 )
             else:
                 logger.error(f"Error removing equipment: {e}")
-                QMessageBox.critical(self, "Error", f"Could not remove: {detail}")
+                self._say_later(QMessageBox.critical, "Error",
+                            f"Could not remove: {detail}")
             return
 
         self.selected_equipment = None
@@ -1142,7 +1205,8 @@ class EquipmentPanel(QWidget):
 
         except Exception as e:
             logger.error(f"Error getting readings: {e}")
-            QMessageBox.warning(self, "Error", f"Failed to get readings: {str(e)}")
+            self._say_later(QMessageBox.warning, "Error",
+                            f"Failed to get readings: {str(e)}")
 
     @qasync.asyncSlot()
     async def send_command(self):
