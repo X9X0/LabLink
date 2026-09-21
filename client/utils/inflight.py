@@ -123,7 +123,33 @@ def _describe_holder(task) -> str:
         closed = None
     if closed:
         return f"a task suspended on a closed loop ({at})"
-    return f"a task still running ({at})"
+    return f"a task still running ({at}){_which_loop(task)}"
+
+
+def _which_loop(task) -> str:
+    """Whether the task is on the loop that is asking about it.
+
+    The remaining question about these stalls. The evidence so far says a
+    fetch completes and the task waiting for it cannot be woken --
+    "RuntimeError: Cannot enter into task ... wait_for=<Future finished>"
+    -- which happens when the future and the task belong to different
+    loops. Which of the two is the odd one out decides the fix: stopping
+    a second loop being made at all, or binding the blocking call to the
+    loop its caller is actually on. Guessing between those would be the
+    fifth guess in this hunt.
+    """
+    try:
+        theirs = task.get_loop()
+    except Exception:
+        return ""
+    try:
+        mine = asyncio.get_running_loop()
+    except RuntimeError:
+        return f" [task loop {id(theirs):#x}, nothing running here]"
+    if theirs is mine:
+        return f" [same loop {id(mine):#x}]"
+    return (f" [DIFFERENT loops: task on {id(theirs):#x}, "
+            f"asking from {id(mine):#x}]")
 
 
 def _await_chain(task, limit: int = 12) -> str:

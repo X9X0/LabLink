@@ -648,3 +648,74 @@ class TestTheStallNamesWhatItIsWaitingOn:
         from client.utils.inflight import _await_chain
 
         assert "limit" in inspect.signature(_await_chain).parameters
+
+
+class TestTheStallSaysWhichLoopEachSideIsOn:
+    """The last unknown about these stalls.
+
+    A fetch completes and the task waiting for it cannot be woken:
+    "RuntimeError: Cannot enter into task ... wait_for=<Future finished>".
+    That happens when the future and the task belong to different loops.
+    Which of the two is the odd one out decides the fix, and the log did
+    not say.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_says_so_when_the_loops_match(self):
+        from client.utils.inflight import _describe_holder
+
+        async def waits():
+            await asyncio.Event().wait()
+
+        task = asyncio.ensure_future(waits())
+        await asyncio.sleep(0)
+        said = _describe_holder(task)
+        task.cancel()
+
+        assert "same loop" in said, said
+
+    def test_it_shouts_when_they_differ(self):
+        """The case that matters; it used to read the same as a match.
+
+        Two real loops, and the question asked from the second one --
+        which is the situation being diagnosed. Not an async test: you
+        cannot drive a second loop from inside a running one.
+        """
+        from client.utils.inflight import _describe_holder
+
+        async def waits():
+            await asyncio.Event().wait()
+
+        theirs = asyncio.new_event_loop()
+        mine = asyncio.new_event_loop()
+        try:
+            stranded = theirs.create_task(waits())
+            theirs.run_until_complete(asyncio.sleep(0))
+
+            async def ask():
+                return _describe_holder(stranded)
+
+            said = mine.run_until_complete(ask())
+            stranded.cancel()
+
+            assert "DIFFERENT loops" in said, said
+            assert "task on" in said and "asking from" in said
+        finally:
+            theirs.close()
+            mine.close()
+
+    def test_it_copes_with_no_loop_running(self):
+        from client.utils.inflight import _describe_holder
+
+        async def waits():
+            await asyncio.Event().wait()
+
+        loop = asyncio.new_event_loop()
+        try:
+            task = loop.create_task(waits())
+            loop.run_until_complete(asyncio.sleep(0))
+            said = _describe_holder(task)       # called with no loop running
+            task.cancel()
+            assert "nothing running here" in said, said
+        finally:
+            loop.close()
