@@ -27,7 +27,7 @@ for _root in (_CLIENT_DIR.parent, _CLIENT_DIR):
         sys.path.insert(0, str(_root))
 
 import qasync
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
@@ -393,8 +393,20 @@ def main():
     window = MainWindow()
     window.show()
 
-    # Show connection dialog on startup
-    window.show_connection_dialog()
+    # Show the connection dialog once the event loop is actually running,
+    # rather than before it. Connecting sets every panel's client, which
+    # binds instruments, and binding schedules coroutines -- with no loop
+    # running yet, run_now_or_soon has to run those itself on a throwaway
+    # loop, and anything scheduled around that lands on a loop nobody will
+    # ever pump. The tasks then sit pending until they are collected:
+    # "Task was destroyed but it is pending!" and "RuntimeError: Cannot
+    # enter into task", five to twenty of them on every start, including
+    # the WebSocket's own reader and keepalive.
+    #
+    # A zero-delay timer fires on the first pass of the loop, so the
+    # dialog still appears immediately -- it just appears with an event
+    # loop underneath it.
+    QTimer.singleShot(0, window.show_connection_dialog)
 
     # Run application with qasync event loop
     with loop:
