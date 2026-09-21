@@ -17,13 +17,26 @@
 
 REF="main"
 ASSUME_YES=0
+REEXECED=0
 for arg in "$@"; do
     case "$arg" in
         --yes|-y) ASSUME_YES=1 ;;
         --clean) ;;                 # handled at the build step
+        --reexeced) REEXECED=1 ;;   # set by the restart below, not by hand
         *) REF="$arg" ;;
     esac
 done
+
+# What this script looked like before it updated itself. Bash executes a
+# script by reading it as it goes, keeping a byte offset into the file, so
+# a checkout that rewrites this file underneath a running copy leaves bash
+# reading from the old offset into new contents -- and it runs whatever
+# fragment happens to land there. On 2026-09-20 that made the first of two
+# consecutive updates fail; the second, running the already-updated script,
+# worked. See the restart after the checkout.
+SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+SELF_BEFORE=""
+[ -r "$SELF" ] && SELF_BEFORE="$(sha256sum "$SELF" 2>/dev/null | cut -d' ' -f1)"
 
 # No tty means nobody can answer a question.
 [ -t 0 ] || ASSUME_YES=1
@@ -97,6 +110,22 @@ else
     exit 1
 fi
 echo ""
+
+# If the checkout replaced this script, start again with the new one before
+# doing anything else. Carrying on would run the remains of the old script
+# read at a byte offset into a file that is no longer the same length.
+#
+# The lock on fd 9 survives exec -- same process, same open file -- so the
+# restart cannot deadlock against itself. --reexeced stops it looping if a
+# checkout somehow keeps producing a different file.
+if [ "$REEXECED" -eq 0 ] && [ -n "$SELF_BEFORE" ] && [ -r "$SELF" ]; then
+    SELF_AFTER="$(sha256sum "$SELF" 2>/dev/null | cut -d' ' -f1)"
+    if [ -n "$SELF_AFTER" ] && [ "$SELF_AFTER" != "$SELF_BEFORE" ]; then
+        echo "The update script changed; restarting with the new one."
+        echo ""
+        exec "$SELF" "$@" --reexeced
+    fi
+fi
 
 # Build before stopping anything. The old containers keep serving while the
 # new image is made, so a build that fails costs nothing: the bench carries

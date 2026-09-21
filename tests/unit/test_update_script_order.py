@@ -133,3 +133,49 @@ class TestTheScriptIsStillValidShell:
         done = subprocess.run(["bash", "-n"], input=script.encode("utf-8"),
                               capture_output=True)
         assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+
+
+class TestTheScriptSurvivesUpdatingItself:
+    """The update that fixed the update script needed running twice.
+
+    Bash executes a script by reading it as it goes, keeping a byte offset
+    into the file. The checkout in step 2 can replace this very file, and
+    bash then carries on reading from the old offset into new contents --
+    running whatever fragment happens to land there. Reported from the
+    bench on 2026-09-20: "server updated after 2 consecutive updates, as
+    the first attempt failed."
+    """
+
+    def test_it_notices_that_it_changed(self, script):
+        assert "SELF_BEFORE" in script and "sha256sum" in script, (
+            "nothing compares the script against what it was before the "
+            "checkout, so a self-replacing update runs half of each version")
+
+    def test_it_restarts_itself_with_the_new_copy(self, script):
+        assert re.search(r'exec "\$SELF" "\$@" --reexeced', script), (
+            "it notices but carries on regardless")
+
+    def test_the_restart_happens_before_any_building(self, script):
+        """Restarting after the build would repeat the slow part."""
+        restart = position(script, r'exec "\$SELF" "\$@" --reexeced')
+        build = position(script, r"^if docker compose build")
+        assert restart < build, "it rebuilds, then restarts and rebuilds again"
+
+    def test_the_restart_happens_after_the_checkout(self, script):
+        """Before it, there would be nothing new to restart into."""
+        checkout = position(script, r"git fetch --all --tags --prune")
+        restart = position(script, r'exec "\$SELF" "\$@" --reexeced')
+        assert checkout < restart
+
+    def test_it_cannot_restart_forever(self, script):
+        assert re.search(r"--reexeced\)\s*REEXECED=1", script), (
+            "--reexeced is not parsed, so the guard never engages and a "
+            "script that keeps changing restarts in a loop")
+        assert re.search(r'\[ "\$REEXECED" -eq 0 \]', script), (
+            "the guard is never checked")
+
+    def test_reexeced_is_not_mistaken_for_a_git_ref(self, script):
+        """Every unrecognised argument becomes the ref to check out."""
+        arg_block = script[:script.index("SELF=")]
+        assert "--reexeced)" in arg_block, (
+            "the restart would try to check out a branch called --reexeced")
