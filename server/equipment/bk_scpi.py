@@ -332,6 +332,9 @@ class BKSCPIPowerSupply(BKSCPIBase):
                 f"Voltage must be between 0 and {ceiling}V for channel {channel}"
             )
 
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = voltage
         if self.safety_validator and settings.enable_safety_limits:
             self.safety_validator.check_voltage(voltage)
             if settings.enforce_slew_rate:
@@ -343,6 +346,8 @@ class BKSCPIPowerSupply(BKSCPIBase):
         await self._write(f"VOLT {voltage:g}")
         await self._after_write()
         self._current_voltage = voltage
+        self._keep_slewing("voltage", requested, voltage,
+                           lambda v: self.set_voltage(v, channel))
 
     async def set_current(self, current: float, channel: int = 1):
         if emergency_stop_manager.is_active():
@@ -351,6 +356,9 @@ class BKSCPIPowerSupply(BKSCPIBase):
         if current < 0 or current > self.max_current:
             raise ValueError(f"Current must be between 0 and {self.max_current}A")
 
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = current
         if self.safety_validator and settings.enable_safety_limits:
             self.safety_validator.check_current(current)
             if settings.enforce_slew_rate:
@@ -362,6 +370,8 @@ class BKSCPIPowerSupply(BKSCPIBase):
         await self._write(f"CURR {current:g}")
         await self._after_write()
         self._current_current = current
+        self._keep_slewing("current", requested, current,
+                           lambda v: self.set_current(v, channel))
 
     async def set_output(self, enabled: bool, channel: int = 1):
         if enabled and emergency_stop_manager.is_active():

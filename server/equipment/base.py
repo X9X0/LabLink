@@ -9,6 +9,7 @@ from typing import Any, Optional
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
 
+from server.equipment.slew_ramp import SlewRamps
 from shared.models.equipment import (ConnectionType, EquipmentInfo,
                                      EquipmentStatus, EquipmentType)
 
@@ -129,6 +130,18 @@ class BaseEquipment(ABC):
         # Held for every exchange with the instrument; see _ReentrantAsyncLock.
         self._io_lock = _ReentrantAsyncLock()
         self._is_connecting = False  # Flag to prevent recursion during connection
+        #: Setpoints still travelling towards what was asked for, because the
+        #: slew limiter cut the write short. See server/equipment/slew_ramp.py.
+        self._slew_ramps = SlewRamps(resource_string)
+
+    def _keep_slewing(self, parameter: str, target: float, written: float, again):
+        """Carry on towards ``target`` if the slew limiter cut this write short.
+
+        A rate limit says how fast a parameter may approach a value, not
+        that it need never arrive. Without this the setpoint stops wherever
+        the last clamped write left it -- 15.6 V for a dial scrolled to 9.6.
+        """
+        self._slew_ramps.note(parameter, target, written, again)
 
     def _is_instrument_valid(self) -> bool:
         """Check if the instrument session is still valid."""
@@ -255,6 +268,9 @@ class BaseEquipment(ABC):
         the answer was mislocated in exactly this docstring's direction once
         already.
         """
+        # Nothing should go on writing setpoints to an instrument that is
+        # being taken away.
+        self._slew_ramps.stop()
         async with self._lock:
             if self.instrument:
                 try:

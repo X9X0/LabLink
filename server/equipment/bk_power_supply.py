@@ -434,6 +434,10 @@ class BKPowerSupplyBase(BaseEquipment):
         if voltage < 0 or voltage > self.max_voltage:
             raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
 
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = voltage
+
         # Safety checks if enabled
         if self.safety_validator and settings.enable_safety_limits:
             # Check voltage limits
@@ -447,6 +451,8 @@ class BKPowerSupplyBase(BaseEquipment):
 
         await self._write(f"VOLT{self._encode_voltage(voltage)}")
         self._current_voltage = voltage
+        self._keep_slewing("voltage", requested, voltage,
+                           lambda v: self.set_voltage(v, channel))
 
     async def set_current(self, current: float, channel: int = 1):
         """Set current limit."""
@@ -457,6 +463,10 @@ class BKPowerSupplyBase(BaseEquipment):
         # Basic range check
         if current < 0 or current > self.max_current:
             raise ValueError(f"Current must be between 0 and {self.max_current}A")
+
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = current
 
         # Safety checks if enabled
         if self.safety_validator and settings.enable_safety_limits:
@@ -471,6 +481,8 @@ class BKPowerSupplyBase(BaseEquipment):
 
         await self._write(f"CURR{self._encode_current(current)}")
         self._current_current = current
+        self._keep_slewing("current", requested, current,
+                           lambda v: self.set_current(v, channel))
 
     async def set_output(self, enabled: bool, channel: int = 1):
         """Enable or disable output."""
@@ -802,6 +814,10 @@ class BK9205B(BaseEquipment):
         if voltage < 0 or voltage > self.max_voltage:
             raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
 
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = voltage
+
         # Safety checks if enabled
         if self.safety_validator and settings.enable_safety_limits:
             self.safety_validator.check_voltage(voltage)
@@ -814,6 +830,8 @@ class BK9205B(BaseEquipment):
         # SCPI command
         await self._write(f"VOLT {voltage}")
         self._current_voltage = voltage
+        self._keep_slewing("voltage", requested, voltage,
+                           lambda v: self.set_voltage(v, channel))
 
     async def set_current(self, current: float, channel: int = 1):
         """Set current limit using SCPI."""
@@ -824,6 +842,10 @@ class BK9205B(BaseEquipment):
         # Basic range check
         if current < 0 or current > self.max_current:
             raise ValueError(f"Current must be between 0 and {self.max_current}A")
+
+        # What the caller asked for, before the slew limiter cuts this
+        # write short. See _keep_slewing below.
+        requested = current
 
         # Safety checks if enabled
         if self.safety_validator and settings.enable_safety_limits:
@@ -837,6 +859,8 @@ class BK9205B(BaseEquipment):
         # SCPI command
         await self._write(f"CURR {current}")
         self._current_current = current
+        self._keep_slewing("current", requested, current,
+                           lambda v: self.set_current(v, channel))
 
     async def set_output(self, enabled: bool, channel: int = 1):
         """Enable or disable output using SCPI."""
