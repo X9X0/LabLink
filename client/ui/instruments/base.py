@@ -54,7 +54,31 @@ def run_now_or_soon(coro):
         loop = None
     if loop is not None:
         return loop.create_task(coro)
-    asyncio.run(coro)
+
+    # Nothing is running, so this has to run the coroutine itself -- but it
+    # must put the thread's event loop back afterwards.
+    #
+    # asyncio.run() installs a loop of its own and, on the way out, sets the
+    # current loop to None. In the application that is not a detail: the
+    # startup connection dialog is shown *before* loop.run_forever(), so a
+    # bind that happens there takes this branch, and from then on the thread
+    # has no current loop. Every @asyncSlot afterwards calls ensure_future,
+    # gets a brand new orphan loop nobody will ever run, and its task simply
+    # sits there until it is garbage-collected -- the batches of "Task was
+    # destroyed but it is pending!" in the client log, the "Cannot enter into
+    # task" errors, and a panel refresh that claimed an in-flight slot and
+    # can never release it. The operator sees that last one as a long pause
+    # before the equipment list catches up.
+    previous = None
+    try:
+        previous = asyncio.get_event_loop_policy().get_event_loop()
+    except Exception:
+        previous = None
+    try:
+        asyncio.run(coro)
+    finally:
+        if previous is not None and not previous.is_closed():
+            asyncio.set_event_loop(previous)
     return None
 
 #: What a panel may declare it polls. ``None`` means the panel never polls.

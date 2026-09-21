@@ -53,7 +53,7 @@ def claim_slot(owner, attribute: str, abandoned_after: float) -> bool:
 
     if started is not None:
         holder = getattr(owner, _holder(attribute), None)
-        if holder is not None and holder.done():
+        if holder is not None and _finished_or_stranded(holder):
             # The task that took this slot has finished without releasing
             # it, so it died somewhere its finally could not run. There is
             # nothing in flight and no reason to wait: take the slot now.
@@ -99,6 +99,31 @@ def release_slot(owner, attribute: str) -> None:
 def _holder(attribute: str) -> str:
     """Where the task owning ``attribute``'s slot is remembered."""
     return f"{attribute}_task"
+
+
+def _finished_or_stranded(task) -> bool:
+    """Whether the task holding a slot can no longer be working.
+
+    Finished is the easy case. The other one is a task left on a loop that
+    is not going to run it again: a coroutine awaiting on a loop that has
+    been closed, or on a different loop from the one now running, will stay
+    pending for the life of the process. Its finally never runs, so it
+    never releases the slot, and waiting out the abandonment timeout is
+    just a pause with nothing at the end of it.
+    """
+    if task.done():
+        return True
+    try:
+        task_loop = task.get_loop()
+    except Exception:
+        return True                 # cannot tell whose it is: assume lost
+    if task_loop.is_closed():
+        return True
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        return False                # nothing running to compare against
+    return task_loop is not running
 
 
 # ---------------------------------------------------------------------- #

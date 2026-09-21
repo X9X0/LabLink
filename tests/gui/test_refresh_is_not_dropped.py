@@ -261,3 +261,113 @@ class TestASlotLeftByADeadTaskIsTakenAtOnce:
         assert claim_slot(owner, "_slot", 0.0) is True
         assert claim_slot(owner, "_slot", 0.0) is True, (
             "the abandonment timeout is gone, so a lost slot is lost for good")
+
+
+class TestASlotStrandedOnADeadLoopIsAlsoTaken:
+    """The first attempt at this fix did not work, and the bench said so:
+    "client updated, delay is still there."
+
+    Checking ``task.done()`` was not enough. A task whose loop has gone is
+    not done -- it is suspended on an await that will never resume, so it
+    stays pending for the life of the process and the slot stays held for
+    the full 45s every time.
+    """
+
+    @staticmethod
+    def _task_on_a_closed_loop():
+        async def waits_forever():
+            await asyncio.Event().wait()
+
+        loop = asyncio.new_event_loop()
+        task = loop.create_task(waits_forever())
+        loop.run_until_complete(asyncio.sleep(0))   # let it start and suspend
+        loop.close()
+        return task
+
+    def test_a_pending_task_on_a_closed_loop_frees_the_slot(self):
+        owner = _Owner()
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+        stranded = self._task_on_a_closed_loop()
+        assert stranded.done() is False, "the premise: it never finishes"
+        owner._slot_task = stranded
+
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True, (
+            "still waiting out the 45s backstop for a task that cannot run")
+
+    def test_a_task_on_a_different_live_loop_frees_the_slot(self):
+        """What the orphan-loop bug produced: tasks on a loop nobody runs."""
+        owner = _Owner()
+        other = asyncio.new_event_loop()
+        try:
+            async def waits_forever():
+                await asyncio.Event().wait()
+
+            stranded = other.create_task(waits_forever())
+            other.run_until_complete(asyncio.sleep(0))
+
+            async def scenario():
+                claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER)
+                owner._slot_task = stranded
+                assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+
+            asyncio.run(scenario())
+            stranded.cancel()
+        finally:
+            other.close()
+
+    def test_a_task_on_the_running_loop_still_holds_it(self):
+        """The guard must not be defeated by the new check."""
+        owner = _Owner()
+
+        async def scenario():
+            assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+            assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is False
+
+        asyncio.run(scenario())
+
+
+class TestRunNowOrSoonLeavesTheLoopAsItFoundIt:
+    """The source of the stranded tasks.
+
+    The startup connection dialog is shown before loop.run_forever(), so a
+    bind from it runs with no loop running and takes the asyncio.run()
+    branch. asyncio.run() sets the thread's current loop to None on the way
+    out -- and every @asyncSlot after that gets a fresh orphan loop that
+    nobody runs, so its task sits pending until it is collected.
+    """
+
+    def test_the_current_loop_survives(self):
+        from client.ui.instruments.base import run_now_or_soon
+
+        made = asyncio.new_event_loop()
+        asyncio.set_event_loop(made)
+        try:
+            async def work():
+                return None
+
+            run_now_or_soon(work())
+
+            assert asyncio.get_event_loop_policy().get_event_loop() is made, (
+                "the thread was left with no event loop, so every asyncSlot "
+                "after this one schedules onto a loop nobody will ever run")
+        finally:
+            made.close()
+            asyncio.set_event_loop(None)
+
+    def test_the_coroutine_still_runs_to_completion(self):
+        """Tests bind panels with no loop running and rely on this."""
+        from client.ui.instruments.base import run_now_or_soon
+
+        ran = []
+
+        async def work():
+            ran.append(True)
+
+        made = asyncio.new_event_loop()
+        asyncio.set_event_loop(made)
+        try:
+            run_now_or_soon(work())
+            assert ran == [True]
+        finally:
+            made.close()
+            asyncio.set_event_loop(None)
