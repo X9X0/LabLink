@@ -176,3 +176,88 @@ class TestTheControlPanelIsRefreshedLikeTheOthers:
 
         assert client.calls >= 2, (
             f"the second request was dropped; asked {client.calls} time(s)")
+
+
+class TestASlotLeftByADeadTaskIsTakenAtOnce:
+    """Reported after the connected-status fix: "they do update to
+    connected now, but it's got quite a delay."
+
+    The refresh task was being destroyed mid-await -- the client log shows
+    "Cannot enter into task ... EquipmentPanel.refresh()" and "Task was
+    destroyed but it is pending!" -- so its finally never ran and the slot
+    stayed held. Every later refresh was then refused for the full
+    abandoned_after, 45 seconds, before the panel could redraw.
+
+    Nothing was in flight during those 45 seconds. The holder had already
+    finished; only the clock said otherwise.
+    """
+
+    @staticmethod
+    def _finished_task():
+        async def done():
+            return None
+
+        loop = asyncio.new_event_loop()
+        try:
+            task = loop.create_task(done())
+            loop.run_until_complete(task)
+            return task
+        finally:
+            loop.close()
+
+    def test_a_slot_held_by_a_finished_task_is_free(self):
+        owner = _Owner()
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+        # The holder died without releasing: finally never ran.
+        owner._slot_task = self._finished_task()
+
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True, (
+            "waited for the 45s backstop although nothing was running -- "
+            "this is the delay before the panel redraws")
+
+    def test_a_slot_held_by_a_live_task_is_still_refused(self):
+        """The guard has to keep guarding."""
+        owner = _Owner()
+
+        async def scenario():
+            assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+            assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is False
+
+        asyncio.run(scenario())
+
+    def test_the_holder_is_remembered_when_a_task_claims_it(self):
+        """Also keeps the task alive: asyncio holds only a weak reference,
+        and a task nobody references can be collected mid-await."""
+        owner = _Owner()
+
+        async def scenario():
+            claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER)
+            assert owner._slot_task is asyncio.current_task()
+
+        asyncio.run(scenario())
+
+    def test_a_synchronous_caller_still_works(self):
+        """claim_slot is called from plain methods too; no loop, no task."""
+        owner = _Owner()
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+        assert owner._slot_task is None
+        assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is False
+
+    def test_releasing_forgets_the_holder(self):
+        owner = _Owner()
+
+        async def scenario():
+            claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER)
+            release_slot(owner, "_slot")
+            assert owner._slot_task is None
+            assert claim_slot(owner, "_slot", REFRESH_ABANDONED_AFTER) is True
+
+        asyncio.run(scenario())
+
+    def test_the_time_backstop_still_exists(self):
+        """For a holder that is neither finished nor recorded -- a task
+        garbage-collected before we could keep a reference, say."""
+        owner = _Owner()
+        assert claim_slot(owner, "_slot", 0.0) is True
+        assert claim_slot(owner, "_slot", 0.0) is True, (
+            "the abandonment timeout is gone, so a lost slot is lost for good")

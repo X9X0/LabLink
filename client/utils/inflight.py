@@ -18,6 +18,7 @@ anyway, so the failure mode is one overlapping refresh rather than a panel
 that is permanently frozen.
 """
 
+import asyncio
 import logging
 import time
 from typing import Optional
@@ -50,23 +51,54 @@ def claim_slot(owner, attribute: str, abandoned_after: float) -> bool:
     started: Optional[float] = getattr(owner, attribute, None)
     now = time.monotonic()
 
-    if started is not None and (now - started) < abandoned_after:
-        return False
-
     if started is not None:
-        logger.warning(
-            "%s.%s was still held after %.0fs; assuming the task was destroyed "
-            "and starting a new one",
-            type(owner).__name__, attribute, now - started,
-        )
+        holder = getattr(owner, _holder(attribute), None)
+        if holder is not None and holder.done():
+            # The task that took this slot has finished without releasing
+            # it, so it died somewhere its finally could not run. There is
+            # nothing in flight and no reason to wait: take the slot now.
+            #
+            # Waiting for the time backstop instead is what an operator
+            # saw as "it does update to connected, but there is quite a
+            # delay" -- the panel had refreshed, the refresh task was
+            # destroyed mid-await, and every later refresh was refused for
+            # the full abandoned_after (45s) before anything could redraw.
+            logger.info(
+                "%s.%s was left held by a task that has finished; taking it",
+                type(owner).__name__, attribute,
+            )
+        elif (now - started) < abandoned_after:
+            return False
+        else:
+            logger.warning(
+                "%s.%s was still held after %.0fs; assuming the task was "
+                "destroyed and starting a new one",
+                type(owner).__name__, attribute, now - started,
+            )
 
     setattr(owner, attribute, now)
+    # Keep a reference to the running task, for two reasons. It is what
+    # lets the check above tell "finished without releasing" from "still
+    # working". And asyncio only holds a weak reference to a task, so a
+    # caller that keeps none can have it garbage-collected mid-await --
+    # which is the "Task was destroyed but it is pending!" in this log,
+    # and the way slots came to be stranded in the first place.
+    try:
+        setattr(owner, _holder(attribute), asyncio.current_task())
+    except RuntimeError:            # no running loop: a synchronous caller
+        setattr(owner, _holder(attribute), None)
     return True
 
 
 def release_slot(owner, attribute: str) -> None:
     """Release a slot taken by :func:`claim_slot`."""
     setattr(owner, attribute, None)
+    setattr(owner, _holder(attribute), None)
+
+
+def _holder(attribute: str) -> str:
+    """Where the task owning ``attribute``'s slot is remembered."""
+    return f"{attribute}_task"
 
 
 # ---------------------------------------------------------------------- #
