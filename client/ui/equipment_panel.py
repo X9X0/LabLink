@@ -573,27 +573,56 @@ class EquipmentPanel(QWidget):
 
     def _update_equipment_list_widget(self):
         """Update equipment list widget."""
-        self.equipment_list_widget.clear()
+        # Keep the operator's place. The rebuild used to clear the list and
+        # not put the selection back, and the details pane is only ever
+        # filled by the selection handler -- so every refresh dropped the
+        # selection and left the pane showing whatever it had.
+        #
+        # Connecting an instrument is where that shows. The panel refreshes
+        # straight after a successful connect, the row loses its selection,
+        # and the pane goes on reporting the status from before: it says
+        # "Disconnected" about an instrument that has just connected. Most
+        # visible after a server update, when everything needs reconnecting
+        # at once.
+        selected_key = (self.selected_equipment.key
+                        if self.selected_equipment else None)
 
-        # Name the server only once there is more than one to tell apart.
-        # On a single-Pi bench the suffix is noise on every row.
-        servers = {eq.server_name for eq in self.equipment_list if eq.server_name}
-        show_server = len(servers) > 1
+        self.equipment_list_widget.blockSignals(True)
+        try:
+            self.equipment_list_widget.clear()
 
-        for equipment in self.equipment_list:
-            status_icon = (
-                "●"
-                if equipment.connection_status == ConnectionStatus.CONNECTED
-                else "○"
-            )
-            item_text = f"{status_icon} {equipment.name} ({equipment.model})"
-            if show_server and equipment.server_name:
-                item_text = f"{item_text} — {equipment.server_name}"
+            # Name the server only once there is more than one to tell apart.
+            # On a single-Pi bench the suffix is noise on every row.
+            servers = {eq.server_name for eq in self.equipment_list if eq.server_name}
+            show_server = len(servers) > 1
 
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, equipment.key)
+            to_reselect = None
+            for equipment in self.equipment_list:
+                status_icon = (
+                    "●"
+                    if equipment.connection_status == ConnectionStatus.CONNECTED
+                    else "○"
+                )
+                item_text = f"{status_icon} {equipment.name} ({equipment.model})"
+                if show_server and equipment.server_name:
+                    item_text = f"{item_text} — {equipment.server_name}"
 
-            self.equipment_list_widget.addItem(item)
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.ItemDataRole.UserRole, equipment.key)
+
+                self.equipment_list_widget.addItem(item)
+                if equipment.key == selected_key:
+                    to_reselect = item
+                    # The row the operator is looking at is a *new* object
+                    # after a refresh. Point the pane at the fresh one, or
+                    # it keeps reporting the state fetched before.
+                    self.selected_equipment = equipment
+        finally:
+            self.equipment_list_widget.blockSignals(False)
+
+        if to_reselect is not None:
+            self.equipment_list_widget.setCurrentItem(to_reselect)
+            self._update_details_panel()
 
     def _on_equipment_selected(self):
         """Handle equipment selection."""
@@ -832,9 +861,15 @@ class EquipmentPanel(QWidget):
                 QMessageBox.information(
                     self, "Success", "Equipment connected successfully"
                 )
-                self.refresh()
+                # Awaited, not fired and forgotten. refresh() is an
+                # asyncSlot: calling it only schedules the fetch, so the
+                # details pane used to be redrawn from the list as it was
+                # *before* the connect -- reporting "Disconnected" about an
+                # instrument that had just connected. The refresh restores
+                # the selection and redraws the pane itself once the new
+                # state is actually in hand.
+                await self.refresh()
                 self.equipment_changed.emit()
-                self._on_equipment_selected()  # Refresh details
 
                 # Auto-start WebSocket streaming for connected equipment
                 equipment_id = result.get("equipment_id", "")
