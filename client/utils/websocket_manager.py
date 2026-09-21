@@ -205,11 +205,42 @@ class WebSocketManager:
             if self._rejected_for_auth:
                 logger.info("WebSocket refused the credential; will renew before retrying")
 
-            # Start reconnection if enabled
-            if self._should_reconnect and not self._reconnect_task:
-                self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+            self._ensure_reconnecting()
 
             return False
+
+    def _ensure_reconnecting(self):
+        """Start the reconnect loop, unless one is already running.
+
+        Tested on the task rather than on "have we ever made one". The
+        guard used to be ``not self._reconnect_task``, and nothing ever
+        put that attribute back to None when the loop finished -- so after
+        the first reconnect the attribute stayed truthy for the life of
+        the process and every later attempt was silently skipped. One
+        disconnect/reconnect cycle worked; the ones after it did not.
+        """
+        if not self._should_reconnect:
+            return
+        running = self._reconnect_task
+        if running is not None and not running.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    def _note_connection_lost(self, why: str):
+        """Mark the connection down and get a reconnect going.
+
+        Whatever noticed -- the reader, the ping, a failed send -- the
+        connection is gone and something has to say so. Only the reader's
+        ConnectionClosed branch used to do it, so a failure seen anywhere
+        else left ``connected`` True with no reader and no reconnect: the
+        ping loop then pinged a dead socket every thirty seconds for as
+        long as the application ran. Eight minutes of that were in the
+        bench log before anyone restarted the client.
+        """
+        if self.connected:
+            logger.warning(f"WebSocket connection lost: {why}")
+        self.connected = False
+        self._ensure_reconnecting()
 
     async def disconnect(self):
         """Disconnect from WebSocket server."""
@@ -259,21 +290,30 @@ class WebSocketManager:
                     logger.error(f"Error handling message: {e}")
                     self.errors += 1
 
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("WebSocket connection closed")
-            self.connected = False
+        except asyncio.CancelledError:
+            raise                       # disconnect() asked; do not reconnect
 
-            # Start reconnection if enabled
-            if self._should_reconnect:
-                self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        except websockets.exceptions.ConnectionClosed:
+            self._note_connection_lost("the server closed it")
 
         except Exception as e:
-            logger.error(f"Error in receive loop: {e}")
-            self.connected = False
             self.errors += 1
+            # Also reconnects. This branch used to mark the connection down
+            # and stop there, so anything that was not a clean
+            # ConnectionClosed killed the reader for good and left nothing
+            # watching the socket.
+            self._note_connection_lost(str(e))
 
     async def _reconnect_loop(self):
         """Automatically reconnect on connection loss."""
+        try:
+            await self._reconnecting()
+        finally:
+            # Cleared so the next loss can start a new one. Leaving it set
+            # is what made reconnection a once-per-process affair.
+            self._reconnect_task = None
+
+    async def _reconnecting(self):
         while self._should_reconnect and not self.connected:
             logger.info(
                 f"Attempting to reconnect in {self._reconnect_delay} seconds..."
@@ -294,14 +334,25 @@ class WebSocketManager:
                 await self.connect()
 
     async def _ping_loop(self):
-        """Send periodic pings to keep connection alive."""
+        """Send periodic pings, and report the connection dead when one fails.
+
+        A ping that cannot be sent is the clearest evidence there is that
+        the connection has gone. This used to log the exception and carry
+        on round the loop, so a dead socket was pinged every thirty
+        seconds indefinitely -- ``connected`` stayed True, nothing
+        reconnected, and the operator's streams were off with no sign of
+        it beyond a repeating line in the log.
+        """
         while self.connected:
             try:
                 await asyncio.sleep(30)  # Ping every 30 seconds
                 if self.connected:
                     await self.send_ping()
+            except asyncio.CancelledError:
+                raise                   # disconnect() asked
             except Exception as e:
-                logger.error(f"Error in ping loop: {e}")
+                self._note_connection_lost(f"ping failed: {e}")
+                return
 
     async def _restart_streams(self):
         """Restart all active streams after reconnection."""
