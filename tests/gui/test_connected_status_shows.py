@@ -69,6 +69,16 @@ class _Client:
         self.connected = True
         return {"status": "connected", "equipment_id": "ps_56fdd3df"}
 
+    def disconnect_equipment(self, equipment_id, on_disconnect=None):
+        # Signature matched to the real client: the handler passes what to
+        # do with the output as well, and a fake that took only the id made
+        # the test fail for the wrong reason.
+        self.connected = False
+        return {"status": "disconnected", "equipment_id": equipment_id}
+
+    def get_equipment_readings(self, equipment_id):
+        return {}
+
 
 def _disconnected():
     return Equipment(
@@ -90,6 +100,11 @@ def panel(qapp, monkeypatch):
     monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: None))
     monkeypatch.setattr(made, "_start_equipment_stream",
                         lambda *a, **k: asyncio.sleep(0))
+    # Disconnecting asks what to do with the output first. That dialog has
+    # nobody to answer it here and would wait for ever.
+    async def _leave_it(equipment_id):
+        return "leave"
+    monkeypatch.setattr(made, "_choose_disconnect_state", _leave_it)
     yield made
     made.client = None
     made.selected_equipment = None
@@ -298,3 +313,61 @@ class TestTheRowIsHonestWithoutWaitingForAFanOut:
 
         assert any("Bench 2" in r.message for r in caplog.records), (
             "nothing says which server ran out of time")
+
+
+class TestDisconnectingIsAsImmediateAsConnecting:
+    """Reported after the connect fix: "dot and text now update
+    immediately to show connected, but not disconnected."
+
+    Disconnecting dropped the selection, blanked every label, and left
+    the row's dot filled until the next refresh landed -- and that
+    refresh is the thing that stalls. Connecting and disconnecting should
+    behave the same way: believe the reply, redraw, then refresh.
+    """
+
+    def _connected_panel(self, panel):
+        client = _Client()
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        drive(panel, "refresh")
+        panel.equipment_list_widget.setCurrentRow(0)
+        panel._on_equipment_selected()
+        drive(panel, "connect_equipment")
+        assert "CONNECTED" in status(panel)
+        return client
+
+    def test_the_dot_empties_at_once(self, panel):
+        self._connected_panel(panel)
+        panel.refresh = lambda: None          # the fan-out must not be needed
+
+        drive(panel, "disconnect_equipment")
+
+        assert panel.equipment_list_widget.item(0).text().startswith("○"), (
+            f"row still reads {panel.equipment_list_widget.item(0).text()!r}")
+
+    def test_the_text_says_disconnected_at_once(self, panel):
+        self._connected_panel(panel)
+        panel.refresh = lambda: None
+
+        drive(panel, "disconnect_equipment")
+
+        assert "DISCONNECTED" in status(panel), f"pane reads {status(panel)!r}"
+
+    def test_the_buttons_re_range(self, panel):
+        """So the operator can connect it again without clicking away."""
+        self._connected_panel(panel)
+        panel.refresh = lambda: None
+
+        drive(panel, "disconnect_equipment")
+
+        assert panel.connect_btn.isEnabled() is True
+        assert panel.disconnect_btn.isEnabled() is False
+
+    def test_the_row_stays_selected(self, panel):
+        self._connected_panel(panel)
+        panel.refresh = lambda: None
+
+        drive(panel, "disconnect_equipment")
+
+        assert panel.selected_equipment is not None
+        assert panel.equipment_list_widget.currentRow() == 0

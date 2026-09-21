@@ -997,16 +997,27 @@ class EquipmentPanel(QWidget):
                 QMessageBox.information(
                     self, "Success", "Equipment disconnected successfully"
                 )
-                # Clear selected equipment and UI
-                self.selected_equipment = None
+                # The same way round as connecting: say what the server
+                # just told us, now, rather than blanking the pane and
+                # waiting for a fan-out to say it again.
+                #
+                # This used to drop the selection and clear every label,
+                # which left the row's dot filled until the next refresh
+                # landed -- and that refresh is the thing that stalls. The
+                # reported asymmetry was exactly this: "dot and text now
+                # update immediately to show connected, but not
+                # disconnected".
+                #
+                # Keeping the selection is also the more useful answer: the
+                # operator stays on the row they just disconnected, and the
+                # buttons re-range so they can connect it again.
+                self.selected_equipment.connection_status = (
+                    ConnectionStatus.DISCONNECTED
+                )
                 self.readings_display.clear()
-                # Clear equipment detail labels
-                self.name_label.clear()
-                self.type_label.clear()
-                self.manufacturer_label.clear()
-                self.model_label.clear()
-                self.resource_label.clear()
-                self.status_label.clear()
+                self._update_details_panel()
+                self._update_equipment_list_widget()
+
                 self.refresh()
                 self.equipment_changed.emit()
             else:
