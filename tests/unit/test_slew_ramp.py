@@ -277,3 +277,43 @@ class TestANewTargetSetMidStepIsNotClobbered:
         await asyncio.sleep(0.12)
         supply.ramps.stop()
         assert supply.ramps._continuing == {}
+
+
+class TestTheRampDoesNotOutpaceTheInstrument:
+    """Arrival time is set by the rate limit, not by how often we write.
+
+    The limiter allows movement in proportion to the time since the last
+    write, so a slower cadence takes bigger steps and arrives at the same
+    moment. Writing more often buys nothing and costs the instrument's
+    attention -- and at 20 a second on top of a 5 Hz poll, a 9600-baud
+    B&K stopped keeping up:
+
+        no acknowledgement after 'VOLT000': VI_ERROR_TMO
+        Error getting device readings: Invalid GETD response:
+
+    Nine unacknowledged writes in half a minute, each costing a full VISA
+    timeout, and a late acknowledgement landing in front of the next read.
+    """
+
+    def test_the_cadence_leaves_room_for_the_instrument(self):
+        from server.equipment import slew_ramp
+
+        assert slew_ramp.STEP_SEC >= 0.15, (
+            f"{slew_ramp.STEP_SEC}s between writes is more traffic than a "
+            f"serial supply can service alongside its polling")
+
+    def test_it_still_steps_often_enough_to_feel_immediate(self):
+        from server.equipment import slew_ramp
+
+        assert slew_ramp.STEP_SEC <= 0.5
+
+    @pytest.mark.asyncio
+    async def test_a_slower_cadence_still_arrives(self):
+        """The property that makes this free: fewer, bigger steps."""
+        supply = Supply(value=0.0, step=4.0)      # what 0.2s buys at 20 V/s
+        await supply.set_voltage(12.0)
+        await settle()
+
+        assert supply.value == pytest.approx(12.0)
+        assert len(supply.writes) <= 4, (
+            f"took {len(supply.writes)} writes to move 12 V in 4 V steps")

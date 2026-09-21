@@ -39,11 +39,29 @@ from typing import Awaitable, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-#: How long to wait between steps. The limiter allows more movement the
-#: longer it has been since the last write, so this trades arrival time
-#: against the number of writes: at 20 V/s, 50 ms is a 1 V step. Short
-#: enough to feel immediate, long enough not to flood a serial instrument.
-STEP_SEC = 0.05
+#: How long to wait between steps.
+#:
+#: This costs nothing in arrival time. The limiter allows movement in
+#: proportion to the time since the last write, so a longer gap simply
+#: buys a bigger step: at 20 V/s, 50 ms is a 1 V step and 200 ms is a 4 V
+#: step, and the ramp reaches the target at the same moment either way.
+#: What it does change is how many commands the instrument is asked to
+#: service.
+#:
+#: 50 ms was too many. A B&K on a 9600-baud line needs tens of
+#: milliseconds per command, and 20 ramp writes a second on top of a 5 Hz
+#: poll -- which is three commands of its own, GETD, GOUT and GETS -- came
+#: to roughly 35 a second. The supply stopped keeping up, and the bench
+#: log showed what that looks like from here::
+#:
+#:     no acknowledgement after 'VOLT000': VI_ERROR_TMO
+#:     no acknowledgement after 'VOLT004': VI_ERROR_TMO
+#:     Error getting device readings: Invalid GETD response:
+#:
+#: Nine unacknowledged writes in half a minute, each costing a full VISA
+#: timeout of dead port time, and a late acknowledgement then arriving in
+#: front of the next read and desynchronising it.
+STEP_SEC = 0.2
 
 #: Refuse to ramp for longer than this. A target the instrument will not
 #: reach -- because it is clamped by something else, or the supply is
