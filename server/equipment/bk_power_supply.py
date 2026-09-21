@@ -217,35 +217,78 @@ class BKPowerSupplyBase(BaseEquipment):
             logger.debug(f"Sending BK command: {command}")
             await loop.run_in_executor(None, self.instrument.write, command)
 
-            # Read full response - keep reading until we get OK\r or timeout
-            # Use read_bytes to get raw data instead of relying on read_termination
-            full_response = b''
-            start_time = loop.time()
-            timeout = self.instrument.timeout / 1000.0  # Convert ms to seconds
-
-            while True:
-                try:
-                    # Read one byte at a time until we get the full response
-                    chunk = await loop.run_in_executor(None, self.instrument.read_bytes, 1)
-                    full_response += chunk
-
-                    # Check if we've received the complete response (ends with OK\r)
-                    if full_response.endswith(b'OK\r'):
-                        break
-
-                    # Timeout check
-                    if loop.time() - start_time > timeout:
-                        raise TimeoutError(f"Timeout waiting for OK terminator. Got: {full_response}")
-
-                except Exception as e:
-                    if full_response:
-                        logger.error(f"Error reading response after {len(full_response)} bytes: {e}")
-                    raise
-
-            # Decode and parse
+            full_response = await self._read_until_ok()
             response_str = full_response.decode('ascii', errors='ignore')
             logger.debug(f"Received BK response ({len(full_response)} bytes): {repr(response_str)}")
             return self._parse_bk_response(response_str)
+
+    async def _read_until_ok(self) -> bytes:
+        """Read one reply, up to and including its ``OK\\r`` terminator.
+
+        Byte at a time rather than relying on read_termination, because a
+        reply is ``DATA\\r`` *then* ``OK\\r`` and stopping at the first
+        carriage return would leave the acknowledgement behind.
+
+        The caller holds the io lock.
+        """
+        loop = asyncio.get_event_loop()
+        full_response = b''
+        start_time = loop.time()
+        timeout = self.instrument.timeout / 1000.0  # Convert ms to seconds
+
+        while True:
+            try:
+                chunk = await loop.run_in_executor(None, self.instrument.read_bytes, 1)
+                full_response += chunk
+
+                if full_response.endswith(b'OK\r'):
+                    return full_response
+
+                if loop.time() - start_time > timeout:
+                    raise TimeoutError(f"Timeout waiting for OK terminator. Got: {full_response}")
+
+            except Exception as e:
+                if full_response:
+                    logger.error(f"Error reading response after {len(full_response)} bytes: {e}")
+                raise
+
+    async def _write(self, command: str):
+        """Send a command and take its acknowledgement off the line.
+
+        Every command in this protocol is answered, writes included: a
+        ``VOLT120`` is replied to with ``OK\\r`` just as a ``GETD`` is
+        replied to with ``DATA\\rOK\\r``. Leaving that acknowledgement in
+        the input buffer desynchronises the next read, because the reader
+        stops at the first ``OK\\r`` it sees -- which is the *previous*
+        command's -- and hands back an empty string.
+
+        That is what the bench was showing, a few times a minute::
+
+            00:27:50  Slew rate limit applied ... requested 0.6, limited to 2.09
+            00:27:50  ERROR  Error getting device readings: Invalid GETD response:
+
+        Note the empty value after the colon, and that every one of those
+        errors follows a write. ``_bk_query`` does flush the input buffer
+        before it writes, which is why this was intermittent rather than
+        constant: at 9600 baud the stale ``OK\\r`` is often still on the
+        wire when the flush runs, and arrives just in time to be mistaken
+        for the answer to the command being sent.
+
+        Not applied to the SCPI models -- they inherit ``_write`` from the
+        base class, and SCPI does not acknowledge writes.
+        """
+        async with self._io_lock:       # re-entrant; _write takes it too
+            await super()._write(command)
+            try:
+                await self._read_until_ok()
+            except Exception as e:
+                # The write itself went out. Losing the acknowledgement is
+                # worth a line in the log, not an exception to a caller who
+                # has already changed the instrument.
+                logger.warning(
+                    f"{self.resource_string}: no acknowledgement after "
+                    f"'{command}': {e}"
+                )
 
     async def connect(self):
         """Connect to the BK power supply with serial port configuration.
