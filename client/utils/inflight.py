@@ -112,11 +112,7 @@ def _describe_holder(task) -> str:
     """
     if task is None:
         return "no task (claimed outside a coroutine, or before this was recorded)"
-    try:
-        where = task.get_coro().cr_frame
-        at = f"{where.f_code.co_name} line {where.f_lineno}" if where else "no frame"
-    except Exception:
-        at = "unknown position"
+    at = _await_chain(task)
     if task.cancelled():
         return f"a cancelled task ({at})"
     if task.done():
@@ -128,6 +124,50 @@ def _describe_holder(task) -> str:
     if closed:
         return f"a task suspended on a closed loop ({at})"
     return f"a task still running ({at})"
+
+
+def _await_chain(task, limit: int = 12) -> str:
+    """Every frame a suspended task is waiting through, outermost first.
+
+    The outermost frame alone says almost nothing. "refresh line 528" only
+    means refresh is awaiting the fan-out; it cannot tell a slow HTTP
+    request from a timeout that never fires from a lock nobody releases,
+    and those want different fixes. Following ``cr_await`` down gives the
+    whole chain, so the next stall names the thing it is actually stuck
+    on.
+
+    Defensive throughout: this runs inside a warning about something that
+    has already gone wrong, and must not raise on the way.
+    """
+    try:
+        node = task.get_coro()
+    except Exception:
+        return "no coroutine"
+
+    steps = []
+    seen = 0
+    while node is not None and seen < limit:
+        seen += 1
+        frame = getattr(node, "cr_frame", None) or getattr(node, "gi_frame", None)
+        if frame is not None:
+            try:
+                steps.append(f"{frame.f_code.co_name}:{frame.f_lineno}")
+            except Exception:
+                steps.append("?")
+        else:
+            # Not a coroutine: a Future, a gather, a lock, a sleep. This
+            # is usually the interesting end of the chain -- "waiting on a
+            # Future" and "waiting on another coroutine" are different
+            # problems -- so it is named rather than dropped.
+            steps.append(type(node).__name__)
+            break
+        node = (getattr(node, "cr_await", None)
+                or getattr(node, "ag_await", None)
+                or getattr(node, "gi_yieldfrom", None))
+
+    if node is not None:
+        steps.append("...")
+    return " > ".join(steps) if steps else "no frame"
 
 
 def _finished_or_stranded(task) -> bool:

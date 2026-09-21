@@ -567,3 +567,84 @@ def caplog_at(level):
     finally:
         log.removeHandler(handler)
         log.setLevel(was)
+
+
+class TestTheStallNamesWhatItIsWaitingOn:
+    """The outermost frame alone was not enough.
+
+    The first stall to be caught with instrumentation said "a task still
+    running (refresh line 528)" -- which is the line awaiting the
+    fan-out, and tells us only that it is awaiting the fan-out. It cannot
+    tell a slow request from a timeout that never fires from a lock
+    nobody releases, and those want different fixes. Following the await
+    chain down names the thing at the end of it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_reports_every_frame_in_the_chain(self):
+        from client.utils.inflight import _await_chain
+
+        started = asyncio.Event()
+
+        async def innermost():
+            started.set()
+            await asyncio.Event().wait()      # never returns
+
+        async def middle():
+            await innermost()
+
+        async def outermost():
+            await middle()
+
+        task = asyncio.ensure_future(outermost())
+        await started.wait()
+        await asyncio.sleep(0)
+
+        chain = _await_chain(task)
+        task.cancel()
+
+        for name in ("outermost", "middle", "innermost"):
+            assert name in chain, f"{name!r} missing from {chain!r}"
+
+    @pytest.mark.asyncio
+    async def test_it_names_a_future_at_the_end(self):
+        """"Waiting on a Future" and "waiting on a coroutine" are
+        different problems and used to read the same."""
+        from client.utils.inflight import _await_chain
+
+        never = asyncio.get_event_loop().create_future()
+
+        async def waits():
+            await never
+
+        task = asyncio.ensure_future(waits())
+        await asyncio.sleep(0)
+
+        chain = _await_chain(task)
+        task.cancel()
+        never.cancel()
+
+        assert "waits" in chain
+        assert "Future" in chain, chain
+
+    def test_it_does_not_raise_on_a_task_that_has_finished(self):
+        from client.utils.inflight import _await_chain
+
+        async def done():
+            return None
+
+        loop = asyncio.new_event_loop()
+        try:
+            task = loop.create_task(done())
+            loop.run_until_complete(task)
+            _await_chain(task)          # must not raise
+        finally:
+            loop.close()
+
+    def test_it_is_bounded(self):
+        """It runs inside a warning; it must not walk for ever."""
+        import inspect
+
+        from client.utils.inflight import _await_chain
+
+        assert "limit" in inspect.signature(_await_chain).parameters
