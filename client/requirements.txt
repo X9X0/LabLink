@@ -26,8 +26,8 @@ scp==0.16.1
 zeroconf==0.151.3
 
 # Data Handling
-numpy==2.5.2
-pandas==3.0.5
+numpy==2.5.3
+pandas==3.0.6
 h5py==3.16.0
 
 # Models / configuration
