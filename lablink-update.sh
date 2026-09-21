@@ -2,10 +2,11 @@
 # LabLink Update Script
 # Updates code from git and rebuilds containers
 #
-# Usage: sudo ./lablink-update.sh [ref] [--yes]
+# Usage: sudo ./lablink-update.sh [ref] [--yes] [--clean]
 # Example: sudo ./lablink-update.sh main
 #          sudo ./lablink-update.sh v2.1.1
 #          sudo ./lablink-update.sh v2.1.1 --yes    # never prompt
+#          sudo ./lablink-update.sh main --clean    # ignore the layer cache
 #
 # The ref may be a branch or a tag. A tag is a fixed point and is checked out
 # detached, which is what pinning a bench Pi to a release means; only a branch
@@ -19,6 +20,7 @@ ASSUME_YES=0
 for arg in "$@"; do
     case "$arg" in
         --yes|-y) ASSUME_YES=1 ;;
+        --clean) ;;                 # handled at the build step
         *) REF="$arg" ;;
     esac
 done
@@ -96,18 +98,49 @@ else
 fi
 echo ""
 
-echo "Step 3: Stopping containers..."
-docker compose down
-echo ""
+# Build before stopping anything. The old containers keep serving while the
+# new image is made, so a build that fails costs nothing: the bench carries
+# on running the version it already had. Stopping first, as this did, meant
+# a failed build left the Pi with no server at all -- which is exactly what
+# happened on 2026-09-20, and the operator was left with a dead bench and a
+# dialog saying "check logs above".
+echo "Step 3: Building containers..."
 
-echo "Step 4: Rebuilding containers (this may take 2-3 minutes)..."
-if docker compose build --no-cache; then
-    echo "  ✓ Rebuild successful"
+# The layer cache is the difference between an update that takes seconds and
+# one that takes minutes. --no-cache threw it away every time, so every
+# update re-downloaded the whole Debian package set and the whole of pip --
+# slow, and one lost packet away from failing. Docker already rebuilds from
+# the first layer whose inputs changed, so a change to the Python source
+# reuses the apt and pip layers, and a change to requirements.txt does not.
+# Pass --clean when you actually want to distrust the cache.
+BUILD_ARGS=""
+for arg in "$@"; do
+    [ "$arg" = "--clean" ] && BUILD_ARGS="--no-cache"
+done
+
+if docker compose build $BUILD_ARGS; then
+    echo "  ✓ Build successful"
+elif DOCKER_BUILDKIT=0 docker compose build $BUILD_ARGS; then
+    # BuildKit runs builds in its own network namespace, and on this Pi it
+    # has twice lost outbound access while the host and ordinary containers
+    # kept theirs -- apt then cannot reach deb.debian.org and every package
+    # is "Unable to locate". The classic builder uses the plain docker
+    # bridge and works. Restarting the docker daemon rebuilds the NAT
+    # chains and fixes BuildKit properly; this is so that a bench update
+    # does not have to wait for someone to do that.
+    echo "  ✓ Build successful (BuildKit failed; used the classic builder)"
+    echo "    BuildKit could not reach the network. 'sudo systemctl restart"
+    echo "    docker' usually repairs that; the build itself was fine."
 else
-    echo "  ✗ Rebuild failed"
-    echo "  Check logs above for errors"
+    echo "  ✗ Build failed"
+    echo "  Check logs above for errors."
+    echo "  Nothing was stopped: the previous version is still running."
     exit 1
 fi
+echo ""
+
+echo "Step 4: Stopping containers..."
+docker compose down
 echo ""
 
 echo "Step 5: Starting containers..."
