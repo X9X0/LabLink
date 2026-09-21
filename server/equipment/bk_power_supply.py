@@ -999,10 +999,14 @@ class BK1685B(BKPowerSupplyBase):
         # 1685B specs: 0-18V, 0-5A
         self.max_voltage = 18.0
         self.max_current = 5.0
-        # Measured on the bench, no load: 0.1 V and 0.01 A are as low as it
-        # goes. Asking for less is ignored rather than refused.
-        self.min_voltage = 0.1
-        self.min_current = 0.01
+        # Deliberately unclaimed. The front panel stops at 0.1 V and
+        # 0.01 A, but over serial this supply has been seen to sit at
+        # 1.10 V when asked for less, and VOLT001 goes unacknowledged --
+        # so neither 0.1 nor 1.1 is supported by anything solid. A floor
+        # nobody has measured over the wire is worse than no floor: it
+        # ranges the dial to a value the supply may still refuse.
+        self.min_voltage = 0.0
+        self.min_current = 0.0
         # Two decimal places for current on this model alone.
         self.dialect = DIALECT_1685B
 
@@ -1018,11 +1022,12 @@ class BK1902B(BKPowerSupplyBase):
         # 1902B specs: 1-60V, 0-15A, 900W
         self.max_voltage = 60.0
         self.max_current = 15.0
-        # Measured on the bench, no load: 0.1 V is as low as the
-        # voltage goes; the current does reach 0.0 A. Only this SKU was
-        # measured -- its siblings keep the 0.0 default rather than
-        # inherit a number nobody checked.
-        self.min_voltage = 0.1
+        # 1 V, from the spec line above, and confirmed on the bench the
+        # hard way: dialled below it, this supply sits at 1.00 V. An
+        # earlier version of this said 0.1 V, taken from what the *front
+        # panel* would display, which is not the same question as what
+        # the serial command will accept.
+        self.min_voltage = 1.0
         self.min_current = 0.0
         self.dialect = DIALECT_STANDARD
 
