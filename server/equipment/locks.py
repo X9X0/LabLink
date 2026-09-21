@@ -590,7 +590,31 @@ class LockManager:
         return lock.session_id == session_id and lock.lock_mode == LockMode.EXCLUSIVE
 
     def can_observe_equipment(self, equipment_id: str, session_id: str) -> bool:
-        """Check if a session can observe equipment data."""
+        """Check if a session can observe equipment data.
+
+        An instrument nobody has locked is observable by anyone. A lock is
+        a claim on *changing* something -- the panels put it exactly that
+        way, "not holding the lock means you cannot change the instrument,
+        not that you cannot watch it" -- and an unlocked instrument has no
+        claim on it to respect.
+
+        Returning False there had a sharp edge. Reading setpoints goes
+        through the command endpoint, which asks this for any read that
+        carries a session id, so sending one made a read *less* likely to
+        be allowed than sending none. Selecting an instrument releases the
+        previous lock before taking the new one, and a read that landed in
+        that gap was refused:
+
+            23:30:56,968  Released lock on ps_56fdd3df
+            23:30:56,989  Could not read setpoints: 403
+            23:30:57,000  Acquired exclusive lock on ps_56fdd3df
+
+        The panel then showed a stale setpoint until something changed it.
+
+        Whether an exclusive lock should also hide readings from everyone
+        else is a separate question, and is left as it was: this only says
+        that no lock means no restriction.
+        """
         # Can observe if session has exclusive lock
         if equipment_id in self._locks:
             lock = self._locks[equipment_id]
@@ -601,6 +625,14 @@ class LockManager:
         if equipment_id in self._observer_locks:
             if session_id in self._observer_locks[equipment_id]:
                 return True
+
+        # Nobody holds it: there is nothing to be excluded from. An expired
+        # lock counts as nobody -- it lingers in the table until the
+        # background sweep removes it, and a claim that has timed out is
+        # not a claim someone is relying on.
+        held = self._locks.get(equipment_id)
+        if held is None or held.is_expired():
+            return True
 
         return False
 
