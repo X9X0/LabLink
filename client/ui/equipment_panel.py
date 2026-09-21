@@ -496,6 +496,11 @@ class EquipmentPanel(QWidget):
             self.progress_dialog.setLabelText(f"{method} scan complete: {device_count} devices")
             self.progress_dialog.setValue(100)
 
+    #: A refresh slower than this says so, with a breakdown. Well under
+    #: the 45s at which the in-flight guard gives up, so the evidence
+    #: arrives before the symptom does.
+    SLOW_REFRESH_SEC = 5.0
+
     @qasync.asyncSlot()
     async def refresh(self):
         """Refresh the equipment list from every connected server."""
@@ -511,23 +516,44 @@ class EquipmentPanel(QWidget):
         if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
             note_missed(self, "_refresh_started_at")
             return
+        # Timed, because this slot has now been reported held for 45s four
+        # times with four different explanations from me, three of them
+        # wrong. The per-server fetch is bounded at 20s and that bound has
+        # never once fired, so the time is not going where I keep looking.
+        # These lines say which part actually took it -- the first pass,
+        # the second, or something between them that is nobody's await.
+        began = time.monotonic()
+        first = second = None
         try:
             await self._refresh_from(connections)
+            first = time.monotonic() - began
+
             # One extra pass, not a loop. A loop here does not
             # terminate: the periodic refresh fires every five seconds
             # and records a miss each time, so "run again if someone
-            # asked while I was working" means running for ever and
-            # holding the in-flight slot for all of it. That is the 45s
-            # stall -- the fetches were always finishing; this loop was
-            # starting another one before the slot could be released.
+            # asked while I was working" means running for ever.
             #
             # One pass is all coalescing needs: it covers every request
             # that arrived during the first fetch. Anything arriving
             # during this one is a tick away from being served anyway.
             if take_missed(self, "_refresh_started_at"):
+                mark = time.monotonic()
                 await self._refresh_from(self._connections())
+                second = time.monotonic() - mark
         finally:
             release_slot(self, "_refresh_started_at")
+            total = time.monotonic() - began
+            if total >= self.SLOW_REFRESH_SEC:
+                logger.warning(
+                    "Equipment refresh held the slot for %.1fs "
+                    "(first pass %s, second pass %s, %d server(s)) -- "
+                    "the difference between these and the total is time "
+                    "the coroutine was not running",
+                    total,
+                    "%.1fs" % first if first is not None else "did not finish",
+                    "%.1fs" % second if second is not None else "not run",
+                    len(connections),
+                )
 
     async def _refresh_from(self, connections):
         """Merge the equipment lists of every given server."""

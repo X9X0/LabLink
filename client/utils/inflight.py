@@ -71,9 +71,10 @@ def claim_slot(owner, attribute: str, abandoned_after: float) -> bool:
             return False
         else:
             logger.warning(
-                "%s.%s was still held after %.0fs; assuming the task was "
-                "destroyed and starting a new one",
+                "%s.%s was still held after %.0fs by %s; assuming the task "
+                "was destroyed and starting a new one",
                 type(owner).__name__, attribute, now - started,
+                _describe_holder(holder),
             )
 
     setattr(owner, attribute, now)
@@ -99,6 +100,34 @@ def release_slot(owner, attribute: str) -> None:
 def _holder(attribute: str) -> str:
     """Where the task owning ``attribute``'s slot is remembered."""
     return f"{attribute}_task"
+
+
+def _describe_holder(task) -> str:
+    """What the task holding a slot was doing, for the log.
+
+    "Assuming the task was destroyed" is a guess, and it has been the
+    wrong guess more than once: the task has variously been finished,
+    stranded on a closed loop, and simply still running. Saying which
+    turns the next occurrence into evidence instead of another theory.
+    """
+    if task is None:
+        return "no task (claimed outside a coroutine, or before this was recorded)"
+    try:
+        where = task.get_coro().cr_frame
+        at = f"{where.f_code.co_name} line {where.f_lineno}" if where else "no frame"
+    except Exception:
+        at = "unknown position"
+    if task.cancelled():
+        return f"a cancelled task ({at})"
+    if task.done():
+        return f"a task that finished without releasing it ({at})"
+    try:
+        closed = task.get_loop().is_closed()
+    except Exception:
+        closed = None
+    if closed:
+        return f"a task suspended on a closed loop ({at})"
+    return f"a task still running ({at})"
 
 
 def _finished_or_stranded(task) -> bool:

@@ -451,3 +451,119 @@ class TestCoalescingDoesNotRunForEver:
             f"the missed request was not served: {client.calls} pass(es)")
         panel.deleteLater()
         qapp.processEvents()
+
+
+class TestTheStallReportsItself:
+    """Four explanations, three of them wrong. Enough.
+
+    The slot has been reported held for 45s repeatedly, while the
+    per-server timeout that would catch a hanging fetch has never fired
+    once. The time is not going where I keep looking, so the code says
+    where it went rather than leaving it to be guessed at again.
+    """
+
+    def test_a_slow_refresh_says_how_long_each_pass_took(self, qapp, caplog):
+        import logging
+
+        panel = EquipmentPanel()
+        client = _SlowClient(None)
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+        panel.SLOW_REFRESH_SEC = 0.0        # everything counts as slow
+
+        with caplog.at_level(logging.WARNING,
+                             logger="client.ui.equipment_panel"):
+            asyncio.run(_drive(panel, "refresh"))
+
+        panel.deleteLater()
+        qapp.processEvents()
+
+        said = [r.getMessage() for r in caplog.records
+                if "held the slot" in r.getMessage()]
+        assert said, "a slow refresh passed without saying anything"
+        assert "first pass" in said[0] and "second pass" in said[0], said[0]
+
+    def test_a_quick_refresh_says_nothing(self, qapp, caplog):
+        import logging
+
+        panel = EquipmentPanel()
+        client = _SlowClient(None)
+        panel.client = client
+        panel._connections = lambda: {"srv": client}
+
+        with caplog.at_level(logging.WARNING,
+                             logger="client.ui.equipment_panel"):
+            asyncio.run(_drive(panel, "refresh"))
+
+        panel.deleteLater()
+        qapp.processEvents()
+
+        assert not [r for r in caplog.records if "held the slot" in r.getMessage()]
+
+    def test_the_backstop_says_what_the_holder_was_doing(self):
+        """"Assuming the task was destroyed" has been wrong more than once."""
+        import logging
+
+        from client.utils.inflight import _describe_holder
+
+        owner = _Owner()
+        assert claim_slot(owner, "_slot", 0.0) is True
+        owner._slot_task = None
+
+        with caplog_at(logging.WARNING) as records:
+            claim_slot(owner, "_slot", 0.0)
+
+        assert any("no task" in r.getMessage() for r in records), (
+            [r.getMessage() for r in records])
+
+    def test_a_running_holder_is_described_as_running(self):
+        from client.utils.inflight import _describe_holder
+
+        async def scenario():
+            return _describe_holder(asyncio.current_task())
+
+        assert "still running" in asyncio.run(scenario())
+
+    def test_a_finished_holder_is_described_as_finished(self):
+        from client.utils.inflight import _describe_holder
+
+        async def done():
+            return None
+
+        loop = asyncio.new_event_loop()
+        try:
+            task = loop.create_task(done())
+            loop.run_until_complete(task)
+            assert "finished without releasing" in _describe_holder(task)
+        finally:
+            loop.close()
+
+    def test_no_holder_is_not_an_error(self):
+        from client.utils.inflight import _describe_holder
+
+        assert "no task" in _describe_holder(None)
+
+
+import contextlib
+import logging as _logging
+
+
+@contextlib.contextmanager
+def caplog_at(level):
+    """Collect records from the inflight logger."""
+    records = []
+
+    class Grab(_logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    log = _logging.getLogger("client.utils.inflight")
+    handler = Grab(level)
+    log.addHandler(handler)
+    was = log.level
+    log.setLevel(level)
+    try:
+        yield records
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(was)
