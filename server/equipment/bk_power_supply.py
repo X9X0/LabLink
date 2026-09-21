@@ -145,6 +145,19 @@ class BKPowerSupplyBase(BaseEquipment):
         self.safety_validator = None
         self._current_voltage = 0.0  # Track current voltage for slew rate limiting
         self._current_current = 0.0  # Track current current for slew rate limiting
+        # The lowest each output will actually go. Not zero on every model,
+        # and a value below it is not refused by the instrument -- it is
+        # ignored, with no reply at all, so the driver waits out a full
+        # timeout for an acknowledgement that never comes. On the bench:
+        #
+        #   no acknowledgement after 'VOLT000': VI_ERROR_TMO
+        #   asked voltage for 0.0 and it still reads 0.8 after 3s
+        #
+        # Measured on the two supplies here, with no load: the 1685B and
+        # the 1902B both floor at 0.1 V, the 1685B's current at 0.01 A, and
+        # the 1902B's current reaches 0.0 A. Models are free to override.
+        self.min_voltage = 0.0
+        self.min_current = 0.0
 
     def _parse_bk_response(self, response: str) -> str:
         """Parse BK Precision response and remove OK suffix."""
@@ -434,6 +447,8 @@ class BKPowerSupplyBase(BaseEquipment):
             "num_channels": self.num_channels,
             "max_voltage": self.max_voltage,
             "max_current": self.max_current,
+            "min_voltage": self.min_voltage,
+            "min_current": self.min_current,
             # The fixed-width protocol has no OVP/OCP commands at all, so the
             # panel must not offer protection controls for these models.
             "supports_protection": False,
@@ -476,6 +491,13 @@ class BKPowerSupplyBase(BaseEquipment):
         # Basic range check
         if voltage < 0 or voltage > self.max_voltage:
             raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+        if voltage < self.min_voltage:
+            # Saying so beats sending it: the instrument answers a value it
+            # cannot reach with silence, which costs a full read timeout.
+            raise ValueError(
+                f"{self.model} will not go below {self.min_voltage}V "
+                f"(asked for {voltage}V)"
+            )
 
         # What the caller asked for, before the slew limiter cuts this
         # write short. See _keep_slewing below.
@@ -506,6 +528,11 @@ class BKPowerSupplyBase(BaseEquipment):
         # Basic range check
         if current < 0 or current > self.max_current:
             raise ValueError(f"Current must be between 0 and {self.max_current}A")
+        if current < self.min_current:
+            raise ValueError(
+                f"{self.model} will not go below {self.min_current}A "
+                f"(asked for {current}A)"
+            )
 
         # What the caller asked for, before the slew limiter cuts this
         # write short. See _keep_slewing below.
@@ -972,6 +999,10 @@ class BK1685B(BKPowerSupplyBase):
         # 1685B specs: 0-18V, 0-5A
         self.max_voltage = 18.0
         self.max_current = 5.0
+        # Measured on the bench, no load: 0.1 V and 0.01 A are as low as it
+        # goes. Asking for less is ignored rather than refused.
+        self.min_voltage = 0.1
+        self.min_current = 0.01
         # Two decimal places for current on this model alone.
         self.dialect = DIALECT_1685B
 
@@ -987,6 +1018,12 @@ class BK1902B(BKPowerSupplyBase):
         # 1902B specs: 1-60V, 0-15A, 900W
         self.max_voltage = 60.0
         self.max_current = 15.0
+        # Measured on the bench, no load: 0.1 V is as low as the
+        # voltage goes; the current does reach 0.0 A. Only this SKU was
+        # measured -- its siblings keep the 0.0 default rather than
+        # inherit a number nobody checked.
+        self.min_voltage = 0.1
+        self.min_current = 0.0
         self.dialect = DIALECT_STANDARD
 
 

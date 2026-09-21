@@ -408,6 +408,15 @@ class PowerSupplyPanel(InstrumentPanel):
         """
         max_voltage = capabilities.get("max_voltage", 60.0)
         max_current = capabilities.get("max_current", 5.0)
+        # And the floor, which is not zero on every supply. Both B&K
+        # supplies on the bench stop at 0.1 V, and the 1685B's current at
+        # 0.01 A. Asking for less is not refused by the instrument -- it
+        # is ignored, with no reply, so the server waits out a full read
+        # timeout and the panel then reports honestly that the supply is
+        # not where it was asked to be. Ranging the controls to the floor
+        # means the question never gets asked.
+        min_voltage = capabilities.get("min_voltage", 0.0) or 0.0
+        min_current = capabilities.get("min_current", 0.0) or 0.0
         self.instrument_max_voltage = max_voltage
         self.instrument_max_current = max_current
         # Another instrument, another scale: holding the last one would
@@ -421,11 +430,13 @@ class PowerSupplyPanel(InstrumentPanel):
         for widget in ranged:
             widget.blockSignals(True)
         try:
-            self.voltage_dial.setMaximum(int(max_voltage * 10))
-            self.voltage_spinbox.setMaximum(max_voltage)
+            self.voltage_dial.setRange(int(min_voltage * 10),
+                                       int(max_voltage * 10))
+            self.voltage_spinbox.setRange(min_voltage, max_voltage)
             self.voltage_gauge.max_value = max_voltage
-            self.current_dial.setMaximum(int(max_current * 10))
-            self.current_spinbox.setMaximum(max_current)
+            self.current_dial.setRange(int(min_current * 10),
+                                       int(max_current * 10))
+            self.current_spinbox.setRange(min_current, max_current)
             self.current_gauge.max_value = max_current
             if not self.autorange_button.isChecked():
                 self.axis_y_voltage.setRange(0, max_voltage)
@@ -436,7 +447,8 @@ class PowerSupplyPanel(InstrumentPanel):
 
         logger.info(
             f"Configured controls for {self.describe()}: "
-            f"max_voltage={max_voltage}V, max_current={max_current}A"
+            f"voltage {min_voltage}-{max_voltage}V, "
+            f"current {min_current}-{max_current}A"
         )
 
     async def refresh_settings(self):

@@ -568,3 +568,56 @@ class TestAReadingOneNotchBehindIsNotAgreement:
         qapp.processEvents()
         assert panel.voltage_spinbox.value() == pytest.approx(22.20), (
             "the field rewound a notch, and the next notch starts from it")
+
+
+class TestTheControlsRespectTheSupplysFloor:
+    """You cannot dial to a value the supply will not take.
+
+    Measured on the bench with no load: both B&K supplies stop at 0.1 V,
+    and the 1685B's current at 0.01 A. Below that the instrument does not
+    refuse the command, it ignores it -- no reply at all -- so the server
+    waits out a full read timeout and the panel then reports, correctly,
+    that the supply is not where it was asked to be.
+
+    Ranging the controls to the floor means the question is never asked.
+    """
+
+    def test_the_voltage_controls_start_at_the_floor(self, panel):
+        panel.configure({"max_voltage": 18.0, "max_current": 5.0,
+                         "min_voltage": 0.1, "min_current": 0.01})
+        assert panel.voltage_spinbox.minimum() == pytest.approx(0.1)
+        assert panel.voltage_dial.minimum() == 1
+
+    def test_the_current_controls_start_at_the_floor(self, panel):
+        panel.configure({"max_voltage": 18.0, "max_current": 5.0,
+                         "min_voltage": 0.1, "min_current": 0.01})
+        assert panel.current_spinbox.minimum() == pytest.approx(0.01)
+
+    def test_a_supply_that_reaches_zero_still_can(self, panel):
+        """The 1902B's current does reach 0.0 A."""
+        panel.configure({"max_voltage": 60.0, "max_current": 15.0,
+                         "min_voltage": 0.1, "min_current": 0.0})
+        assert panel.current_spinbox.minimum() == pytest.approx(0.0)
+        assert panel.current_dial.minimum() == 0
+
+    def test_a_supply_that_says_nothing_keeps_zero(self, panel):
+        """Older servers send no floor; assuming 0.1 would be inventing one."""
+        panel.configure({"max_voltage": 30.0, "max_current": 5.0})
+        assert panel.voltage_spinbox.minimum() == pytest.approx(0.0)
+        assert panel.current_spinbox.minimum() == pytest.approx(0.0)
+
+    def test_scrolling_down_stops_at_the_floor(self, panel, qapp, loop):
+        panel.configure({"max_voltage": 18.0, "max_current": 5.0,
+                         "min_voltage": 0.1, "min_current": 0.01})
+        panel.voltage_spinbox.setValue(0.2)
+        settle(qapp, loop)
+        for _ in range(5):
+            scroll(panel, panel.voltage_dial, notches=-1)
+        assert panel.voltage_spinbox.value() >= 0.1 - 1e-9, (
+            f"scrolled to {panel.voltage_spinbox.value()}, below the floor")
+
+    def test_the_maximum_is_still_applied(self, panel):
+        panel.configure({"max_voltage": 18.0, "max_current": 5.0,
+                         "min_voltage": 0.1, "min_current": 0.01})
+        assert panel.voltage_spinbox.maximum() == pytest.approx(18.0)
+        assert panel.current_spinbox.maximum() == pytest.approx(5.0)
