@@ -1022,12 +1022,21 @@ class BK1902B(BKPowerSupplyBase):
         # 1902B specs: 1-60V, 0-15A, 900W
         self.max_voltage = 60.0
         self.max_current = 15.0
-        # 1 V, from the spec line above, and confirmed on the bench the
-        # hard way: dialled below it, this supply sits at 1.00 V. An
-        # earlier version of this said 0.1 V, taken from what the *front
-        # panel* would display, which is not the same question as what
-        # the serial command will accept.
-        self.min_voltage = 1.0
+        # Unclaimed, pending measurement under load.
+        #
+        # "Sits at 1.00 V when dialled below it" was read as the supply
+        # clamping the setpoint to a 1 V floor. Unloaded, that reading
+        # does not distinguish between the two things it could mean: a
+        # setpoint the supply refused, or a setpoint it accepted and
+        # cannot regulate down to with no current being drawn. The spec
+        # line above says 1-60 V, but a spec line describes the front
+        # panel's range, and the front panel is not the serial command.
+        #
+        # A floor guessed wrong is worse than none: at 1.0 the server
+        # refuses the write itself, so the instrument is never asked and
+        # the guess can never be caught. Claim nothing until GETS says
+        # what the supply did with the value.
+        self.min_voltage = 0.0
         self.min_current = 0.0
         self.dialect = DIALECT_STANDARD
 
