@@ -567,7 +567,33 @@ class BKPowerSupplyBase(BaseEquipment):
         )
 
     async def get_readings(self, channel: int = 1) -> PowerSupplyData:
-        """Get current voltage and current readings using BK Precision protocol."""
+        """Get current voltage and current readings using BK Precision protocol.
+
+        The voltage this returns has a floor, and below it the number is
+        an artefact rather than a measurement. Measured on the 1902B: it
+        reports 0.13 V with the output *off* and no current flowing, and
+        held 0.13 V unchanged while the load current was stepped from
+        0.09 A to 0.78 A -- an 8.7x change that a real reading could not
+        have missed. Above roughly 0.15 V it tracks correctly; at 0.8 V
+        into a 0.09 ohm load it read 0.79 V against 0.8 V on the front
+        panel.
+
+        This matters because it is not obviously wrong. 0.13 V looks like
+        a plausible low output, so an unloaded supply sitting at its
+        readback floor looks exactly like a supply refusing to go lower.
+        Three different floors were written into this driver on the
+        strength of such readings -- 0.1 V, 1.0 V and 1.1 V -- and all
+        three were wrong. The 1902B's real floor, 0.8 V, was found by
+        asking whether the *write* was acknowledged, which the offset
+        cannot affect. Use that method, not this reading, for any
+        question about what a setpoint did.
+
+        Only the 1902B has been characterised. Whether the other models
+        share the offset, and what it is for them, is unmeasured -- and
+        on a model claiming no floor it has a further consequence: a
+        setpoint below the offset can never be confirmed by readback,
+        because the reported value cannot come down to meet it.
+        """
         # GETD returns: VVVVIIIIIM (voltage*100, current*1000, mode)
         getd_response = await self._bk_query("GETD")
 
