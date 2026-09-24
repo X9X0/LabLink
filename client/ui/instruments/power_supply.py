@@ -766,6 +766,7 @@ class PowerSupplyPanel(InstrumentPanel):
             self._reset_extremes()
         else:
             self.minmax_label.setText("")
+            self._mark_extremes_on_gauges()      # clears them
 
     def _on_autorange_toggled(self, enabled: bool):
         if not enabled:
@@ -789,8 +790,26 @@ class PowerSupplyPanel(InstrumentPanel):
             self._extremes[f"{key}_max"] = value if high is None else max(high, value)
         self._update_minmax_label()
 
+    def _mark_extremes_on_gauges(self):
+        """Put the tracked extremes on the meter faces, or clear them.
+
+        The numbers were already on the readout; the marks are for
+        reading at a glance while watching the needle, which is the
+        reason to be in analog mode at all. Cleared when tracking is
+        off, so a stale pair cannot sit on the face looking current.
+        """
+        tracking = self.minmax_button.isChecked()
+        for gauge, key in ((self.voltage_gauge, "v"),
+                           (self.current_gauge, "i")):
+            if tracking:
+                gauge.set_markers(self._extremes[f"{key}_min"],
+                                  self._extremes[f"{key}_max"])
+            else:
+                gauge.set_markers(None, None)
+
     def _update_minmax_label(self):
         """Show the extremes to the resolution the instrument reports."""
+        self._mark_extremes_on_gauges()
         v_min = self._extremes["v_min"]
         if v_min is None:
             self.minmax_label.setText("waiting for a reading...")

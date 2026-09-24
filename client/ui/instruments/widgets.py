@@ -222,6 +222,11 @@ class AnalogGauge(QWidget):
         self.max_value = max_value
         self.unit = unit
         self.current_value = 0.0
+        #: Lowest and highest reading to mark on the face, or None for
+        #: neither. Set from the panel's Min/Max tracking; see
+        #: :meth:`set_markers`.
+        self.min_marker = None
+        self.max_marker = None
 
         self.setMinimumSize(220, 170)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -229,6 +234,24 @@ class AnalogGauge(QWidget):
     def set_value(self, value: float):
         """Set the current value and update display."""
         self.current_value = max(self.min_value, min(self.max_value, value))
+        self.update()
+
+    def set_markers(self, lowest=None, highest=None):
+        """Mark the extremes seen, or pass nothing to clear them.
+
+        Drawn as two thin pointers just outside the graduations, the way
+        a maximum-demand indicator sits on a real meter: readable at a
+        glance, and quiet enough that the needle is still the thing the
+        eye goes to. Out-of-scale values are pinned to the ends rather
+        than dropped, so a marker never silently disappears.
+        """
+        def on_scale(value):
+            if value is None:
+                return None
+            return max(self.min_value, min(self.max_value, float(value)))
+
+        self.min_marker = on_scale(lowest)
+        self.max_marker = on_scale(highest)
         self.update()
 
     # -- geometry ---------------------------------------------------------
@@ -292,6 +315,9 @@ class AnalogGauge(QWidget):
 
         self._draw_scale(painter, pivot_x, pivot_y, radius)
         self._draw_legends(painter, face, pivot_x, pivot_y, radius)
+        # Before the needle, so the needle passes over a marker rather
+        # than being obscured by one.
+        self._draw_markers(painter, pivot_x, pivot_y, radius)
         self._draw_needle(painter, pivot_x, pivot_y, radius)
         painter.end()
 
@@ -412,6 +438,55 @@ class AnalogGauge(QWidget):
         """VOLTS and AMPS, spelled out as the instrument spells them."""
         spelled = {"V": "VOLTS", "A": "AMPS", "W": "WATTS"}
         return spelled.get(self.unit, (self.title or self.unit).upper())
+
+    def _draw_markers(self, painter, pivot_x, pivot_y, radius):
+        """The min and max pointers, outside the graduations.
+
+        Kept deliberately quiet. These are reference marks, not the
+        reading: a hairline at reduced opacity with a small solid
+        triangle at the arc, in the same ink as the print so it belongs
+        to the face rather than sitting on top of it. The needle is
+        still what the eye lands on.
+
+        They ride just outside the tick band -- the majors reach in to
+        0.89 of the radius -- so they cannot be mistaken for
+        graduations, and both markers share one style because their
+        positions already say which is which.
+        """
+        for value in (self.min_marker, self.max_marker):
+            if value is None:
+                continue
+            angle = math.radians(self._angle_for(value))
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
+
+            outer = radius * 1.005
+            inner = radius * 0.90
+
+            ink = QColor(self.INK)
+            ink.setAlpha(120)
+            painter.setPen(QPen(ink, max(1, int(radius * 0.012))))
+            painter.drawLine(
+                QPoint(int(pivot_x + inner * cos_a), int(pivot_y - inner * sin_a)),
+                QPoint(int(pivot_x + outer * cos_a), int(pivot_y - outer * sin_a)),
+            )
+
+            # A small triangle at the outer end, pointing in at the
+            # scale, which is what makes it read as a pointer rather
+            # than an extra tick.
+            size = max(2, int(radius * 0.045))
+            tip_x = pivot_x + inner * cos_a
+            tip_y = pivot_y - inner * sin_a
+            base_x = pivot_x + outer * cos_a
+            base_y = pivot_y - outer * sin_a
+            across_x = -sin_a * size * 0.5
+            across_y = -cos_a * size * 0.5
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(ink)
+            painter.drawPolygon(
+                QPoint(int(tip_x), int(tip_y)),
+                QPoint(int(base_x + across_x), int(base_y + across_y)),
+                QPoint(int(base_x - across_x), int(base_y - across_y)),
+            )
 
     def _draw_needle(self, painter, pivot_x, pivot_y, radius):
         """A tapered pointer, with the counterweight stub behind the pivot."""

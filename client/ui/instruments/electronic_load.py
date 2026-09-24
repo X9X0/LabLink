@@ -34,6 +34,14 @@ MODES = {
 }
 
 
+#: What the input button says in each state. "Enabled"/"disabled"
+#: describes the load, where "Input: ON" described a terminal -- and on
+#: a bench beside a supply's Output button, the operator reading it
+#: wants to know whether this thing is sinking, not which end the
+#: current comes in.
+_INPUT_LABEL = {True: "Load enabled", False: "Load disabled"}
+
+
 class ElectronicLoadPanel(InstrumentPanel):
     """Drive a DC electronic load and watch what it draws."""
 
@@ -77,7 +85,11 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.apply_button.clicked.connect(self._apply_setpoint)
         grid.addWidget(self.apply_button, 0, 2, 2, 1)
 
-        self.input_button = QPushButton("Input: OFF")
+        # "Input" is the instrument's own word for the terminals, and on
+        # a panel next to a supply's "Output" it reads as the same kind of
+        # thing seen from the other end -- which tells an operator nothing
+        # about whether the load is currently sinking. Say what it is.
+        self.input_button = QPushButton("Load disabled")
         self.input_button.setCheckable(True)
         self.input_button.setStyleSheet(
             "QPushButton:checked { background-color: #b06000; color: white; }"
@@ -214,7 +226,7 @@ class ElectronicLoadPanel(InstrumentPanel):
             enabled = bool(reported)
             self.input_button.blockSignals(True)
             self.input_button.setChecked(enabled)
-            self.input_button.setText("Input: ON" if enabled else "Input: OFF")
+            self.input_button.setText(_INPUT_LABEL[enabled])
             self.input_button.blockSignals(False)
 
     # ------------------------------------------------------------------ #
@@ -246,7 +258,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         # schedules, and by the time its body runs a reading taken before
         # the click can already have been applied.
         self.commanded("input", bool(checked))
-        self.input_button.setText("Input: ON" if checked else "Input: OFF")
+        self.input_button.setText(_INPUT_LABEL[checked])
         self._send_input(bool(checked))
 
     @qasync.asyncSlot(bool)

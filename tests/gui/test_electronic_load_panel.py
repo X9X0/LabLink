@@ -92,7 +92,11 @@ def test_binding_adopts_the_loads_own_state_without_commanding(qapp):
 
     assert panel.mode_combo.currentData() == "CR"
     assert panel.setpoint_spin.value() == pytest.approx(47.0)
-    assert panel.input_button.isChecked() and panel.input_button.text() == "Input: ON"
+    # "Load enabled"/"Load disabled" rather than "Input: ON/OFF":
+    # the old wording named a terminal, which beside a supply's
+    # Output button does not say whether this thing is sinking.
+    assert panel.input_button.isChecked()
+    assert panel.input_button.text() == "Load enabled"
     assert panel.voltage_display.text() == "12.010 V"
     assert panel.power_display.text() == "3.06 W"
     assert client.commands == []

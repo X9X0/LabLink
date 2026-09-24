@@ -254,11 +254,24 @@ class RigolDL3000Base(BaseEquipment):
     # ------------------------------------------------------------------ #
 
     async def set_mode(self, mode: str):
-        """Set the static operating mode (CC, CV, CR, CP)."""
+        """Set the static operating mode (CC, CV, CR, CP).
+
+        ``:SOURce:FUNCtion`` is asymmetric on these loads: the query
+        answers with the short form, CC/CV/CR/CP, but the setting takes
+        the long keyword, CURRent/VOLTage/RESistance/POWer. This sent
+        the short form back, which the instrument does not accept -- and
+        SCPI faults go to the error queue rather than the response, so
+        nothing looked wrong. On the bench: set_mode returned success for
+        CV, CR and CP in turn and :SOUR:FUNC? kept answering CC, which
+        an operator sees as the mode selector doing nothing at all.
+
+        _MODE_TO_FUNCTION was written for this, with a comment saying so,
+        and then never used.
+        """
         mode_upper = str(mode).upper()
         if mode_upper not in _MODES:
             raise ValueError("Mode must be CC, CV, CR, or CP")
-        await self._write(f":SOUR:FUNC {mode_upper}")
+        await self._write(f":SOUR:FUNC {_MODE_TO_FUNCTION[mode_upper]}")
 
     async def get_mode(self) -> str:
         """Query the static operating mode (:SOURce:FUNCtion? -> CC/CV/CR/CP)."""
