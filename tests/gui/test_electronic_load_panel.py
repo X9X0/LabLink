@@ -75,6 +75,38 @@ def _load():
     )
 
 
+def _with_loop(qapp, action, limit=2.0):
+    """Perform `action` with a loop running, then let what it scheduled run.
+
+    qasync.asyncSlot needs a running loop at the moment the signal
+    fires, so the widget interaction has to happen inside one -- not
+    before it. Selecting a mode fires a synchronous handler that
+    schedules the send; without turning the loop afterwards the test
+    would look for a command that has not been issued yet.
+    """
+    import time
+
+    async def scenario():
+        action()
+        deadline = time.monotonic() + limit
+        # Quiet twice running, not once. _send_mode awaits the mode and
+        # then a read-back, and a single quiet check can land between
+        # the two -- which ends the loop with the task still going and
+        # leaves "Task was destroyed but it is pending" in the output.
+        quiet = 0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+            await asyncio.sleep(0.005)
+            others = [t for t in asyncio.all_tasks()
+                      if t is not asyncio.current_task() and not t.done()]
+            quiet = quiet + 1 if not others else 0
+            if quiet >= 2:
+                return
+
+    asyncio.run(scenario())
+    qapp.processEvents()
+
+
 def _run(panel, method_name, *args):
     method = getattr(type(panel), method_name)
     coroutine = getattr(method, "__wrapped__", method)
@@ -122,14 +154,68 @@ def test_apply_sends_mode_then_the_matching_setpoint(qapp):
     assert panel.setpoint_indicator.text() == "Setpoint: 12.5 W"
 
 
-def test_changing_the_mode_combo_alone_commands_nothing(qapp):
-    """Only Apply sends. The re-range on a mode change must stay silent."""
+def test_changing_the_mode_combo_switches_the_load(qapp):
+    """Selecting a mode applies it, as pressing CV on the front panel does.
+
+    It used to send nothing until Apply, because one setpoint box serves
+    all four modes and a number meaning amps in CC would mean ohms in
+    CR. The instrument does not have that problem -- the user guide
+    lists separate parameters under each mode key -- so the panel reads
+    the new mode's own level back instead of carrying the old one over.
+
+    The operator reported the selector looking dead, and this was half
+    of why. The other half was the driver sending :SOUR:FUNC CV, which
+    the instrument ignores.
+    """
     client = FakeLoadClient()
     panel = ElectronicLoadPanel()
     panel.set_instrument(_load(), client)
-    panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CV"))
+    client.commands.clear()
+
+    _with_loop(qapp, lambda: panel.mode_combo.setCurrentIndex(
+        panel.mode_combo.findData("CV")))
+
+    assert ("set_mode", {"mode": "CV"}) in client.commands, (
+        f"selecting a mode sent nothing: {client.commands}")
+
+
+def test_changing_the_mode_does_not_command_a_setpoint(qapp):
+    """Switching mode must not push the previous mode's number at it."""
+    client = FakeLoadClient()
+    panel = ElectronicLoadPanel()
+    panel.set_instrument(_load(), client)
     panel.setpoint_spin.setValue(5.0)
-    assert client.commands == []
+    client.commands.clear()
+
+    _with_loop(qapp, lambda: panel.mode_combo.setCurrentIndex(
+        panel.mode_combo.findData("CR")))
+
+    sent = [name for name, _ in client.commands]
+    assert "set_resistance" not in sent and "set_current" not in sent, (
+        f"a setpoint was applied by a mode change: {client.commands}")
+
+
+def test_the_setpoint_box_reranges_at_once(qapp):
+    """Synchronously, not on the next turn of the loop.
+
+    Read inside the action, before anything has been awaited, because
+    reading afterwards would pass whether the re-range were immediate
+    or scheduled -- and the box is on screen while the operator is
+    looking at it.
+    """
+    panel = ElectronicLoadPanel()
+    panel.set_instrument(_load(), FakeLoadClient())
+    seen = {}
+
+    def select_constant_power():
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CP"))
+        seen["maximum"] = panel.setpoint_spin.maximum()
+        seen["label"] = panel.setpoint_label.text()
+
+    _with_loop(qapp, select_constant_power)
+
+    assert seen["maximum"] == pytest.approx(200.0)
+    assert "(W)" in seen["label"]
 
 
 def test_input_button_sends_set_input(qapp):

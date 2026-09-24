@@ -12,6 +12,7 @@ Commands (Rigol DL3000 and B&K SCPI loads alike): ``set_mode``,
 (``ElectronicLoadData``).
 """
 
+import asyncio
 import logging
 from typing import Any, Dict
 
@@ -247,7 +248,58 @@ class ElectronicLoadPanel(InstrumentPanel):
     # ------------------------------------------------------------------ #
 
     def _on_mode_changed(self, _index: int):
+        """Re-range the setpoint box now; apply the mode just after.
+
+        Synchronous on purpose. An asyncSlot only schedules, so the box
+        would still be showing the previous mode's range and unit until
+        the loop next turned -- and this runs on every selection, where
+        that shows.
+        """
         self._range_setpoint()
+
+        # Only schedule the send when there is a loop to run it. The
+        # combo also changes while the panel is being built and while a
+        # reading adopts the load's own mode, and qasync.asyncSlot with
+        # no running loop creates a task that never starts -- which
+        # surfaces later as "Task was destroyed but it is pending" from
+        # somewhere unrelated. There is nothing to send to at those
+        # moments anyway.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._send_mode()
+
+    @qasync.asyncSlot()
+    async def _send_mode(self):
+        """Switch the load into the chosen mode there and then.
+
+        The instrument works this way: CC, CV, CR and CP are four keys
+        on the front panel, and pressing one enters that mode. It also
+        keeps a separate level for each -- the user guide lists current
+        and slew rate under CC, voltage and range under CV, and so on --
+        which is what makes switching safe to do on its own. Nothing is
+        re-applied to the output; the mode simply becomes the one whose
+        stored level is already in force.
+
+        This used to send nothing until Apply, because the panel has one
+        setpoint box for all four modes and a number meaning amps in CC
+        would have meant ohms in CR. Reading the new mode's own level
+        back from the instrument removes that: the box shows what this
+        mode is actually set to, not what the last one was.
+        """
+        if not (self.client and self.equipment):
+            return                      # still being built, or unbound
+
+        mode = self.mode_combo.currentData() or "CC"
+        try:
+            await self.send("set_mode", {"mode": mode})
+            # Read back rather than assume: if the instrument did not
+            # take the mode, this shows what it is really in.
+            await self.refresh_settings()
+        except Exception as e:
+            logger.error(f"Switching the load mode failed: {e}")
+            self.status_message.emit(f"Switching the load mode failed: {e}")
 
     def _apply_setpoint(self):
         mode = self.mode_combo.currentData() or "CC"
@@ -256,7 +308,13 @@ class ElectronicLoadPanel(InstrumentPanel):
 
     @qasync.asyncSlot(str, str, str, float)
     async def _send_setpoint(self, mode: str, command: str, field: str, value: float):
-        """Mode first, then the setpoint that mode gives meaning to."""
+        """The setpoint for the mode the load is already in.
+
+        set_mode goes first even so. Selecting a mode applies it, so
+        this is normally a no-op -- but Apply is also the button an
+        operator reaches for when the panel and the instrument look out
+        of step, and sending both makes it mean what they expect.
+        """
         try:
             await self.send("set_mode", {"mode": mode})
             await self.send(command, {field: value})
