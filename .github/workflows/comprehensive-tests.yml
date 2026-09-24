@@ -69,14 +69,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r shared/requirements.txt
           pip install -r server/requirements.txt
+          pip install -r client/requirements.txt
           pip install -r requirements-test.txt
-          # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
-          # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
-          # pyqtgraph comes with them: the equipment panels embed a chart
-          # widget that raises on construction without it, so the panel tests
-          # in tests/gui/ cannot build a panel at all if it is missing.
-          pip install PyQt6 PyQt6-Charts pyqtgraph || echo "PyQt6 installation failed (expected in headless CI)"
+          # Nothing ad-hoc here on purpose. 104 test files in this suite
+          # guard themselves on an import, so a dependency installed by a
+          # hand-written list rather than from a requirements file goes
+          # missing silently: pyqtgraph was in this job and absent from the
+          # other three, and every panel test in tests/gui/ skipped there.
+          # No "|| echo" either -- tolerating a failed Qt install is what
+          # let a green run mean "the GUI tests did not execute".
+          # tests/unit/test_no_dependency_skips.py fails if any of this is
+          # missing, so a gap cannot reach a green build again.
 
       - name: Collection must not modify tracked files
         run: |
@@ -175,11 +178,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r shared/requirements.txt
           pip install -r server/requirements.txt
+          pip install -r client/requirements.txt
           pip install -r requirements-test.txt
-          # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
-          # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
-          pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
+          # Nothing ad-hoc here on purpose. 104 test files in this suite
+          # guard themselves on an import, so a dependency installed by a
+          # hand-written list rather than from a requirements file goes
+          # missing silently: pyqtgraph was in this job and absent from the
+          # other three, and every panel test in tests/gui/ skipped there.
+          # No "|| echo" either -- tolerating a failed Qt install is what
+          # let a green run mean "the GUI tests did not execute".
+          # tests/unit/test_no_dependency_skips.py fails if any of this is
+          # missing, so a gap cannot reach a green build again.
 
       - name: Run API tests with coverage
         env:
@@ -235,11 +244,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r shared/requirements.txt
           pip install -r server/requirements.txt
+          pip install -r client/requirements.txt
           pip install -r requirements-test.txt
-          # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
-          # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
-          pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
+          # Nothing ad-hoc here on purpose. 104 test files in this suite
+          # guard themselves on an import, so a dependency installed by a
+          # hand-written list rather than from a requirements file goes
+          # missing silently: pyqtgraph was in this job and absent from the
+          # other three, and every panel test in tests/gui/ skipped there.
+          # No "|| echo" either -- tolerating a failed Qt install is what
+          # let a green run mean "the GUI tests did not execute".
+          # tests/unit/test_no_dependency_skips.py fails if any of this is
+          # missing, so a gap cannot reach a green build again.
 
       - name: Start server with mock equipment
         env:
@@ -445,11 +460,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r shared/requirements.txt
           pip install -r server/requirements.txt
+          pip install -r client/requirements.txt
           pip install -r requirements-test.txt
-          # Install additional runtime dependencies needed for tests
-          pip install scipy zeroconf apscheduler tzlocal psutil qasync email-validator bcrypt pyjwt
-          # Install PyQt6 and PyQt6-Charts for GUI tests (requires system libraries in CI)
-          pip install PyQt6 PyQt6-Charts || echo "PyQt6 installation failed (expected in headless CI)"
+          # Nothing ad-hoc here on purpose. 104 test files in this suite
+          # guard themselves on an import, so a dependency installed by a
+          # hand-written list rather than from a requirements file goes
+          # missing silently: pyqtgraph was in this job and absent from the
+          # other three, and every panel test in tests/gui/ skipped there.
+          # No "|| echo" either -- tolerating a failed Qt install is what
+          # let a green run mean "the GUI tests did not execute".
+          # tests/unit/test_no_dependency_skips.py fails if any of this is
+          # missing, so a gap cannot reach a green build again.
 
       - name: Run performance benchmarks
         env:
