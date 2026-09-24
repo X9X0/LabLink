@@ -27,10 +27,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui import control_panel as control_panel_module
-    from client.ui import equipment_panel as equipment_panel_module
-    from client.ui.control_panel import ControlPanel
-    from client.ui.equipment_panel import EquipmentPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -39,6 +35,12 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for panel tests"
 )
+
+if GUI_AVAILABLE:
+    from client.ui import control_panel as control_panel_module
+    from client.ui import equipment_panel as equipment_panel_module
+    from client.ui.control_panel import ControlPanel
+    from client.ui.equipment_panel import EquipmentPanel
 
 
 class FakeClient:

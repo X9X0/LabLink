@@ -25,8 +25,6 @@ try:
     from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui.control_panel import ChartWithReadouts, FittedReadout
-    from client.ui.theme import dialog_palette, get_app_stylesheet
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -35,6 +33,10 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for readout tests"
 )
+
+if GUI_AVAILABLE:
+    from client.ui.control_panel import ChartWithReadouts, FittedReadout
+    from client.ui.theme import dialog_palette, get_app_stylesheet
 
 
 @pytest.fixture(scope="module")

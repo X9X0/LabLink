@@ -6,10 +6,12 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 
 try:
-    from client.utils.websocket_manager import WebSocketManager, StreamConfig
     WS_AVAILABLE = True
 except ImportError:
     WS_AVAILABLE = False
+
+if WS_AVAILABLE:
+    from client.utils.websocket_manager import WebSocketManager, StreamConfig
 
 
 @pytest.mark.unit

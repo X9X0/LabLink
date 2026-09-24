@@ -27,7 +27,6 @@ try:
     import pyqtgraph  # noqa: F401
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui.equipment.power_supply_panel import PowerSupplyPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -36,6 +35,9 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 and pyqtgraph are required for panel tests"
 )
+
+if GUI_AVAILABLE:
+    from client.ui.equipment.power_supply_panel import PowerSupplyPanel
 
 
 @pytest.fixture(scope="module")

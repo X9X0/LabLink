@@ -25,15 +25,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication, QMessageBox
 
-    from client.models.equipment import (ConnectionStatus, Equipment,
-                                         EquipmentType)
-    from client.ui.equipment_panel import EquipmentPanel
 
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not GUI_AVAILABLE, reason="PyQt6 is required")
+
+if GUI_AVAILABLE:
+    from client.models.equipment import (ConnectionStatus, Equipment,
+                                         EquipmentType)
+    from client.ui.equipment_panel import EquipmentPanel
 
 
 @pytest.fixture(scope="module")

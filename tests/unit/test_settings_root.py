@@ -6,8 +6,6 @@ import pytest
 
 try:
     from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel
-    from client.utils.settings import SettingsManager, get_settings
-    from client.ui.settings_dialog import SettingsDialog
     PYQT_AVAILABLE = True
 except ImportError as e:
     print(f"Error: {e}")
@@ -26,6 +24,10 @@ except ImportError as e:
 pytestmark = pytest.mark.skipif(
     not PYQT_AVAILABLE, reason="PyQt6 is not installed"
 )
+
+if PYQT_AVAILABLE:
+    from client.utils.settings import SettingsManager, get_settings
+    from client.ui.settings_dialog import SettingsDialog
 
 
 def test_settings_manager():

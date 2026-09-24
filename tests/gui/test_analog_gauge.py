@@ -23,8 +23,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication, QSizePolicy
 
-    import client.ui.theme as theme_module
-    from client.ui.instruments import AnalogGauge, PowerSupplyPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -33,6 +31,10 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for gauge tests"
 )
+
+if GUI_AVAILABLE:
+    import client.ui.theme as theme_module
+    from client.ui.instruments import AnalogGauge, PowerSupplyPanel
 
 
 def _relative_luminance(hex_colour):

@@ -7,10 +7,12 @@ from pathlib import Path
 try:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import QSettings
-    from client.utils.settings import SettingsManager, get_settings
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
+
+if PYQT_AVAILABLE:
+    from client.utils.settings import SettingsManager, get_settings
 
 
 @pytest.mark.unit

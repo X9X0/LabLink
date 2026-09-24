@@ -47,15 +47,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication      # noqa: F401
 
-    from client.ui import equipment_panel as panel_module
-    from client.ui.equipment_panel import EquipmentPanel
-    from client.utils import modals
 
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not GUI_AVAILABLE, reason="PyQt6 is required")
+
+if GUI_AVAILABLE:
+    from client.ui import equipment_panel as panel_module
+    from client.ui.equipment_panel import EquipmentPanel
+    from client.utils import modals
 
 OPENS_A_MODAL = ("QMessageBox.information(", "QMessageBox.warning(",
                  "QMessageBox.critical(", "QMessageBox.question(",

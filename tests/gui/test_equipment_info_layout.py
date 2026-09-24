@@ -25,8 +25,6 @@ try:
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui.equipment_panel import EquipmentPanel
-    from client.ui.theme import get_app_stylesheet
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -35,6 +33,10 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for layout tests"
 )
+
+if GUI_AVAILABLE:
+    from client.ui.equipment_panel import EquipmentPanel
+    from client.ui.theme import get_app_stylesheet
 
 VALUES = ("1902B", "power_supply", "B&K Precision", "1902B",
           "ASRL/dev/ttyUSB0::INSTR", "CONNECTED")

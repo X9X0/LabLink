@@ -30,16 +30,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui.control_panel import ControlPanel
-    from client.ui.equipment_panel import EquipmentPanel
-    from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
-                                       note_missed, release_slot, take_missed)
 
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not GUI_AVAILABLE, reason="PyQt6 is required")
+
+if GUI_AVAILABLE:
+    from client.ui.control_panel import ControlPanel
+    from client.ui.equipment_panel import EquipmentPanel
+    from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                       note_missed, release_slot, take_missed)
 
 
 @pytest.fixture(scope="module")

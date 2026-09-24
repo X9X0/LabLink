@@ -23,8 +23,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication
 
-    from client.models.equipment import ConnectionStatus
-    from client.ui.instruments import InstrumentPanel, PowerSupplyPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -33,6 +31,10 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for control panel tests"
 )
+
+if GUI_AVAILABLE:
+    from client.models.equipment import ConnectionStatus
+    from client.ui.instruments import InstrumentPanel, PowerSupplyPanel
 
 
 class _Response:

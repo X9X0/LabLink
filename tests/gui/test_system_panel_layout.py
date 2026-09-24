@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from PyQt6.QtWidgets import QApplication, QSizePolicy
 
-    from client.ui.system_panel import SystemPanel
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -29,6 +28,9 @@ except ImportError:
 pytestmark = pytest.mark.skipif(
     not GUI_AVAILABLE, reason="PyQt6 is required for panel tests"
 )
+
+if GUI_AVAILABLE:
+    from client.ui.system_panel import SystemPanel
 
 
 @pytest.fixture(scope="module")
