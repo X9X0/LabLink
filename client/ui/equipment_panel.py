@@ -189,6 +189,23 @@ class EquipmentPanel(QWidget):
         discover_btn.clicked.connect(self.discover_equipment)
         button_layout.addWidget(discover_btn)
 
+        # A server restart drops every instrument and reconnects none of
+        # them, so after an update the bench comes back with a list of
+        # DISCONNECTED rows to click through one at a time.
+        self.connect_all_btn = QPushButton("Connect All")
+        self.connect_all_btn.setToolTip(
+            "Connect every instrument that is currently disconnected"
+        )
+        self.connect_all_btn.clicked.connect(self.connect_all)
+        button_layout.addWidget(self.connect_all_btn)
+
+        self.disconnect_all_btn = QPushButton("Disconnect All")
+        self.disconnect_all_btn.setToolTip(
+            "Disconnect every instrument that is currently connected"
+        )
+        self.disconnect_all_btn.clicked.connect(self.disconnect_all)
+        button_layout.addWidget(self.disconnect_all_btn)
+
         layout.addLayout(button_layout)
 
         return widget
@@ -913,6 +930,188 @@ class EquipmentPanel(QWidget):
     async def _ask(self, put_it_up):
         """Run a modal that has an answer, without blocking the loop."""
         return await ask(put_it_up)
+
+    def _disconnected_equipment(self):
+        """Everything not currently connected, in list order."""
+        return [eq for eq in self.equipment_list
+                if eq.connection_status != ConnectionStatus.CONNECTED]
+
+    def _connected_equipment(self):
+        return [eq for eq in self.equipment_list
+                if eq.connection_status == ConnectionStatus.CONNECTED]
+
+    def _set_bulk_buttons_enabled(self, enabled: bool, busy_text: str = ""):
+        for button, label in ((self.connect_all_btn, "Connect All"),
+                              (self.disconnect_all_btn, "Disconnect All")):
+            button.setEnabled(enabled)
+            if not enabled and busy_text and button.text() != label:
+                continue
+            button.setText(label if enabled else (busy_text or label))
+
+    @staticmethod
+    def _describe(equipment):
+        return getattr(equipment, "name", None) or equipment.equipment_id
+
+    def _report_bulk(self, verb: str, done: list, failed: list):
+        """One dialog for the whole run, naming whatever did not work.
+
+        Not one per instrument: the point of these buttons is to avoid
+        clicking through a list, and ten dialogs would be worse than the
+        ten clicks they replaced.
+        """
+        if failed and done:
+            show, title = QMessageBox.warning, f"{verb.capitalize()}ed with errors"
+        elif failed:
+            show, title = QMessageBox.critical, f"Could not {verb} anything"
+        else:
+            show, title = QMessageBox.information, f"{verb.capitalize()}ed"
+
+        lines = [f"{verb.capitalize()}ed {len(done)} of {len(done) + len(failed)}."]
+        if failed:
+            lines.append("")
+            lines.extend(f"  {name}: {why}" for name, why in failed)
+        self._say_later(show, title, "\n".join(lines))
+
+    @qasync.asyncSlot()
+    async def connect_all(self):
+        """Connect every instrument that is currently disconnected.
+
+        Sequentially, and only the disconnected ones. Sequentially
+        because several of these share a USB-serial bus and opening
+        four ports at once is how a supply ends up answering somebody
+        else's query; already-connected ones are skipped because
+        reconnecting a working instrument drops whatever it was doing.
+        """
+        targets = self._disconnected_equipment()
+        if not targets:
+            self._say_later(QMessageBox.information, "Nothing to connect",
+                            "Every instrument on the list is already "
+                            "connected.")
+            return
+
+        self._set_bulk_buttons_enabled(False, "Connecting...")
+        done, failed = [], []
+        try:
+            for equipment in targets:
+                client = self._client_for(equipment)
+                if client is None:
+                    failed.append((self._describe(equipment),
+                                   "no connection to its server"))
+                    continue
+                try:
+                    result = await call_blocking(
+                        client.connect_equipment,
+                        equipment.resource_name,
+                        equipment.equipment_type,
+                        equipment.model,
+                    )
+                    if result.get("status") == "connected":
+                        equipment.connection_status = ConnectionStatus.CONNECTED
+                        done.append(self._describe(equipment))
+                    else:
+                        failed.append((self._describe(equipment),
+                                       result.get("error") or "refused"))
+                except Exception as e:
+                    # One instrument that will not open must not stop the
+                    # rest; that is the whole reason for a bulk button.
+                    logger.warning(
+                        f"Connect All: {self._describe(equipment)} failed: {e}")
+                    failed.append((self._describe(equipment), str(e)))
+        finally:
+            self._set_bulk_buttons_enabled(True)
+            self._update_equipment_list_widget()
+            self._update_details_panel()
+            self.refresh()
+            self.equipment_changed.emit()
+
+        self._report_bulk("connect", done, failed)
+
+    @qasync.asyncSlot()
+    async def disconnect_all(self):
+        """Disconnect every instrument that is currently connected.
+
+        Asked once for the whole set rather than per instrument. The
+        single-instrument path asks only when that instrument's output
+        is live, which means reading it first; doing that for every
+        instrument here would be a round-trip each before the question
+        could even be put. So the question is asked up front and the
+        answer applied to all of them, which is also the honest shape:
+        the operator is deciding a policy, not eight separate cases.
+        """
+        targets = self._connected_equipment()
+        if not targets:
+            self._say_later(QMessageBox.information, "Nothing to disconnect",
+                            "No instrument on the list is connected.")
+            return
+
+        names = "\n".join(f"  {self._describe(eq)}" for eq in targets)
+
+        def put_it_up():
+            box = QMessageBox(self)
+            box.setWindowTitle("Disconnect all equipment")
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setText(f"Disconnect {len(targets)} instrument(s)?")
+            box.setInformativeText(
+                f"{names}\n\nAny output that is on can be turned off as "
+                f"part of disconnecting, or left running.\n\nLeaving them "
+                f"running means LabLink sends no command: each instrument "
+                f"keeps its output until something else changes it."
+            )
+            off = box.addButton("Turn outputs off",
+                                QMessageBox.ButtonRole.DestructiveRole)
+            hold = box.addButton("Leave them running",
+                                 QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is off:
+                return "off"
+            if clicked is hold:
+                return "hold"
+            return None
+
+        on_disconnect = await self._ask(put_it_up)
+        if on_disconnect is None:
+            return                          # cancelled
+
+        self._set_bulk_buttons_enabled(False, "Disconnecting...")
+        done, failed = [], []
+        try:
+            for equipment in targets:
+                client = self._client_for(equipment)
+                if client is None:
+                    failed.append((self._describe(equipment),
+                                   "no connection to its server"))
+                    continue
+                equipment_id = equipment.equipment_id
+                try:
+                    if equipment_id in self.streaming_equipment:
+                        await self._stop_equipment_stream(equipment_id)
+                    result = await call_blocking(
+                        client.disconnect_equipment, equipment_id,
+                        on_disconnect,
+                    )
+                    if result.get("status") == "disconnected":
+                        equipment.connection_status = (
+                            ConnectionStatus.DISCONNECTED
+                        )
+                        done.append(self._describe(equipment))
+                    else:
+                        failed.append((self._describe(equipment),
+                                       result.get("error") or "refused"))
+                except Exception as e:
+                    logger.warning(
+                        f"Disconnect All: {self._describe(equipment)} "
+                        f"failed: {e}")
+                    failed.append((self._describe(equipment), str(e)))
+        finally:
+            self._set_bulk_buttons_enabled(True)
+            self._update_equipment_list_widget()
+            self._update_details_panel()
+            self.refresh()
+            self.equipment_changed.emit()
+
+        self._report_bulk("disconnect", done, failed)
 
     @qasync.asyncSlot()
     async def connect_equipment(self):
