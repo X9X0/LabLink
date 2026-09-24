@@ -111,6 +111,8 @@ class MeasurementViews(QWidget):
         }
 
         self.displays: Dict[str, FittedReadout] = {}
+        #: The rules between the digital readouts, in order.
+        self.dividers: list = []
         self.gauges: Dict[str, AnalogGauge] = {}
         self.series: Dict[str, QLineSeries] = {}
         self.axes: Dict[str, QValueAxis] = {}
@@ -128,9 +130,15 @@ class MeasurementViews(QWidget):
         layout.addWidget(self._build_mode_selector())
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(self._build_digital())
-        self.stack.addWidget(self._build_analog())
-        self.stack.addWidget(self._build_graph())
+        # Kept by name as well as by index: a caller that wants to grab
+        # the digital face and look at the pixels should not have to
+        # know which slot it is in.
+        self.digital_view = self._build_digital()
+        self.analog_view = self._build_analog()
+        self.graph_view = self._build_graph()
+        self.stack.addWidget(self.digital_view)
+        self.stack.addWidget(self.analog_view)
+        self.stack.addWidget(self.graph_view)
         self.stack.setSizePolicy(QSizePolicy.Policy.Expanding,
                                  QSizePolicy.Policy.Expanding)
         layout.addWidget(self.stack, 1)
@@ -185,6 +193,7 @@ class MeasurementViews(QWidget):
                 divider.setSizePolicy(QSizePolicy.Policy.Fixed,
                                       QSizePolicy.Policy.Expanding)
                 readings.addWidget(divider)
+                self.dividers.append(divider)
             readout = FittedReadout(
                 f"{0:.{channel.decimals}f} {channel.unit}")
             self.displays[channel.key] = readout
@@ -421,6 +430,16 @@ class MeasurementViews(QWidget):
     def set_decimals(self, key: str, decimals: int):
         if key in self._decimals:
             self._decimals[key] = int(decimals)
+
+    def apply_auto_range(self, readings: Optional[Dict[str, float]] = None):
+        """Re-range, optionally from readings that did not come through
+        set_readings -- which is how a caller says "the last reading was
+        this" without redrawing everything around it."""
+        if readings:
+            for key, value in readings.items():
+                if key in self._last:
+                    self._last[key] = float(value)
+        self._apply_auto_range()
 
     def _apply_auto_range(self):
         if not self.autorange_button.isChecked():

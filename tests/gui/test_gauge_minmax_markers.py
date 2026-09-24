@@ -142,8 +142,9 @@ class TestThePanelDrivesThem:
 
     def test_tracking_off_means_no_markers(self, panel):
         panel.minmax_button.setChecked(False)
-        panel._extremes = {"v_min": 1.0, "v_max": 9.0,
-                           "i_min": 0.1, "i_max": 0.9}
+        panel.views._extremes = {"voltage": [1.0, 9.0],
+                                 "current": [0.1, 0.9],
+                                 "power": [0.1, 8.1]}
         panel._mark_extremes_on_gauges()
 
         assert panel.voltage_gauge.min_marker is None
@@ -151,8 +152,9 @@ class TestThePanelDrivesThem:
 
     def test_tracking_on_puts_them_on_both_gauges(self, panel):
         panel.minmax_button.setChecked(True)
-        panel._extremes = {"v_min": 1.0, "v_max": 9.0,
-                           "i_min": 0.1, "i_max": 0.9}
+        panel.views._extremes = {"voltage": [1.0, 9.0],
+                                 "current": [0.1, 0.9],
+                                 "power": [0.1, 8.1]}
         panel._mark_extremes_on_gauges()
 
         assert panel.voltage_gauge.min_marker == pytest.approx(1.0)
@@ -163,13 +165,15 @@ class TestThePanelDrivesThem:
     def test_switching_tracking_off_clears_the_face(self, panel):
         """A stale pair left sitting there would read as current."""
         panel.minmax_button.setChecked(True)
-        panel._extremes = {"v_min": 1.0, "v_max": 9.0,
-                           "i_min": 0.1, "i_max": 0.9}
+        panel.views._extremes = {"voltage": [1.0, 9.0],
+                                 "current": [0.1, 0.9],
+                                 "power": [0.1, 8.1]}
         panel._mark_extremes_on_gauges()
         assert panel.voltage_gauge.max_marker is not None
 
+        # setChecked drives the views' own handler; the panel no longer
+        # has one of its own to call.
         panel.minmax_button.setChecked(False)
-        panel._on_minmax_toggled(False)
 
         assert panel.voltage_gauge.min_marker is None
         assert panel.voltage_gauge.max_marker is None

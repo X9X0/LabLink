@@ -36,6 +36,7 @@ pytestmark = pytest.mark.skipif(
 
 if GUI_AVAILABLE:
     from client.ui.control_panel import ChartWithReadouts, FittedReadout
+    from client.ui.instruments.widgets import nice_range
     from client.ui.theme import dialog_palette, get_app_stylesheet
 
 
@@ -278,7 +279,9 @@ class TestMinMaxAndAutoRange:
         panel._track_extremes(4.0, 0.5)
         panel._reset_extremes()
 
-        assert panel._extremes["v_min"] is None
+        # The extremes live in the shared views now; the marker coming
+        # off the gauge face is the visible half of the same thing.
+        assert panel.voltage_gauge.min_marker is None
 
     def test_it_follows_the_instrument_resolution(self, panel):
         """A supply that sends hundredths must not be shown thousandths."""
@@ -347,19 +350,19 @@ class TestMinMaxAndAutoRange:
     def test_it_never_scales_past_the_instrument(self, panel):
         from client.ui.instruments import PowerSupplyPanel
 
-        assert PowerSupplyPanel._nice_range(99.0, 5.0, 0.1) == 5.0
+        assert nice_range(99.0, 5.0, 0.1) == 5.0
 
     def test_a_reading_of_zero_still_gives_a_usable_scale(self, panel):
         from client.ui.instruments import PowerSupplyPanel
 
-        assert PowerSupplyPanel._nice_range(0.0, 5.0, 0.1) > 0
+        assert nice_range(0.0, 5.0, 0.1) > 0
 
     def test_the_scale_lands_on_readable_numbers(self, panel):
         """Ten divisions of 3.7 volts each would be worse than not ranging."""
         from client.ui.instruments import PowerSupplyPanel
 
         for reading in (0.3, 0.9, 2.2, 4.9):
-            top = PowerSupplyPanel._nice_range(reading, 5.0, 0.1)
+            top = nice_range(reading, 5.0, 0.1)
             mantissa = top / (10 ** math.floor(math.log10(top)))
             assert mantissa in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10), top
 
@@ -415,7 +418,7 @@ class TestARememberedInstrumentIsNotPolled:
         panel.selected_equipment = self._equipment(ConnectionStatus.DISCONNECTED)
         panel._start_data_acquisition()
 
-        assert panel.voltage_display.text() == "--"
+        assert panel.voltage_display.text() == "-- V"
 
     def test_a_connected_instrument_is_polled(self, panel, qapp):
         from client.models.equipment import ConnectionStatus

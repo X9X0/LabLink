@@ -193,3 +193,58 @@ class TestModeSwitching:
         assert views.current_mode() == "graph"
         views.digital_radio.setChecked(True)
         assert views.current_mode() == "digital"
+
+
+class TestTheSupplyUsesThemToo:
+    """The supply had its own copy of all this; now it shares the load's."""
+
+    @pytest.fixture
+    def supply(self, qapp):
+        from client.ui.instruments import PowerSupplyPanel
+
+        made = PowerSupplyPanel()
+        yield made
+        made.deleteLater()
+        qapp.processEvents()
+
+    def test_it_has_the_watts_channel(self, supply):
+        """Asked for from the bench: the operator was doing V x I in
+        their head while watching two of the three numbers."""
+        assert "power" in supply.views.displays
+        assert "power" in supply.views.gauges
+
+    def test_power_is_the_product_of_the_other_two(self, supply):
+        """None of these supplies report power, so it is derived -- and
+        derived from the readings as they arrived, so it agrees with the
+        numbers printed beside it."""
+        supply.views.set_readings({"voltage": 12.0, "current": 1.5,
+                                   "power": 12.0 * 1.5})
+        assert supply.power_display.text() == "18.00 W"
+
+    def test_the_old_names_still_reach_the_readouts(self, supply):
+        """The panel is what the rest of the client holds; none of it
+        should have to know a gauge moved."""
+        supply.views.set_readings({"voltage": 5.0, "current": 0.5,
+                                   "power": 2.5})
+        assert "5.00" in supply.voltage_display.text()
+        assert supply.voltage_gauge.current_value == pytest.approx(5.0)
+        assert supply.minmax_button.isCheckable()
+        assert supply.autorange_button.isCheckable()
+
+    def test_configure_ranges_all_three_channels(self, supply):
+        supply.configure({"max_voltage": 30.0, "max_current": 3.0,
+                          "voltage_decimals": 2, "current_decimals": 3})
+
+        assert supply.voltage_gauge.max_value == pytest.approx(30.0)
+        assert supply.current_gauge.max_value == pytest.approx(3.0)
+        assert supply.power_gauge.max_value == pytest.approx(90.0), (
+            "the watts dial should span what this supply can actually "
+            "deliver, not a default")
+
+    def test_decimals_reach_the_readout(self, supply):
+        """A supply that sends hundredths must not be shown thousandths."""
+        supply.configure({"max_voltage": 30.0, "max_current": 3.0,
+                          "voltage_decimals": 2, "current_decimals": 2})
+        supply.views.set_readings({"voltage": 5.0, "current": 0.5,
+                                   "power": 2.5})
+        assert supply.current_display.text() == "0.50 A"

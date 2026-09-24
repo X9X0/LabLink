@@ -49,6 +49,10 @@ if GUI_AVAILABLE:
 
 PANEL_MODULE = "client.ui.system_panel"
 
+#: How long the fake server takes. The freeze test reads the
+#: difference between this and FREEZE_SEC as its signal.
+REQUEST_SEC = 0.6
+
 
 @pytest.fixture(scope="module")
 def qapp():
@@ -271,27 +275,34 @@ class TestTheLoopKeepsRunning:
     one changes the answer.
     """
 
-    #: Longer than any scheduling hiccup, far shorter than the 0.3s stall.
-    FREEZE_SEC = 0.15
+    #: Longer than any scheduling hiccup, far shorter than the stall.
+    #:
+    #: The gap between the two is what makes this reliable, so the fake
+    #: request is slow enough to leave one. At a 0.3s request and a
+    #: 0.15s bar there was only 0.15s of daylight, and a full-suite run
+    #: on a busy machine crossed it -- passing alone and failing in the
+    #: crowd, which is the signature of a threshold set too close to the
+    #: noise rather than of a real stall.
+    FREEZE_SEC = 0.25
 
     @pytest.mark.asyncio
     async def test_a_slow_handler_does_not_freeze_the_window(
             self, panel, qapp, monkeypatch):
         dialogs = Dialogs(answer=QMessageBox.StandardButton.Yes)
         dialogs.install(monkeypatch)
-        panel.client = Client(delay=0.3)      # a server taking its time
+        panel.client = Client(delay=REQUEST_SEC)      # a server taking its time
 
         frozen = await longest_freeze(qapp, panel.rollback)
 
         assert frozen < self.FREEZE_SEC, (
-            f"the loop went {frozen:.2f}s untouched while a 0.3s request "
+            f"the loop went {frozen:.2f}s untouched while a slow request "
             f"was out; that is the window locked for the round trip")
 
     @pytest.mark.asyncio
     async def test_refresh_does_not_freeze_either(self, panel, qapp):
         """refresh makes two requests, so a total-tick count misses a
         stall in one of them. This measures the stall itself."""
-        panel.client = Client(delay=0.3)
+        panel.client = Client(delay=REQUEST_SEC)
 
         frozen = await longest_freeze(qapp, panel.refresh)
 

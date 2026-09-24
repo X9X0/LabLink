@@ -138,5 +138,8 @@ class TestAPermanentRefusalAlsoStops:
 
         panel._show_no_readings_for_this_instrument()
 
-        assert panel.voltage_display.text() == "--"
-        assert panel.current_display.text() == "--"
+        # "-- V" rather than a bare "--" since the displays became
+        # shared with the load: the unit stays put, so a blank readout
+        # still says what it would be showing.
+        assert panel.voltage_display.text() == "-- V"
+        assert panel.current_display.text() == "-- A"
