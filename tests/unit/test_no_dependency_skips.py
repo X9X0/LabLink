@@ -70,6 +70,10 @@ REQUIRED = {
     "pytest_asyncio": "requirements-test.txt",
     "pytest_benchmark": "requirements-test.txt",
     "pytest_mock": "requirements-test.txt",
+    # Without this, --timeout is an unrecognised argument, so a test that
+    # hangs takes the whole run with it rather than failing. Found by a
+    # keep-alive test wedging on a single-threaded HTTP fixture.
+    "pytest_timeout": "requirements-test.txt",
     "requests": "requirements-test.txt",
 }
 

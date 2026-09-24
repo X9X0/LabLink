@@ -46,6 +46,18 @@ class MessageType(str, Enum):
     PING = "ping"
 
     # Server -> Client
+    #
+    # This list was missing two thirds of what the server actually
+    # sends -- discovery_progress, every alarm and scheduler event, the
+    # diagnostics ones. That was not merely untidy: register_handler
+    # accepts only the types seeded into _message_handlers below and
+    # otherwise logs a warning and returns, so registering for any of
+    # the absent ones silently did nothing. Callers that happened to use
+    # register_message_handler, documented as an alias but in fact the
+    # permissive one, worked; the rest failed quietly.
+    #
+    # Derived by grepping the server for what it puts in "type". Keep it
+    # that way: an entry missing here is a handler that never fires.
     STREAM_DATA = "stream_data"
     ACQUISITION_STREAM = "acquisition_stream"
     STREAM_STARTED = "stream_started"
@@ -53,6 +65,32 @@ class MessageType(str, Enum):
     ACQUISITION_STREAM_STARTED = "acquisition_stream_started"
     ACQUISITION_STREAM_STOPPED = "acquisition_stream_stopped"
     PONG = "pong"
+    DISCOVERY_PROGRESS = "discovery_progress"
+    CAPABILITIES = "capabilities"
+    ERROR = "error"
+    BROADCAST = "broadcast"
+    REFRESH = "refresh"
+    STATS = "stats"
+    # Alarms
+    ALARM = "alarm"
+    ALARM_EVENT = "alarm_event"
+    ALARM_UPDATED = "alarm_updated"
+    ALARM_CLEARED = "alarm_cleared"
+    # Scheduler
+    JOB_CREATED = "job_created"
+    JOB_UPDATED = "job_updated"
+    JOB_DELETED = "job_deleted"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    # Recording and diagnostics
+    RECORDING_STARTED = "recording_started"
+    RECORDING_STOPPED = "recording_stopped"
+    COMPRESSION_SET = "compression_set"
+    PRIORITY_SET = "priority_set"
+    ERROR_SPIKE = "error_spike"
+    REPEATED_ERROR = "repeated_error"
+    SLOW_OPERATION = "slow_operation"
 
 
 @dataclass
@@ -109,15 +147,14 @@ class WebSocketManager:
         self._reconnect_task: Optional[asyncio.Task] = None
         self._ping_task: Optional[asyncio.Task] = None
 
-        # Callbacks for different message types
+        # Callbacks for different message types.
+        #
+        # Seeded from the enum rather than hand-listed. The hand-written
+        # version held seven of them and drifted from both the enum and
+        # the server, and because register_handler treats an unseeded
+        # type as unknown, every gap was a handler that never fired.
         self._message_handlers: Dict[str, List[Callable]] = {
-            MessageType.STREAM_DATA: [],
-            MessageType.ACQUISITION_STREAM: [],
-            MessageType.STREAM_STARTED: [],
-            MessageType.STREAM_STOPPED: [],
-            MessageType.ACQUISITION_STREAM_STARTED: [],
-            MessageType.ACQUISITION_STREAM_STOPPED: [],
-            MessageType.PONG: [],
+            member.value: [] for member in MessageType
         }
 
         # Stream data handlers (for convenience)
@@ -568,10 +605,23 @@ class WebSocketManager:
             message_type: Type of message to handle
             handler: Callback function (can be sync or async)
         """
-        if message_type in self._message_handlers:
-            self._message_handlers[message_type].append(handler)
-        else:
-            logger.warning(f"Unknown message type: {message_type}")
+        # Registering must never be a silent no-op. This used to log a
+        # warning and drop the handler for any type not pre-seeded, so a
+        # panel asking for a message the server really does send simply
+        # never heard it, with one warning at startup to say so. The
+        # handler is now always recorded; an unrecognised name is still
+        # worth a warning, because it is most likely a typo, but the
+        # registration stands either way.
+        if message_type not in self._message_handlers:
+            known = {member.value for member in MessageType}
+            if str(message_type) not in known:
+                logger.warning(
+                    f"Registering for {message_type!r}, which is not a "
+                    f"known MessageType -- check the spelling, or add it "
+                    f"if the server has grown a new one"
+                )
+            self._message_handlers[message_type] = []
+        self._message_handlers[message_type].append(handler)
 
     def unregister_handler(self, message_type: MessageType, handler: Callable):
         """Unregister a handler.

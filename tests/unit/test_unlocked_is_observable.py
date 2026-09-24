@@ -123,14 +123,25 @@ class TestReadsAreNeverRefused:
         assert "No observer or control access" not in after_control
 
     def test_control_still_requires_the_lock(self):
-        """The half that must not change."""
+        """The half that must not change.
+
+        This used to also assert the refusal's exact wording. The
+        wording has since moved into _why_control_was_refused, which
+        distinguishes the three reasons control can be refused rather
+        than calling all of them "locked by session unknown" -- so the
+        assertion now checks that a refusal still happens and still
+        explains itself, and leaves the text to that function's own
+        tests.
+        """
         import inspect
 
         from server.api import equipment as api
 
         source = inspect.getsource(api.execute_command)
         assert "can_control_equipment" in source
-        assert "Acquire exclusive lock before control commands" in source
+        assert "_why_control_was_refused" in source, (
+            "control is refused without telling the operator why")
+        assert "403" in source
 
     def test_a_read_still_keeps_a_holder_s_lock_alive(self):
         import inspect

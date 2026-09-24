@@ -57,6 +57,48 @@ def requires_control(action: str) -> bool:
     return any(cmd in action_lower for cmd in CONTROL_COMMANDS)
 
 
+def _why_control_was_refused(equipment_id: str, session_id: str) -> str:
+    """Say which of the three reasons it was, because they differ.
+
+    ``can_control_equipment`` returns False for three unrelated
+    situations, and the old message described all of them as "locked by
+    session unknown":
+
+      * nobody holds a lock at all -- you simply have not taken one;
+      * somebody else holds it;
+      * you hold it, but as an observer rather than exclusively.
+
+    The first is the common one and the message was actively wrong
+    about it. "Locked by session unknown" reads as another operator
+    having taken your instrument, which is the opposite of the truth
+    and sends you looking for a colleague to ask. It cost time on the
+    bench once already, when a lock had merely timed out.
+    """
+    status = lock_manager.get_lock_status(equipment_id)
+
+    if not status.get("locked"):
+        return (
+            f"No lock is held on {equipment_id}, and control commands "
+            f"need one. Acquire an exclusive lock first. (Nobody else "
+            f"holds it -- a lock of your own may simply have timed out.)"
+        )
+
+    owner = status.get("session_id")
+    if owner != session_id:
+        who = status.get("username") or "another session"
+        expired = " Their lock has expired and will be released shortly." \
+            if status.get("expired") else ""
+        return (
+            f"{equipment_id} is locked by {who} (session {owner})."
+            f"{expired} Control commands need the exclusive lock."
+        )
+
+    return (
+        f"You hold {equipment_id} as an observer, which permits reading "
+        f"but not control. Acquire it exclusively to send commands."
+    )
+
+
 class ConnectDeviceRequest(BaseModel):
     """Request to connect to a device."""
 
@@ -354,12 +396,11 @@ async def execute_command(equipment_id: str, command: Command):
                 if not lock_manager.can_control_equipment(
                     equipment_id, command.session_id
                 ):
-                    lock_status = lock_manager.get_lock_status(equipment_id)
-                    current_owner = lock_status.get("session_id", "unknown")
                     raise HTTPException(
                         status_code=403,
-                        detail=f"Equipment {equipment_id} is locked by session {current_owner}. "
-                        f"Acquire exclusive lock before control commands.",
+                        detail=_why_control_was_refused(
+                            equipment_id, command.session_id
+                        ),
                     )
 
                 # Update lock activity

@@ -13,6 +13,8 @@ from typing import Any, Callable, Dict, List, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 try:
     import aiohttp
@@ -62,8 +64,48 @@ class _TimeoutSession(requests.Session):
     #: 401 is the correct answer, not a stale token.
     _NO_RETRY = ("/security/refresh", "/security/login", "/auth/login")
 
+    #: Retry a request the server never received.
+    #:
+    #: uvicorn closes an idle keep-alive connection after a few seconds.
+    #: If the client draws that socket out of the pool at the moment the
+    #: server is closing it, the request dies before it is sent:
+    #:
+    #:     ConnectionError: ('Connection aborted.',
+    #:                       RemoteDisconnected('Remote end closed
+    #:                       connection without response'))
+    #:
+    #: About one a minute on this bench, and self-correcting, because the
+    #: next call opens a fresh socket and works. requests defaults to no
+    #: retries at all, so each one surfaced to a panel as a failed read.
+    #:
+    #: Only reads are retried, and deliberately so. urllib3 would by
+    #: default also retry PUT and DELETE as idempotent, which is true of
+    #: HTTP in general and beside the point here: this client drives lab
+    #: instruments, and no automatic retry should ever be able to reach
+    #: one. A command that genuinely failed is the panel's to report and
+    #: the operator's to repeat.
+    #: ``read`` is what covers this, not ``connect``. urllib3 counts a
+    #: peer that hangs up on an established socket as a read failure --
+    #: the connection was made, so the connect budget is never touched.
+    #: Setting read=0 on the theory that "a read error means the server
+    #: got it" leaves the exact case this exists for unretried; it also
+    #: does not follow, since RemoteDisconnected means the opposite.
+    #: Retrying reads is safe here only because allowed_methods is
+    #: restricted to methods that are safe by definition.
+    _RETRY_READS = Retry(
+        total=2,
+        connect=2,
+        read=2,
+        status=0,
+        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+        backoff_factor=0.1,
+    )
+
     def __init__(self):
         super().__init__()
+        adapter = HTTPAdapter(max_retries=self._RETRY_READS)
+        self.mount("http://", adapter)
+        self.mount("https://", adapter)
         #: Set by LabLinkClient; returns True when a new token was obtained.
         self.renew_token = None
         # Serialises renewal so a burst of parallel 401s asks once rather than

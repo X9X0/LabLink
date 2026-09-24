@@ -30,16 +30,26 @@ from client.ui.instruments.power_supply import PowerSupplyPanel  # noqa: E402
 
 BLOCK_S = 0.3
 
-#: What "it blocked" costs. Every SlowClient call sleeps BLOCK_S, so a
-#: selection that waits on even one of them takes at least that long. The
-#: threshold has to sit between "no blocking call" and "one blocking call",
-#: and the useful evidence is which calls landed on the GUI thread, not the
-#: stopwatch -- see the note on _assert_did_not_block.
+#: When the stopwatch backstop should fire.
 #:
-#: It was BLOCK_S / 2, which is 0.15 s, and a clean run on a loaded machine
-#: measured 0.172 s: the bar was below the honest time, so the test failed
-#: for being busy rather than for blocking.
-BLOCKED_IF_OVER_S = BLOCK_S
+#: This has been tuned twice by chasing the fake's sleep, and both times
+#: it flaked. BLOCK_S / 2 was 0.15 s and a clean run on a loaded machine
+#: took 0.172 s. Raising it to BLOCK_S, 0.3 s, bought about a tenth of a
+#: second of headroom and flaked again in a combined run.
+#:
+#: The mistake was deriving the bar from the fake rather than from what
+#: it is for. The exact evidence is ``called_on_gui_thread``, which names
+#: every blocking call that landed on the GUI thread and does not care
+#: how fast the machine is; that assertion catches the bug this file is
+#: about. The stopwatch only guards the residue -- a stall on the GUI
+#: thread that never calls the client at all, such as a long synchronous
+#: computation or a modal.
+#:
+#: So it is sized to what an operator would notice rather than to half a
+#: simulated sleep. A stall worth failing over is not 0.3 s; it is the
+#: kind that makes the window feel dead. Anything under a second here is
+#: measuring the CI box's load, not the code.
+BLOCKED_IF_OVER_S = 1.0
 
 
 def _assert_did_not_block(client, elapsed, what):
@@ -56,7 +66,9 @@ def _assert_did_not_block(client, elapsed, what):
         f"{what} made {client.called_on_gui_thread} on the GUI thread")
     assert elapsed < BLOCKED_IF_OVER_S, (
         f"{what} held the GUI thread for {elapsed:.2f}s without calling the "
-        f"client, so something else on that path blocks")
+        f"client, so something else on that path blocks. Note this is the "
+        f"backstop, not the main assertion -- if it fires alone, look for "
+        f"a synchronous stall that is not a client call")
 
 
 @pytest.fixture(scope="module")
