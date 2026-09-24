@@ -12,22 +12,26 @@ Sixteen of those in four minutes of testing, against 481 writes that
 were acknowledged normally. Saying no up front costs nothing and tells
 the operator something true.
 
-What it has to be is *true*, though, and so far every number offered for
-these two supplies has come from an unloaded bench:
+What it has to be is *true*, though, and three numbers were offered for
+the 1902B before anyone asked the supply itself:
 
     0.1 V   what the front panel would display
-    1.10 V  what the 1685B sat at when asked for less
-    1.00 V  what the 1902B sat at when asked for less
+    1.0 V   what the driver's own spec line says
+    1.1 V   where an unloaded output settled
 
-An unloaded supply's output tells you nothing about whether it accepted
-a setpoint, because with no current drawn there is nothing to pull the
-output down to it. All three numbers are consistent with a floor and
-equally consistent with no floor at all, so neither model claims one
-here. The measurement that separates them is GETS under load: what the
-supply says its setpoint is, rather than what its output happens to be.
+All three were wrong. Asked over the wire -- three rounds of 1.2, 0.8,
+0.7 -- it answered identically every time: 1.2 and 0.8 acknowledged and
+the setpoint moved, 0.7 ignored with no reply and the setpoint left at
+0.8. The floor is 0.8 V.
 
-The refusal machinery below is tested against a driver given an explicit
-floor, so it stays covered while no real model claims one.
+What makes that conclusive where the earlier numbers were not is that it
+rests on the acknowledgement, not on the output voltage. The supply was
+in CC against a 0 A limit throughout and read 0.13 V the entire time --
+a reading equally consistent with every floor anyone had proposed.
+
+The 1685B claims nothing. It was swapped off the bench before it could
+be asked, and a floor nobody measured is exactly what this file exists
+to prevent.
 """
 
 import os
@@ -64,10 +68,35 @@ class TestOnlyWhatTheWireSupports:
     rather than to guess low.
     """
 
-    def test_the_1902b_claims_no_floor(self):
-        """1-60 V is its spec line, not a measurement of VOLT."""
-        assert driver(BK1902B).min_voltage == pytest.approx(0.0)
+    def test_the_1902b_floors_at_the_measured_value(self):
+        """0.8 V: asked over the wire, three rounds, same answer each time.
+
+        Not 1.0 from the spec line and not 0.1 from the front panel. A
+        floor set to the spec's 1.0 would refuse 0.8 and 0.9, both of
+        which the supply accepts -- and would refuse them in the server,
+        so the instrument would never be asked and the error could not
+        be found from the bench.
+        """
+        assert driver(BK1902B).min_voltage == pytest.approx(0.8)
+
+    def test_the_1902b_current_still_reaches_zero(self):
+        """Measured separately: do not assume the two are symmetric."""
         assert driver(BK1902B).min_current == pytest.approx(0.0)
+
+    @pytest.mark.asyncio
+    async def test_the_lowest_accepted_voltage_is_not_refused(self):
+        """0.8 is a value the supply takes; refusing it would be a bug."""
+        supply = driver(BK1902B)
+        supply._write = _record(supply)
+        await supply.set_voltage(0.8)
+        assert supply.written == ["VOLT008"]
+
+    @pytest.mark.asyncio
+    async def test_the_highest_ignored_voltage_is_refused(self):
+        """0.7 earns a full 10s read timeout on the wire; say no first."""
+        supply = driver(BK1902B)
+        with pytest.raises(ValueError):
+            await supply.set_voltage(0.7)
 
     def test_the_1685b_claims_no_floor(self):
         assert driver(BK1685B).min_voltage == pytest.approx(0.0)
@@ -80,16 +109,20 @@ class TestOnlyWhatTheWireSupports:
         assert base.min_voltage == 0.0
         assert base.min_current == 0.0
 
-    def test_nothing_below_the_dial_is_refused_by_either(self):
-        """The whole point: the instrument gets asked, so it can answer."""
-        for cls in (BK1685B, BK1902B):
-            supply = driver(cls)
-            supply._write = _record(supply)
-            import asyncio
-            asyncio.run(supply.set_voltage(0.0))
-            assert supply.written == ["VOLT000"], (
-                f"{supply.model} refused 0 V in the server, so the bench "
-                f"can never find out what the supply would have done")
+    def test_an_unmeasured_model_is_not_refused_anything(self):
+        """The whole point: the instrument gets asked, so it can answer.
+
+        The 1902B has since been measured and does claim a floor. The
+        1685B has not -- it was swapped off the bench before anyone put
+        a question to it -- so it must keep letting everything through.
+        """
+        supply = driver(BK1685B)
+        supply._write = _record(supply)
+        import asyncio
+        asyncio.run(supply.set_voltage(0.0))
+        assert supply.written == ["VOLT000"], (
+            "the 1685B refused 0 V in the server, so the bench can never "
+            "find out what the supply would have done")
 
 
 def with_floor(cls, volts=None, amps=None):

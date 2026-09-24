@@ -1022,21 +1022,32 @@ class BK1902B(BKPowerSupplyBase):
         # 1902B specs: 1-60V, 0-15A, 900W
         self.max_voltage = 60.0
         self.max_current = 15.0
-        # Unclaimed, pending measurement under load.
+        # 0.8 V, measured over the wire rather than read off anything.
         #
-        # "Sits at 1.00 V when dialled below it" was read as the supply
-        # clamping the setpoint to a 1 V floor. Unloaded, that reading
-        # does not distinguish between the two things it could mean: a
-        # setpoint the supply refused, or a setpoint it accepted and
-        # cannot regulate down to with no current being drawn. The spec
-        # line above says 1-60 V, but a spec line describes the front
-        # panel's range, and the front panel is not the serial command.
+        # Three earlier numbers were all wrong: 0.1 V from what the front
+        # panel displays, 1.0 V from the spec line above, and 1.1 V from
+        # where an unloaded output settled. The supply was asked directly,
+        # three rounds of 1.2 / 0.8 / 0.7, and answered the same way every
+        # time::
         #
-        # A floor guessed wrong is worse than none: at 1.0 the server
-        # refuses the write itself, so the instrument is never asked and
-        # the guess can never be caught. Claim nothing until GETS says
-        # what the supply did with the value.
-        self.min_voltage = 0.0
+        #     asked 1.2  ->  OK, GETS 1.2
+        #     asked 0.8  ->  OK, GETS 0.8
+        #     asked 0.7  ->  no acknowledgement, GETS stays 0.8
+        #
+        # At and above 0.8 the command is acknowledged and the setpoint
+        # moves. Below it the supply does not refuse -- it ignores the
+        # command entirely, so the driver waits out a full 10s read
+        # timeout for an "OK" that is never sent, and the setpoint stays
+        # where it was. Saying no here costs nothing and is true.
+        #
+        # Note it is the *acknowledgement* that establishes this, not the
+        # output voltage: the supply was in CC against a 0 A limit
+        # throughout, so its output read 0.13 V the whole time and would
+        # have supported any floor you cared to believe in.
+        self.min_voltage = 0.8
+        # 0.0 A is accepted and read back as a setpoint; unlike the
+        # voltage, the current really does reach zero. Do not assume the
+        # two are symmetric.
         self.min_current = 0.0
         self.dialect = DIALECT_STANDARD
 
