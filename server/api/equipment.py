@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
 from server.equipment import rigol_registry
-from server.equipment.base import InstrumentBusy
+from server.equipment.base import InstrumentBusy, SetpointRefused
 from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
                                           catalog, resolve_model)
 from server.equipment.locks import lock_manager
@@ -399,6 +399,19 @@ async def execute_command(equipment_id: str, command: Command):
         raise
     except InstrumentBusy as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except SetpointRefused as e:
+        # Not a fault. The operator asked for a value the instrument
+        # cannot take and was told so; nothing is broken and the next
+        # request will work. Logged at INFO because scrolling a dial
+        # past a floor produces one of these per notch, and a log where
+        # routine operation writes ERROR is one where a real error is
+        # easy to miss -- which cost real time on this bench once.
+        logger.info(f"Setpoint refused: {e}")
+        return CommandResponse(
+            command_id=command.command_id,
+            success=False,
+            error=str(e),
+        )
     except Exception as e:
         logger.error(f"Error executing command: {e}")
         return CommandResponse(

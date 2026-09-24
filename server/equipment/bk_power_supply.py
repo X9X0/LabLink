@@ -22,7 +22,7 @@ from shared.models.data import PowerSupplyData
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import BaseEquipment
+from .base import BaseEquipment, SetpointRefused
 from .bk_registry import MANUFACTURER, is_bk_manufacturer, resolve_model
 from .bk_scpi import BK9130Series, BKSCPIPowerSupply
 from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
@@ -490,11 +490,11 @@ class BKPowerSupplyBase(BaseEquipment):
 
         # Basic range check
         if voltage < 0 or voltage > self.max_voltage:
-            raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+            raise SetpointRefused(f"Voltage must be between 0 and {self.max_voltage}V")
         if voltage < self.min_voltage:
             # Saying so beats sending it: the instrument answers a value it
             # cannot reach with silence, which costs a full read timeout.
-            raise ValueError(
+            raise SetpointRefused(
                 f"{self.model} will not go below {self.min_voltage}V "
                 f"(asked for {voltage}V)"
             )
@@ -527,9 +527,9 @@ class BKPowerSupplyBase(BaseEquipment):
 
         # Basic range check
         if current < 0 or current > self.max_current:
-            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+            raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
         if current < self.min_current:
-            raise ValueError(
+            raise SetpointRefused(
                 f"{self.model} will not go below {self.min_current}A "
                 f"(asked for {current}A)"
             )
@@ -908,7 +908,7 @@ class BK9205B(BaseEquipment):
 
         # Basic range check
         if voltage < 0 or voltage > self.max_voltage:
-            raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+            raise SetpointRefused(f"Voltage must be between 0 and {self.max_voltage}V")
 
         # What the caller asked for, before the slew limiter cuts this
         # write short. See _keep_slewing below.
@@ -937,7 +937,7 @@ class BK9205B(BaseEquipment):
 
         # Basic range check
         if current < 0 or current > self.max_current:
-            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+            raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
 
         # What the caller asked for, before the slew limiter cuts this
         # write short. See _keep_slewing below.
@@ -1136,7 +1136,7 @@ class BK9103(BKPowerSupplyBase):
         if emergency_stop_manager.is_active():
             raise RuntimeError("Emergency stop is active - operation blocked")
         if voltage < 0 or voltage > self.max_voltage:
-            raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+            raise SetpointRefused(f"Voltage must be between 0 and {self.max_voltage}V")
         await self._write(f"VOLT{self.PRESET}{self._encode_voltage(voltage)}")
         self._current_voltage = voltage
 
@@ -1144,7 +1144,7 @@ class BK9103(BKPowerSupplyBase):
         if emergency_stop_manager.is_active():
             raise RuntimeError("Emergency stop is active - operation blocked")
         if current < 0 or current > self.max_current:
-            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+            raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
         await self._write(f"CURR{self.PRESET}{self._encode_current(current)}")
         self._current_current = current
 

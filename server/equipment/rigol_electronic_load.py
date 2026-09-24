@@ -36,7 +36,8 @@ from shared.models.data import ElectronicLoadData
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import BaseEquipment, generate_equipment_id
+from .base import (BaseEquipment, SetpointRefused,
+                    generate_equipment_id)
 
 logger = logging.getLogger(__name__)
 
@@ -271,23 +272,23 @@ class RigolDL3000Base(BaseEquipment):
         """Set the CC-mode current in amps (0 .. model maximum)."""
         current = float(current)
         if current < 0 or current > self.max_current:
-            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+            raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
         await self._write(f":SOUR:CURR:LEV:IMM {current}")
 
     async def set_voltage(self, voltage: float):
         """Set the CV-mode voltage in volts (0 .. model maximum)."""
         voltage = float(voltage)
         if voltage < 0 or voltage > self.max_voltage:
-            raise ValueError(f"Voltage must be between 0 and {self.max_voltage}V")
+            raise SetpointRefused(f"Voltage must be between 0 and {self.max_voltage}V")
         await self._write(f":SOUR:VOLT:LEV:IMM {voltage}")
 
     async def set_resistance(self, resistance: float):
         """Set the CR-mode resistance in ohms (0.08 Ohm .. 15 kOhm)."""
         resistance = float(resistance)
         if resistance <= 0:
-            raise ValueError("Resistance must be greater than 0")
+            raise SetpointRefused("Resistance must be greater than 0")
         if resistance < self.min_resistance or resistance > self.max_resistance:
-            raise ValueError(
+            raise SetpointRefused(
                 f"Resistance must be between {self.min_resistance} and {self.max_resistance} Ohm"
             )
         await self._write(f":SOUR:RES:LEV:IMM {resistance}")
@@ -296,7 +297,7 @@ class RigolDL3000Base(BaseEquipment):
         """Set the CP-mode power in watts (0 .. model maximum)."""
         power = float(power)
         if power < 0 or power > self.max_power:
-            raise ValueError(f"Power must be between 0 and {self.max_power}W")
+            raise SetpointRefused(f"Power must be between 0 and {self.max_power}W")
         await self._write(f":SOUR:POW:LEV:IMM {power}")
 
     async def get_setpoint(self, mode: Optional[str] = None) -> Dict[str, Any]:

@@ -27,7 +27,8 @@ from shared.models.data import (ElectronicLoadData, MeasurementData,
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import BaseEquipment, generate_equipment_id
+from .base import (BaseEquipment, SetpointRefused,
+                    generate_equipment_id)
 from .bk_registry import MANUFACTURER, BKModel, resolve_model
 from .safety import (SafetyLimits, SafetyValidator, emergency_stop_manager,
                      get_default_limits)
@@ -328,7 +329,7 @@ class BKSCPIPowerSupply(BKSCPIBase):
 
         ceiling = self.channel_max_voltage(channel)
         if voltage < 0 or voltage > ceiling:
-            raise ValueError(
+            raise SetpointRefused(
                 f"Voltage must be between 0 and {ceiling}V for channel {channel}"
             )
 
@@ -354,7 +355,7 @@ class BKSCPIPowerSupply(BKSCPIBase):
             raise RuntimeError("Emergency stop is active - operation blocked")
 
         if current < 0 or current > self.max_current:
-            raise ValueError(f"Current must be between 0 and {self.max_current}A")
+            raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
 
         # What the caller asked for, before the slew limiter cuts this
         # write short. See _keep_slewing below.
@@ -583,7 +584,7 @@ class BKSCPIElectronicLoad(BKSCPIBase):
         if emergency_stop_manager.is_active():
             raise RuntimeError("Emergency stop is active - operation blocked")
         if value < 0 or value > limit:
-            raise ValueError(f"Value must be between 0 and {limit}{unit}")
+            raise SetpointRefused(f"Value must be between 0 and {limit}{unit}")
         await self._write(f"{command} {value:g}")
         await self._after_write()
 

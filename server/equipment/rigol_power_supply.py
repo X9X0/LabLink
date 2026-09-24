@@ -43,7 +43,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from shared.models.data import PowerSupplyData
 from shared.models.equipment import EquipmentInfo, EquipmentStatus, EquipmentType
 
-from .base import BaseEquipment, generate_equipment_id
+from .base import (BaseEquipment, SetpointRefused,
+                    generate_equipment_id)
 
 logger = logging.getLogger(__name__)
 
@@ -810,12 +811,12 @@ class RigolDPBase(BaseEquipment):
             # positive magnitude too and negate it.
             magnitude = abs(value)
             if magnitude > max_v:
-                raise ValueError(
+                raise SetpointRefused(
                     f"{self.model} CH{n} voltage must be between 0 and -{max_v} V"
                 )
             return -magnitude
         if value < 0 or value > max_v:
-            raise ValueError(f"{self.model} CH{n} voltage must be between 0 and {max_v} V")
+            raise SetpointRefused(f"{self.model} CH{n} voltage must be between 0 and {max_v} V")
         return value
 
     def _check_current(self, current: float, n: int, limit_key: str = "max_current") -> float:
@@ -825,7 +826,7 @@ class RigolDPBase(BaseEquipment):
         except (TypeError, ValueError):
             raise ValueError(f"Current must be a number, got {current!r}")
         if math.isnan(value) or math.isinf(value) or value < 0 or value > lim[limit_key]:
-            raise ValueError(
+            raise SetpointRefused(
                 f"{self.model} CH{n} current must be between 0 and {lim[limit_key]} A"
             )
         return value

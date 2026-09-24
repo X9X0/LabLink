@@ -111,6 +111,25 @@ class InstrumentBusy(RuntimeError):
     """
 
 
+class SetpointRefused(ValueError):
+    """A value the instrument cannot take, refused before it is sent.
+
+    This is an answer, not a fault. Asking a 1902B for 0.7 V when it
+    floors at 0.8 is the operator finding the edge of the instrument,
+    which is what the edge is for; the request is declined, nothing is
+    broken, and the next one will work.
+
+    It exists so the API can say that in the log. Every one of these
+    used to be logged at ERROR, so scrolling a dial past a floor
+    produced a burst of errors -- and a log where routine operation
+    writes errors is a log in which a real one is easy to miss. That
+    cost real time on this bench once already.
+
+    A ValueError, because callers have always caught these as one and a
+    refusal genuinely is a bad value. Only the severity changes.
+    """
+
+
 class BaseEquipment(ABC):
     """Base class for all lab equipment."""
 

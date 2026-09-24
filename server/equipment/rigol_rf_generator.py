@@ -62,7 +62,8 @@ from shared.models.data import RFGeneratorData
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import BaseEquipment, generate_equipment_id
+from .base import (BaseEquipment, SetpointRefused,
+                    generate_equipment_id)
 
 logger = logging.getLogger(__name__)
 
@@ -498,7 +499,7 @@ class RigolDSGBase(BaseEquipment):
         frequency = float(frequency)
         s = self.spec
         if not s.freq_min <= frequency <= s.freq_max:
-            raise ValueError(
+            raise SetpointRefused(
                 f"Frequency must be between {s.freq_min:g} Hz and {s.freq_max:g} Hz on the {s.model}"
             )
         await self._write(f"{self._src(ch)}:FREQuency {fmt_number(frequency)}")
