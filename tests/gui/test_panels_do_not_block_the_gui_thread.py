@@ -125,3 +125,69 @@ class TestTheSequencePanelFetchesOffTheThread:
         source = inspect.getsource(getattr(slot, "__wrapped__", slot))
         bare = BARE_CALL.findall(source)
         assert not bare, f"{name} blocks the loop on {bare}"
+
+
+class TestNoCoroutineOpensAModalInline:
+    """The re-entrancy bug, asserted structurally rather than by memory.
+
+    A modal opened inside a coroutine lets the nested Qt loop step other
+    asyncio tasks while this one is still current, and asyncio refuses:
+    "Cannot enter into task X while another task Y is being executed".
+    It cost four wrong theories to find the first time.
+
+    Converting a handler to async is exactly what creates the hazard, so
+    the check has to be automatic. Two of these were missed by hand
+    during the very change that added the rest -- a multi-line edit that
+    silently failed to apply, leaving the function async with its
+    dialogs still inline, which is the worst of both.
+    """
+
+    @staticmethod
+    def _offenders(module_name):
+        import ast
+        import importlib
+
+        source = open(
+            importlib.import_module(module_name).__file__, encoding="utf-8"
+        ).read()
+        tree = ast.parse(source)
+
+        # A call is safe if it sits inside a lambda (handed to _ask) or is
+        # an argument to _say_later.
+        safe = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Lambda):
+                for inner in ast.walk(node):
+                    if isinstance(inner, ast.Call):
+                        safe.add(inner.lineno)
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("_say_later", "say_later")):
+                for arg in node.args:
+                    safe.add(getattr(arg, "lineno", -1))
+
+        found = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.AsyncFunctionDef):
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "QMessageBox"
+                        and node.func.attr in ("question", "information",
+                                               "critical", "warning")
+                        and node.lineno not in safe):
+                    found.append(f"{fn.name}() line {node.lineno}: "
+                                 f"QMessageBox.{node.func.attr}")
+        return found
+
+    @pytest.mark.parametrize("module", sorted(TIMER_DRIVEN) + [
+        "client.ui.test_sequence_panel",
+    ])
+    def test_every_modal_is_deferred(self, module):
+        offenders = self._offenders(module)
+        assert not offenders, (
+            "a coroutine opens a modal inline; the nested Qt loop will try "
+            "to step other asyncio tasks while it is still current:\n  "
+            + "\n  ".join(offenders))

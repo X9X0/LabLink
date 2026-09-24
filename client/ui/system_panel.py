@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 
 import qasync
 from client.api.client import LabLinkClient, call_blocking
+from client.utils.modals import ask, say_later
 from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
                                    release_slot)
 from client.ui.theme import dialog_palette
@@ -813,12 +814,26 @@ class SystemPanel(QWidget):
         finally:
             release_slot(self, "_refresh_started_at")
 
+    def _say_later(self, show, title: str, text: str):
+        """Put up a dialog once this coroutine has let go of the loop.
+
+        See client/utils/modals.py. Opening a modal inline from a
+        coroutine lets the nested Qt loop step other asyncio tasks while
+        this one is still current, which asyncio refuses outright.
+        """
+        say_later(self, show, title, text)
+
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop."""
+        return await ask(put_it_up)
+
     def _remote_update_running(self) -> bool:
         """Whether we are the reason the server is unreachable."""
         worker = getattr(self, "_remote_worker", None)
         return bool(worker is not None and worker.isRunning())
 
-    def _on_mode_changed(self, index: int):
+    @qasync.asyncSlot(int)
+    async def _on_mode_changed(self, index: int):
         """Handle update mode selection change."""
         mode = self.update_mode_combo.currentData()
 
@@ -843,22 +858,21 @@ class SystemPanel(QWidget):
         try:
             self.logs_text.append(f"\n🔧 Changing update mode to: {mode}...")
 
-            result = self.client.configure_update_mode(mode=mode)
+            result = await call_blocking(
+                self.client.configure_update_mode, mode=mode)
 
             if result.get("success"):
                 description = result.get("description", "")
                 self.logs_text.append(f"✅ Update mode changed: {description}")
 
-                QMessageBox.information(
-                    self,
+                self._say_later(QMessageBox.information,
                     "Update Mode Changed",
                     f"Update mode set to: {mode}\n\n{description}",
                 )
             else:
                 error = result.get("error", "Unknown error")
                 self.logs_text.append(f"❌ Failed to change mode: {error}")
-                QMessageBox.critical(
-                    self, "Configuration Failed", f"Failed to change update mode:\n{error}"
+                self._say_later(QMessageBox.critical, "Configuration Failed", f"Failed to change update mode:\n{error}"
                 )
 
             self._update_status_display()
@@ -866,8 +880,7 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error changing update mode: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to change update mode:\n{str(e)}"
+            self._say_later(QMessageBox.critical, "Error", f"Failed to change update mode:\n{str(e)}"
             )
 
     def _refresh_branches(self):
@@ -1110,20 +1123,27 @@ class SystemPanel(QWidget):
         self.check_updates_btn.setEnabled(True)
         self.check_updates_btn.setText("Check for Updates")
 
-    def start_update(self):
-        """Start server update process."""
+    @qasync.asyncSlot()
+    async def start_update(self):
+        """Start server update process, off the GUI thread.
+
+        Both modals go through _ask. This is the handler that takes the
+        server down, so it is also the one most likely to have a request
+        outstanding while a dialog is open -- exactly the combination
+        that stranded a coroutine in equipment_panel.
+        """
         if not self.client:
             return
 
         # Confirm action
-        reply = QMessageBox.question(
+        reply = await self._ask(lambda: QMessageBox.question(
             self,
             "Confirm Update",
             "Are you sure you want to update the server?\n\n"
             "This will pull the latest code and may require a rebuild and restart.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
-        )
+        ))
 
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -1131,7 +1151,7 @@ class SystemPanel(QWidget):
         try:
             # Show config dialog
             dialog = UpdateDialog(self)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
+            if await self._ask(dialog.exec) != QDialog.DialogCode.Accepted:
                 return
 
             remote, branch = dialog.get_config()
@@ -1140,8 +1160,9 @@ class SystemPanel(QWidget):
             self.start_update_btn.setEnabled(False)
 
             # Start update
-            result = self.client.start_server_update(
-                git_remote=remote, git_branch=branch
+            result = await call_blocking(
+                self.client.start_server_update,
+                git_remote=remote, git_branch=branch,
             )
 
             if result.get("success"):
@@ -1156,11 +1177,13 @@ class SystemPanel(QWidget):
                         f"Docker rebuild required. Run on the server:\n\n"
                         f"{rebuild_cmd}"
                     )
-                    QMessageBox.information(self, "Update Downloaded", detail_msg)
+                    self._say_later(QMessageBox.information,
+                                    "Update Downloaded", detail_msg)
                     self.logs_text.append(f"\n📋 Rebuild command:\n{rebuild_cmd}")
                 else:
-                    QMessageBox.information(
-                        self, "Update Complete", f"{message}\n\nRestart the server to apply changes."
+                    self._say_later(
+                        QMessageBox.information, "Update Complete",
+                        f"{message}\n\nRestart the server to apply changes."
                     )
 
                 # Start polling for status updates
@@ -1169,29 +1192,32 @@ class SystemPanel(QWidget):
             else:
                 error = result.get("error", "Unknown error")
                 self.logs_text.append(f"\n❌ Update failed: {error}")
-                QMessageBox.critical(self, "Update Failed", f"Update failed:\n{error}")
+                self._say_later(QMessageBox.critical, "Update Failed",
+                                f"Update failed:\n{error}")
 
             self._update_status_display()
 
         except Exception as e:
             logger.error(f"Error starting update: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to start update:\n{str(e)}")
+            self._say_later(QMessageBox.critical, "Error",
+                            f"Failed to start update:\n{str(e)}")
 
-    def rollback(self):
+    @qasync.asyncSlot()
+    async def rollback(self):
         """Rollback to previous version."""
         if not self.client:
             return
 
         # Confirm action
-        reply = QMessageBox.question(
+        reply = await self._ask(lambda: QMessageBox.question(
             self,
             "Confirm Rollback",
             "Are you sure you want to rollback to the previous version?\n\n"
             "This will revert the code to the last backup.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
-        )
+        ))
 
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -1200,7 +1226,7 @@ class SystemPanel(QWidget):
             self.logs_text.append("\n⏪ Starting rollback...")
             self.rollback_btn.setEnabled(False)
 
-            result = self.client.rollback_server()
+            result = await call_blocking(self.client.rollback_server)
 
             if result.get("success"):
                 message = result.get("message", "Rollback completed")
@@ -1208,27 +1234,27 @@ class SystemPanel(QWidget):
                 self.logs_text.append(f"\n✅ {message}")
                 self.logs_text.append(f"   Rolled back to version: {rolled_back_to}")
 
-                QMessageBox.information(
-                    self,
+                self._say_later(QMessageBox.information,
                     "Rollback Complete",
                     f"{message}\n\nRolled back to: {rolled_back_to}\n\nRestart the server to apply changes.",
                 )
             else:
                 error = result.get("error", "Unknown error")
                 self.logs_text.append(f"\n❌ Rollback failed: {error}")
-                QMessageBox.critical(self, "Rollback Failed", f"Rollback failed:\n{error}")
+                self._say_later(QMessageBox.critical, "Rollback Failed", f"Rollback failed:\n{error}")
 
             self._update_status_display()
 
         except Exception as e:
             logger.error(f"Error during rollback: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to rollback:\n{str(e)}")
+            self._say_later(QMessageBox.critical, "Error", f"Failed to rollback:\n{str(e)}")
 
         finally:
             self.rollback_btn.setEnabled(True)
 
-    def configure_auto_rebuild(self):
+    @qasync.asyncSlot()
+    async def configure_auto_rebuild(self):
         """Configure automatic rebuild."""
         if not self.client:
             return
@@ -1240,7 +1266,7 @@ class SystemPanel(QWidget):
                 f"\n🔧 Configuring auto-rebuild: {'enabled' if enabled else 'disabled'}..."
             )
 
-            result = self.client.configure_auto_rebuild(enabled=enabled)
+            result = await call_blocking(self.client.configure_auto_rebuild, enabled=enabled)
 
             if result.get("success"):
                 message = f"Auto-rebuild {'enabled' if enabled else 'disabled'}"
@@ -1248,35 +1274,34 @@ class SystemPanel(QWidget):
                     message += f"\nRebuild command: {result['rebuild_command']}"
 
                 self.logs_text.append(f"\n✅ {message}")
-                QMessageBox.information(self, "Auto-Rebuild Configured", message)
+                self._say_later(QMessageBox.information, "Auto-Rebuild Configured", message)
             else:
                 error = result.get("error", "Unknown error")
                 self.logs_text.append(f"\n❌ Configuration failed: {error}")
-                QMessageBox.critical(
-                    self, "Configuration Failed", f"Failed to configure auto-rebuild:\n{error}"
+                self._say_later(QMessageBox.critical, "Configuration Failed", f"Failed to configure auto-rebuild:\n{error}"
                 )
 
         except Exception as e:
             logger.error(f"Error configuring auto-rebuild: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to configure auto-rebuild:\n{str(e)}"
+            self._say_later(QMessageBox.critical, "Error", f"Failed to configure auto-rebuild:\n{str(e)}"
             )
 
-    def execute_rebuild(self):
+    @qasync.asyncSlot()
+    async def execute_rebuild(self):
         """Execute manual rebuild."""
         if not self.client:
             return
 
         # Confirm action
-        reply = QMessageBox.question(
+        reply = await self._ask(lambda: QMessageBox.question(
             self,
             "Confirm Rebuild",
             "Are you sure you want to rebuild the Docker containers?\n\n"
             "This will rebuild and restart the server.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
-        )
+        ))
 
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -1285,12 +1310,12 @@ class SystemPanel(QWidget):
             self.logs_text.append("\n🔨 Executing Docker rebuild...")
             self.rebuild_btn.setEnabled(False)
 
-            result = self.client.execute_rebuild()
+            result = await call_blocking(self.client.execute_rebuild)
 
             if result.get("success"):
                 message = result.get("message", "Rebuild completed")
                 self.logs_text.append(f"\n✅ {message}")
-                QMessageBox.information(self, "Rebuild Complete", message)
+                self._say_later(QMessageBox.information, "Rebuild Complete", message)
             else:
                 error = result.get("error", "Unknown error")
                 manual_instructions = result.get("manual_instructions", "")
@@ -1299,25 +1324,25 @@ class SystemPanel(QWidget):
 
                 if manual_instructions:
                     self.logs_text.append(f"\n📋 Manual instructions:\n{manual_instructions}")
-                    QMessageBox.warning(
-                        self,
+                    self._say_later(QMessageBox.warning,
                         "Rebuild Failed",
                         f"{error}\n\n{manual_instructions}",
                     )
                 else:
-                    QMessageBox.critical(self, "Rebuild Failed", f"Rebuild failed:\n{error}")
+                    self._say_later(QMessageBox.critical, "Rebuild Failed", f"Rebuild failed:\n{error}")
 
             self._update_status_display()
 
         except Exception as e:
             logger.error(f"Error executing rebuild: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to execute rebuild:\n{str(e)}")
+            self._say_later(QMessageBox.critical, "Error", f"Failed to execute rebuild:\n{str(e)}")
 
         finally:
             self.rebuild_btn.setEnabled(True)
 
-    def configure_scheduled(self):
+    @qasync.asyncSlot()
+    async def configure_scheduled(self):
         """Configure scheduled update checks."""
         if not self.client:
             return
@@ -1329,7 +1354,7 @@ class SystemPanel(QWidget):
             # Show config dialog for git settings
             dialog = UpdateDialog(self)
             dialog.setWindowTitle("Scheduled Check Configuration")
-            if dialog.exec() != QDialog.DialogCode.Accepted:
+            if await self._ask(dialog.exec) != QDialog.DialogCode.Accepted:
                 return
 
             remote, branch = dialog.get_config()
@@ -1340,7 +1365,7 @@ class SystemPanel(QWidget):
             self.logs_text.append(f"   Interval: {interval_hours} hours")
             self.logs_text.append(f"   Remote: {remote}/{branch or 'current branch'}")
 
-            result = self.client.configure_scheduled_checks(
+            result = await call_blocking(self.client.configure_scheduled_checks, 
                 enabled=enabled,
                 interval_hours=interval_hours,
                 git_remote=remote,
@@ -1354,19 +1379,17 @@ class SystemPanel(QWidget):
                     message += f"\nMonitoring: {remote}/{branch or 'current branch'}"
 
                 self.logs_text.append(f"\n✅ {message}")
-                QMessageBox.information(self, "Scheduled Checks Configured", message)
+                self._say_later(QMessageBox.information, "Scheduled Checks Configured", message)
             else:
                 error = result.get("error", "Unknown error")
                 self.logs_text.append(f"\n❌ Configuration failed: {error}")
-                QMessageBox.critical(
-                    self, "Configuration Failed", f"Failed to configure scheduled checks:\n{error}"
+                self._say_later(QMessageBox.critical, "Configuration Failed", f"Failed to configure scheduled checks:\n{error}"
                 )
 
         except Exception as e:
             logger.error(f"Error configuring scheduled checks: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
+            self._say_later(QMessageBox.critical, "Error", f"Failed to configure scheduled checks:\n{str(e)}"
             )
 
     def _populate_versions(self, fetch: bool = False):
@@ -1429,7 +1452,7 @@ class SystemPanel(QWidget):
             self.refresh_versions_btn.setEnabled(True)
             self.refresh_versions_btn.setText("Refresh Versions")
 
-    def _check_server_vs_local(self):
+    async def _check_server_vs_local(self):
         """Compare server version with local git.
 
         Returns:
@@ -1439,7 +1462,8 @@ class SystemPanel(QWidget):
 
         try:
             # Get server version via API
-            version_data = self.client.get_server_version()
+            version_data = await call_blocking(
+                self.client.get_server_version)
             server_version = version_data.get("version", "Unknown")
 
             # Get local version based on mode
@@ -1477,7 +1501,8 @@ class SystemPanel(QWidget):
                 "error": str(e)
             }
 
-    def _check_and_display_version(self):
+    @qasync.asyncSlot()
+    async def _check_and_display_version(self):
         """Check server version and compare with local git."""
         if not self.client:
             return
@@ -1486,12 +1511,11 @@ class SystemPanel(QWidget):
             self.check_version_btn.setEnabled(False)
             self.check_version_btn.setText("Checking...")
 
-            comparison = self._check_server_vs_local()
+            comparison = await self._check_server_vs_local()
 
             if comparison.get("error"):
                 self.logs_text.append(f"\n❌ Error: {comparison['error']}")
-                QMessageBox.critical(
-                    self, "Error", f"Failed to check version:\n{comparison['error']}"
+                self._say_later(QMessageBox.critical, "Error", f"Failed to check version:\n{comparison['error']}"
                 )
                 return
 
@@ -1513,8 +1537,7 @@ class SystemPanel(QWidget):
                 )
                 self.notification_banner.show()
 
-                QMessageBox.information(
-                    self,
+                self._say_later(QMessageBox.information,
                     "Update Available",
                     f"Server version differs from local:\n\n"
                     f"Server: {server_ver}\n"
@@ -1530,14 +1553,12 @@ class SystemPanel(QWidget):
 
                 if server_ver == local_ver:
                     self.notification_banner.hide()
-                    QMessageBox.information(
-                        self,
+                    self._say_later(QMessageBox.information,
                         "No Update Needed",
                         f"Server and local are in sync:\n\nVersion: {server_ver}"
                     )
                 else:
-                    QMessageBox.information(
-                        self,
+                    self._say_later(QMessageBox.information,
                         "Version Info",
                         f"Server: {server_ver}\nLocal: {local_ver} ({local_ref})"
                     )
@@ -1545,8 +1566,7 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error checking version: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to check version:\n{str(e)}"
+            self._say_later(QMessageBox.critical, "Error", f"Failed to check version:\n{str(e)}"
             )
 
         finally:
@@ -1811,7 +1831,8 @@ class SystemPanel(QWidget):
             # Not worth failing an otherwise successful update over.
             logger.debug(f"Could not remember the SSH user: {e}")
 
-    def _update_client(self):
+    @qasync.asyncSlot()
+    async def _update_client(self):
         """Update client by marking for update on next restart."""
         from client.utils.git_operations import compare_ref_to_head
         from client.utils.self_update import mark_for_update
@@ -1826,8 +1847,7 @@ class SystemPanel(QWidget):
                 ref = self.branch_combo.currentData()
 
             if not ref:
-                QMessageBox.warning(
-                    self,
+                self._say_later(QMessageBox.warning,
                     "No Version Selected",
                     "Please select a version or branch first."
                 )
@@ -1854,8 +1874,7 @@ class SystemPanel(QWidget):
             # than refuses -- but it asks with the number, and defaults to No.
             position = compare_ref_to_head(ref)
             if position and position["same"]:
-                QMessageBox.information(
-                    self,
+                self._say_later(QMessageBox.information,
                     "Already Up To Date",
                     f"The client is already running {ref}.\n\n"
                     f"There is nothing to update."
@@ -1865,8 +1884,7 @@ class SystemPanel(QWidget):
             if position and position["ahead"] == 0 and position["behind"] > 0:
                 behind = position["behind"]
                 plural = "s" if behind != 1 else ""
-                going_back = QMessageBox.warning(
-                    self,
+                going_back = self._say_later(QMessageBox.warning,
                     "This Is Older Than What You Are Running",
                     f"{ref} is {behind} commit{plural} behind the code "
                     f"you are running now.\n\n"
@@ -1886,7 +1904,7 @@ class SystemPanel(QWidget):
                     return
 
             # Confirm with user
-            reply = QMessageBox.question(
+            reply = await self._ask(lambda: QMessageBox.question(
                 self,
                 "Confirm Client Update",
                 f"Update client to {ref}?\n\n"
@@ -1896,7 +1914,7 @@ class SystemPanel(QWidget):
                 f"3. On restart, checkout {ref} and launch\n\n"
                 f"Do you want to proceed?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
+            ))
 
             if reply != QMessageBox.StandardButton.Yes:
                 return
@@ -1907,8 +1925,7 @@ class SystemPanel(QWidget):
             if mark_for_update(ref, mode):
                 self.logs_text.append(f"✅ Client marked for update")
 
-                QMessageBox.information(
-                    self,
+                self._say_later(QMessageBox.information,
                     "Client Update Scheduled",
                     f"Client has been marked for update to {ref}.\n\n"
                     f"LabLink will close and reopen once. The update is "
@@ -1929,8 +1946,7 @@ class SystemPanel(QWidget):
 
             else:
                 self.logs_text.append(f"❌ Failed to mark client for update")
-                QMessageBox.critical(
-                    self,
+                self._say_later(QMessageBox.critical,
                     "Update Failed",
                     "Failed to mark client for update.\n\nCheck logs for details."
                 )
@@ -1938,8 +1954,7 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error updating client: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Update Failed", f"Failed to update client:\n{str(e)}"
+            self._say_later(QMessageBox.critical, "Update Failed", f"Failed to update client:\n{str(e)}"
             )
 
         finally:
@@ -1949,7 +1964,7 @@ class SystemPanel(QWidget):
             self.update_client_btn.setEnabled(True)
             self.update_client_btn.setText("Update Client")
 
-    def _instruments_in_use(self) -> list:
+    async def _instruments_in_use(self) -> list:
         """Instruments the server currently holds open, by name.
 
         Updating stops the containers, so anything connected is dropped and
@@ -1959,7 +1974,7 @@ class SystemPanel(QWidget):
         if not self.client:
             return []
         try:
-            listed = self.client.list_equipment() or []
+            listed = await call_blocking(self.client.list_equipment) or []
         except Exception as e:
             logger.debug(f"Could not check what is connected: {e}")
             return []
@@ -1977,7 +1992,8 @@ class SystemPanel(QWidget):
             names.append(label or item.get("id", "unknown"))
         return names
 
-    def _update_remote_server(self):
+    @qasync.asyncSlot()
+    async def _update_remote_server(self):
         """Update a remote LabLink over SSH and rebuild its containers.
 
         This used to check the ref out in the *local* clone and then run
@@ -1995,8 +2011,7 @@ class SystemPanel(QWidget):
         try:
             ssh_host = self.ssh_host_input.text().strip()
             if not ssh_host:
-                QMessageBox.warning(
-                    self,
+                self._say_later(QMessageBox.warning,
                     "SSH Host Required",
                     "Please enter an SSH host (e.g. user@hostname).\n\n"
                     "Example: admin@192.168.91.191"
@@ -2009,14 +2024,13 @@ class SystemPanel(QWidget):
             ref = (self.version_selector.currentData() if mode == "stable"
                    else self.branch_combo.currentData())
             if not ref:
-                QMessageBox.warning(
-                    self,
+                self._say_later(QMessageBox.warning,
                     "No Version Selected",
                     "Please select a version or branch first."
                 )
                 return
 
-            in_use = self._instruments_in_use()
+            in_use = await self._instruments_in_use()
             if in_use:
                 listed = "".join(f"  - {name}\n" for name in in_use)
                 in_use_warning = (
@@ -2029,7 +2043,7 @@ class SystemPanel(QWidget):
             else:
                 in_use_warning = ""
 
-            reply = QMessageBox.question(
+            reply = await self._ask(lambda: QMessageBox.question(
                 self,
                 "Confirm Remote Server Update",
                 f"Update {ssh_host}:{remote_dir} to {ref}?\n\n"
@@ -2044,7 +2058,7 @@ class SystemPanel(QWidget):
                 f"This may take several minutes.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
-            )
+            ))
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
@@ -2077,8 +2091,7 @@ class SystemPanel(QWidget):
         except Exception as e:
             logger.error(f"Error starting the remote update: {e}")
             self.logs_text.append(f"\nError: {str(e)}")
-            QMessageBox.critical(
-                self, "Update Failed",
+            self._say_later(QMessageBox.critical, "Update Failed",
                 f"Failed to start the remote update:\n{str(e)}"
             )
             self._reset_remote_update_button()

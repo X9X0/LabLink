@@ -113,20 +113,23 @@ class TestItNamesWhatAnUpdateWillInterrupt:
         panel.client = Client()
         return panel
 
-    def test_open_instruments_are_named(self, qapp):
+    @pytest.mark.asyncio
+    async def test_open_instruments_are_named(self, qapp):
         panel = self._panel(qapp, [
             {"id": "a", "manufacturer": "B&K", "model": "1685B", "connected": True},
         ])
-        assert panel._instruments_in_use() == ["B&K 1685B"]
+        assert await panel._instruments_in_use() == ["B&K 1685B"]
 
-    def test_remembered_but_closed_ones_are_not_in_use(self, qapp):
+    @pytest.mark.asyncio
+    async def test_remembered_but_closed_ones_are_not_in_use(self, qapp):
         """They are listed for convenience; no port is held open."""
         panel = self._panel(qapp, [
             {"id": "a", "manufacturer": "B&K", "model": "1685B", "connected": False},
         ])
-        assert panel._instruments_in_use() == []
+        assert await panel._instruments_in_use() == []
 
-    def test_an_unreachable_server_is_not_fatal(self, qapp):
+    @pytest.mark.asyncio
+    async def test_an_unreachable_server_is_not_fatal(self, qapp):
         """Not knowing must not block the update that would fix it."""
         class Broken:
             host = "x"
@@ -136,7 +139,7 @@ class TestItNamesWhatAnUpdateWillInterrupt:
 
         panel = SystemPanel()
         panel.client = Broken()
-        assert panel._instruments_in_use() == []
+        assert await panel._instruments_in_use() == []
 
 class TestConnectingUsesTheModelsOwnFieldNames:
     """The client model and the server payload name things differently.

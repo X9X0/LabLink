@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import (
 )
 
 from client.api.client import LabLinkClient, call_blocking
+from client.utils.modals import ask, say_later
 
 logger = logging.getLogger(__name__)
 
@@ -683,6 +684,19 @@ class TestSequencePanel(QWidget):
         self._load_templates()
         self._register_ws_handlers()
 
+    def _say_later(self, show, title: str, text: str):
+        """Put up a dialog once this coroutine has let go of the loop.
+
+        See client/utils/modals.py. Every handler in this panel is a
+        coroutine, so opening a modal inline lets the nested Qt loop try
+        to step other asyncio tasks while this one is still current.
+        """
+        say_later(self, show, title, text)
+
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop."""
+        return await ask(put_it_up)
+
     def _connect_ws_signals(self):
         """Connect WebSocket signals to slot handlers."""
         self.ws_signals.execution_started.connect(self._on_execution_started)
@@ -899,15 +913,15 @@ class TestSequencePanel(QWidget):
     async def _save_sequence(self):
         """Save the current sequence."""
         if not self.client:
-            QMessageBox.warning(self, "No Connection", "Not connected to server.")
+            self._say_later(QMessageBox.warning, "No Connection", "Not connected to server.")
             return
 
         if not self.sequence_name_edit.text():
-            QMessageBox.warning(self, "No Name", "Please enter a sequence name.")
+            self._say_later(QMessageBox.warning, "No Name", "Please enter a sequence name.")
             return
 
         if not self.steps:
-            QMessageBox.warning(self, "No Steps", "Please add at least one step.")
+            self._say_later(QMessageBox.warning, "No Steps", "Please add at least one step.")
             return
 
         sequence_data = {
@@ -927,13 +941,12 @@ class TestSequencePanel(QWidget):
         try:
             result = await call_blocking(
                 self.client.create_test_sequence, sequence_data)
-            QMessageBox.information(
-                self,
+            self._say_later(QMessageBox.information,
                 "Success",
                 f"Test sequence saved successfully!\nID: {result.get('sequence_id')}",
             )
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save sequence: {e}")
+            self._say_later(QMessageBox.critical, "Error", f"Failed to save sequence: {e}")
             logger.error(f"Failed to save test sequence: {e}", exc_info=True)
 
     def _clear_sequence(self):
@@ -988,17 +1001,16 @@ class TestSequencePanel(QWidget):
     async def _execute_sequence(self):
         """Execute the current test sequence."""
         if not self.client:
-            QMessageBox.warning(self, "No Connection", "Not connected to server.")
+            self._say_later(QMessageBox.warning, "No Connection", "Not connected to server.")
             return
 
         if not self.steps:
-            QMessageBox.warning(self, "No Steps", "Please add steps to execute.")
+            self._say_later(QMessageBox.warning, "No Steps", "Please add steps to execute.")
             return
 
         equipment_id = self.exec_equipment_edit.text()
         if not equipment_id:
-            QMessageBox.warning(
-                self, "No Equipment", "Please specify an equipment ID."
+            self._say_later(QMessageBox.warning, "No Equipment", "Please specify an equipment ID."
             )
             return
 
@@ -1029,7 +1041,7 @@ class TestSequencePanel(QWidget):
             self._start_progress_polling()
 
         except Exception as e:
-            QMessageBox.critical(self, "Execution Error", f"Failed to execute: {e}")
+            self._say_later(QMessageBox.critical, "Execution Error", f"Failed to execute: {e}")
             logger.error(f"Failed to execute test sequence: {e}", exc_info=True)
 
     def _start_progress_polling(self):
@@ -1092,7 +1104,7 @@ class TestSequencePanel(QWidget):
             await call_blocking(self.client.abort_test_execution, self.execution_id)
             self.progress_label.setText("Aborting execution...")
         except Exception as e:
-            QMessageBox.critical(self, "Abort Error", f"Failed to abort: {e}")
+            self._say_later(QMessageBox.critical, "Abort Error", f"Failed to abort: {e}")
 
     def _display_results(self, results: Dict):
         """Display execution results.
@@ -1184,7 +1196,7 @@ class TestSequencePanel(QWidget):
     async def _create_from_template(self):
         """Create a sequence from a template."""
         if not self.client:
-            QMessageBox.warning(self, "No Connection", "Not connected to server.")
+            self._say_later(QMessageBox.warning, "No Connection", "Not connected to server.")
             return
 
         # Get templates
@@ -1192,18 +1204,17 @@ class TestSequencePanel(QWidget):
             result = await call_blocking(self.client.list_test_templates)
             templates = result.get("templates", [])
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load templates: {e}")
+            self._say_later(QMessageBox.critical, "Error", f"Failed to load templates: {e}")
             return
 
         if not templates:
-            QMessageBox.information(
-                self, "No Templates", "No templates available on server."
+            self._say_later(QMessageBox.information, "No Templates", "No templates available on server."
             )
             return
 
         # Show template dialog
         dialog = TemplateDialog(templates, parent=self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if await self._ask(dialog.exec) != QDialog.DialogCode.Accepted:
             return
 
         config = dialog.get_template_config()
@@ -1236,13 +1247,11 @@ class TestSequencePanel(QWidget):
             # Switch to builder tab
             self.tab_widget.setCurrentIndex(0)
 
-            QMessageBox.information(
-                self, "Success", "Template loaded successfully into builder!"
+            self._say_later(QMessageBox.information, "Success", "Template loaded successfully into builder!"
             )
 
         except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"Failed to create from template: {e}"
+            self._say_later(QMessageBox.critical, "Error", f"Failed to create from template: {e}"
             )
             logger.error(f"Failed to create from template: {e}", exc_info=True)
 

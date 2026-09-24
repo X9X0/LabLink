@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
 
 from client.api.client import LabLinkClient, call_blocking
 from client.utils.server_manager import get_server_manager
+from client.utils.modals import ask, say_later
 from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
                                    note_missed, release_slot, take_missed)
 
@@ -903,61 +904,15 @@ class EquipmentPanel(QWidget):
     def _say_later(self, show, title: str, text: str):
         """Put a dialog up once this coroutine has let go of the loop.
 
-        A modal runs a nested Qt event loop, and qasync pumps asyncio from
-        it -- so a dialog opened *inside* a coroutine lets the loop try to
-        step other tasks while this one is still the current task. asyncio
-        will not have that::
-
-            RuntimeError: Cannot enter into task <EquipmentPanel.refresh()>
-              while another task <EquipmentPanel.connect_equipment()
-              running at equipment_panel.py:924> is being executed
-
-        Line 924 was ``QMessageBox.information(... "Equipment connected
-        successfully")``. The refresh it blocked had already *finished*
-        its fan-out -- "wait_for=<_GatheringFuture finished result=[...]>"
-        -- and could never be resumed to use it. Its in-flight slot then
-        stayed held until the 45s backstop, and every refresh in between
-        was refused. Two of those stalls lasted 310s and 177s: a dialog
-        left open that long.
-
-        The 20s timeout around the fetch could not save it either, since
-        its timer callback has to step the same blocked task.
-
-        A zero-delay timer shows the dialog on the next pass of the loop,
-        by which time this coroutine has finished and is nobody's current
-        task. The discovery handlers in this file already did it this way.
+        See client/utils/modals.py for why; this panel is where the
+        problem was found. Kept as a method because it reads better at
+        the call sites and there are a dozen of them.
         """
-        QTimer.singleShot(0, lambda: show(self, title, text))
+        say_later(self, show, title, text)
 
     async def _ask(self, put_it_up):
-        """Run a modal that has an answer, without blocking the loop.
-
-        A prompt cannot simply be deferred like :meth:`_say_later` -- the
-        coroutine needs what the operator chose. But it must not open the
-        dialog inline either, for the reason described there: the nested
-        Qt event loop would step other asyncio tasks while this coroutine
-        is still the current one, and asyncio refuses to enter them.
-
-        Showing it from a timer and awaiting the answer gets both. While
-        this coroutine waits on the future it is suspended and is nobody's
-        current task, so the nested loop is free to run everything else --
-        including the refresh that used to be stranded here.
-
-        Args:
-            put_it_up: called on the Qt thread; returns the operator's answer.
-        """
-        answer = asyncio.get_running_loop().create_future()
-
-        def show():
-            if answer.done():           # the panel went away meanwhile
-                return
-            try:
-                answer.set_result(put_it_up())
-            except Exception as e:      # a dialog that cannot even open
-                answer.set_exception(e)
-
-        QTimer.singleShot(0, show)
-        return await answer
+        """Run a modal that has an answer, without blocking the loop."""
+        return await ask(put_it_up)
 
     @qasync.asyncSlot()
     async def connect_equipment(self):

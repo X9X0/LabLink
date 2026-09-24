@@ -49,6 +49,7 @@ try:
 
     from client.ui import equipment_panel as panel_module
     from client.ui.equipment_panel import EquipmentPanel
+    from client.utils import modals
 
     GUI_AVAILABLE = True
 except ImportError:
@@ -98,14 +99,23 @@ class TestNoCoroutineOpensAModalInline:
 
 
 class TestTheTwoSafeShapes:
+    """Both live in client/utils/modals.py now.
+
+    They were EquipmentPanel methods when this was written, and were
+    lifted out unchanged so the panels converted afterwards could use
+    them rather than rediscover the problem. The panel keeps thin
+    wrappers, so the assertions follow the implementation rather than
+    the name.
+    """
+
     def test_say_later_defers_to_a_timer(self):
-        body = inspect.getsource(EquipmentPanel._say_later)
+        body = inspect.getsource(modals.say_later)
         assert "QTimer.singleShot(0" in body, (
             "it still opens the dialog inline")
 
     def test_ask_awaits_the_answer(self):
         """The coroutine must be suspended while the dialog is up."""
-        body = inspect.getsource(EquipmentPanel._ask)
+        body = inspect.getsource(modals.ask)
         assert "QTimer.singleShot(0" in body
         assert "await answer" in body, (
             "without awaiting a future it is still the current task")
@@ -113,11 +123,20 @@ class TestTheTwoSafeShapes:
 
     def test_ask_reports_a_dialog_that_cannot_open(self):
         """Or the caller waits for ever on a future nobody completes."""
-        body = inspect.getsource(EquipmentPanel._ask)
+        body = inspect.getsource(modals.ask)
         assert "set_exception" in body
 
     def test_ask_is_a_coroutine(self):
-        assert inspect.iscoroutinefunction(EquipmentPanel._ask)
+        assert inspect.iscoroutinefunction(modals.ask)
+        assert inspect.iscoroutinefunction(EquipmentPanel._ask), (
+            "the panel wrapper must stay awaitable for its call sites")
+
+    def test_the_panel_wrappers_delegate_rather_than_reimplement(self):
+        """Two copies would drift, and only one would get the next fix."""
+        for name in ("_say_later", "_ask"):
+            body = inspect.getsource(getattr(EquipmentPanel, name))
+            assert "QTimer" not in body, (
+                f"{name} grew its own copy of the timer dance")
 
 
 class TestTheHandlersStillTellTheOperatorThings:
