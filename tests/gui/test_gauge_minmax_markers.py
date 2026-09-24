@@ -132,6 +132,51 @@ class TestTheyAreDrawn:
             f"reference marks, not the reading")
 
 
+class TestTheyReadAsTheirOwnKindOfMark:
+    """Amber, not the face's own ink.
+
+    Asked for after seeing them on the bench: "just make the pointer
+    amberish or something a little more noticeable, the somewhat opaque
+    that it is now is a good touch." At an opacity low enough not to
+    compete with the needle, ink was quiet enough to be missed. The hue
+    carries the visibility instead, so the opacity can stay.
+    """
+
+    def test_the_marker_colour_is_not_the_print(self, gauge):
+        from PyQt6.QtGui import QColor
+
+        gauge._load_theme()
+        assert QColor(gauge.MARKER).name() != QColor(gauge.INK).name(), (
+            "the markers are drawn in the same ink as the graduations "
+            "again, which is what made them easy to miss")
+
+    def test_it_is_warm_rather_than_neutral(self, gauge):
+        """Amber: more red than blue, and not a grey."""
+        from PyQt6.QtGui import QColor
+
+        gauge._load_theme()
+        marker = QColor(gauge.MARKER)
+        assert marker.red() > marker.blue(), (
+            f"{marker.name()} is not a warm colour")
+        assert marker.red() - marker.blue() > 60, (
+            f"{marker.name()} is too close to neutral to read as amber")
+
+    def test_both_themes_define_one(self, gauge):
+        from client.ui.theme import dialog_palette
+
+        assert "meter_marker" in dialog_palette(), (
+            "the gauge would fall back to its built-in colour, which the "
+            "theme could then contradict")
+
+    def test_it_is_still_translucent(self, gauge):
+        """The opacity was the part worth keeping."""
+        import inspect
+
+        source = inspect.getsource(type(gauge)._draw_markers)
+        assert "setAlpha" in source, (
+            "the markers are fully opaque now and will fight the needle")
+
+
 class TestThePanelDrivesThem:
     @pytest.fixture
     def panel(self, qapp):

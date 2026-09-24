@@ -98,6 +98,7 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
             "meter_face": "#0d0d0d",
             "meter_needle": "#3ddc6b",
             "meter_danger": "#ef5350",
+            "meter_marker": "#ffb300",
         }
 
     return {
@@ -118,6 +119,7 @@ def dialog_palette(theme: ThemeMode = None) -> dict:
         "meter_face": "#f2efe6",
         "meter_needle": "#101010",
         "meter_danger": "#8c1c13",
+        "meter_marker": "#c87800",
     }
 
 

@@ -205,6 +205,11 @@ class AnalogGauge(QWidget):
     INK = QColor("#141414")
     NEEDLE = QColor("#101010")
     DANGER = QColor("#8c1c13")
+    #: Min/max pointers. Amber rather than the face's own ink: at an
+    #: opacity low enough not to compete with the needle, ink was
+    #: quiet enough to be missed. A different hue reads as a
+    #: different kind of mark, which is what it is.
+    MARKER = QColor("#c87800")
 
     def __init__(self, title="", min_value=0, max_value=100, unit="", parent=None):
         """Initialize analog gauge.
@@ -297,6 +302,7 @@ class AnalogGauge(QWidget):
         self.FACE = QColor(palette.get("meter_face", self.FACE))
         self.NEEDLE = QColor(palette.get("meter_needle", self.NEEDLE))
         self.DANGER = QColor(palette.get("meter_danger", self.DANGER))
+        self.MARKER = QColor(palette.get("meter_marker", self.MARKER))
 
         # Graduations, numerals and lettering are printed in the same ink as
         # the pointer, so it is one value rather than two that have to be kept
@@ -462,8 +468,8 @@ class AnalogGauge(QWidget):
             outer = radius * 1.005
             inner = radius * 0.90
 
-            ink = QColor(self.INK)
-            ink.setAlpha(120)
+            ink = QColor(self.MARKER)
+            ink.setAlpha(150)
             painter.setPen(QPen(ink, max(1, int(radius * 0.012))))
             painter.drawLine(
                 QPoint(int(pivot_x + inner * cos_a), int(pivot_y - inner * sin_a)),
