@@ -15,6 +15,24 @@ from shared.models.equipment import (ConnectionType, EquipmentInfo,
 
 logger = logging.getLogger(__name__)
 
+#: How long to leave an instrument alone after a failed connection, by
+#: consecutive failure count; the last entry repeats.
+#:
+#: An instrument that has gone away does not come back sooner for being
+#: asked more often, and asking is not free. A scope was powered off on
+#: the lab bench and every poll of it tried a VXI-11 connect that took
+#: 2.1s to fail::
+#:
+#:     RPCError: can't connect to server
+#:     Failed to connect to TCPIP0::192.168.91.37::inst0::INSTR
+#:     Invalid instrument session detected, reconnecting...
+#:
+#: 84 attempts in three minutes, 7443 log lines in six hours, and in
+#: that window not one line about any other instrument: the two supplies
+#: on the same server were never polled at all. Backing off turns a dead
+#: instrument from a permanent tax into an occasional one.
+RECONNECT_BACKOFF_SEC = (1.0, 2.0, 5.0, 15.0, 30.0, 60.0)
+
 
 def generate_equipment_id(resource_string: str, prefix: str) -> str:
     """Generate a deterministic equipment ID from the resource string.
@@ -130,6 +148,11 @@ class BaseEquipment(ABC):
         # Held for every exchange with the instrument; see _ReentrantAsyncLock.
         self._io_lock = _ReentrantAsyncLock()
         self._is_connecting = False  # Flag to prevent recursion during connection
+        #: Consecutive failed connection attempts, and the monotonic time
+        #: before which the next automatic one is not worth making. See
+        #: RECONNECT_BACKOFF_SEC.
+        self._failed_connects = 0
+        self._retry_after = 0.0
         #: Setpoints still travelling towards what was asked for, because the
         #: slew limiter cut the write short. See server/equipment/slew_ramp.py.
         self._slew_ramps = SlewRamps(resource_string)
@@ -189,14 +212,34 @@ class BaseEquipment(ABC):
     async def _ensure_connected(self):
         """Ensure the instrument is connected and session is valid.
 
-        Automatically reconnects if the session has become invalid.
+        Automatically reconnects if the session has become invalid, unless
+        the last attempt failed recently enough that another one is not
+        worth the wait -- see RECONNECT_BACKOFF_SEC. Refusing here, rather
+        than in connect(), is deliberate: this is the automatic path, taken
+        by pollers, and it is the one that must not cost two seconds a go.
+        An operator pressing Connect reaches connect() directly and is
+        never made to wait out a backoff.
         """
         # Skip validation during initial connection to prevent recursion
         if self._is_connecting:
             return
 
         if not self._is_instrument_valid():
-            logger.warning(f"Invalid instrument session detected for {self.resource_string}, reconnecting...")
+            waiting = self._retry_after - asyncio.get_event_loop().time()
+            if waiting > 0:
+                # Fast, and quiet: the warning below has already been
+                # logged once for this outage.
+                raise ConnectionError(
+                    f"{self.resource_string} is not answering "
+                    f"({self._failed_connects} failed attempts); "
+                    f"retrying in {waiting:.0f}s"
+                )
+
+            if self._failed_connects == 0:
+                logger.warning(
+                    f"Invalid instrument session detected for "
+                    f"{self.resource_string}, reconnecting..."
+                )
             # Close the old invalid instrument
             if self.instrument is not None:
                 try:
@@ -220,12 +263,15 @@ class BaseEquipment(ABC):
     async def connect(self):
         """Connect to the equipment."""
         async with self._lock:
+            loop = asyncio.get_event_loop()
             try:
                 # Set flag to prevent recursion during connection
                 self._is_connecting = True
 
-                # Ensure resource manager is valid before opening resource
-                self._refresh_resource_manager()
+                # Ensure resource manager is valid before opening resource.
+                # Off the loop: validating it lists every resource on the
+                # machine, which walks the serial and USB trees.
+                await loop.run_in_executor(None, self._refresh_resource_manager)
 
                 # Close old instrument if it exists
                 if self.instrument is not None:
@@ -235,8 +281,20 @@ class BaseEquipment(ABC):
                         pass  # Ignore errors when closing invalid sessions
                     self.instrument = None
 
-                # Open the resource
-                self.instrument = self._open_resource()
+                # Open the resource. Off the loop for the same reason every
+                # other exchange in this class is -- PyVISA is synchronous
+                # and this is the slowest call of the lot. Opening a TCPIP
+                # resource that is not there blocks until the connect times
+                # out, and blocking here does not stall one instrument, it
+                # stalls the server: the API stops answering and no other
+                # instrument is polled until it returns.
+                #
+                # _open_resource stays synchronous so the drivers that
+                # override it -- the Rigol raw socket one -- need no change
+                # and get the same treatment.
+                self.instrument = await loop.run_in_executor(
+                    None, self._open_resource
+                )
 
                 # Set timeout (10 seconds)
                 self.instrument.timeout = 10000
@@ -246,13 +304,27 @@ class BaseEquipment(ABC):
                 logger.info(f"Connected to device: {idn}")
 
                 self.connected = True
+                if self._failed_connects:
+                    logger.info(
+                        f"{self.resource_string} is back after "
+                        f"{self._failed_connects} failed attempts"
+                    )
+                self._failed_connects = 0
+                self._retry_after = 0.0
 
                 # Cache equipment info
                 self.cached_info = await self.get_info()
 
             except Exception as e:
+                # First failure is worth a line; after that the backoff
+                # keeps it rare enough to log every time without drowning
+                # every other instrument out of the log.
                 logger.error(f"Failed to connect to {self.resource_string}: {e}")
                 self.connected = False
+                self._failed_connects += 1
+                self._retry_after = loop.time() + RECONNECT_BACKOFF_SEC[
+                    min(self._failed_connects - 1, len(RECONNECT_BACKOFF_SEC) - 1)
+                ]
                 raise
             finally:
                 # Always clear the connecting flag
@@ -271,6 +343,11 @@ class BaseEquipment(ABC):
         # Nothing should go on writing setpoints to an instrument that is
         # being taken away.
         self._slew_ramps.stop()
+        # A deliberate disconnect ends the outage: whatever backoff an
+        # earlier failure earned must not be served out against the next
+        # connect the operator asks for.
+        self._failed_connects = 0
+        self._retry_after = 0.0
         async with self._lock:
             if self.instrument:
                 try:
