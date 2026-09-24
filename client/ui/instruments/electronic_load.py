@@ -22,7 +22,8 @@ from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QGroupBox,
 
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
-from client.ui.instruments.widgets import FittedReadout
+from client.ui.instruments.measurement_views import (Channel,
+                                                     MeasurementViews)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,22 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.max_power = 200.0
         self.max_resistance = 15000.0
         super().__init__(parent)
+
+    # The readouts moved into MeasurementViews when the three display
+    # modes became shared with the supply. These keep the panel's own
+    # names pointing at them, so call sites and tests that ask the panel
+    # for a reading still get one.
+    @property
+    def voltage_display(self):
+        return self.views.displays["voltage"]
+
+    @property
+    def current_display(self):
+        return self.views.displays["current"]
+
+    @property
+    def power_display(self):
+        return self.views.displays["power"]
 
     # ------------------------------------------------------------------ #
     # UI
@@ -98,19 +115,18 @@ class ElectronicLoadPanel(InstrumentPanel):
         grid.addWidget(self.input_button, 0, 3, 2, 1)
         layout.addWidget(controls)
 
-        readouts = QWidget()
-        readouts.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        face = QHBoxLayout(readouts)
-        face.setContentsMargins(12, 12, 12, 12)
-        face.setSpacing(12)
-        readouts.setObjectName("loadPanel")
-        readouts.setStyleSheet("QWidget#loadPanel { background-color: black; border-radius: 6px; }")
-        self.voltage_display = FittedReadout("-- V")
-        self.current_display = FittedReadout("-- A")
-        self.power_display = FittedReadout("-- W")
-        for w in (self.voltage_display, self.current_display, self.power_display):
-            face.addWidget(w, 1)
-        layout.addWidget(readouts, 1)
+        # The same digital / analog / graph views the supply has, over
+        # volts, amps and watts. A load's three quantities are exactly
+        # what MeasurementViews takes, so this is the whole of it.
+        self.views = MeasurementViews((
+            Channel("voltage", "Voltage", "V", 3, self.max_voltage, 1.0,
+                    "#4a9eff"),
+            Channel("current", "Current", "A", 3, self.max_current, 0.1,
+                    "#ff9d4a"),
+            Channel("power", "Power", "W", 2, self.max_power, 1.0,
+                    "#7ed957"),
+        ))
+        layout.addWidget(self.views, 1)
 
         status = QHBoxLayout()
         self.mode_indicator = QLabel("Mode: --")
@@ -174,9 +190,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         self._blank()
 
     def _blank(self):
-        self.voltage_display.setText("-- V")
-        self.current_display.setText("-- A")
-        self.power_display.setText("-- W")
+        self.views.blank()
         self.mode_indicator.setText("Mode: --")
         self.setpoint_indicator.setText("Setpoint: --")
 
@@ -194,9 +208,8 @@ class ElectronicLoadPanel(InstrumentPanel):
         voltage = readings.get("voltage")
         current = readings.get("current")
         power = readings.get("power")
-        self.voltage_display.setText("-- V" if voltage is None else f"{float(voltage):.3f} V")
-        self.current_display.setText("-- A" if current is None else f"{float(current):.3f} A")
-        self.power_display.setText("-- W" if power is None else f"{float(power):.2f} W")
+        self.views.set_readings({"voltage": voltage, "current": current,
+                                 "power": power})
 
         mode = str(readings.get("mode") or "").upper()
         if mode in MODES:
