@@ -895,7 +895,8 @@ class TestSequencePanel(QWidget):
         else:
             return step.get("description", "")[:30]
 
-    def _save_sequence(self):
+    @qasync.asyncSlot()
+    async def _save_sequence(self):
         """Save the current sequence."""
         if not self.client:
             QMessageBox.warning(self, "No Connection", "Not connected to server.")
@@ -924,7 +925,8 @@ class TestSequencePanel(QWidget):
         }
 
         try:
-            result = self.client.create_test_sequence(sequence_data)
+            result = await call_blocking(
+                self.client.create_test_sequence, sequence_data)
             QMessageBox.information(
                 self,
                 "Success",
@@ -1160,7 +1162,7 @@ class TestSequencePanel(QWidget):
             return
 
         try:
-            result = self.client.list_test_templates()
+            result = await call_blocking(self.client.list_test_templates)
             templates = result.get("templates", [])
 
             self.templates_list.clear()
@@ -1187,7 +1189,7 @@ class TestSequencePanel(QWidget):
 
         # Get templates
         try:
-            result = self.client.list_test_templates()
+            result = await call_blocking(self.client.list_test_templates)
             templates = result.get("templates", [])
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load templates: {e}")
@@ -1210,7 +1212,8 @@ class TestSequencePanel(QWidget):
 
         # Create sequence from template
         try:
-            sequence = self.client.create_from_template(
+            sequence = await call_blocking(
+                self.client.create_from_template,
                 template_name=config["template_name"],
                 equipment_id=config["equipment_id"],
                 test_points=config.get("test_points"),

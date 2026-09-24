@@ -24,7 +24,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from client.api.client import LabLinkClient
+import qasync
+from client.api.client import LabLinkClient, call_blocking
+from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 from client.ui.theme import dialog_palette
 
 logger = logging.getLogger(__name__)
@@ -157,6 +160,10 @@ class SystemPanel(QWidget):
         super().__init__(parent)
 
         self.client: Optional[LabLinkClient] = None
+        #: When the in-flight refresh started, or None. A 5s timer drives
+        #: refresh, and against a restarting server one request easily
+        #: outlasts the interval.
+        self._refresh_started_at = None
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self._poll_update_status)
 
@@ -754,14 +761,28 @@ class SystemPanel(QWidget):
                 "It is remembered for this server once the update succeeds."
             )
 
-    def refresh(self):
-        """Refresh system information."""
+    @qasync.asyncSlot()
+    async def refresh(self):
+        """Refresh system information, off the GUI thread.
+
+        LabLinkClient is synchronous, so both requests below used to run
+        on the GUI thread. This panel is the worst place for that: it is
+        the tab you are looking at during a server update, which is
+        exactly when the server stops answering and every call costs the
+        full 10s read timeout. The window froze in the one moment the
+        operator most wanted to see progress.
+
+        Guarded too -- a 5s timer drives this and a request against a
+        restarting server outlasts the interval easily.
+        """
         if not self.client:
+            return
+        if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
             return
 
         try:
             # Get server version
-            version_data = self.client.get_server_version()
+            version_data = await call_blocking(self.client.get_server_version)
             version = version_data.get("version", "Unknown")
             self.version_label.setText(f"Version: {version}")
 
@@ -789,6 +810,8 @@ class SystemPanel(QWidget):
                 )
             else:
                 self.status_label.setText("Status: not reachable")
+        finally:
+            release_slot(self, "_refresh_started_at")
 
     def _remote_update_running(self) -> bool:
         """Whether we are the reason the server is unreachable."""
@@ -934,13 +957,19 @@ class SystemPanel(QWidget):
         self.logs_text.append(f"📌 Selected branch: {branch_name}")
         logger.info(f"Branch selected: {branch_name}")
 
-    def _update_status_display(self):
-        """Update the status display from server."""
+    @qasync.asyncSlot()
+    async def _update_status_display(self):
+        """Update the status display from server, off the GUI thread.
+
+        An asyncSlot rather than a plain coroutine because seven callers
+        invoke this as an ordinary method and discard the result; qasync
+        schedules it for them, so none of them needed changing.
+        """
         if not self.client:
             return
 
         try:
-            status_data = self.client.get_update_status()
+            status_data = await call_blocking(self.client.get_update_status)
 
             # Update mode combo box based on server setting
             update_mode = status_data.get("update_mode", "stable")

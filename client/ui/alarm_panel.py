@@ -10,8 +10,10 @@ from PyQt6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QPushButton,
                              QTableWidget, QTableWidgetItem, QVBoxLayout,
                              QWidget)
 
-from client.api.client import LabLinkClient
+from client.api.client import LabLinkClient, call_blocking
 from client.ui.theme import apply_status_colors
+from client.utils.inflight import (REFRESH_ABANDONED_AFTER, claim_slot,
+                                   release_slot)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,9 @@ class AlarmPanel(QWidget):
         super().__init__(parent)
 
         self.client: Optional[LabLinkClient] = None
+        #: When the in-flight refresh started, or None. A 5s timer drives
+        #: refresh and the request can outlast the interval.
+        self._refresh_started_at = None
 
         # WebSocket streaming state
         self.ws_signals = AlarmWebSocketSignals()
@@ -162,13 +167,26 @@ class AlarmPanel(QWidget):
         # Refresh to remove cleared alarm from active list
         self.refresh()
 
-    def refresh(self):
-        """Refresh alarm data."""
+    @qasync.asyncSlot()
+    async def refresh(self):
+        """Refresh alarm data, off the GUI thread.
+
+        LabLinkClient is synchronous, so fetching here directly froze the
+        whole window for the round trip -- and for the full 10s read
+        timeout when the server was slow to answer, which is how a single
+        unreachable instrument used to present.
+
+        Guarded as well: a 5s timer drives this and the request can
+        outlast the interval, so without the slot a slow server queues a
+        refresh per tick.
+        """
         if not self.client:
+            return
+        if not claim_slot(self, "_refresh_started_at", REFRESH_ABANDONED_AFTER):
             return
 
         try:
-            events = self.client.get_active_alarm_events()
+            events = await call_blocking(self.client.get_active_alarm_events)
             self.alarms_table.setRowCount(len(events))
 
             for row, event in enumerate(events):
@@ -202,6 +220,8 @@ class AlarmPanel(QWidget):
 
         except Exception as e:
             logger.error(f"Error refreshing alarms: {e}")
+        finally:
+            release_slot(self, "_refresh_started_at")
 
     def acknowledge_alarm(self):
         """Acknowledge selected alarm."""
