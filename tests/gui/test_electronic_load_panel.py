@@ -67,6 +67,19 @@ class FakeLoadClient:
         return {"success": True, "data": None}
 
 
+#: Requests the panel makes to read the instrument, as opposed to
+#: commands that change it. Binding asks for the ranges because
+#: capabilities only say which ranges a load has, never which one it is
+#: in -- so a test asserting the panel "commanded nothing" has to mean
+#: it changed nothing, not that it stayed silent.
+READS = {"get_ranges"}
+
+
+def controls(client):
+    """Just the commands that told the instrument to do something."""
+    return [c for c in client.commands if c[0] not in READS]
+
+
 def _load():
     return Equipment(
         equipment_id="load_1", name="DL3021A", equipment_type=EquipmentType.ELECTRONIC_LOAD,
@@ -131,7 +144,8 @@ def test_binding_adopts_the_loads_own_state_without_commanding(qapp):
     assert panel.input_button.text() == "Load enabled"
     assert panel.voltage_display.text() == "12.010 V"
     assert panel.power_display.text() == "3.06 W"
-    assert client.commands == []
+    assert controls(client) == [], (
+        f"binding changed the instrument: {controls(client)}")
 
 
 def test_the_setpoint_ceiling_and_unit_follow_the_mode(qapp):
@@ -150,7 +164,8 @@ def test_apply_sends_mode_then_the_matching_setpoint(qapp):
     panel = ElectronicLoadPanel()
     panel.set_instrument(_load(), client)
     _run(panel, "_send_setpoint", "CP", "set_power", "power", 12.5)
-    assert client.commands == [("set_mode", {"mode": "CP"}), ("set_power", {"power": 12.5})]
+    assert controls(client) == [("set_mode", {"mode": "CP"}),
+                                ("set_power", {"power": 12.5})]
     assert panel.setpoint_indicator.text() == "Setpoint: 12.5 W"
 
 
@@ -223,7 +238,7 @@ def test_input_button_sends_set_input(qapp):
     panel = ElectronicLoadPanel()
     panel.set_instrument(_load(), client)
     _run(panel, "_send_input", False)
-    assert client.commands == [("set_input", {"enabled": False})]
+    assert controls(client) == [("set_input", {"enabled": False})]
 
 
 def test_poll_updates_readouts_but_not_the_setpoint_being_edited(qapp):
@@ -727,3 +742,132 @@ class TestTheRangePromptWhenTheInputIsLive:
 
         assert not asked, "prompted even though nothing was sinking"
         assert ("set_current_range", {"current_range": 40.0}) in client.commands
+
+
+class TestTheSelectorShowsTheRangeTheLoadIsIn:
+    """Capabilities say which ranges a load has; only the load knows
+    which one is selected, and get_readings does not carry it.
+
+    The selector used to clear and repopulate itself and leave index 0
+    showing, so a load sitting in its 40 A range displayed "Low (4 A)".
+    On the bench that turned the safety prompt into a liar: picking
+    "High" on a load already in High offered to drop a live input in
+    order to send a command that would have changed nothing.
+    """
+
+    class Ranged(FakeLoadClient):
+        """Answers get_ranges, and remembers what it was told to set."""
+
+        def __init__(self, current_range=40.0):
+            super().__init__()
+            self.current_range = current_range
+
+        def send_command(self, equipment_id, command, parameters=None):
+            parameters = parameters or {}
+            if command == "get_ranges":
+                self.commands.append((command, parameters))
+                return {"success": True, "data": {
+                    "current_range": self.current_range,
+                    "voltage_range": 150.0,
+                    "resistance_range": 15000.0,
+                }}
+            if command == "set_current_range":
+                self.current_range = float(parameters["current_range"])
+            return super().send_command(equipment_id, command, parameters)
+
+    def _panel(self, client):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client)
+        panel.configure(CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        return panel
+
+    def test_it_asks_the_load_which_range_it_is_in(self, qapp):
+        client = self.Ranged()
+        self._panel(client)
+        assert ("get_ranges", {}) in client.commands, (
+            f"nothing ever asked: {client.commands}")
+
+    def test_a_load_in_its_high_range_does_not_show_low(self, qapp):
+        client = self.Ranged(current_range=40.0)
+        panel = self._panel(client)
+        assert panel.range_combo.currentData() == pytest.approx(40.0), (
+            "the selector claimed a range the load was not in")
+
+    def test_a_load_in_its_low_range_shows_low(self, qapp):
+        client = self.Ranged(current_range=4.0)
+        panel = self._panel(client)
+        assert panel.range_combo.currentData() == pytest.approx(4.0)
+
+    def test_choosing_the_range_it_is_already_in_sends_nothing(self, qapp):
+        """The prompt must not cry wolf.
+
+        This is the bench case: the load was in 40 A, the selector said
+        4 A, and choosing 40 A produced a refusal and an offer to drop a
+        live input -- all to tell the load to stay put.
+        """
+        client = self.Ranged(current_range=40.0)
+        panel = self._panel(client)
+        asked = []
+        panel._ask = lambda put_it_up: asked.append(True)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        assert not asked, "it prompted to change to the range it was in"
+        assert controls(client) == [], (
+            f"it commanded the load anyway: {controls(client)}")
+
+    def test_a_real_change_still_goes_through(self, qapp):
+        client = self.Ranged(current_range=40.0)
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 4.0))
+
+        assert ("set_current_range", {"current_range": 4.0}) in client.commands
+
+    def test_the_selector_remembers_what_it_applied(self, qapp):
+        """Having changed range, choosing it again is a no-op too --
+        without another round trip to find that out."""
+        client = self.Ranged(current_range=40.0)
+        panel = self._panel(client)
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 4.0))
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 4.0))
+
+        assert controls(client) == [], (
+            f"it re-sent a range it had just applied: {controls(client)}")
+
+    def test_declining_snaps_back_to_where_the_load_really_is(self, qapp):
+        """Answering No used to leave the selector on index 0, which on
+        a load in its high range meant it went on lying."""
+        client = TestTheRangePromptWhenTheInputIsLive.Refusing()
+        client.current_range = 40.0
+
+        def answer_ranges(equipment_id, command, parameters=None):
+            if command == "get_ranges":
+                return {"success": True,
+                        "data": {"current_range": 40.0,
+                                 "voltage_range": 150.0,
+                                 "resistance_range": 15000.0}}
+            return type(client).send_command(client, equipment_id, command,
+                                             parameters)
+
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client)
+        panel.configure(CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        panel._active_ranges = {"CC": 40.0}
+        panel._show_ranges_for_mode()
+
+        async def say_no(_put_it_up):
+            return False
+        panel._ask = say_no
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 4.0))
+
+        assert panel.range_combo.currentData() == pytest.approx(40.0), (
+            "after declining, the selector showed a range the load was "
+            "not in")

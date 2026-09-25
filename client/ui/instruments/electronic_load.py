@@ -14,6 +14,7 @@ Commands (Rigol DL3000 and B&K SCPI loads alike): ``set_mode``,
 
 import asyncio
 import logging
+import math
 from typing import Any, Dict
 
 import qasync
@@ -91,6 +92,11 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.max_resistance = 15000.0
         #: Ranges the load reports per mode, from its capabilities.
         self._available_ranges = {}
+        #: ...and the one it is actually in, per mode, read from the
+        #: load. Capabilities say which ranges exist; only the
+        #: instrument knows which is selected, and get_readings does not
+        #: carry it.
+        self._active_ranges = {}
         #: Whether this load has CC slew rate and starting voltage. Not
         #: every load in the registry is a DL3000.
         self._supports_cc_extras = False
@@ -380,11 +386,40 @@ class ElectronicLoadPanel(InstrumentPanel):
         self._show_transient()
 
     async def refresh_settings(self):
-        """Put the load's own mode/setpoint/input on the controls, silently."""
+        """Put the load's own mode/setpoint/input/range on the controls."""
         if not (self.client and self.equipment):
             return
         readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
         self._apply_readings(readings or {}, adopt_setpoint=True)
+        await self._refresh_ranges()
+
+    async def _refresh_ranges(self):
+        """Ask the load which range each mode is in.
+
+        Without this the selector showed whatever was first in the list,
+        which on the bench meant a load in its 40 A range displaying
+        "Low (4 A)". That is a control lying about the instrument, and
+        it made the safety prompt fire for a change that was not one:
+        picking "High" on a load already in High offered to drop a live
+        input to send a command that would do nothing.
+
+        Failure here is not worth interrupting anybody over -- the
+        selector keeps whatever it last knew -- so it logs and returns.
+        """
+        try:
+            ranges = await self.send("get_ranges", {}, priority=False) or {}
+        except Exception as e:
+            logger.debug(f"Could not read the load's ranges: {e}")
+            return
+        if not isinstance(ranges, dict):
+            return
+        found = {}
+        for mode, (_key, command, _unit) in MODE_RANGES.items():
+            value = ranges.get(command.split("_", 1)[1])
+            if value is not None:
+                found[mode] = float(value)
+        self._active_ranges = found
+        self._show_ranges_for_mode()
 
     def _range_setpoint(self):
         mode = self.mode_combo.currentData() or "CC"
@@ -493,7 +528,27 @@ class ElectronicLoadPanel(InstrumentPanel):
         low, high = available[0], available[-1]
         for value, name in ((low, "Low"), (high, "High")):
             self.range_combo.addItem(f"{name}  ({value:g} {unit})", value)
+        self._select_active_range(mode)
         self.range_combo.blockSignals(False)
+
+    def _select_active_range(self, mode: str):
+        """Point the selector at the range the load is actually in.
+
+        Compared with a tolerance rather than ==: these come back as
+        floats parsed from the instrument's own text, and a selector
+        that silently fails to match would sit on "Low" again.
+        """
+        active = self._active_ranges.get(mode)
+        if active is None:
+            return
+        for index in range(self.range_combo.count()):
+            value = self.range_combo.itemData(index)
+            if value is None:
+                continue
+            if math.isclose(float(value), float(active),
+                            rel_tol=1e-6, abs_tol=1e-9):
+                self.range_combo.setCurrentIndex(index)
+                return
 
     async def _ask(self, put_it_up):
         """Run a modal that has an answer, without blocking the loop.
@@ -661,8 +716,18 @@ class ElectronicLoadPanel(InstrumentPanel):
         interruption, because dropping a load mid-test changes what the
         device under test sees.
         """
+        mode = self.mode_combo.currentData() or "CC"
+        field = command.split("_", 1)[1]
+        active = self._active_ranges.get(mode)
+        if active is not None and math.isclose(float(active), value,
+                                               rel_tol=1e-6, abs_tol=1e-9):
+            # Already there. Asking the operator to drop a live input so
+            # the load can be told to stay where it is would be the
+            # prompt crying wolf, and the driver would refuse it anyway.
+            return
         try:
-            await self.send(command, {command.split("_")[1] + "_range": value})
+            await self.send(command, {field: value})
+            self._active_ranges[mode] = value
             return
         except Exception as e:
             if "input" not in str(e).lower():
@@ -691,7 +756,8 @@ class ElectronicLoadPanel(InstrumentPanel):
             self.commanded("input", False)
             self.input_button.setChecked(False)
             self.input_button.setText(_INPUT_LABEL[False])
-            await self.send(command, {command.split("_")[1] + "_range": value})
+            await self.send(command, {field: value})
+            self._active_ranges[mode] = value
             # Left off on purpose. Re-enabling into a freshly changed
             # range is the operator's decision to make deliberately.
             self.status_message.emit(
