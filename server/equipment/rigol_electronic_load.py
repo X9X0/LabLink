@@ -94,6 +94,113 @@ _FUNCTION_TO_MODE = {
     "CR": "CR", "RES": "CR", "RESISTANCE": "CR",
     "CP": "CP", "POW": "CP", "POWER": "CP",
 }
+
+
+#: What :FUNCtion:MODE accepts, and what its query gives back.
+#:
+#: Asymmetric in the same way :SOURce:FUNCtion is, and for the same
+#: reason it bit us before: the setting takes {FIXed|LIST|WAVe|BATTery|
+#: OCP|OPP} but the query "returns FIX, LIST, WAV, BATT, OCP, or OPP".
+#: Feeding a query's answer straight back would send WAV where WAVe was
+#: wanted. Short forms are sent throughout, which every SCPI parser
+#: accepts and which sidesteps the spelling problem below.
+_FUNCTION_MODES = ("FIX", "LIST", "WAV", "BATT", "OCP", "OPP")
+
+#: Long names for the function modes, for messages and for callers who
+#: would rather say what they mean.
+_FUNCTION_MODE_NAMES = {
+    "FIX": "fixed",
+    "LIST": "list",
+    "WAV": "waveform",
+    "BATT": "battery",
+    "OCP": "over-current protection test",
+    "OPP": "over-power protection test",
+}
+
+#: The tunable parameters of the function modes: LabLink name mapped to
+#: the SCPI tail, the unit, and which rating bounds it.
+#:
+#: Note ":SOUR:BATT:..." throughout. Rigol's own tree spells the
+#: subsystem BATTary while :FUNCtion:MODE spells the same mode BATTery.
+#: Both abbreviate to BATT, so the short form is right whichever way
+#: the firmware reads it -- which is the only reason this does not have
+#: to be discovered on the bench.
+#:
+#: "limit" names the attribute holding the ceiling, or None where the
+#: guide gives no rating to check against and the load is left to
+#: refuse for itself.
+_FUNCTION_PARAMETERS = {
+    # Battery discharge
+    "battery_level":      (":SOUR:BATT", "A", "max_current"),
+    "battery_range":      (":SOUR:BATT:RANG", "A", "max_current"),
+    "battery_von":        (":SOUR:BATT:VON", "V", "max_voltage"),
+    "battery_stop_volts": (":SOUR:BATT:VST", "V", "max_voltage"),
+    "battery_stop_ah":    (":SOUR:BATT:CST", "Ah", None),
+    "battery_stop_time":  (":SOUR:BATT:TIM", "s", None),
+    # Over-current protection test
+    "ocp_range":          (":SOUR:OCP:RANG", "A", "max_current"),
+    "ocp_von":            (":SOUR:OCP:VON", "V", "max_voltage"),
+    "ocp_von_delay":      (":SOUR:OCP:VOND", "s", None),
+    "ocp_start":          (":SOUR:OCP:ISET", "A", "max_current"),
+    "ocp_step":           (":SOUR:OCP:IST", "A", "max_current"),
+    "ocp_step_delay":     (":SOUR:OCP:IDEL", "s", None),
+    "ocp_max":            (":SOUR:OCP:IMAX", "A", "max_current"),
+    "ocp_min":            (":SOUR:OCP:IMIN", "A", "max_current"),
+    "ocp_trip_volts":     (":SOUR:OCP:VOCP", "V", "max_voltage"),
+    "ocp_timeout":        (":SOUR:OCP:TOCP", "s", None),
+    # Over-power protection test
+    "opp_von":            (":SOUR:OPP:VON", "V", "max_voltage"),
+    "opp_von_delay":      (":SOUR:OPP:VOND", "s", None),
+    "opp_start":          (":SOUR:OPP:PSET", "W", "max_power"),
+    "opp_step":           (":SOUR:OPP:PST", "W", "max_power"),
+    "opp_step_delay":     (":SOUR:OPP:PDEL", "s", None),
+    "opp_max":            (":SOUR:OPP:PMAX", "W", "max_power"),
+    "opp_min":            (":SOUR:OPP:PMIN", "W", "max_power"),
+    "opp_trip_volts":     (":SOUR:OPP:VOPP", "V", "max_voltage"),
+    "opp_timeout":        (":SOUR:OPP:TOPP", "s", None),
+    # List
+    "list_range":         (":SOUR:LIST:RANG", "", None),
+    "list_count":         (":SOUR:LIST:COUN", "cycles", None),
+    "list_steps":         (":SOUR:LIST:STEP", "steps", None),
+}
+
+#: Battery results, read while the discharge runs or after it stops.
+#: These are measurements, not settings, so they have no setter.
+_BATTERY_RESULTS = {
+    "capacity_ah": ":MEAS:CAP?",
+    "watt_hours": ":MEAS:WATT?",
+    "discharge_seconds": ":MEAS:DISC?",
+}
+
+#: Range setters among the parameters above. Switching range moves the
+#: shunt whatever mode asked for it, so the user guide's CAUTION covers
+#: these exactly as it covers :SOUR:CURR:RANG.
+_FUNCTION_RANGE_PARAMETERS = {
+    "battery_range": "battery current range",
+    "ocp_range": "OCP current range",
+    "list_range": "List range",
+}
+
+
+
+#: Bits of the questionable status register, by weight.
+#:
+#: Only the ones the programming guide prints unambiguously, one per
+#: line, are named here. Its Table 1-1 wraps the name and description
+#: columns across rows for bits 9 to 14, and the two readings that
+#: survive that wrapping disagree about which of RRV/LRV/UNR/OV/PS/VON
+#: goes with which weight. Guessing would put a wrong name on a
+#: protection-shutdown flag, so the raw value is returned alongside and
+#: the rest are left to be confirmed against an instrument.
+_QUESTIONABLE_BITS = {
+    1: ("voltage_fault", "Overvoltage or reverse voltage occurred"),
+    2: ("over_current", "Overcurrent occurred"),
+    4: ("remote_sense", "Remote sense terminals connected"),
+    8: ("over_power", "Overpower occurred"),
+    128: ("list_running", "Running in List mode"),
+}
+
+
 #: Transient operation modes, short name to the SCPI keyword. These are
 #: the Con / Pul / Tog keys on the front panel.
 _TRANSIENT_MODES = {
@@ -223,6 +330,22 @@ class RigolDL3000Base(BaseEquipment):
             "supports_transient": True,
             "transient_modes": list(_TRANSIENT_MODES),
             "supports_acquisition": True,
+            # List, battery discharge and the two protection tests are
+            # standard on every DL3000 -- *OPT? gates none of them, and
+            # :FUNCtion:MODE takes all six unconditionally.
+            "function_modes": list(_FUNCTION_MODES),
+            "function_mode_names": dict(_FUNCTION_MODE_NAMES),
+            "function_parameters": {
+                name: {"scpi": scpi, "unit": unit, "limit": limit}
+                for name, (scpi, unit, limit) in _FUNCTION_PARAMETERS.items()
+            },
+            "battery_results": list(_BATTERY_RESULTS),
+            # There is no SCPI command for the short-circuit function on
+            # this load. The only remote route is :SYSTem:KEY 33, which
+            # presses the front-panel SHORT key: a blind toggle with no
+            # readback. Advertised as absent rather than implemented as
+            # a button that cannot say what it did.
+            "supports_short_circuit": False,
         }
 
     async def get_status(self) -> EquipmentStatus:
@@ -264,6 +387,20 @@ class RigolDL3000Base(BaseEquipment):
             "set_voltage_range": self.set_voltage_range,
             "set_resistance_range": self.set_resistance_range,
             "get_ranges": self.get_ranges,
+            "get_protection_status": self.get_protection_status,
+            "set_function_mode": self.set_function_mode,
+            "get_function_mode": self.get_function_mode,
+            "set_function_parameter": self.set_function_parameter,
+            "get_function_parameter": self.get_function_parameter,
+            "set_battery_cutoffs": self.set_battery_cutoffs,
+            "get_battery_cutoffs": self.get_battery_cutoffs,
+            "get_battery_results": self.get_battery_results,
+            "set_list_step": self.set_list_step,
+            "get_list_step": self.get_list_step,
+            "set_list_mode": self.set_list_mode,
+            "get_list_mode": self.get_list_mode,
+            "set_list_end_state": self.set_list_end_state,
+            "get_list_end_state": self.get_list_end_state,
             "get_slew_limits": self.get_slew_limits,
             "get_options": self.get_options,
             "set_slew_rate": self.set_slew_rate,
@@ -798,6 +935,209 @@ class RigolDL3000Base(BaseEquipment):
             # range of zero to zero would range a control to nothing.
             out[key] = None if (key.endswith("_max") and value == 0) else value
         return out
+
+    # ------------------------------------------------------------------ #
+    # Function modes: list, battery discharge, OCP and OPP
+    # ------------------------------------------------------------------ #
+
+    async def set_function_mode(self, function_mode: str) -> None:
+        """Choose which subsystem drives the input.
+
+        This is a different axis from set_mode. set_mode picks the
+        regulation law -- CC, CV, CR, CP -- while this picks what is
+        allowed to move the setpoint: the fixed level, a list, the
+        battery discharge, or one of the protection tests. The guide
+        puts it as "what controls the input regulation mode".
+
+        Leaving a test mode means coming back to FIX, which is why that
+        is spelled out rather than being something a caller has to know.
+        """
+        wanted = str(function_mode).strip().upper()
+        # Accept the long spellings the guide prints for the setting,
+        # since a caller reading the manual will type those.
+        wanted = {"FIXED": "FIX", "WAVE": "WAV", "WAVEFORM": "WAV",
+                  "BATTERY": "BATT", "BATTARY": "BATT"}.get(wanted, wanted)
+        if wanted not in _FUNCTION_MODES:
+            raise SetpointRefused(
+                "Unknown function mode %r. This load has: %s"
+                % (function_mode, ", ".join(_FUNCTION_MODES)))
+        await self._command(f":SOUR:FUNC:MODE {wanted}")
+
+    async def get_function_mode(self) -> str:
+        """Which subsystem is driving the input: FIX, LIST, WAV, BATT,
+        OCP or OPP."""
+        raw = (await self._query(":SOUR:FUNC:MODE?")).strip().upper()
+        for known in _FUNCTION_MODES:
+            if raw.startswith(known):
+                return known
+        raise ValueError(f"Unexpected :SOUR:FUNC:MODE? response: {raw!r}")
+
+    def _function_parameter(self, name: str):
+        try:
+            return _FUNCTION_PARAMETERS[name]
+        except KeyError:
+            raise SetpointRefused(
+                "Unknown function-mode parameter %r" % (name,))
+
+    async def set_function_parameter(self, name: str, value: float) -> None:
+        """Set one parameter of a function mode, checked against the
+        load's ratings.
+
+        One method rather than twenty-eight near-identical ones: they
+        are all a scalar with a unit and a ceiling, and writing them out
+        by hand would be twenty-eight chances to paste the wrong SCPI
+        tail.
+        """
+        scpi, unit, limit_attr = self._function_parameter(name)
+        value = float(value)
+        if name in _FUNCTION_RANGE_PARAMETERS:
+            await self._refuse_if_sinking(_FUNCTION_RANGE_PARAMETERS[name])
+        if value < 0:
+            raise SetpointRefused(
+                "%s cannot be negative" % name.replace("_", " ").capitalize())
+        if limit_attr is not None:
+            ceiling = getattr(self, limit_attr)
+            if value > ceiling:
+                raise SetpointRefused(
+                    "%s must be between 0 and %g%s"
+                    % (name.replace("_", " ").capitalize(), ceiling, unit))
+        await self._command(f"{scpi} {value}")
+
+    async def get_function_parameter(self, name: str) -> float:
+        """Read one function-mode parameter back from the load."""
+        scpi, _unit, _limit = self._function_parameter(name)
+        return float((await self._query(f"{scpi}?")).strip())
+
+    async def set_battery_cutoffs(
+        self,
+        volts: Optional[bool] = None,
+        capacity: Optional[bool] = None,
+        time: Optional[bool] = None,
+    ) -> None:
+        """Arm or disarm each battery discharge cut-off.
+
+        Three independent switches, and a discharge with all three off
+        runs until something else stops it. They are separate commands
+        on the load, so they are separate arguments here -- passing None
+        leaves one alone rather than quietly turning it off.
+        """
+        for value, scpi in ((volts, ":SOUR:BATT:VENabstop"),
+                            (capacity, ":SOUR:BATT:CENabstop"),
+                            (time, ":SOUR:BATT:TENabstop")):
+            if value is None:
+                continue
+            await self._command(f"{scpi} {1 if value else 0}")
+
+    async def get_battery_cutoffs(self) -> Dict[str, Optional[bool]]:
+        """Which battery cut-offs are armed."""
+        out: Dict[str, Optional[bool]] = {}
+        for key, scpi in (("volts", ":SOUR:BATT:VENabstop?"),
+                          ("capacity", ":SOUR:BATT:CENabstop?"),
+                          ("time", ":SOUR:BATT:TENabstop?")):
+            try:
+                out[key] = (await self._query(scpi)).strip() in ("1", "ON")
+            except Exception as e:
+                logger.debug("%s cut-off query failed: %s" % (key, e))
+                out[key] = None
+        return out
+
+    async def get_battery_results(self) -> Dict[str, Optional[float]]:
+        """What the discharge has measured so far.
+
+        Live during the run, and still readable after it stops, which is
+        the only way to get the result out: the load shows it on the
+        front panel and has no "test finished" query.
+        """
+        out: Dict[str, Optional[float]] = {}
+        for key, scpi in _BATTERY_RESULTS.items():
+            try:
+                out[key] = float((await self._query(scpi)).strip())
+            except Exception as e:
+                logger.debug("%s query failed: %s" % (key, e))
+                out[key] = None
+        return out
+
+    async def set_list_step(
+        self,
+        step: int,
+        level: Optional[float] = None,
+        width: Optional[float] = None,
+        slew: Optional[float] = None,
+    ) -> None:
+        """Set one step of the list.
+
+        :LIST:LEVel, :WIDth and :SLEW all take <step>,<value>, so a step
+        is the unit a caller thinks in. Steps are numbered from 1, as
+        the front panel numbers them.
+        """
+        step = int(step)
+        if step < 1:
+            raise SetpointRefused("List steps are numbered from 1")
+        for value, scpi in ((level, ":SOUR:LIST:LEV"),
+                            (width, ":SOUR:LIST:WID"),
+                            (slew, ":SOUR:LIST:SLEW")):
+            if value is None:
+                continue
+            await self._command(f"{scpi} {step},{float(value)}")
+
+    async def get_list_step(self, step: int) -> Dict[str, Optional[float]]:
+        """Read one step of the list back."""
+        step = int(step)
+        out: Dict[str, Optional[float]] = {}
+        for key, scpi in (("level", ":SOUR:LIST:LEV?"),
+                          ("width", ":SOUR:LIST:WID?"),
+                          ("slew", ":SOUR:LIST:SLEW?")):
+            try:
+                out[key] = float((await self._query(f"{scpi} {step}")).strip())
+            except Exception as e:
+                logger.debug("list step %d %s query failed: %s"
+                             % (step, key, e))
+                out[key] = None
+        return out
+
+    async def set_list_mode(self, mode: str) -> None:
+        """The regulation law the list runs under: CC, CV, CR or CP."""
+        mode_upper = str(mode).strip().upper()
+        if mode_upper not in _MODE_TO_FUNCTION:
+            raise SetpointRefused(
+                "Unknown list mode %r. This load has: %s"
+                % (mode, ", ".join(_MODE_TO_FUNCTION)))
+        await self._command(f":SOUR:LIST:MODE {mode_upper}")
+
+    async def get_list_mode(self) -> str:
+        raw = (await self._query(":SOUR:LIST:MODE?")).strip().upper()
+        mode = _FUNCTION_TO_MODE.get(raw)
+        if mode is None:
+            raise ValueError(f"Unexpected :SOUR:LIST:MODE? response: {raw!r}")
+        return mode
+
+    async def set_list_end_state(self, hold_last: bool) -> None:
+        """What the input does when the list finishes: hold the last
+        step, or switch off."""
+        await self._command(
+            f":SOUR:LIST:END {'LAST' if hold_last else 'OFF'}")
+
+    async def get_list_end_state(self) -> bool:
+        raw = (await self._query(":SOUR:LIST:END?")).strip().upper()
+        return raw.startswith("LAST")
+
+    async def get_protection_status(self) -> Dict[str, Any]:
+        """What the load's questionable status register is reporting.
+
+        This is the closest thing to a result the protection tests
+        have. OCP and OPP are all setters in the command tree -- there
+        is no query for the current or power a device under test tripped
+        at, and no pass/fail -- so the register's overcurrent and
+        overpower flags are what a caller can actually read back.
+
+        ``raw`` is returned as well as the decoded flags because the
+        guide's bit table is only legible for the low bits; see
+        _QUESTIONABLE_BITS.
+        """
+        raw = int(float((await self._query(":STAT:QUES:COND?")).strip()))
+        flags = {name: bool(raw & weight)
+                 for weight, (name, _why) in _QUESTIONABLE_BITS.items()}
+        return {"raw": raw, **flags}
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
         out: Dict[str, Optional[float]] = {}
