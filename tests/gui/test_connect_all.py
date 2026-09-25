@@ -339,3 +339,124 @@ class TestTheyBehaveLikeTheRestOfTheClient:
         assert panel.connect_all_btn.isEnabled()
         assert panel.disconnect_all_btn.isEnabled()
         assert panel.connect_all_btn.text() == "Connect All"
+
+
+class TestTheOperatorSeesItWorking:
+    """Connecting four serial instruments in turn takes long enough
+    that a button going grey is not obviously the machine working
+    rather than the machine ignoring you.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_progress_box_appears(self, panel, qapp, monkeypatch):
+        Dialogs().install(monkeypatch)
+        server = Server()
+        _wire(panel, server, [Gear(x, connected=False) for x in "abc"])
+
+        seen = []
+        real = panel._bulk_progress
+
+        def watch(title, total):
+            box = real(title, total)
+            seen.append((title, total, box))
+            return box
+        panel._bulk_progress = watch
+
+        await drive(panel.connect_all(), qapp)
+
+        assert seen, "nothing acknowledged the click"
+        title, total, _box = seen[0]
+        assert total == 3, f"the box does not know how many: {total}"
+        assert "3" in title
+
+    @pytest.mark.asyncio
+    async def test_it_names_each_instrument_as_it_goes(self, panel, qapp,
+                                                       monkeypatch):
+        Dialogs().install(monkeypatch)
+        server = Server()
+        _wire(panel, server, [Gear("a", connected=False, name="1902B"),
+                              Gear("b", connected=False, name="DS1054Z")])
+
+        labels = []
+        panel._step_progress = lambda box, done, text: labels.append(text)
+
+        await drive(panel.connect_all(), qapp)
+
+        joined = " ".join(labels)
+        assert "1902B" in joined and "DS1054Z" in joined, (
+            f"the box does not say what it is working on: {labels}")
+
+    @pytest.mark.asyncio
+    async def test_it_closes_even_when_one_fails(self, panel, qapp,
+                                                 monkeypatch):
+        """A progress box left on screen over a finished run is worse
+        than none at all."""
+        Dialogs().install(monkeypatch)
+        server = Server(raise_for={"a"})
+        _wire(panel, server, [Gear("a", connected=False)])
+
+        closed = []
+        real = panel._bulk_progress
+
+        def watch(title, total):
+            box = real(title, total)
+            box.close = lambda: closed.append(True)
+            return box
+        panel._bulk_progress = watch
+
+        await drive(panel.connect_all(), qapp)
+
+        assert closed, "the progress box outlived the run"
+
+    @pytest.mark.asyncio
+    async def test_disconnecting_shows_one_too(self, panel, qapp,
+                                               monkeypatch):
+        Dialogs().install(monkeypatch)
+
+        async def ask(_put_it_up):
+            return "off"
+        panel._ask = ask
+        server = Server()
+        _wire(panel, server, [Gear(x, connected=True) for x in "ab"])
+
+        seen = []
+        real = panel._bulk_progress
+        panel._bulk_progress = lambda t, n: (seen.append(n), real(t, n))[1]
+
+        await drive(panel.disconnect_all(), qapp)
+
+        assert seen == [2]
+
+    def test_it_is_shown_not_executed(self):
+        """exec() runs a nested Qt event loop, and from inside a
+        coroutine that lets the loop step other asyncio tasks while this
+        one is still current -- the failure this panel spent four wrong
+        theories finding."""
+        import inspect
+
+        source = inspect.getsource(EquipmentPanel._bulk_progress)
+        assert ".show()" in source
+        assert ".exec()" not in source, (
+            "the progress box runs its own event loop")
+
+    def test_it_cannot_be_cancelled_midway(self):
+        """Stopping halfway would leave a half-connected bench and no
+        record of which half."""
+        import inspect
+
+        source = inspect.getsource(EquipmentPanel._bulk_progress)
+        assert "setCancelButton(None)" in source
+
+
+class TestTheyAreOnTheirOwnRow:
+    def test_bulk_buttons_are_not_beside_refresh(self):
+        """They act on everything in the list rather than on the
+        selection, which is a different kind of thing from Refresh and
+        Discover."""
+        import inspect
+
+        source = inspect.getsource(EquipmentPanel._create_equipment_list)
+        assert "bulk_layout" in source
+        assert source.index("layout.addLayout(button_layout)") < \
+               source.index("bulk_layout.addWidget(self.connect_all_btn)"), (
+            "the bulk buttons are still in the first row")

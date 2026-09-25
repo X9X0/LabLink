@@ -8,11 +8,12 @@ from typing import Dict, List, Optional, Set
 
 from models.equipment import ConnectionStatus, Equipment
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox,
-                             QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-                             QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QProgressDialog, QPushButton,
-                             QSplitter, QTextEdit, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog,
+                             QDialogButtonBox, QGridLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                             QListWidgetItem, QMessageBox, QProgressDialog,
+                             QPushButton, QSplitter, QTextEdit, QVBoxLayout,
+                             QWidget)
 
 from client.api.client import LabLinkClient, call_blocking
 from client.utils.server_manager import get_server_manager
@@ -189,24 +190,33 @@ class EquipmentPanel(QWidget):
         discover_btn.clicked.connect(self.discover_equipment)
         button_layout.addWidget(discover_btn)
 
+        layout.addLayout(button_layout)
+
+        # A row of their own, under Refresh and Discover. These act on
+        # everything in the list rather than on the selection, which is
+        # a different kind of thing from its neighbours above and worth
+        # separating from them by more than position in a row.
+        #
         # A server restart drops every instrument and reconnects none of
-        # them, so after an update the bench comes back with a list of
+        # them, so after an update the bench comes back as a list of
         # DISCONNECTED rows to click through one at a time.
+        bulk_layout = QHBoxLayout()
+
         self.connect_all_btn = QPushButton("Connect All")
         self.connect_all_btn.setToolTip(
             "Connect every instrument that is currently disconnected"
         )
         self.connect_all_btn.clicked.connect(self.connect_all)
-        button_layout.addWidget(self.connect_all_btn)
+        bulk_layout.addWidget(self.connect_all_btn)
 
         self.disconnect_all_btn = QPushButton("Disconnect All")
         self.disconnect_all_btn.setToolTip(
             "Disconnect every instrument that is currently connected"
         )
         self.disconnect_all_btn.clicked.connect(self.disconnect_all)
-        button_layout.addWidget(self.disconnect_all_btn)
+        bulk_layout.addWidget(self.disconnect_all_btn)
 
-        layout.addLayout(button_layout)
+        layout.addLayout(bulk_layout)
 
         return widget
 
@@ -940,6 +950,40 @@ class EquipmentPanel(QWidget):
         return [eq for eq in self.equipment_list
                 if eq.connection_status == ConnectionStatus.CONNECTED]
 
+    def _bulk_progress(self, title: str, total: int):
+        """A progress box for a bulk action, shown without blocking.
+
+        show(), never exec(). exec() runs a nested Qt event loop, and
+        from inside a coroutine that lets the loop try to step other
+        asyncio tasks while this one is still current -- the failure
+        this panel spent four wrong theories finding. A non-modal box
+        that is merely shown has no loop of its own.
+
+        Connecting four serial instruments one after another takes long
+        enough that a button going grey is not obviously the machine
+        working rather than the machine ignoring you.
+        """
+        box = QProgressDialog(title, None, 0, total, self)
+        box.setWindowTitle("LabLink")
+        box.setWindowModality(Qt.WindowModality.NonModal)
+        box.setMinimumDuration(0)       # show at once, not after 4s
+        box.setAutoClose(False)
+        box.setAutoReset(False)
+        box.setCancelButton(None)       # mid-way cancel would leave a
+                                        # half-connected bench
+        box.setValue(0)
+        box.show()
+        QApplication.processEvents()    # paint it before the first request
+        return box
+
+    @staticmethod
+    def _step_progress(box, done: int, describing: str):
+        if box is None:
+            return
+        box.setLabelText(describing)
+        box.setValue(done)
+        QApplication.processEvents()
+
     def _set_bulk_buttons_enabled(self, enabled: bool, busy_text: str = ""):
         for button, label in ((self.connect_all_btn, "Connect All"),
                               (self.disconnect_all_btn, "Disconnect All")):
@@ -990,9 +1034,17 @@ class EquipmentPanel(QWidget):
             return
 
         self._set_bulk_buttons_enabled(False, "Connecting...")
+        progress = self._bulk_progress(
+            f"Connecting {len(targets)} instrument(s)...", len(targets))
         done, failed = [], []
         try:
-            for equipment in targets:
+            for index, equipment in enumerate(targets):
+                self._step_progress(
+                    progress,
+                    index,
+                    f"Connecting {self._describe(equipment)}  "
+                    f"({index + 1} of {len(targets)})",
+                )
                 client = self._client_for(equipment)
                 if client is None:
                     failed.append((self._describe(equipment),
@@ -1018,6 +1070,8 @@ class EquipmentPanel(QWidget):
                         f"Connect All: {self._describe(equipment)} failed: {e}")
                     failed.append((self._describe(equipment), str(e)))
         finally:
+            if progress is not None:
+                progress.close()
             self._set_bulk_buttons_enabled(True)
             self._update_equipment_list_widget()
             self._update_details_panel()
@@ -1075,9 +1129,17 @@ class EquipmentPanel(QWidget):
             return                          # cancelled
 
         self._set_bulk_buttons_enabled(False, "Disconnecting...")
+        progress = self._bulk_progress(
+            f"Disconnecting {len(targets)} instrument(s)...", len(targets))
         done, failed = [], []
         try:
-            for equipment in targets:
+            for index, equipment in enumerate(targets):
+                self._step_progress(
+                    progress,
+                    index,
+                    f"Disconnecting {self._describe(equipment)}  "
+                    f"({index + 1} of {len(targets)})",
+                )
                 client = self._client_for(equipment)
                 if client is None:
                     failed.append((self._describe(equipment),
@@ -1105,6 +1167,8 @@ class EquipmentPanel(QWidget):
                         f"failed: {e}")
                     failed.append((self._describe(equipment), str(e)))
         finally:
+            if progress is not None:
+                progress.close()
             self._set_bulk_buttons_enabled(True)
             self._update_equipment_list_widget()
             self._update_details_panel()
