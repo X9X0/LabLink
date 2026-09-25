@@ -264,6 +264,7 @@ class RigolDL3000Base(BaseEquipment):
             "set_voltage_range": self.set_voltage_range,
             "set_resistance_range": self.set_resistance_range,
             "get_ranges": self.get_ranges,
+            "get_slew_limits": self.get_slew_limits,
             "get_options": self.get_options,
             "set_slew_rate": self.set_slew_rate,
             "get_slew_rate": self.get_slew_rate,
@@ -454,18 +455,21 @@ class RigolDL3000Base(BaseEquipment):
 
     async def set_current_range(self, current_range) -> float:
         """Select the CC current range (low/high, MIN/MAX, or a value in A)."""
+        await self._refuse_if_sinking("current range")
         word = self._range_word(current_range, self.spec.low_current_range, self.spec.max_current, "Current")
         await self._command(f":SOUR:CURR:RANG {word}")
         return float(await self._query(":SOUR:CURR:RANG?"))
 
     async def set_voltage_range(self, voltage_range) -> float:
         """Select the CV voltage range (low/high, MIN/MAX, or a value in V)."""
+        await self._refuse_if_sinking("voltage range")
         word = self._range_word(voltage_range, self.spec.low_voltage_range, self.spec.max_voltage, "Voltage")
         await self._command(f":SOUR:VOLT:RANG {word}")
         return float(await self._query(":SOUR:VOLT:RANG?"))
 
     async def set_resistance_range(self, resistance_range) -> float:
         """Select the CR resistance range (low/high, MIN/MAX, or a value in Ohm)."""
+        await self._refuse_if_sinking("resistance range")
         word = self._range_word(
             resistance_range, self.spec.low_resistance_range, self.spec.max_resistance, "Resistance"
         )
@@ -734,6 +738,58 @@ class RigolDL3000Base(BaseEquipment):
             if part.strip() and part.strip() != "0"
         ]
         return {"raw": raw, "installed": installed}
+
+    async def _refuse_if_sinking(self, what: str) -> None:
+        """Stop a range change while current is flowing.
+
+        The user guide is explicit, under Set Range: "Before switching
+        the current range, please disable the channel input to avoid
+        causing damage to the instrument or the DUT." Switching range
+        moves the shunt the load regulates against, and doing that with
+        the input live is what the caution is about.
+
+        Refused here rather than warned about in one panel, so it holds
+        for anything that drives this instrument. Refusing rather than
+        turning the input off on the caller's behalf: disabling a load
+        mid-test changes what the DUT sees, and that is the operator's
+        decision, not a side effect of asking for a different range.
+        """
+        try:
+            live = await self.get_input()
+        except Exception as e:
+            # Not knowing means not being able to promise it is safe.
+            raise SetpointRefused(
+                "Cannot tell whether the input is on, so %s is refused: %s"
+                % (what, e))
+        if live:
+            raise SetpointRefused(
+                "Disable the load input before changing the %s. Switching "
+                "range with current flowing can damage the load or the "
+                "device under test." % what)
+
+    async def get_slew_limits(self) -> Dict[str, Optional[float]]:
+        """The slew rates this load will currently accept, from the load.
+
+        :CURRent:SLEW? takes MINimum and MAXimum, so the limits can be
+        asked for rather than guessed -- and they have to be, because
+        they move with the current range. On the bench in the 4 A range
+        the CC rate took 0.24 A/us and refused 0.5; a number written
+        into the driver per model would have been wrong the moment
+        somebody switched range.
+        """
+        out: Dict[str, Optional[float]] = {}
+        for key, query in (
+            ("cc_min", ":SOUR:CURR:SLEW? MIN"),
+            ("cc_max", ":SOUR:CURR:SLEW? MAX"),
+            ("transient_min", ":SOUR:CURR:SLEW:POS? MIN"),
+            ("transient_max", ":SOUR:CURR:SLEW:POS? MAX"),
+        ):
+            try:
+                out[key] = float((await self._query(query)).strip())
+            except Exception as e:
+                logger.debug("%s query failed: %s" % (key, e))
+                out[key] = None
+        return out
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
         out: Dict[str, Optional[float]] = {}

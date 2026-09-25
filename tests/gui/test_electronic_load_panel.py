@@ -572,15 +572,27 @@ class TestTheTransientSection:
         assert client.commands == [], (
             f"a spinbox commanded the load: {client.commands}")
 
-    def test_the_group_checkbox_switches_the_generator(self, qapp):
-        """It is what :SOUR:TRAN:STAT does, and what the TRAN key does."""
+    def test_arming_starts_the_generator_waiting(self, qapp):
+        """A button, not a checkbox.
+
+        :SOUR:TRAN:STAT reads back False after a trigger, and the guide
+        calls it "the same effect as pressing the TRAN key": it arms
+        the generator, which then sinks Level B and waits. A checkbox
+        claims "on until I untick it", which is not what the instrument
+        does -- on the bench it sat unticking itself.
+        """
         client = FakeLoadClient()
         panel = self._panel(client)
         client.commands.clear()
 
-        _with_loop(qapp, lambda: panel.transient_group.setChecked(True))
+        _with_loop(qapp, panel._arm_transient)
 
         assert ("set_transient_enabled", {"enabled": True}) in client.commands
+
+    def test_the_group_is_not_checkable(self, qapp):
+        panel = self._panel()
+        assert not panel.transient_group.isCheckable(), (
+            "a checkbox here promises a latch the instrument does not have")
 
     def test_the_trigger_button_fires_one(self, qapp):
         client = FakeLoadClient()
@@ -595,3 +607,123 @@ class TestTheTransientSection:
         panel = self._panel()
         assert panel.level_a_spin.maximum() == pytest.approx(40.0)
         assert panel.level_b_spin.maximum() == pytest.approx(40.0)
+
+
+class TestTheRangePromptWhenTheInputIsLive:
+    """The driver refuses a range change while the load is sinking, as
+    the user guide's CAUTION requires. The panel's job is to make that
+    refusal actionable rather than a dead end -- and to let the operator
+    decide, because dropping a load mid-test changes what the device
+    under test sees.
+    """
+
+    class Refusing(FakeLoadClient):
+        """Refuses the range the way the driver does, until the input
+        is switched off."""
+
+        def __init__(self):
+            super().__init__()
+            self.input_live = True
+
+        def send_command(self, equipment_id, command, parameters=None):
+            parameters = parameters or {}
+            if command == "set_input":
+                self.input_live = bool(parameters.get("enabled"))
+            if "range" in command and self.input_live:
+                raise RuntimeError(
+                    "Disable the load input before changing the current "
+                    "range.")
+            return super().send_command(equipment_id, command, parameters)
+
+    def _panel(self, client):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client)
+        panel.configure(TRANSIENT_CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        return panel
+
+    def test_declining_leaves_the_load_alone(self, qapp):
+        client = self.Refusing()
+        panel = self._panel(client)
+
+        async def say_no(_put_it_up):
+            return False
+        panel._ask = say_no
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        sent = [name for name, _ in client.commands]
+        assert "set_input" not in sent, "it dropped the input anyway"
+        assert client.input_live, "the load stopped sinking without consent"
+
+    def test_accepting_turns_the_input_off_then_switches(self, qapp):
+        client = self.Refusing()
+        panel = self._panel(client)
+
+        async def say_yes(_put_it_up):
+            return True
+        panel._ask = say_yes
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        sent = [name for name, _ in client.commands]
+        assert "set_input" in sent, "never disabled the input"
+        assert sent.index("set_input") < len(sent) - 1
+        assert "set_current_range" in sent[sent.index("set_input"):], (
+            f"the range was not applied after the input went off: {sent}")
+
+    def test_the_input_is_left_off_afterwards(self, qapp):
+        """Re-enabling into a freshly changed range is a deliberate act,
+        not something to do on the operator's behalf."""
+        client = self.Refusing()
+        panel = self._panel(client)
+
+        async def say_yes(_put_it_up):
+            return True
+        panel._ask = say_yes
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        assert not client.input_live
+        assert not panel.input_button.isChecked()
+
+    def test_an_unrelated_failure_is_not_turned_into_a_prompt(self, qapp):
+        """Only the input refusal gets the offer; anything else is just
+        an error."""
+        client = FakeLoadClient()
+
+        def boom(equipment_id, command, parameters=None):
+            raise RuntimeError("the load is on fire")
+        client.send_command = boom
+        panel = self._panel(client)
+
+        asked = []
+
+        async def watch(_put_it_up):
+            asked.append(1)
+            return True
+        panel._ask = watch
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        assert not asked, "offered to drop the input over an unrelated error"
+
+    def test_it_goes_straight_through_when_the_input_is_off(self, qapp):
+        client = self.Refusing()
+        client.input_live = False
+        panel = self._panel(client)
+
+        asked = []
+
+        async def watch(_put_it_up):
+            asked.append(1)
+            return True
+        panel._ask = watch
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_range("set_current_range", 40.0))
+
+        assert not asked, "prompted even though nothing was sinking"
+        assert ("set_current_range", {"current_range": 40.0}) in client.commands

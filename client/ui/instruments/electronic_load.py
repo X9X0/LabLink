@@ -18,13 +18,14 @@ from typing import Any, Dict
 
 import qasync
 from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QGroupBox,
-                             QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                             QVBoxLayout, QWidget)
+                             QHBoxLayout, QLabel, QMessageBox, QPushButton,
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
 from client.ui.instruments.measurement_views import (Channel,
                                                      MeasurementViews)
+from client.utils.modals import ask
 
 logger = logging.getLogger(__name__)
 
@@ -213,10 +214,13 @@ class ElectronicLoadPanel(InstrumentPanel):
         #
         # The group's own checkbox is the generator's on/off, which is
         # what :SOUR:TRAN:STAT does and what the TRAN key does.
+        # Not a checkable group. :SOUR:TRAN:STAT reads back False after
+        # a trigger, and the guide describes it as "the same effect as
+        # pressing the TRAN key" -- it arms the generator, which then
+        # sinks Level B and waits. A checkbox says "this is on until I
+        # untick it", which is not what the instrument does, and on the
+        # bench it sat unticking itself.
         self.transient_group = QGroupBox("Transient (dynamic) operation")
-        self.transient_group.setCheckable(True)
-        self.transient_group.setChecked(False)
-        self.transient_group.toggled.connect(self._on_transient_toggled)
         tgrid = QGridLayout(self.transient_group)
 
         tgrid.addWidget(QLabel("Mode:"), 0, 0)
@@ -297,6 +301,15 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.transient_apply_button = QPushButton("Apply transient")
         self.transient_apply_button.clicked.connect(self._apply_transient)
         tgrid.addWidget(self.transient_apply_button, 3, 0, 1, 2)
+
+        self.arm_button = QPushButton("Arm")
+        self.arm_button.setToolTip(
+            "Arm the transient generator. The load then sinks Level B\n"
+            "and waits for a trigger, which is what the front-panel TRAN\n"
+            "key does."
+        )
+        self.arm_button.clicked.connect(self._arm_transient)
+        tgrid.addWidget(self.arm_button, 3, 4)
 
         self.trigger_button = QPushButton("Trigger")
         self.trigger_button.setToolTip(
@@ -482,6 +495,15 @@ class ElectronicLoadPanel(InstrumentPanel):
             self.range_combo.addItem(f"{name}  ({value:g} {unit})", value)
         self.range_combo.blockSignals(False)
 
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop.
+
+        See client/utils/modals.py -- opening one inline from a
+        coroutine lets the nested Qt loop step other asyncio tasks
+        while this one is still current.
+        """
+        return await ask(put_it_up)
+
     def _show_transient(self):
         """Transient lives inside CC, and only on a load that has it."""
         mode = self.mode_combo.currentData() or "CC"
@@ -512,24 +534,23 @@ class ElectronicLoadPanel(InstrumentPanel):
     def _on_transient_mode_changed(self, _index: int):
         self._show_transient_timing()
 
-    def _on_transient_toggled(self, enabled: bool):
-        """The group's checkbox is the generator's on/off."""
+    def _arm_transient(self):
+        """Arm the generator: it sinks Level B and waits for a trigger."""
         if not (self.client and self.equipment):
             return
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return              # see _on_mode_changed
-        self._send_transient_enabled(bool(enabled))
+        self._send_arm()
 
-    @qasync.asyncSlot(bool)
-    async def _send_transient_enabled(self, enabled: bool):
+    @qasync.asyncSlot()
+    async def _send_arm(self):
         try:
-            await self.send("set_transient_enabled", {"enabled": enabled})
-        except Exception as e:
-            logger.error(f"Switching transient operation failed: {e}")
+            await self.send("set_transient_enabled", {"enabled": True})
             self.status_message.emit(
-                f"Switching transient operation failed: {e}")
+                "Transient armed -- the load is at Level B, waiting for a "
+                "trigger")
+        except Exception as e:
+            logger.error(f"Arming transient operation failed: {e}")
+            self.status_message.emit(
+                f"Arming transient operation failed: {e}")
 
     def _apply_transient(self):
         """Send the whole configuration on a button, like the setpoint.
@@ -629,8 +650,53 @@ class ElectronicLoadPanel(InstrumentPanel):
 
     @qasync.asyncSlot(str, float)
     async def _send_range(self, command: str, value: float):
+        """Switch the range, offering to drop the input if it is live.
+
+        The user guide is blunt about this: "Before switching the
+        current range, please disable the channel input to avoid
+        causing damage to the instrument or the DUT." The driver
+        refuses outright while the load is sinking, so this is the
+        panel making that refusal actionable rather than a dead end --
+        and the operator gets to say whether their test can take the
+        interruption, because dropping a load mid-test changes what the
+        device under test sees.
+        """
         try:
             await self.send(command, {command.split("_")[1] + "_range": value})
+            return
+        except Exception as e:
+            if "input" not in str(e).lower():
+                logger.error(f"Setting the load range failed: {e}")
+                self.status_message.emit(
+                    f"Setting the load range failed: {e}")
+                return
+
+        turn_it_off = await self._ask(lambda: QMessageBox.question(
+            self,
+            "Disable the load input?",
+            "Changing range needs the load input off.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes)
+
+        if not turn_it_off:
+            # Put the selector back where the load actually is, rather
+            # than leaving it showing a range that was never applied.
+            self._show_ranges_for_mode()
+            self.status_message.emit("Range unchanged -- the input is on")
+            return
+
+        try:
+            await self.send("set_input", {"enabled": False})
+            self.commanded("input", False)
+            self.input_button.setChecked(False)
+            self.input_button.setText(_INPUT_LABEL[False])
+            await self.send(command, {command.split("_")[1] + "_range": value})
+            # Left off on purpose. Re-enabling into a freshly changed
+            # range is the operator's decision to make deliberately.
+            self.status_message.emit(
+                "Range changed. The load input is off -- switch it back on "
+                "when you are ready.")
         except Exception as e:
             logger.error(f"Setting the load range failed: {e}")
             self.status_message.emit(f"Setting the load range failed: {e}")
