@@ -111,6 +111,25 @@ class InstrumentBusy(RuntimeError):
     """
 
 
+class CommandRejected(RuntimeError):
+    """The instrument took the command and then objected to it.
+
+    SCPI faults do not come back in the reply. The write returns, the
+    API returns success, and the only record is a line in the
+    instrument's own error queue that nobody reads.
+
+    That is not hypothetical: an electronic load was sent
+    ``:SOUR:FUNC CV`` -- the short form, where the setting wants
+    ``VOLTage`` -- and reported success for CV, CR and CP in turn while
+    staying in CC throughout. Nothing above the wire could tell. Asking
+    the queue after a control write turns that class of bug from
+    invisible into an error at the point it happens.
+
+    Distinct from SetpointRefused, which is us declining a value before
+    it is sent. This is the instrument declining one after.
+    """
+
+
 class SetpointRefused(ValueError):
     """A value the instrument cannot take, refused before it is sent.
 

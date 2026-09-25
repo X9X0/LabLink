@@ -301,3 +301,80 @@ class TestTheInputButtonAgainstStaleReadings:
         panel._apply_readings({"load_enabled": True})
         assert panel.input_button.isChecked() is True, (
             "the display would have gone on claiming the input was off")
+
+
+CAPABILITIES = {
+    "max_voltage": 150.0, "max_current": 40.0, "max_power": 200.0,
+    "modes": ["CC", "CV", "CR", "CP"],
+    "current_ranges": [4.0, 40.0],
+    "voltage_ranges": [15.0, 150.0],
+    "resistance_ranges": [15.0, 15000.0],
+}
+
+
+class TestTheRangeSelector:
+    """The user guide lists "range" among the parameters under each mode
+    key -- CC has current and range, CV voltage and range -- so it sits
+    beside the setpoint rather than in a settings dialog.
+
+    The driver has had set_current_range, set_voltage_range and
+    set_resistance_range all along, and the capabilities have carried
+    the values. Nothing asked for either.
+    """
+
+    def _panel(self, client=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(CAPABILITIES)
+        return panel
+
+    def test_it_offers_the_loads_own_two_ranges(self, qapp):
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        values = [panel.range_combo.itemData(i)
+                  for i in range(panel.range_combo.count())]
+        assert values == [4.0, 40.0]
+
+    def test_the_ranges_follow_the_mode(self, qapp):
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CV"))
+        values = [panel.range_combo.itemData(i)
+                  for i in range(panel.range_combo.count())]
+        assert values == [15.0, 150.0], "still showing the CC ranges"
+
+    def test_constant_power_hides_it(self, qapp):
+        """These loads have no power range: :SOUR:CURR:RANG, :VOLT:RANG
+        and :RES:RANG exist and nothing for watts. A control that is
+        present but does nothing is worse than one that is absent."""
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CP"))
+        assert not panel.range_combo.isVisible() or \
+               panel.range_combo.count() == 0
+
+    def test_the_units_are_shown(self, qapp):
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CR"))
+        labels = [panel.range_combo.itemText(i)
+                  for i in range(panel.range_combo.count())]
+        assert any("Ohm" in text for text in labels), labels
+
+    def test_choosing_one_sends_it(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.range_combo.setCurrentIndex(1))
+
+        sent = [c for c in client.commands if c[0] == "set_current_range"]
+        assert sent, f"choosing a range sent nothing: {client.commands}"
+        assert sent[0][1] == {"current_range": 40.0}
+
+    def test_a_load_that_reports_no_ranges_hides_it(self, qapp):
+        """Not every load in the registry is a DL3000."""
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure({"max_voltage": 60.0, "max_current": 30.0,
+                         "modes": ["CC", "CV"]})
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        assert panel.range_combo.count() == 0

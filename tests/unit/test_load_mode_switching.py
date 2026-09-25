@@ -32,7 +32,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from server.equipment.rigol_electronic_load import (_FUNCTION_TO_MODE,
+from server.equipment.base import CommandRejected
+from server.equipment.rigol_electronic_load import (DL3000_MODELS,
+                                                    _FUNCTION_TO_MODE,
                                                     _MODE_TO_FUNCTION, _MODES,
                                                     RigolDL3021A)
 
@@ -41,6 +43,9 @@ def driver():
     made = RigolDL3021A.__new__(RigolDL3021A)
     made.resource_string = "USB0::6833::3601::DL3B268M00049::0::INSTR"
     made.model = "DL3021A"
+    # The ratings the setters range against; __init__ normally applies
+    # these from the model table.
+    made._apply_spec(DL3000_MODELS["DL3021A"])
     made.written = []
 
     async def record(command):
@@ -117,3 +122,79 @@ class TestTheTwoMapsAgree:
         source = inspect.getsource(RigolDL3021A.set_mode)
         assert "_MODE_TO_FUNCTION" in source, (
             "set_mode is formatting the mode itself again")
+
+
+class TestTheLoadIsAskedWhetherItAgreed:
+    """A SCPI fault goes to the error queue, not into the reply.
+
+    That is the whole reason the mode bug was invisible: the write
+    returned, the API returned success, and :SOUR:FUNC? kept answering
+    CC. Asking the queue after a control command turns that class of
+    bug from silent into an error where it happens.
+    """
+
+    @staticmethod
+    def _driver(error_reply):
+        load = driver()
+        load.queried = []
+
+        async def query(command):
+            load.queried.append(command)
+            return error_reply
+        load._query = query
+        return load
+
+    @pytest.mark.asyncio
+    async def test_a_clean_queue_passes(self):
+        load = self._driver('0,"No error"')
+        await load.set_mode("CV")
+        assert load.written, "the command never went out"
+
+    @pytest.mark.asyncio
+    async def test_a_fault_is_raised_rather_than_swallowed(self):
+        load = self._driver('-113,"Undefined header"')
+        with pytest.raises(CommandRejected) as rejected:
+            await load.set_mode("CV")
+
+        said = str(rejected.value)
+        assert "Undefined header" in said, (
+            f"the instrument's own words are the useful part: {said}")
+
+    @pytest.mark.asyncio
+    async def test_the_command_is_named(self, ):
+        """So the log says which one, not just that something failed."""
+        load = self._driver('-113,"Undefined header"')
+        with pytest.raises(CommandRejected) as rejected:
+            await load.set_current(2.0)
+        assert "CURR" in str(rejected.value)
+
+    @pytest.mark.asyncio
+    async def test_the_queue_is_checked_after_the_write(self):
+        load = self._driver('0,"No error"')
+        await load.set_mode("CV")
+        assert any("ERR" in q.upper() for q in load.queried), (
+            "nothing asked the load whether it objected")
+
+    @pytest.mark.asyncio
+    async def test_not_being_able_to_ask_is_not_a_failure(self):
+        """A load that will not answer :SYST:ERR? has not thereby
+        refused the command, and must not be reported as having done."""
+        load = driver()
+
+        async def broken(command):
+            raise OSError("no reply")
+        load._query = broken
+
+        await load.set_mode("CV")       # must not raise
+        assert load.written == [":SOUR:FUNC VOLTage"]
+
+    @pytest.mark.asyncio
+    async def test_readings_are_not_slowed_by_it(self):
+        """Only control commands pay the extra round trip. A poll at
+        5 Hz doubling its traffic is how the serial supplies were
+        driven into timing out earlier."""
+        import inspect
+
+        source = inspect.getsource(RigolDL3021A.get_readings)
+        assert "_command(" not in source, (
+            "the readings path is making checked writes")

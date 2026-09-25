@@ -36,7 +36,7 @@ from shared.models.data import ElectronicLoadData
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import (BaseEquipment, SetpointRefused,
+from .base import (BaseEquipment, CommandRejected, SetpointRefused,
                     generate_equipment_id)
 
 logger = logging.getLogger(__name__)
@@ -250,6 +250,41 @@ class RigolDL3000Base(BaseEquipment):
         return await handler(**parameters)
 
     # ------------------------------------------------------------------ #
+    # Writing, and finding out whether the load agreed
+    # ------------------------------------------------------------------ #
+
+    async def _command(self, command: str):
+        """Send a control command and ask the load what it made of it.
+
+        SCPI puts a syntax or range fault in the error queue, not in the
+        reply, so a write that the instrument throws away is
+        indistinguishable from one it obeyed. That is exactly how
+        :SOUR:FUNC CV -- the short form, where the setting wants
+        VOLTage -- reported success for CV, CR and CP while the load sat
+        in CC the whole time. Nothing above the wire could see it, and
+        it took reading the mode back on the bench to find.
+
+        One extra query per control command. Only control commands go
+        through here: those happen when an operator does something,
+        where a round trip is nothing, rather than on the readings poll,
+        where it would double the traffic.
+        """
+        await self._write(command)
+        try:
+            fault = await self.get_error()
+        except Exception as e:
+            # Not being able to ask is not the same as the command
+            # failing, so it must not be reported as one.
+            logger.debug(f"{self.resource_string}: could not read the "
+                         f"error queue after {command!r}: {e}")
+            return
+        if fault.get("code"):
+            raise CommandRejected(
+                f"{self.model} rejected {command!r}: "
+                f"{fault.get('message') or fault.get('raw')}"
+            )
+
+    # ------------------------------------------------------------------ #
     # Mode / setpoints
     # ------------------------------------------------------------------ #
 
@@ -271,7 +306,7 @@ class RigolDL3000Base(BaseEquipment):
         mode_upper = str(mode).upper()
         if mode_upper not in _MODES:
             raise ValueError("Mode must be CC, CV, CR, or CP")
-        await self._write(f":SOUR:FUNC {_MODE_TO_FUNCTION[mode_upper]}")
+        await self._command(f":SOUR:FUNC {_MODE_TO_FUNCTION[mode_upper]}")
 
     async def get_mode(self) -> str:
         """Query the static operating mode (:SOURce:FUNCtion? -> CC/CV/CR/CP)."""
@@ -286,14 +321,14 @@ class RigolDL3000Base(BaseEquipment):
         current = float(current)
         if current < 0 or current > self.max_current:
             raise SetpointRefused(f"Current must be between 0 and {self.max_current}A")
-        await self._write(f":SOUR:CURR:LEV:IMM {current}")
+        await self._command(f":SOUR:CURR:LEV:IMM {current}")
 
     async def set_voltage(self, voltage: float):
         """Set the CV-mode voltage in volts (0 .. model maximum)."""
         voltage = float(voltage)
         if voltage < 0 or voltage > self.max_voltage:
             raise SetpointRefused(f"Voltage must be between 0 and {self.max_voltage}V")
-        await self._write(f":SOUR:VOLT:LEV:IMM {voltage}")
+        await self._command(f":SOUR:VOLT:LEV:IMM {voltage}")
 
     async def set_resistance(self, resistance: float):
         """Set the CR-mode resistance in ohms (0.08 Ohm .. 15 kOhm)."""
@@ -304,14 +339,14 @@ class RigolDL3000Base(BaseEquipment):
             raise SetpointRefused(
                 f"Resistance must be between {self.min_resistance} and {self.max_resistance} Ohm"
             )
-        await self._write(f":SOUR:RES:LEV:IMM {resistance}")
+        await self._command(f":SOUR:RES:LEV:IMM {resistance}")
 
     async def set_power(self, power: float):
         """Set the CP-mode power in watts (0 .. model maximum)."""
         power = float(power)
         if power < 0 or power > self.max_power:
             raise SetpointRefused(f"Power must be between 0 and {self.max_power}W")
-        await self._write(f":SOUR:POW:LEV:IMM {power}")
+        await self._command(f":SOUR:POW:LEV:IMM {power}")
 
     async def get_setpoint(self, mode: Optional[str] = None) -> Dict[str, Any]:
         """Return the setpoint of the given (or active) mode."""
@@ -324,7 +359,7 @@ class RigolDL3000Base(BaseEquipment):
 
     async def set_input(self, enabled: bool):
         """Turn the load input on or off (:SOURce:INPut:STATe)."""
-        await self._write(f":SOUR:INP:STAT {'ON' if enabled else 'OFF'}")
+        await self._command(f":SOUR:INP:STAT {'ON' if enabled else 'OFF'}")
 
     async def get_input(self) -> bool:
         raw = (await self._query(":SOUR:INP:STAT?")).strip().upper()
@@ -355,13 +390,13 @@ class RigolDL3000Base(BaseEquipment):
     async def set_current_range(self, current_range) -> float:
         """Select the CC current range (low/high, MIN/MAX, or a value in A)."""
         word = self._range_word(current_range, self.spec.low_current_range, self.spec.max_current, "Current")
-        await self._write(f":SOUR:CURR:RANG {word}")
+        await self._command(f":SOUR:CURR:RANG {word}")
         return float(await self._query(":SOUR:CURR:RANG?"))
 
     async def set_voltage_range(self, voltage_range) -> float:
         """Select the CV voltage range (low/high, MIN/MAX, or a value in V)."""
         word = self._range_word(voltage_range, self.spec.low_voltage_range, self.spec.max_voltage, "Voltage")
-        await self._write(f":SOUR:VOLT:RANG {word}")
+        await self._command(f":SOUR:VOLT:RANG {word}")
         return float(await self._query(":SOUR:VOLT:RANG?"))
 
     async def set_resistance_range(self, resistance_range) -> float:
@@ -369,7 +404,7 @@ class RigolDL3000Base(BaseEquipment):
         word = self._range_word(
             resistance_range, self.spec.low_resistance_range, self.spec.max_resistance, "Resistance"
         )
-        await self._write(f":SOUR:RES:RANG {word}")
+        await self._command(f":SOUR:RES:RANG {word}")
         return float(await self._query(":SOUR:RES:RANG?"))
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
@@ -499,7 +534,7 @@ class RigolDL3000Base(BaseEquipment):
 
     async def reset(self) -> None:
         """*RST: factory defaults, input off, error queue cleared."""
-        await self._write("*RST")
+        await self._command("*RST")
 
     async def get_error(self) -> Dict[str, Any]:
         raw = await self._query(":SYSTem:ERRor?")

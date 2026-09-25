@@ -35,6 +35,21 @@ MODES = {
     "CP": ("Constant power", "W", "set_power", "power"),
 }
 
+#: Which capability lists the ranges for a mode, and the command that
+#: selects one. The user guide puts "range" among the parameters under
+#: each mode key -- CC has current and range, CV voltage and range --
+#: so it belongs beside the setpoint rather than in a settings dialog.
+#:
+#: CP has no range of its own on these loads: the SCPI tree has
+#: :SOUR:CURR:RANG, :VOLT:RANG and :RES:RANG and nothing for power, so
+#: the selector is hidden in constant power rather than offered and
+#: then refused.
+MODE_RANGES = {
+    "CC": ("current_ranges", "set_current_range", "A"),
+    "CV": ("voltage_ranges", "set_voltage_range", "V"),
+    "CR": ("resistance_ranges", "set_resistance_range", "Ohm"),
+}
+
 
 #: What the input button says in each state. "Enabled"/"disabled"
 #: describes the load, where "Input: ON" described a terminal -- and on
@@ -56,6 +71,8 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.max_current = 40.0
         self.max_power = 200.0
         self.max_resistance = 15000.0
+        #: Ranges the load reports per mode, from its capabilities.
+        self._available_ranges = {}
         super().__init__(parent)
 
     # The readouts moved into MeasurementViews when the three display
@@ -99,9 +116,19 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.setpoint_spin.setRange(0.0, self.max_current)
         grid.addWidget(self.setpoint_spin, 1, 1)
 
+        self.range_label = QLabel("Range:")
+        grid.addWidget(self.range_label, 2, 0)
+        self.range_combo = QComboBox()
+        self.range_combo.setToolTip(
+            "Low range resolves finer; high range reaches further.\n"
+            "The load keeps one per mode, as the front panel does."
+        )
+        self.range_combo.currentIndexChanged.connect(self._on_range_changed)
+        grid.addWidget(self.range_combo, 2, 1)
+
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_setpoint)
-        grid.addWidget(self.apply_button, 0, 2, 2, 1)
+        grid.addWidget(self.apply_button, 0, 2, 3, 1)
 
         # "Input" is the instrument's own word for the terminals, and on
         # a panel next to a supply's "Output" it reads as the same kind of
@@ -113,7 +140,7 @@ class ElectronicLoadPanel(InstrumentPanel):
             "QPushButton:checked { background-color: #b06000; color: white; }"
         )
         self.input_button.clicked.connect(self._on_input_toggled)
-        grid.addWidget(self.input_button, 0, 3, 2, 1)
+        grid.addWidget(self.input_button, 0, 3, 3, 1)
         layout.addWidget(controls)
 
         # The same digital / analog / graph views the supply has, over
@@ -155,7 +182,12 @@ class ElectronicLoadPanel(InstrumentPanel):
                 if key in MODES:
                     self.mode_combo.addItem(f"{key} — {MODES[key][0]}", key)
             self.mode_combo.blockSignals(False)
+        self._available_ranges = {
+            mode: [float(v) for v in (capabilities.get(key) or [])]
+            for mode, (key, _cmd, _unit) in MODE_RANGES.items()
+        }
         self._range_setpoint()
+        self._show_ranges_for_mode()
     async def refresh_settings(self):
         """Put the load's own mode/setpoint/input on the controls, silently."""
         if not (self.client and self.equipment):
@@ -247,6 +279,55 @@ class ElectronicLoadPanel(InstrumentPanel):
     # Commands
     # ------------------------------------------------------------------ #
 
+    def _show_ranges_for_mode(self):
+        """Offer the ranges the current mode actually has.
+
+        Hidden in CP rather than shown empty: these loads have no power
+        range, and a control that is present but does nothing is worse
+        than one that is not there.
+        """
+        mode = self.mode_combo.currentData() or "CC"
+        spec = MODE_RANGES.get(mode)
+        available = self._available_ranges.get(mode) or [] if spec else []
+
+        showing = bool(spec and len(available) >= 2)
+        self.range_label.setVisible(showing)
+        self.range_combo.setVisible(showing)
+        if not showing:
+            return
+
+        unit = spec[2]
+        self.range_combo.blockSignals(True)
+        self.range_combo.clear()
+        low, high = available[0], available[-1]
+        for value, name in ((low, "Low"), (high, "High")):
+            self.range_combo.addItem(f"{name}  ({value:g} {unit})", value)
+        self.range_combo.blockSignals(False)
+
+    def _on_range_changed(self, _index: int):
+        """Select the range on the load, as choosing it on the front
+        panel would."""
+        if not (self.client and self.equipment):
+            return
+        mode = self.mode_combo.currentData() or "CC"
+        spec = MODE_RANGES.get(mode)
+        value = self.range_combo.currentData()
+        if spec is None or value is None:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return              # see _on_mode_changed
+        self._send_range(spec[1], float(value))
+
+    @qasync.asyncSlot(str, float)
+    async def _send_range(self, command: str, value: float):
+        try:
+            await self.send(command, {command.split("_")[1] + "_range": value})
+        except Exception as e:
+            logger.error(f"Setting the load range failed: {e}")
+            self.status_message.emit(f"Setting the load range failed: {e}")
+
     def _on_mode_changed(self, _index: int):
         """Re-range the setpoint box now; apply the mode just after.
 
@@ -256,6 +337,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         that shows.
         """
         self._range_setpoint()
+        self._show_ranges_for_mode()
 
         # Only schedule the send when there is a loop to run it. The
         # combo also changes while the panel is being built and while a
