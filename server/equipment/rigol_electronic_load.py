@@ -785,10 +785,18 @@ class RigolDL3000Base(BaseEquipment):
             ("transient_max", ":SOUR:CURR:SLEW:POS? MAX"),
         ):
             try:
-                out[key] = float((await self._query(query)).strip())
+                value = float((await self._query(query)).strip())
             except Exception as e:
                 logger.debug("%s query failed: %s" % (key, e))
                 out[key] = None
+                continue
+            # A maximum of zero is the load declining to answer, not a
+            # limit. The transient pair reads 0.0 for both until a
+            # transient mode has been set -- seen on the bench, where
+            # :SLEW:POS? MIN|MAX returned 0.0/0.0 in plain CC and
+            # 0.001/0.3 the moment CON was selected. Handing a caller a
+            # range of zero to zero would range a control to nothing.
+            out[key] = None if (key.endswith("_max") and value == 0) else value
         return out
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:

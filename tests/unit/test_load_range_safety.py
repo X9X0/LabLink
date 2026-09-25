@@ -162,3 +162,34 @@ class TestTheSlewLimitsComeFromTheLoad:
         load = driver(answers={"SLEW? MAX": "2.5"})
         limits = await load.execute_command("get_slew_limits", {})
         assert limits["cc_max"] == pytest.approx(2.5)
+
+
+class TestAZeroMaximumIsNotALimit:
+    """Seen on the bench: :SLEW:POS? MIN|MAX answers 0.0 and 0.0 while
+    the load is in plain CC, and 0.001 / 0.3 the moment a transient mode
+    is selected. Zero is the load declining to answer.
+
+    Handing that to a caller as a number would range a control from
+    nothing to nothing, which is worse than saying "I do not know".
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_zero_max_becomes_none(self):
+        load = driver(answers={"SLEW:POS? MAX": "0", "SLEW:POS? MIN": "0"})
+        limits = await load.get_slew_limits()
+        assert limits["transient_max"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_zero_min_is_kept(self):
+        """Zero is a perfectly good minimum; only a zero ceiling is
+        meaningless."""
+        load = driver(answers={"SLEW? MIN": "0", "SLEW? MAX": "3.0"})
+        limits = await load.get_slew_limits()
+        assert limits["cc_min"] == pytest.approx(0.0)
+        assert limits["cc_max"] == pytest.approx(3.0)
+
+    @pytest.mark.asyncio
+    async def test_a_real_max_is_untouched(self):
+        load = driver(answers={"SLEW? MAX": "0.3"})
+        limits = await load.get_slew_limits()
+        assert limits["cc_max"] == pytest.approx(0.3)
