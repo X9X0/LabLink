@@ -973,18 +973,27 @@ class RigolDL3000Base(BaseEquipment):
                 % (function_mode, ", ".join(_FUNCTION_MODES)))
         await self._command(f":SOUR:FUNC:MODE {wanted}")
 
-        # Read it back, because this command lies. On the bench the load
-        # went into LIST and then BATT happily, and from BATT it took
-        # :SOUR:FUNC:MODE OCP, then OPP, then FIX without a murmur --
-        # accepted each one, left the error queue clean, and stayed in
-        # BATT throughout. An unchecked write here is a mode switch that
-        # reports success and does nothing, which is how the trigger and
-        # the short-form :SOUR:FUNC bugs both looked.
+        # Read it back, because this command lies, and on this load it
+        # lies in a way that matters.
         #
-        # The way out of a mode is to assert the one you want: issuing
+        # Probed on DL3B268M00049, firmware 00.01.05.00.01, from a clean
+        # start with the input off: LIST is entered and left correctly,
+        # BATT is entered and left correctly, and asking for either OCP
+        # or OPP puts the load into BATT. Not "refuses and stays put" --
+        # it goes to battery discharge, reports BATT, and leaves the
+        # error queue clean. The guide documents firmware 00.01.04 and
+        # says :FUNCtion:MODE takes all six unconditionally.
+        #
+        # So a caller that trusted this command would arm a battery
+        # discharge while believing it had set up a protection test.
+        # An unchecked write here is a mode switch that reports success
+        # and does something else, which is worse than the trigger and
+        # short-form :SOUR:FUNC bugs it otherwise resembles.
+        #
+        # Leaving a mode is done by asserting the one you want: issuing
         # the owning subsystem's command reclaims the setpoint, and
-        # set_mode is what does that for fixed operation. Said in the
-        # message, because whoever hits this needs to know it.
+        # set_mode does that for fixed operation. Said in the message,
+        # because whoever hits this needs to know it.
         try:
             arrived = await self.get_function_mode()
         except Exception as e:
@@ -993,11 +1002,14 @@ class RigolDL3000Base(BaseEquipment):
             return
         if arrived != wanted:
             raise CommandRejected(
-                "%s stayed in %s when asked for %s. This load accepts "
-                ":SOUR:FUNC:MODE and ignores it when it will not leave the "
-                "mode it is in -- to go back to fixed operation, set the "
-                "regulation mode (set_mode) instead, which reclaims the "
-                "setpoint for the FUNCtion command."
+                "%s went to %s when asked for %s, and reported no error. "
+                "Asking this load for the OCP or OPP test is known to "
+                "select battery discharge instead (seen on firmware "
+                "00.01.05.00.01), so the mode was not entered and nothing "
+                "here should be trusted to have configured a protection "
+                "test. To return to fixed operation set the regulation "
+                "mode (set_mode), which reclaims the setpoint for the "
+                "FUNCtion command."
                 % (self.model, _FUNCTION_MODE_NAMES.get(arrived, arrived),
                    _FUNCTION_MODE_NAMES.get(wanted, wanted)))
 

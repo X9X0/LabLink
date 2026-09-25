@@ -450,6 +450,28 @@ class TestWhatTheBenchFound:
         assert "batt" in said, said
         assert "set_mode" in said, "it does not say how to get out"
 
+    @pytest.mark.parametrize("asked", ["OCP", "OPP"])
+    @pytest.mark.asyncio
+    async def test_asking_for_a_protection_test_that_lands_in_battery(
+            self, asked):
+        """The one that matters. On firmware 00.01.05.00.01, from a
+        clean start with the input off, :SOUR:FUNC:MODE OCP puts the
+        load into battery discharge -- reports BATT, error queue clean.
+        Same for OPP.
+
+        A caller that trusted the command would arm a battery discharge
+        believing it had set up a protection test, so this must be a
+        refusal and the message must name where it actually went.
+        """
+        load = driver(answers={":SOUR:FUNC:MODE?": "BATT"})
+        with pytest.raises(Exception) as rejected:
+            await load.set_function_mode(asked)
+
+        said = str(rejected.value).lower()
+        assert "battery" in said, said
+        assert "protection test" in said, (
+            "it does not warn that no protection test was configured")
+
     @pytest.mark.asyncio
     async def test_a_mode_that_does_take_is_quiet(self):
         load = driver(answers={":SOUR:FUNC:MODE?": "LIST"})
