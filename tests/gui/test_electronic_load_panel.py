@@ -378,3 +378,76 @@ class TestTheRangeSelector:
                          "modes": ["CC", "CV"]})
         panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
         assert panel.range_combo.count() == 0
+
+
+CC_CAPABILITIES = dict(CAPABILITIES, supports_slew_rate=True, supports_von=True)
+
+
+class TestTheCCOptions:
+    """CC has two parameters beyond its level -- slew rate and starting
+    voltage -- both listed under the CC key in the user guide, and both
+    meaningless in CV, CR and CP.
+    """
+
+    def _panel(self, client=None, capabilities=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(capabilities or CC_CAPABILITIES)
+        return panel
+
+    def test_they_show_in_cc(self, qapp):
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        assert panel.cc_extras.isVisibleTo(panel)
+
+    def test_they_hide_in_the_other_modes(self, qapp):
+        """A slew rate in constant resistance is not a thing."""
+        panel = self._panel()
+        for mode in ("CV", "CR", "CP"):
+            panel.mode_combo.setCurrentIndex(panel.mode_combo.findData(mode))
+            assert not panel.cc_extras.isVisibleTo(panel), (
+                f"the CC options are showing in {mode}")
+
+    def test_a_load_without_them_never_shows_them(self, qapp):
+        """Not every load in the registry is a DL3000."""
+        panel = self._panel(capabilities=CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        assert not panel.cc_extras.isVisibleTo(panel)
+
+    def test_applying_sends_both(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        panel.slew_spin.setValue(0.25)
+        panel.von_spin.setValue(3.0)
+        client.commands.clear()
+
+        _with_loop(qapp, panel._apply_cc_options)
+
+        assert ("set_slew_rate", {"slew_rate": 0.25}) in client.commands
+        assert ("set_von", {"von": 3.0}) in client.commands
+
+    def test_nothing_is_sent_by_typing(self, qapp):
+        """Every intermediate value of a spinbox being typed into is a
+        real command on a load. That is why there is a button."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        client.commands.clear()
+
+        panel.slew_spin.setValue(0.9)
+        panel.von_spin.setValue(4.0)
+
+        assert client.commands == [], (
+            f"a spinbox commanded the load: {client.commands}")
+
+    def test_von_is_ranged_to_the_load(self, qapp):
+        panel = self._panel()
+        assert panel.von_spin.maximum() == pytest.approx(150.0)
+
+    def test_the_slew_box_invents_no_ceiling_of_its_own(self, qapp):
+        """The per-model maximum is not something the panel knows. The
+        load rejects what it cannot do, and says so now."""
+        panel = self._panel()
+        assert panel.slew_spin.maximum() >= 10.0
+        assert panel.slew_spin.minimum() > 0

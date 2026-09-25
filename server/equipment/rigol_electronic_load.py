@@ -194,6 +194,10 @@ class RigolDL3000Base(BaseEquipment):
             "max_dynamic_frequency": s.max_dynamic_frequency,
             "modes": list(_MODES),
             "measurement_channels": ["V", "I", "P", "R"],
+            # CC mode carries two parameters beyond its level, both
+            # listed under the CC key in the user guide.
+            "supports_slew_rate": True,
+            "supports_von": True,
             "supports_acquisition": True,
         }
 
@@ -236,6 +240,10 @@ class RigolDL3000Base(BaseEquipment):
             "set_voltage_range": self.set_voltage_range,
             "set_resistance_range": self.set_resistance_range,
             "get_ranges": self.get_ranges,
+            "set_slew_rate": self.set_slew_rate,
+            "get_slew_rate": self.get_slew_rate,
+            "set_von": self.set_von,
+            "get_von": self.get_von,
             "get_readings": self.get_readings,
             "get_measurement": self.get_measurement,
             "get_measurements": self.get_measurements,
@@ -406,6 +414,51 @@ class RigolDL3000Base(BaseEquipment):
         )
         await self._command(f":SOUR:RES:RANG {word}")
         return float(await self._query(":SOUR:RES:RANG?"))
+
+    # ------------------------------------------------------------------ #
+    # CC mode extras: slew rate and starting voltage
+    # ------------------------------------------------------------------ #
+
+    async def set_slew_rate(self, slew_rate: float) -> None:
+        """Set the CC-mode rising and falling slew rate, in A/us.
+
+        ``:CURRent:SLEW[:BOTH]`` is the CC-mode rate and sets both
+        directions at once. ``:SLEW:POSitive`` and ``:SLEW:NEGative``
+        look like the obvious pair to use and are not: the guide gives
+        them as the rising and falling rates in *transient* operation,
+        a different mode with its own levels. Writing those here would
+        have set something real and not this.
+
+        No ceiling is checked. The rate a given model allows is not in
+        the data the driver holds, and inventing a limit is how a supply
+        ended up with three different wrong floors this week. The
+        instrument knows, and since control commands now read the error
+        queue it will say so.
+        """
+        slew_rate = float(slew_rate)
+        if slew_rate <= 0:
+            raise SetpointRefused("Slew rate must be greater than 0 A/us")
+        await self._command(f":SOUR:CURR:SLEW {slew_rate}")
+
+    async def get_slew_rate(self) -> float:
+        return float(await self._query(":SOUR:CURR:SLEW?"))
+
+    async def set_von(self, von: float) -> None:
+        """Set the CC-mode starting voltage, in volts.
+
+        The load begins sinking once the input rises above this and
+        stops when it falls back below. On a battery or a supply with a
+        slow rise this is what keeps the load off until the source is
+        actually up.
+        """
+        von = float(von)
+        if von < 0 or von > self.max_voltage:
+            raise SetpointRefused(
+                f"Starting voltage must be between 0 and {self.max_voltage}V")
+        await self._command(f":SOUR:CURR:VON {von}")
+
+    async def get_von(self) -> float:
+        return float(await self._query(":SOUR:CURR:VON?"))
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
         out: Dict[str, Optional[float]] = {}

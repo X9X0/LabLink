@@ -73,6 +73,9 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.max_resistance = 15000.0
         #: Ranges the load reports per mode, from its capabilities.
         self._available_ranges = {}
+        #: Whether this load has CC slew rate and starting voltage. Not
+        #: every load in the registry is a DL3000.
+        self._supports_cc_extras = False
         super().__init__(parent)
 
     # The readouts moved into MeasurementViews when the three display
@@ -125,6 +128,47 @@ class ElectronicLoadPanel(InstrumentPanel):
         )
         self.range_combo.currentIndexChanged.connect(self._on_range_changed)
         grid.addWidget(self.range_combo, 2, 1)
+
+        # CC carries two more parameters, both listed under the CC key
+        # in the user guide and both meaningless in the other modes, so
+        # they appear and disappear with it rather than sitting greyed
+        # out in CV.
+        self.cc_extras = QWidget()
+        extras = QHBoxLayout(self.cc_extras)
+        extras.setContentsMargins(0, 0, 0, 0)
+
+        extras.addWidget(QLabel("Slew (A/us):"))
+        self.slew_spin = QDoubleSpinBox()
+        self.slew_spin.setDecimals(3)
+        self.slew_spin.setSingleStep(0.01)
+        # No ceiling of our own: the per-model maximum is not something
+        # the panel knows, and the load rejects what it cannot do --
+        # audibly now that control commands read the error queue.
+        self.slew_spin.setRange(0.001, 100.0)
+        self.slew_spin.setValue(0.5)
+        self.slew_spin.setToolTip(
+            "How fast the sink current may change, rising and falling\n"
+            "alike. CC mode only."
+        )
+        extras.addWidget(self.slew_spin)
+
+        extras.addWidget(QLabel("Von (V):"))
+        self.von_spin = QDoubleSpinBox()
+        self.von_spin.setDecimals(2)
+        self.von_spin.setSingleStep(0.1)
+        self.von_spin.setRange(0.0, self.max_voltage)
+        self.von_spin.setToolTip(
+            "Starting voltage. The load begins sinking once the input\n"
+            "rises above this and stops when it falls back below, which\n"
+            "is what keeps it off while a source is still coming up."
+        )
+        extras.addWidget(self.von_spin)
+
+        self.cc_apply_button = QPushButton("Apply CC options")
+        self.cc_apply_button.clicked.connect(self._apply_cc_options)
+        extras.addWidget(self.cc_apply_button)
+        extras.addStretch()
+        grid.addWidget(self.cc_extras, 3, 0, 1, 4)
 
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_setpoint)
@@ -186,8 +230,15 @@ class ElectronicLoadPanel(InstrumentPanel):
             mode: [float(v) for v in (capabilities.get(key) or [])]
             for mode, (key, _cmd, _unit) in MODE_RANGES.items()
         }
+        self._supports_cc_extras = bool(
+            capabilities.get("supports_slew_rate")
+            and capabilities.get("supports_von")
+        )
+        self.von_spin.setRange(0.0, self.max_voltage)
         self._range_setpoint()
         self._show_ranges_for_mode()
+        self._show_cc_extras()
+
     async def refresh_settings(self):
         """Put the load's own mode/setpoint/input on the controls, silently."""
         if not (self.client and self.equipment):
@@ -304,6 +355,34 @@ class ElectronicLoadPanel(InstrumentPanel):
             self.range_combo.addItem(f"{name}  ({value:g} {unit})", value)
         self.range_combo.blockSignals(False)
 
+    def _show_cc_extras(self):
+        """Slew rate and Von belong to CC and to nothing else."""
+        mode = self.mode_combo.currentData() or "CC"
+        self.cc_extras.setVisible(mode == "CC" and self._supports_cc_extras)
+
+    def _apply_cc_options(self):
+        """Send both, on a button rather than on every spinbox tick.
+
+        The same reason the setpoint is on Apply: a spinbox that
+        commands while it is being typed into sends every intermediate
+        value, and on a load those are real.
+        """
+        if not (self.client and self.equipment):
+            return
+        self._send_cc_options(float(self.slew_spin.value()),
+                              float(self.von_spin.value()))
+
+    @qasync.asyncSlot(float, float)
+    async def _send_cc_options(self, slew_rate: float, von: float):
+        try:
+            await self.send("set_slew_rate", {"slew_rate": slew_rate})
+            await self.send("set_von", {"von": von})
+            self.status_message.emit(
+                f"CC options applied: {slew_rate:g} A/us, Von {von:g} V")
+        except Exception as e:
+            logger.error(f"Setting the CC options failed: {e}")
+            self.status_message.emit(f"Setting the CC options failed: {e}")
+
     def _on_range_changed(self, _index: int):
         """Select the range on the load, as choosing it on the front
         panel would."""
@@ -338,6 +417,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         """
         self._range_setpoint()
         self._show_ranges_for_mode()
+        self._show_cc_extras()
 
         # Only schedule the send when there is a loop to run it. The
         # combo also changes while the panel is being built and while a
