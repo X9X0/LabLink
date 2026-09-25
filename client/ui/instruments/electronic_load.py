@@ -51,6 +51,23 @@ MODE_RANGES = {
 }
 
 
+#: Transient operation modes, and the timing each one actually uses.
+#:
+#: The guide splits these: :AWIDth and :BWIDth apply to continuous and
+#: pulsed, while :FREQuency and :ADUTy are continuous only, and they
+#: describe the same thing twice -- period is A plus B, duty is A over
+#: the period. Offering both at once lets the operator set two
+#: contradictory timings and wonder which won, so each mode shows the
+#: one it is usually thought about in: a repetitive stream by frequency
+#: and duty, a single pulse by how long each level lasts. Toggle needs
+#: neither; it alternates on triggers rather than on a clock.
+TRANSIENT_MODES = {
+    "CON": ("Continuous", "frequency"),
+    "PUL": ("Pulsed", "widths"),
+    "TOG": ("Toggled", "none"),
+}
+
+
 #: What the input button says in each state. "Enabled"/"disabled"
 #: describes the load, where "Input: ON" described a terminal -- and on
 #: a bench beside a supply's Output button, the operator reading it
@@ -76,6 +93,8 @@ class ElectronicLoadPanel(InstrumentPanel):
         #: Whether this load has CC slew rate and starting voltage. Not
         #: every load in the registry is a DL3000.
         self._supports_cc_extras = False
+        #: ...and whether it has a transient generator.
+        self._supports_transient = False
         super().__init__(parent)
 
     # The readouts moved into MeasurementViews when the three display
@@ -187,6 +206,109 @@ class ElectronicLoadPanel(InstrumentPanel):
         grid.addWidget(self.input_button, 0, 3, 3, 1)
         layout.addWidget(controls)
 
+        # Transient operation -- the Con, Pul and Tog keys. Inside CC
+        # because that is where the instrument puts it: the levels are
+        # currents and the guide calls it "transient operation mode in
+        # CC mode".
+        #
+        # The group's own checkbox is the generator's on/off, which is
+        # what :SOUR:TRAN:STAT does and what the TRAN key does.
+        self.transient_group = QGroupBox("Transient (dynamic) operation")
+        self.transient_group.setCheckable(True)
+        self.transient_group.setChecked(False)
+        self.transient_group.toggled.connect(self._on_transient_toggled)
+        tgrid = QGridLayout(self.transient_group)
+
+        tgrid.addWidget(QLabel("Mode:"), 0, 0)
+        self.transient_mode_combo = QComboBox()
+        for key, (label, _timing) in TRANSIENT_MODES.items():
+            self.transient_mode_combo.addItem(label, key)
+        self.transient_mode_combo.currentIndexChanged.connect(
+            self._on_transient_mode_changed)
+        tgrid.addWidget(self.transient_mode_combo, 0, 1)
+
+        tgrid.addWidget(QLabel("Level A (A):"), 0, 2)
+        self.level_a_spin = QDoubleSpinBox()
+        self.level_a_spin.setDecimals(3)
+        self.level_a_spin.setRange(0.0, self.max_current)
+        self.level_a_spin.setToolTip("The high value it sinks at")
+        tgrid.addWidget(self.level_a_spin, 0, 3)
+
+        tgrid.addWidget(QLabel("Level B (A):"), 0, 4)
+        self.level_b_spin = QDoubleSpinBox()
+        self.level_b_spin.setDecimals(3)
+        self.level_b_spin.setRange(0.0, self.max_current)
+        self.level_b_spin.setToolTip("The low value it drops back to")
+        tgrid.addWidget(self.level_b_spin, 0, 5)
+
+        # Frequency and duty, for continuous.
+        self.frequency_label = QLabel("Frequency (kHz):")
+        tgrid.addWidget(self.frequency_label, 1, 0)
+        self.frequency_spin = QDoubleSpinBox()
+        self.frequency_spin.setDecimals(3)
+        self.frequency_spin.setRange(0.001, 30.0)
+        self.frequency_spin.setValue(1.0)
+        self.frequency_spin.setToolTip(
+            "Kilohertz, which is the unit the load takes.\n"
+            "The ceiling is per model: 15 kHz, or 30 on an A model."
+        )
+        tgrid.addWidget(self.frequency_spin, 1, 1)
+
+        self.duty_label = QLabel("Duty (%):")
+        tgrid.addWidget(self.duty_label, 1, 2)
+        self.duty_spin = QDoubleSpinBox()
+        self.duty_spin.setDecimals(0)
+        self.duty_spin.setRange(1, 100)
+        self.duty_spin.setValue(50)
+        self.duty_spin.setToolTip("Share of each period spent at Level A")
+        tgrid.addWidget(self.duty_spin, 1, 3)
+
+        # A and B widths, for pulsed.
+        self.a_width_label = QLabel("A width (ms):")
+        tgrid.addWidget(self.a_width_label, 2, 0)
+        self.a_width_spin = QDoubleSpinBox()
+        self.a_width_spin.setDecimals(3)
+        self.a_width_spin.setRange(0.001, 10000.0)
+        self.a_width_spin.setValue(1.0)
+        tgrid.addWidget(self.a_width_spin, 2, 1)
+
+        self.b_width_label = QLabel("B width (ms):")
+        tgrid.addWidget(self.b_width_label, 2, 2)
+        self.b_width_spin = QDoubleSpinBox()
+        self.b_width_spin.setDecimals(3)
+        self.b_width_spin.setRange(0.001, 10000.0)
+        self.b_width_spin.setValue(1.0)
+        tgrid.addWidget(self.b_width_spin, 2, 3)
+
+        tgrid.addWidget(QLabel("Rise (A/us):"), 1, 4)
+        self.rise_spin = QDoubleSpinBox()
+        self.rise_spin.setDecimals(3)
+        self.rise_spin.setRange(0.001, 100.0)
+        self.rise_spin.setValue(0.5)
+        tgrid.addWidget(self.rise_spin, 1, 5)
+
+        tgrid.addWidget(QLabel("Fall (A/us):"), 2, 4)
+        self.fall_spin = QDoubleSpinBox()
+        self.fall_spin.setDecimals(3)
+        self.fall_spin.setRange(0.001, 100.0)
+        self.fall_spin.setValue(0.5)
+        tgrid.addWidget(self.fall_spin, 2, 5)
+
+        self.transient_apply_button = QPushButton("Apply transient")
+        self.transient_apply_button.clicked.connect(self._apply_transient)
+        tgrid.addWidget(self.transient_apply_button, 3, 0, 1, 2)
+
+        self.trigger_button = QPushButton("Trigger")
+        self.trigger_button.setToolTip(
+            "Fire one trigger. The load's default trigger source is the\n"
+            "front-panel TRAN key, so this selects the bus source first --\n"
+            "otherwise the command is accepted and does nothing."
+        )
+        self.trigger_button.clicked.connect(self._fire_trigger)
+        tgrid.addWidget(self.trigger_button, 3, 2, 1, 2)
+
+        layout.addWidget(self.transient_group)
+
         # The same digital / analog / graph views the supply has, over
         # volts, amps and watts. A load's three quantities are exactly
         # what MeasurementViews takes, so this is the whole of it.
@@ -235,9 +357,14 @@ class ElectronicLoadPanel(InstrumentPanel):
             and capabilities.get("supports_von")
         )
         self.von_spin.setRange(0.0, self.max_voltage)
+        self._supports_transient = bool(
+            capabilities.get("supports_transient"))
+        for spin in (self.level_a_spin, self.level_b_spin):
+            spin.setRange(0.0, self.max_current)
         self._range_setpoint()
         self._show_ranges_for_mode()
         self._show_cc_extras()
+        self._show_transient()
 
     async def refresh_settings(self):
         """Put the load's own mode/setpoint/input on the controls, silently."""
@@ -355,6 +482,107 @@ class ElectronicLoadPanel(InstrumentPanel):
             self.range_combo.addItem(f"{name}  ({value:g} {unit})", value)
         self.range_combo.blockSignals(False)
 
+    def _show_transient(self):
+        """Transient lives inside CC, and only on a load that has it."""
+        mode = self.mode_combo.currentData() or "CC"
+        self.transient_group.setVisible(
+            mode == "CC" and self._supports_transient)
+        self._show_transient_timing()
+
+    def _show_transient_timing(self):
+        """Show the timing the chosen transient mode actually uses.
+
+        Continuous is thought about as a frequency and a duty cycle,
+        pulsed as how long each level lasts, and toggle needs neither
+        because it alternates on triggers. The load will accept widths
+        in continuous too -- they describe the same thing -- so showing
+        both would let two contradictory timings be set with no way to
+        tell which won.
+        """
+        which = TRANSIENT_MODES.get(
+            self.transient_mode_combo.currentData() or "CON",
+            ("", "none"))[1]
+        for widget in (self.frequency_label, self.frequency_spin,
+                       self.duty_label, self.duty_spin):
+            widget.setVisible(which == "frequency")
+        for widget in (self.a_width_label, self.a_width_spin,
+                       self.b_width_label, self.b_width_spin):
+            widget.setVisible(which == "widths")
+
+    def _on_transient_mode_changed(self, _index: int):
+        self._show_transient_timing()
+
+    def _on_transient_toggled(self, enabled: bool):
+        """The group's checkbox is the generator's on/off."""
+        if not (self.client and self.equipment):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return              # see _on_mode_changed
+        self._send_transient_enabled(bool(enabled))
+
+    @qasync.asyncSlot(bool)
+    async def _send_transient_enabled(self, enabled: bool):
+        try:
+            await self.send("set_transient_enabled", {"enabled": enabled})
+        except Exception as e:
+            logger.error(f"Switching transient operation failed: {e}")
+            self.status_message.emit(
+                f"Switching transient operation failed: {e}")
+
+    def _apply_transient(self):
+        """Send the whole configuration on a button, like the setpoint.
+
+        Every intermediate value of a spinbox being typed into is a real
+        command on a load, and these ones change what it sinks.
+        """
+        if not (self.client and self.equipment):
+            return
+        self._send_transient()
+
+    @qasync.asyncSlot()
+    async def _send_transient(self):
+        mode = self.transient_mode_combo.currentData() or "CON"
+        timing = TRANSIENT_MODES[mode][1]
+        try:
+            await self.send("set_transient_mode", {"mode": mode})
+            await self.send("set_transient_levels", {
+                "level_a": float(self.level_a_spin.value()),
+                "level_b": float(self.level_b_spin.value()),
+            })
+            if timing == "frequency":
+                await self.send("set_transient_frequency", {
+                    "frequency_khz": float(self.frequency_spin.value())})
+                await self.send("set_transient_duty", {
+                    "duty_percent": float(self.duty_spin.value())})
+            elif timing == "widths":
+                await self.send("set_transient_widths", {
+                    "a_width_ms": float(self.a_width_spin.value()),
+                    "b_width_ms": float(self.b_width_spin.value()),
+                })
+            await self.send("set_transient_slew", {
+                "rising": float(self.rise_spin.value()),
+                "falling": float(self.fall_spin.value()),
+            })
+            self.status_message.emit(
+                f"Transient set: {TRANSIENT_MODES[mode][0]}, "
+                f"{self.level_a_spin.value():g} / "
+                f"{self.level_b_spin.value():g} A")
+        except Exception as e:
+            logger.error(f"Setting transient operation failed: {e}")
+            self.status_message.emit(f"Setting transient operation failed: {e}")
+
+    @qasync.asyncSlot()
+    async def _fire_trigger(self):
+        """One trigger. The driver selects the bus source first."""
+        try:
+            await self.send("trigger", {})
+            self.status_message.emit("Triggered")
+        except Exception as e:
+            logger.error(f"Triggering failed: {e}")
+            self.status_message.emit(f"Triggering failed: {e}")
+
     def _show_cc_extras(self):
         """Slew rate and Von belong to CC and to nothing else."""
         mode = self.mode_combo.currentData() or "CC"
@@ -418,6 +646,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         self._range_setpoint()
         self._show_ranges_for_mode()
         self._show_cc_extras()
+        self._show_transient()
 
         # Only schedule the send when there is a loop to run it. The
         # combo also changes while the panel is being built and while a

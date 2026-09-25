@@ -451,3 +451,147 @@ class TestTheCCOptions:
         panel = self._panel()
         assert panel.slew_spin.maximum() >= 10.0
         assert panel.slew_spin.minimum() > 0
+
+
+TRANSIENT_CAPABILITIES = dict(CC_CAPABILITIES, supports_transient=True,
+                              transient_modes=["CON", "PUL", "TOG"])
+
+
+class TestTheTransientSection:
+    """Con, Pul and Tog. Inside CC, because that is where the
+    instrument puts it: the levels are currents, and the guide calls it
+    "transient operation mode in CC mode".
+    """
+
+    def _panel(self, client=None, capabilities=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(capabilities or TRANSIENT_CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        return panel
+
+    def test_it_shows_in_cc(self, qapp):
+        panel = self._panel()
+        assert panel.transient_group.isVisibleTo(panel)
+
+    def test_it_hides_outside_cc(self, qapp):
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CV"))
+        assert not panel.transient_group.isVisibleTo(panel)
+
+    def test_a_load_without_it_never_shows_it(self, qapp):
+        panel = self._panel(capabilities=CC_CAPABILITIES)
+        assert not panel.transient_group.isVisibleTo(panel)
+
+    def test_continuous_offers_frequency_and_duty(self, qapp):
+        panel = self._panel()
+        panel.transient_mode_combo.setCurrentIndex(
+            panel.transient_mode_combo.findData("CON"))
+        assert panel.frequency_spin.isVisibleTo(panel)
+        assert panel.duty_spin.isVisibleTo(panel)
+        assert not panel.a_width_spin.isVisibleTo(panel)
+
+    def test_pulsed_offers_the_two_widths(self, qapp):
+        panel = self._panel()
+        panel.transient_mode_combo.setCurrentIndex(
+            panel.transient_mode_combo.findData("PUL"))
+        assert panel.a_width_spin.isVisibleTo(panel)
+        assert panel.b_width_spin.isVisibleTo(panel)
+        assert not panel.frequency_spin.isVisibleTo(panel)
+
+    def test_toggle_offers_neither(self, qapp):
+        """It alternates on triggers rather than on a clock."""
+        panel = self._panel()
+        panel.transient_mode_combo.setCurrentIndex(
+            panel.transient_mode_combo.findData("TOG"))
+        assert not panel.frequency_spin.isVisibleTo(panel)
+        assert not panel.a_width_spin.isVisibleTo(panel)
+
+    def test_the_two_timings_are_never_shown_together(self, qapp):
+        """They describe the same thing -- period is A plus B, duty is A
+        over the period -- so both visible means two contradictory
+        settings and no way to tell which won."""
+        panel = self._panel()
+        for mode in ("CON", "PUL", "TOG"):
+            panel.transient_mode_combo.setCurrentIndex(
+                panel.transient_mode_combo.findData(mode))
+            assert not (panel.frequency_spin.isVisibleTo(panel)
+                        and panel.a_width_spin.isVisibleTo(panel)), mode
+
+    def test_applying_continuous_sends_frequency_not_widths(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.transient_mode_combo.setCurrentIndex(
+            panel.transient_mode_combo.findData("CON"))
+        panel.level_a_spin.setValue(4.0)
+        panel.level_b_spin.setValue(1.0)
+        panel.frequency_spin.setValue(2.0)
+        client.commands.clear()
+
+        _with_loop(qapp, panel._apply_transient)
+
+        names = [name for name, _ in client.commands]
+        assert "set_transient_frequency" in names
+        assert "set_transient_widths" not in names
+        assert ("set_transient_levels",
+                {"level_a": 4.0, "level_b": 1.0}) in client.commands
+
+    def test_applying_pulsed_sends_widths_not_frequency(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.transient_mode_combo.setCurrentIndex(
+            panel.transient_mode_combo.findData("PUL"))
+        client.commands.clear()
+
+        _with_loop(qapp, panel._apply_transient)
+
+        names = [name for name, _ in client.commands]
+        assert "set_transient_widths" in names
+        assert "set_transient_frequency" not in names
+
+    def test_the_slew_rates_go_with_it(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.rise_spin.setValue(0.25)
+        panel.fall_spin.setValue(0.75)
+        client.commands.clear()
+
+        _with_loop(qapp, panel._apply_transient)
+
+        assert ("set_transient_slew",
+                {"rising": 0.25, "falling": 0.75}) in client.commands
+
+    def test_nothing_is_sent_by_typing(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        panel.level_a_spin.setValue(3.0)
+        panel.frequency_spin.setValue(9.0)
+
+        assert client.commands == [], (
+            f"a spinbox commanded the load: {client.commands}")
+
+    def test_the_group_checkbox_switches_the_generator(self, qapp):
+        """It is what :SOUR:TRAN:STAT does, and what the TRAN key does."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.transient_group.setChecked(True))
+
+        assert ("set_transient_enabled", {"enabled": True}) in client.commands
+
+    def test_the_trigger_button_fires_one(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, panel._fire_trigger)
+
+        assert ("trigger", {}) in client.commands
+
+    def test_the_levels_are_ranged_to_the_load(self, qapp):
+        panel = self._panel()
+        assert panel.level_a_spin.maximum() == pytest.approx(40.0)
+        assert panel.level_b_spin.maximum() == pytest.approx(40.0)
