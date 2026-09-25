@@ -85,6 +85,19 @@ _FUNCTION_TO_MODE = {
     "CR": "CR", "RES": "CR", "RESISTANCE": "CR",
     "CP": "CP", "POW": "CP", "POWER": "CP",
 }
+#: Transient operation modes, short name to the SCPI keyword. These are
+#: the Con / Pul / Tog keys on the front panel.
+_TRANSIENT_MODES = {
+    "CON": "CONTinuous", "PUL": "PULSe", "TOG": "TOGGle",
+}
+
+#: Trigger sources. MANUal is the default and means the front-panel TRAN
+#: key, so a software trigger needs BUS.
+_TRIGGER_SOURCES = {
+    "BUS": "BUS", "EXT": "EXTernal", "EXTERNAL": "EXTernal",
+    "MAN": "MANUal", "MANUAL": "MANUal",
+}
+
 _SETPOINT_QUERIES = {
     "CC": ":SOUR:CURR:LEV:IMM?",
     "CV": ":SOUR:VOLT:LEV:IMM?",
@@ -198,6 +211,8 @@ class RigolDL3000Base(BaseEquipment):
             # listed under the CC key in the user guide.
             "supports_slew_rate": True,
             "supports_von": True,
+            "supports_transient": True,
+            "transient_modes": list(_TRANSIENT_MODES),
             "supports_acquisition": True,
         }
 
@@ -244,6 +259,19 @@ class RigolDL3000Base(BaseEquipment):
             "get_slew_rate": self.get_slew_rate,
             "set_von": self.set_von,
             "get_von": self.get_von,
+            "set_transient_enabled": self.set_transient_enabled,
+            "get_transient_enabled": self.get_transient_enabled,
+            "set_transient_mode": self.set_transient_mode,
+            "get_transient_mode": self.get_transient_mode,
+            "set_transient_levels": self.set_transient_levels,
+            "set_transient_widths": self.set_transient_widths,
+            "set_transient_frequency": self.set_transient_frequency,
+            "set_transient_duty": self.set_transient_duty,
+            "set_transient_slew": self.set_transient_slew,
+            "get_transient": self.get_transient,
+            "set_trigger_source": self.set_trigger_source,
+            "get_trigger_source": self.get_trigger_source,
+            "trigger": self.trigger,
             "get_readings": self.get_readings,
             "get_measurement": self.get_measurement,
             "get_measurements": self.get_measurements,
@@ -459,6 +487,176 @@ class RigolDL3000Base(BaseEquipment):
 
     async def get_von(self) -> float:
         return float(await self._query(":SOUR:CURR:VON?"))
+
+    # ------------------------------------------------------------------ #
+    # Transient (dynamic) operation: Con / Pul / Tog
+    # ------------------------------------------------------------------ #
+
+    async def set_transient_enabled(self, enabled: bool) -> None:
+        """Turn the transient generator on or off.
+
+        :SOURce:TRANsient[:STATe]. The guide says running it is the same
+        as pressing the TRAN key. Setting levels and timings does
+        nothing visible until this is on, which is exactly the kind of
+        thing that reads as "the command did not work".
+        """
+        state = "ON" if enabled else "OFF"
+        await self._command(":SOUR:TRAN:STAT " + state)
+
+    async def get_transient_enabled(self) -> bool:
+        answer = (await self._query(":SOUR:TRAN:STAT?")).strip().upper()
+        return answer in ("1", "ON")
+
+    async def set_transient_mode(self, mode: str) -> None:
+        """CONTinuous, PULSe or TOGGle: the Con/Pul/Tog front-panel keys.
+
+        CONTinuous repeats a pulse stream after a trigger, PULSe gives a
+        single pulse, TOGGle alternates between the two levels. All
+        three are transient operation *within* CC mode.
+        """
+        word = _TRANSIENT_MODES.get(str(mode).strip().upper()[:3])
+        if word is None:
+            raise SetpointRefused(
+                "Transient mode must be one of %s"
+                % sorted(_TRANSIENT_MODES))
+        await self._command(":SOUR:CURR:TRAN:MODE " + word)
+
+    async def get_transient_mode(self) -> str:
+        raw = (await self._query(":SOUR:CURR:TRAN:MODE?")).strip().upper()
+        for short, long in _TRANSIENT_MODES.items():
+            if raw.startswith(long.upper()[:4]) or raw.startswith(short):
+                return short
+        raise ValueError("Unexpected transient mode: %r" % raw)
+
+    async def set_transient_levels(self, level_a: float,
+                                   level_b: float) -> None:
+        """Level A is the high value, Level B the low one, both in amps."""
+        for name, value in (("Level A", level_a), ("Level B", level_b)):
+            if float(value) < 0 or float(value) > self.max_current:
+                raise SetpointRefused(
+                    "%s must be between 0 and %sA" % (name, self.max_current))
+        await self._command(":SOUR:CURR:TRAN:ALEV %s" % float(level_a))
+        await self._command(":SOUR:CURR:TRAN:BLEV %s" % float(level_b))
+
+    async def set_transient_widths(self, a_width_ms: float,
+                                   b_width_ms: float) -> None:
+        """How long each level is held, in milliseconds.
+
+        Continuous and pulsed operation; in toggle the load alternates
+        on triggers rather than on a clock.
+        """
+        for name, value in (("Level A width", a_width_ms),
+                            ("Level B width", b_width_ms)):
+            if float(value) <= 0:
+                raise SetpointRefused("%s must be greater than 0 ms" % name)
+        await self._command(":SOUR:CURR:TRAN:AWID %s" % float(a_width_ms))
+        await self._command(":SOUR:CURR:TRAN:BWID %s" % float(b_width_ms))
+
+    async def set_transient_frequency(self, frequency_khz: float) -> None:
+        """Continuous-mode frequency, in kHz: the guide's unit, not Hz.
+
+        The ceiling is per model, 15 kHz on the plain models and 30 on
+        the "A" ones, and the spec table has it -- so unlike the CC slew
+        rate this one can be checked here rather than left to the load.
+        """
+        frequency_khz = float(frequency_khz)
+        ceiling = self.spec.max_dynamic_frequency / 1000.0
+        if frequency_khz <= 0 or frequency_khz > ceiling:
+            raise SetpointRefused(
+                "Frequency must be between 0 and %g kHz on the %s"
+                % (ceiling, self.spec.model))
+        await self._command(":SOUR:CURR:TRAN:FREQ %s" % frequency_khz)
+
+    async def set_transient_duty(self, duty_percent: float) -> None:
+        """Continuous-mode duty cycle: the share of the period at Level A.
+
+        The guide gives the range as an integer from 1 to 100.
+        """
+        duty = float(duty_percent)
+        if duty < 1 or duty > 100:
+            raise SetpointRefused("Duty cycle must be between 1 and 100%")
+        await self._command(":SOUR:CURR:TRAN:ADUT %s" % duty)
+
+    async def set_transient_slew(self, rising: float,
+                                 falling: float) -> None:
+        """Transient rising and falling rates, in A/us.
+
+        :SLEW:POSitive and :SLEW:NEGative are the *transient* rates. CC
+        mode has its own, :SLEW[:BOTH], which sets both directions
+        together -- see set_slew_rate. Mixing the two up writes
+        something real and unrelated, and reports success doing it.
+        """
+        for name, value in (("Rising rate", rising),
+                            ("Falling rate", falling)):
+            if float(value) <= 0:
+                raise SetpointRefused("%s must be greater than 0 A/us" % name)
+        await self._command(":SOUR:CURR:SLEW:POS %s" % float(rising))
+        await self._command(":SOUR:CURR:SLEW:NEG %s" % float(falling))
+
+    async def get_transient(self) -> Dict[str, Any]:
+        """Everything the transient generator is currently set to."""
+        out: Dict[str, Any] = {}
+        fields = (
+            ("enabled", ":SOUR:TRAN:STAT?"),
+            ("mode", ":SOUR:CURR:TRAN:MODE?"),
+            ("level_a", ":SOUR:CURR:TRAN:ALEV?"),
+            ("level_b", ":SOUR:CURR:TRAN:BLEV?"),
+            ("a_width_ms", ":SOUR:CURR:TRAN:AWID?"),
+            ("b_width_ms", ":SOUR:CURR:TRAN:BWID?"),
+            ("frequency_khz", ":SOUR:CURR:TRAN:FREQ?"),
+            ("duty_percent", ":SOUR:CURR:TRAN:ADUT?"),
+            ("rising_slew", ":SOUR:CURR:SLEW:POS?"),
+            ("falling_slew", ":SOUR:CURR:SLEW:NEG?"),
+        )
+        for key, query in fields:
+            try:
+                raw = (await self._query(query)).strip()
+                if key == "enabled":
+                    out[key] = raw.upper() in ("1", "ON")
+                elif key == "mode":
+                    out[key] = self._transient_mode_from(raw)
+                else:
+                    out[key] = float(raw)
+            except Exception as e:
+                # One unreadable field must not lose the other nine.
+                logger.debug("%s query failed: %s" % (key, e))
+                out[key] = None
+        return out
+
+    @staticmethod
+    def _transient_mode_from(raw: str) -> str:
+        upper = raw.strip().upper()
+        for short, long in _TRANSIENT_MODES.items():
+            if upper.startswith(long.upper()[:4]) or upper.startswith(short):
+                return short
+        return raw
+
+    # ------------------------------------------------------------------ #
+    # Triggering
+    # ------------------------------------------------------------------ #
+
+    async def set_trigger_source(self, source: str) -> None:
+        """BUS, EXTernal or MANUal."""
+        word = _TRIGGER_SOURCES.get(str(source).strip().upper())
+        if word is None:
+            raise SetpointRefused(
+                "Trigger source must be one of %s"
+                % sorted(set(_TRIGGER_SOURCES.values())))
+        await self._command(":TRIG:SOUR " + word)
+
+    async def get_trigger_source(self) -> str:
+        return (await self._query(":TRIG:SOUR?")).strip().upper()
+
+    async def trigger(self) -> None:
+        """Fire one trigger, putting the source on BUS first.
+
+        The default source is MANUal, which means the front-panel TRAN
+        key. Sending :TRIGger while the load is still on MANUal is not
+        an error and does nothing, which would look exactly like a dead
+        button. So the source is set every time rather than assumed.
+        """
+        await self.set_trigger_source("BUS")
+        await self._command(":TRIG")
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
         out: Dict[str, Optional[float]] = {}
