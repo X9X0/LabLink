@@ -281,3 +281,42 @@ class TestItIsReachableAndAdvertised:
         caps = load._capabilities()
         assert caps.get("supports_transient") is True
         assert set(caps.get("transient_modes") or []) == {"CON", "PUL", "TOG"}
+
+
+class TestWhatTheLoadSaysIsInstalled:
+    """*OPT? reports high slew rate, high frequency, high readback
+    resolution, LAN and Digital I/O -- and nothing else.
+
+    It is not a gate on List, the battery test or OCP/OPP. This module
+    used to claim in its header that those were the factory options,
+    which sent me looking for a way to ask whether they were present
+    before writing any UI for them. They are standard on every model:
+    :FUNCtion:MODE takes {FIXed|LIST|WAVe|BATTery|OCP|OPP} with no
+    caveat.
+    """
+
+    @pytest.mark.asyncio
+    async def test_installed_options_are_listed(self):
+        load = driver({"*OPT?": "HSR,HFR,HRR,LAN,DIO"})
+        options = await load.get_options()
+        assert options["installed"] == ["HSR", "HFR", "HRR", "LAN", "DIO"]
+
+    @pytest.mark.asyncio
+    async def test_a_zero_means_not_fitted_and_is_dropped(self):
+        """An absent option comes back as "0", not as a missing field."""
+        load = driver({"*OPT?": "0,HFR,0,LAN,0"})
+        options = await load.get_options()
+        assert options["installed"] == ["HFR", "LAN"]
+
+    @pytest.mark.asyncio
+    async def test_the_raw_reply_is_kept(self):
+        """The names are the instrument's own, so do not lose them."""
+        load = driver({"*OPT?": "0,0,0,LAN,0"})
+        options = await load.get_options()
+        assert options["raw"] == "0,0,0,LAN,0"
+
+    @pytest.mark.asyncio
+    async def test_the_api_can_ask(self):
+        load = driver({"*OPT?": "HSR,HFR,HRR,LAN,DIO"})
+        answer = await load.execute_command("get_options", {})
+        assert answer["installed"]

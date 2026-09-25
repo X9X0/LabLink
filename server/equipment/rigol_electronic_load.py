@@ -22,8 +22,17 @@ Sources: DL3000 Programming Guide, "Content Conventions" model table
 Data Sheet "Rated Input", "CC Mode", "CV Mode", "CR Mode" tables (DL3041
 row added from the same data sheet). The "A" models differ from the plain
 models only in accuracy, dynamic-mode frequency (30 kHz vs 15 kHz) and the
-options installed at the factory (LAN, list, battery, OCP/OPP); the SCPI
-tree and the ratings are the same.
+options installed at the factory; the SCPI tree and the ratings are the
+same.
+
+Those options are high slew rate, high frequency, high readback
+resolution, LAN and Digital I/O -- the five ``*OPT?`` reports, which the
+A models ship with and the plain ones can have added with ``:LIC:SET``.
+This used to say the options were "LAN, list, battery, OCP/OPP", which
+sent someone looking for a way to ask whether List and the OCP/OPP and
+battery tests were present before writing any UI for them. They are not
+optional: they are standard on every model, and ``:FUNCtion:MODE`` takes
+``{FIXed|LIST|WAVe|BATTery|OCP|OPP}`` unconditionally.
 
 *IDN? returns ``RIGOL TECHNOLOGIES,<model>,<serial>,<firmware>``.
 """
@@ -255,6 +264,7 @@ class RigolDL3000Base(BaseEquipment):
             "set_voltage_range": self.set_voltage_range,
             "set_resistance_range": self.set_resistance_range,
             "get_ranges": self.get_ranges,
+            "get_options": self.get_options,
             "set_slew_rate": self.set_slew_rate,
             "get_slew_rate": self.get_slew_rate,
             "set_von": self.set_von,
@@ -657,6 +667,33 @@ class RigolDL3000Base(BaseEquipment):
         """
         await self.set_trigger_source("BUS")
         await self._command(":TRIG")
+
+    async def get_options(self) -> Dict[str, Any]:
+        """What ``*OPT?`` says is installed.
+
+        The five are high slew rate, high frequency, high readback
+        resolution, LAN and Digital I/O. The A models ship with all of
+        them; a plain DL3021 or DL3031 can have them added with
+        :LIC:SET. An uninstalled option comes back as "0", so the reply
+        is positional-ish rather than a clean list, and the names are
+        the instrument's own.
+
+        Worth having for one reason in particular: "high frequency" is
+        what decides whether the transient generator reaches 30 kHz or
+        15, which is the ceiling set_transient_frequency enforces from
+        the model table. A plain model with the option fitted is a case
+        the table alone gets wrong.
+
+        This is not a gate on List, the battery test or OCP/OPP. Those
+        are standard on every model -- see the note at the top of this
+        module, which used to say otherwise.
+        """
+        raw = (await self._query("*OPT?")).strip()
+        installed = [
+            part.strip() for part in raw.split(",")
+            if part.strip() and part.strip() != "0"
+        ]
+        return {"raw": raw, "installed": installed}
 
     async def get_ranges(self) -> Dict[str, Optional[float]]:
         out: Dict[str, Optional[float]] = {}
