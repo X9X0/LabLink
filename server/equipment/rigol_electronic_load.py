@@ -677,14 +677,35 @@ class RigolDL3000Base(BaseEquipment):
         return (await self._query(":TRIG:SOUR?")).strip().upper()
 
     async def trigger(self) -> None:
-        """Fire one trigger, putting the source on BUS first.
+        """Fire one trigger, selecting the bus source only if needed.
 
-        The default source is MANUal, which means the front-panel TRAN
-        key. Sending :TRIGger while the load is still on MANUal is not
-        an error and does nothing, which would look exactly like a dead
-        button. So the source is set every time rather than assumed.
+        The default source is MANUal, the front-panel TRAN key, and
+        :TRIGger on a load still set to MANUal is accepted and does
+        nothing -- so the source does have to be BUS. The first version
+        of this set it unconditionally, immediately before firing, and
+        that was worse than the problem it solved.
+
+        Changing the trigger source disarms the transient generator. On
+        the bench: enabling gave a flag of True and the load parked at
+        Level B, which the user guide says is exactly right -- "the load
+        sinks the current of Level B, and then waits trigger to occur" --
+        and then trigger() set the source, the flag went False, and the
+        current never left Level B. Arming and then disarming in the act
+        of firing, every time, so the generator could never run.
+
+        Reading it first costs one query and only writes when the
+        source is actually wrong, which after the first call it never
+        is.
         """
-        await self.set_trigger_source("BUS")
+        try:
+            source = await self.get_trigger_source()
+        except Exception as e:
+            # Not knowing is a reason to set it, not to skip it.
+            logger.debug("%s: could not read the trigger source: %s"
+                         % (self.resource_string, e))
+            source = ""
+        if not source.strip().upper().startswith("BUS"):
+            await self.set_trigger_source("BUS")
         await self._command(":TRIG")
 
     async def get_options(self) -> Dict[str, Any]:

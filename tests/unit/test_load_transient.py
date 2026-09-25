@@ -208,16 +208,48 @@ class TestTheTransientSlewIsNotTheCCOne:
 
 class TestTriggering:
     @pytest.mark.asyncio
-    async def test_it_puts_the_source_on_bus_first(self):
+    async def test_it_selects_the_bus_source_when_it_is_not_already(self):
         """MANUal is the default and means the front-panel key, so
         :TRIGger alone is a no-op that looks like a dead button."""
-        load = driver()
+        load = driver({":TRIG:SOUR?": "MANUAL"})
         await load.trigger()
 
         assert sent(load, ":TRIG:SOUR BUS"), (
             f"triggered without selecting the bus source: {load.written}")
         assert load.written.index(":TRIG:SOUR BUS") < \
                load.written.index(":TRIG"), "the order is the whole point"
+
+    @pytest.mark.asyncio
+    async def test_it_leaves_the_source_alone_when_already_bus(self):
+        """Setting the source disarms the transient generator.
+
+        Doing it unconditionally before every trigger armed and then
+        disarmed in the same breath, so the generator could never run.
+        On the bench that was a load parked at Level B for ever -- which
+        the user guide says is the correct *waiting* state: "the load
+        sinks the current of Level B, and then waits trigger to occur".
+        It was waiting for a trigger that kept undoing its arm.
+        """
+        load = driver({":TRIG:SOUR?": "BUS"})
+        await load.trigger()
+
+        assert not sent(load, ":TRIG:SOUR"), (
+            f"re-set the source and disarmed the generator: {load.written}")
+        assert ":TRIG" in load.written
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_source_is_set_rather_than_assumed(self):
+        """Not knowing is a reason to set it, not to skip it."""
+        load = driver()
+
+        async def broken(command):
+            if "TRIG:SOUR?" in command:
+                raise OSError("no reply")
+            return '0,"No error"'
+        load._query = broken
+
+        await load.trigger()
+        assert sent(load, ":TRIG:SOUR BUS")
 
     @pytest.mark.asyncio
     async def test_the_source_can_be_set_on_its_own(self):
