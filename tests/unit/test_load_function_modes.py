@@ -425,3 +425,68 @@ class TestTheProtectionStatus:
     async def test_the_api_can_ask(self):
         load = driver(answers={":STAT:QUES:COND?": "0"})
         assert "raw" in await load.execute_command("get_protection_status", {})
+
+
+class TestWhatTheBenchFound:
+    """Three things the mocks could not have found, all from the probe
+    against DL3B268M00049 on 2026-09-25.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_mode_that_does_not_take_is_not_reported_as_success(self):
+        """The load accepted LIST and BATT, then from BATT took OCP,
+        OPP and FIX in turn without a murmur -- clean error queue every
+        time -- and stayed in BATT throughout.
+
+        An unchecked write here is a mode switch that reports success
+        and does nothing, which is how the trigger bug and the
+        short-form :SOUR:FUNC bug both looked.
+        """
+        load = driver(answers={":SOUR:FUNC:MODE?": "BATT"})
+        with pytest.raises(Exception) as rejected:
+            await load.set_function_mode("FIX")
+
+        said = str(rejected.value).lower()
+        assert "batt" in said, said
+        assert "set_mode" in said, "it does not say how to get out"
+
+    @pytest.mark.asyncio
+    async def test_a_mode_that_does_take_is_quiet(self):
+        load = driver(answers={":SOUR:FUNC:MODE?": "LIST"})
+        await load.set_function_mode("LIST")
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_confirmation_is_not_a_failure(self):
+        """A load that will not answer the read-back has still very
+        likely done as it was told; refusing here would turn a flaky
+        query into a failed mode switch."""
+        load = driver()
+
+        async def no_readback(command):
+            if "FUNC:MODE?" in command:
+                raise OSError("no reply")
+            return '0,"No error"'
+        load._query = no_readback
+
+        await load.set_function_mode("LIST")
+
+    @pytest.mark.asyncio
+    async def test_none_means_a_function_mode_owns_the_setpoint(self):
+        """In battery discharge :SOUR:FUNC? answers NONE. That is not a
+        fault and not an unexpected reply -- it is the load saying the
+        FUNCtion command is not in charge. Raising on it made get_mode
+        fail for the whole time a battery test ran, and took
+        get_readings down with it."""
+        load = driver(answers={":SOUR:FUNC?": "NONE"})
+        assert await load.get_mode() is None
+
+    @pytest.mark.asyncio
+    async def test_a_real_mode_still_comes_back(self):
+        load = driver(answers={":SOUR:FUNC?": "CC"})
+        assert await load.get_mode() == "CC"
+
+    @pytest.mark.asyncio
+    async def test_genuine_nonsense_still_raises(self):
+        load = driver(answers={":SOUR:FUNC?": "BANANA"})
+        with pytest.raises(ValueError):
+            await load.get_mode()

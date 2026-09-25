@@ -511,9 +511,19 @@ class RigolDL3000Base(BaseEquipment):
             raise ValueError("Mode must be CC, CV, CR, or CP")
         await self._command(f":SOUR:FUNC {_MODE_TO_FUNCTION[mode_upper]}")
 
-    async def get_mode(self) -> str:
-        """Query the static operating mode (:SOURce:FUNCtion? -> CC/CV/CR/CP)."""
+    async def get_mode(self) -> Optional[str]:
+        """The static regulation mode: CC, CV, CR or CP.
+
+        None when a function mode owns the setpoint. In battery
+        discharge the load answers :SOUR:FUNC? with NONE, which is not a
+        fault and not an unexpected reply -- it is the load saying the
+        FUNCtion command is not in charge at the moment. Raising on it
+        made get_mode fail for the whole time a battery test ran, and
+        took get_readings with it.
+        """
         raw = (await self._query(":SOUR:FUNC?")).strip().upper()
+        if raw.startswith("NONE"):
+            return None
         mode = _FUNCTION_TO_MODE.get(raw)
         if mode is None:
             raise ValueError(f"Unexpected :SOUR:FUNC? response: {raw!r}")
@@ -962,6 +972,34 @@ class RigolDL3000Base(BaseEquipment):
                 "Unknown function mode %r. This load has: %s"
                 % (function_mode, ", ".join(_FUNCTION_MODES)))
         await self._command(f":SOUR:FUNC:MODE {wanted}")
+
+        # Read it back, because this command lies. On the bench the load
+        # went into LIST and then BATT happily, and from BATT it took
+        # :SOUR:FUNC:MODE OCP, then OPP, then FIX without a murmur --
+        # accepted each one, left the error queue clean, and stayed in
+        # BATT throughout. An unchecked write here is a mode switch that
+        # reports success and does nothing, which is how the trigger and
+        # the short-form :SOUR:FUNC bugs both looked.
+        #
+        # The way out of a mode is to assert the one you want: issuing
+        # the owning subsystem's command reclaims the setpoint, and
+        # set_mode is what does that for fixed operation. Said in the
+        # message, because whoever hits this needs to know it.
+        try:
+            arrived = await self.get_function_mode()
+        except Exception as e:
+            logger.debug("%s: could not confirm the function mode: %s"
+                         % (self.resource_string, e))
+            return
+        if arrived != wanted:
+            raise CommandRejected(
+                "%s stayed in %s when asked for %s. This load accepts "
+                ":SOUR:FUNC:MODE and ignores it when it will not leave the "
+                "mode it is in -- to go back to fixed operation, set the "
+                "regulation mode (set_mode) instead, which reclaims the "
+                "setpoint for the FUNCtion command."
+                % (self.model, _FUNCTION_MODE_NAMES.get(arrived, arrived),
+                   _FUNCTION_MODE_NAMES.get(wanted, wanted)))
 
     async def get_function_mode(self) -> str:
         """Which subsystem is driving the input: FIX, LIST, WAV, BATT,

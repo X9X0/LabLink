@@ -36,6 +36,15 @@ CONTROL_COMMANDS = {
     "clear_protection",
     "set_input",
     "set_mode",
+    # The function modes: list, battery discharge, OCP and OPP. These
+    # match by prefix because the matching below is a substring test,
+    # and "set_mode" does not occur in "set_function_mode" -- which is
+    # how every one of these shipped able to reconfigure a locked
+    # instrument. Arming somebody else's battery discharge or moving
+    # the step current of their OCP test is control by any reading.
+    "set_function",
+    "set_list",
+    "set_battery",
     "set_range",
     "set_channel",
     "set_trigger",
