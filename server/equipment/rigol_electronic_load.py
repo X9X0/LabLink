@@ -310,11 +310,30 @@ class RigolDL3000Base(BaseEquipment):
         in CC the whole time. Nothing above the wire could see it, and
         it took reading the mode back on the bench to find.
 
-        One extra query per control command. Only control commands go
-        through here: those happen when an operator does something,
-        where a round trip is nothing, rather than on the readings poll,
-        where it would double the traffic.
+        The queue is cleared first, and that is not tidiness. It is
+        cumulative: whatever is sitting in it when the write goes out
+        will be read back afterwards and blamed on this command. Found
+        on the bench within a minute of the feature going live --
+        :SOUR:CURR:LEV:IMM 0.2 was reported as rejected with "Parameter
+        error" while the setpoint plainly changed to 0.2 A, because the
+        queue still held errors from the short-form :SOUR:FUNC CV
+        commands this load refused before that bug was fixed. Reading
+        the queue six times returned the same error six times; *CLS
+        emptied it and it stayed empty.
+
+        So an unexplained error from days ago becomes a false report
+        about whatever you do next, which is worse than the silence it
+        replaced.
+
+        Two extra exchanges per control command, a write and a query.
+        Only control commands go through here: those happen when an
+        operator does something, where a round trip is nothing, rather
+        than on the readings poll, where it would triple the traffic.
         """
+        # Not clear_errors(): that swallows its own failure, and a
+        # clear that silently did not happen puts us back to blaming
+        # this command for an older one.
+        await self._write("*CLS")
         await self._write(command)
         try:
             fault = await self.get_error()

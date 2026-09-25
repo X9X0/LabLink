@@ -54,6 +54,18 @@ def driver():
     return made
 
 
+def commands(load):
+    """The writes that are not bookkeeping.
+
+    Every checked write clears the error queue first, so *CLS sits in
+    front of the command being tested. Filtering it here keeps the
+    assertions about the command rather than about the housekeeping --
+    and TestTheQueueIsClearedBeforeTheWrite still checks the clear
+    itself, against the unfiltered list.
+    """
+    return [c for c in load.written if c != "*CLS"]
+
+
 class TestTheModeActuallyChanges:
     @pytest.mark.parametrize("mode,keyword", [
         ("CC", "CURR"), ("CV", "VOLT"), ("CR", "RES"), ("CP", "POW"),
@@ -63,8 +75,8 @@ class TestTheModeActuallyChanges:
         load = driver()
         await load.set_mode(mode)
 
-        assert len(load.written) == 1
-        sent = load.written[0]
+        assert len(commands(load)) == 1
+        sent = commands(load)[0]
         assert sent.startswith(":SOUR:FUNC "), sent
         argument = sent.split(" ", 1)[1].upper()
         assert argument.startswith(keyword), (
@@ -77,7 +89,7 @@ class TestTheModeActuallyChanges:
         load = driver()
         await load.set_mode("CV")
 
-        assert load.written[0] != ":SOUR:FUNC CV", (
+        assert commands(load)[0] != ":SOUR:FUNC CV", (
             "this is the command that reported success and left the load "
             "in CC")
 
@@ -85,7 +97,7 @@ class TestTheModeActuallyChanges:
     async def test_lowercase_is_accepted(self):
         load = driver()
         await load.set_mode("cv")
-        assert "VOLT" in load.written[0].upper()
+        assert "VOLT" in commands(load)[0].upper()
 
     @pytest.mark.asyncio
     async def test_an_unknown_mode_is_refused(self):
@@ -148,7 +160,7 @@ class TestTheLoadIsAskedWhetherItAgreed:
     async def test_a_clean_queue_passes(self):
         load = self._driver('0,"No error"')
         await load.set_mode("CV")
-        assert load.written, "the command never went out"
+        assert commands(load), "the command never went out"
 
     @pytest.mark.asyncio
     async def test_a_fault_is_raised_rather_than_swallowed(self):
@@ -186,7 +198,7 @@ class TestTheLoadIsAskedWhetherItAgreed:
         load._query = broken
 
         await load.set_mode("CV")       # must not raise
-        assert load.written == [":SOUR:FUNC VOLTage"]
+        assert commands(load) == [":SOUR:FUNC VOLTage"]
 
     @pytest.mark.asyncio
     async def test_readings_are_not_slowed_by_it(self):
@@ -198,3 +210,57 @@ class TestTheLoadIsAskedWhetherItAgreed:
         source = inspect.getsource(RigolDL3021A.get_readings)
         assert "_command(" not in source, (
             "the readings path is making checked writes")
+
+
+class TestTheQueueIsClearedBeforeTheWrite:
+    """A cumulative queue makes the check lie about which command failed.
+
+    Found on the bench a minute after the feature went live:
+    :SOUR:CURR:LEV:IMM 0.2 came back "rejected: Parameter error" while
+    the setpoint plainly changed to 0.2 A. The queue still held errors
+    from the short-form :SOUR:FUNC CV commands this load refused before
+    that bug was fixed -- reading it six times returned the same error
+    six times, and *CLS emptied it.
+
+    An unexplained error from days ago becoming a false report about
+    whatever you do next is worse than the silence it replaced.
+    """
+
+    @staticmethod
+    def _driver(error_reply):
+        load = driver()
+        load.queried = []
+
+        async def query(command):
+            load.queried.append(command)
+            return error_reply
+        load._query = query
+        return load
+
+    @pytest.mark.asyncio
+    async def test_the_queue_is_cleared_first(self):
+        load = self._driver('0,"No error"')
+        await load.set_mode("CV")
+
+        assert "*CLS" in load.written, "the queue was not cleared"
+        assert load.written.index("*CLS") < load.written.index(
+            ":SOUR:FUNC VOLTage"), "cleared after the write, which is too late"
+
+    @pytest.mark.asyncio
+    async def test_a_stale_error_cannot_be_blamed_on_this_command(self):
+        """The bench case, in one test: the clear happens, so whatever
+        the queue says afterwards belongs to this write."""
+        load = self._driver('0,"No error"')
+        await load.set_current(0.2)
+
+        assert load.written.count("*CLS") == 1
+        assert ":SOUR:CURR:LEV:IMM 0.2" in load.written
+
+    @pytest.mark.asyncio
+    async def test_a_real_fault_still_raises(self):
+        """Clearing first must not make the check toothless."""
+        from server.equipment.base import CommandRejected
+
+        load = self._driver('-113,"Undefined header"')
+        with pytest.raises(CommandRejected):
+            await load.set_mode("CV")

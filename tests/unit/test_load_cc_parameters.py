@@ -47,13 +47,25 @@ def driver(error_reply='0,"No error"'):
     return made
 
 
+def commands(load):
+    """The writes that are not bookkeeping.
+
+    Every checked write clears the error queue first, so *CLS sits in
+    front of the command being tested. Filtering it here keeps the
+    assertions about the command rather than about the housekeeping --
+    and TestTheQueueIsClearedBeforeTheWrite still checks the clear
+    itself, against the unfiltered list.
+    """
+    return [c for c in load.written if c != "*CLS"]
+
+
 class TestTheSlewRate:
     @pytest.mark.asyncio
     async def test_it_sets_the_cc_rate_not_the_transient_one(self):
         load = driver()
         await load.set_slew_rate(0.5)
 
-        sent = load.written[0]
+        sent = commands(load)[0]
         assert "SLEW" in sent
         assert "POS" not in sent.upper() and "NEG" not in sent.upper(), (
             f"{sent} is the transient-mode rate, not the CC one")
@@ -62,7 +74,7 @@ class TestTheSlewRate:
     async def test_the_value_goes_out(self):
         load = driver()
         await load.set_slew_rate(0.25)
-        assert "0.25" in load.written[0]
+        assert "0.25" in commands(load)[0]
 
     @pytest.mark.asyncio
     async def test_zero_is_refused(self):
@@ -84,7 +96,7 @@ class TestTheSlewRate:
         the instrument knows, and the error queue now reports it."""
         load = driver()
         await load.set_slew_rate(10_000.0)      # absurd, and not ours to judge
-        assert load.written, "the driver refused on a limit it invented"
+        assert commands(load), "the driver refused on a limit it invented"
 
     @pytest.mark.asyncio
     async def test_it_is_read_back_from_the_cc_command(self):
@@ -98,8 +110,8 @@ class TestTheStartingVoltage:
     async def test_it_sets_von(self):
         load = driver()
         await load.set_von(5.0)
-        assert ":SOUR:CURR:VON" in load.written[0]
-        assert "5.0" in load.written[0]
+        assert ":SOUR:CURR:VON" in commands(load)[0]
+        assert "5.0" in commands(load)[0]
 
     @pytest.mark.asyncio
     async def test_above_the_models_voltage_is_refused(self):
@@ -129,7 +141,7 @@ class TestTheyAreReachableAndAdvertised:
         load = driver()
         await load.execute_command("set_slew_rate", {"slew_rate": 0.5})
         await load.execute_command("set_von", {"von": 2.0})
-        assert len(load.written) == 2
+        assert len(commands(load)) == 2
 
     def test_the_capabilities_say_so(self):
         """Or a panel has no way to know whether to offer the controls."""
