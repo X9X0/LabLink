@@ -3,7 +3,11 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+import tempfile
+from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from server.acquisition import (AcquisitionConfig, AcquisitionMode,
@@ -314,6 +318,76 @@ async def list_sessions():
 # ============================================================================
 # Export Endpoints
 # ============================================================================
+
+
+#: Media types by export format, so a browser or client is told what it
+#: is receiving rather than guessing from the extension.
+_EXPORT_MEDIA_TYPES = {
+    ExportFormat.CSV: "text/csv",
+    ExportFormat.JSON: "application/json",
+    ExportFormat.NUMPY: "application/octet-stream",
+    ExportFormat.HDF5: "application/x-hdf5",
+}
+
+
+@router.get(
+    "/session/{acquisition_id}/download",
+    summary="Download acquisition data",
+)
+async def download_data(
+    acquisition_id: str,
+    background: BackgroundTasks,
+    format: ExportFormat = Query(ExportFormat.CSV),
+):
+    """Export a session and send the file back to the caller.
+
+    The POST /export endpoint writes on the server, which is right for
+    an unattended export into the server's own store and wrong for
+    everything else: the client is usually a different machine. Asked
+    to export to "C:/LabLinkTest/9009.csv", a Linux server dutifully
+    tried to create a directory called "C:" and failed -- the operator
+    had chosen a path with a Windows file dialog, and nothing in the
+    round trip could have made it exist.
+
+    So this exports into a temporary file on the server and streams it
+    back. The client saves it wherever the operator asked, using the
+    filesystem that actually has that path.
+    """
+    try:
+        temp_dir = Path(tempfile.mkdtemp(prefix="lablink-export-"))
+        target = temp_dir / f"{acquisition_id}.{format.value}"
+
+        written = await acquisition_manager.export_data(
+            acquisition_id, format, str(target)
+        )
+
+        # Cleaned up after the response has been sent, not before.
+        background.add_task(_discard, temp_dir)
+
+        return FileResponse(
+            written,
+            media_type=_EXPORT_MEDIA_TYPES.get(
+                format, "application/octet-stream"),
+            filename=Path(written).name,
+            background=background,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error exporting data for download: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to export data: {str(e)}")
+
+
+def _discard(directory: Path):
+    """Remove a temporary export directory, complaining only in the log."""
+    import shutil
+
+    try:
+        shutil.rmtree(directory, ignore_errors=True)
+    except Exception as e:                  # pragma: no cover - best effort
+        logger.warning("Could not remove %s: %s", directory, e)
 
 
 @router.post("/export", summary="Export acquisition data")

@@ -975,6 +975,39 @@ class LabLinkClient:
         response.raise_for_status()
         return response.json()
 
+    def download_acquisition_data(
+        self, acquisition_id: str, filepath: str, format: str = "csv"
+    ) -> Dict[str, Any]:
+        """Export a session on the server and save it here.
+
+        ``export_acquisition_data`` asks the *server* to write a file,
+        which is right for an unattended export into the server's own
+        store and wrong when the operator has picked a path with a file
+        dialog on this machine. A Linux server asked to write
+        "C:/LabLinkTest/9009.csv" tried to create a directory called
+        "C:" and failed, and no amount of retrying could have made that
+        path exist on the Pi.
+
+        This streams the file back instead and writes it locally, so
+        the path is interpreted by the filesystem that has it.
+        """
+        response = self._session.get(
+            f"{self.api_base_url}/acquisition/session/{acquisition_id}"
+            f"/download",
+            params={"format": format},
+            stream=True,
+        )
+        response.raise_for_status()
+
+        written = 0
+        with open(filepath, "wb") as out:
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    out.write(chunk)
+                    written += len(chunk)
+
+        return {"success": True, "filepath": filepath, "bytes": written}
+
     def delete_acquisition_session(self, acquisition_id: str) -> Dict[str, Any]:
         """Delete acquisition session.
 

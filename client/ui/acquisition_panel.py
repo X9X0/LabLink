@@ -1013,12 +1013,18 @@ Samples Collected: {session.get('sample_count', 0)}
                 else:
                     fmt = "json"
 
+                # Downloaded, not exported server-side. The chooser above
+                # ran on this machine, so the path it produced only means
+                # anything here.
                 result = await call_blocking(
-                    self.client.export_acquisition_data, self.current_acquisition_id, format=fmt, filepath=filename)
+                    self.client.download_acquisition_data,
+                    self.current_acquisition_id, filename, format=fmt)
 
                 if result.get("success"):
+                    size = result.get("bytes") or 0
                     self._say_later(
-                        QMessageBox.information, "Success", f"Data exported to {filename}")
+                        QMessageBox.information, "Success",
+                        f"Saved {size:,} bytes to {filename}")
         except Exception as e:
             logger.error(f"Error exporting data: {e}")
             self._say_later(

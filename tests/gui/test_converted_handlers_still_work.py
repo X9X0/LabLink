@@ -300,7 +300,7 @@ class TestTheAcquisitionButtons:
         await drive(
             underlying(acq_panel, "export_current_session")(acq_panel), qapp)
 
-        assert acq_panel.client.named("export_acquisition_data") == [], (
+        assert acq_panel.client.named("download_acquisition_data") == [], (
             "it exported after the file chooser was cancelled")
 
     @pytest.mark.asyncio
@@ -315,12 +315,17 @@ class TestTheAcquisitionButtons:
         await drive(
             underlying(acq_panel, "export_current_session")(acq_panel), qapp)
 
-        made = acq_panel.client.named("export_acquisition_data")
+        made = acq_panel.client.named("download_acquisition_data")
         assert made, f"saw {acq_panel.client.calls}"
         _name, args, kwargs = made[0]
         assert "acq-7" in args
         assert kwargs.get("format") == "hdf5", kwargs
-        assert kwargs.get("filepath") == "/tmp/run.h5", kwargs
+        # The chosen path goes to the download, which writes it here.
+        # Sending it to the server's exporter is what made a Linux box
+        # try to create a directory called "C:".
+        assert "/tmp/run.h5" in args, args
+        assert acq_panel.client.named("export_acquisition_data") == [], (
+            "it asked the server to write to a path on this machine")
 
     @pytest.mark.asyncio
     async def test_an_analysis_view_asks_for_channels_then_the_analysis(
