@@ -31,6 +31,17 @@ jobs:
   unit-tests:
     name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # The suite takes about three and a half minutes locally. Without a
+    # bound here a hang runs to GitHub's six-hour default, and a job's
+    # log cannot be fetched until it finishes -- so a stuck run is both
+    # expensive and silent. Two runs sat in "Run unit tests with
+    # coverage" for thirty minutes and two and a half hours before being
+    # cancelled, which is how this was noticed.
+    #
+    # pytest.ini bounds each test at 300s and neither run reported a
+    # test timing out, so whatever holds it is not inside a test: most
+    # likely a non-daemon thread still running at interpreter exit.
+    timeout-minutes: 25
 
     strategy:
       matrix:
@@ -127,6 +138,15 @@ jobs:
           # This job is still named "Unit Tests" deliberately: renaming it
           # would break any branch protection rule that requires the check by
           # name. What it runs is broader than the name suggests.
+          # Exit status captured rather than left to `bash -e`, so the
+          # line after this runs either way. If the job hits its
+          # timeout without printing it, pytest never returned and the
+          # hang is the test session; if it prints and the job still
+          # stalls, the session finished and something after it -- a
+          # non-daemon thread at interpreter exit, most likely -- is
+          # holding the process open. Those need different fixes and
+          # look identical from the outside.
+          status=0
           xvfb-run -a pytest tests/unit/ tests/client/ tests/gui/ \
             tests/server/ tests/hardware/ \
             -v \
@@ -137,7 +157,9 @@ jobs:
             --cov-report=term-missing \
             --cov-report=html \
             --junitxml=junit/test-results-${{ matrix.python-version }}.xml \
-            --tb=short
+            --tb=short || status=$?
+          echo "::notice::pytest returned $status"
+          exit $status
 
       - name: Check coverage threshold
         run: |
