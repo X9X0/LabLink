@@ -166,10 +166,23 @@ _FUNCTION_PARAMETERS = {
 
 #: Battery results, read while the discharge runs or after it stops.
 #: These are measurements, not settings, so they have no setter.
+#:
+#: The discharge time is spelled out in full on purpose. The guide's
+#: abbreviation rule (1-5, "Command Abbreviation") is that you "must
+#: enter all the uppercase letters that exist in the command syntax",
+#: and :MEASure:DISChargingTime? has a capital T buried in it -- the
+#: legal abbreviation is DISCT, not DISC. Sent as DISC it is not a
+#: command, and the load simply did not answer: on the bench
+#: capacity_ah and watt_hours read fine while this one came back None,
+#: twice, and it took reading the rule to see why.
+#:
+#: Sending what the guide prints avoids having to be right about an
+#: oddly typeset mnemonic. Commands are case-insensitive, so the
+#: printed spelling is itself a valid command.
 _BATTERY_RESULTS = {
-    "capacity_ah": ":MEAS:CAP?",
-    "watt_hours": ":MEAS:WATT?",
-    "discharge_seconds": ":MEAS:DISC?",
+    "capacity_ah": ":MEASure:CAPability?",
+    "watt_hours": ":MEASure:WATThours?",
+    "discharge_seconds": ":MEASure:DISChargingTime?",
 }
 
 #: Range setters among the parameters above. Switching range moves the
