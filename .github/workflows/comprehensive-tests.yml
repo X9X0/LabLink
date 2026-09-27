@@ -293,7 +293,10 @@ jobs:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          python -m server.main &
+          # Captured to a file so the wait below can show why, if it
+          # ever genuinely fails to come up. No pipe: $! must be the
+          # server, not a tee.
+          python -m server.main > server.log 2>&1 &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
@@ -302,17 +305,32 @@ jobs:
           # for a developer with no server running and wrong here: the server
           # failed to start for months while this step shrugged and every test
           # downstream skipped into a green tick.
+          # 90s, not 30. The server was still initialising at 26s on the
+          # run that failed here -- equipment manager, test automation,
+          # backup, discovery, the security database migrations, then
+          # mDNS -- and the loop gave up while it was partway through
+          # mDNS. That is a bound set below the startup it was meant to
+          # wait for, so it reported "did not start" about a server that
+          # was starting normally.
+          #
+          # The point of this step is to catch a server that never comes
+          # up, which is worth catching: these tests skip on
+          # ConnectionError, so without it a dead server meant a green
+          # tick over an empty run. Waiting three times as long costs
+          # nothing when it succeeds and still fails in a minute and a
+          # half when it genuinely does not.
           echo "Waiting for server to start..."
-          for i in {1..30}; do
+          for i in {1..90}; do
             if curl -s http://localhost:8000/health > /dev/null; then
-              echo "✅ Server is up!"
+              echo "✅ Server is up after ${i}s"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "::error::Server did not start within 30s"
+            if [ "$i" -eq 90 ]; then
+              echo "::error::Server did not start within 90s"
+              echo "--- last 60 lines of server output ---"
+              tail -60 server.log 2>/dev/null || echo "(no server.log)"
               exit 1
             fi
-            echo "Waiting... ($i/30)"
             sleep 1
           done
 
