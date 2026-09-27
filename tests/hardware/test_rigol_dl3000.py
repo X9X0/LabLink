@@ -19,6 +19,15 @@ from server.equipment.rigol_electronic_load import (DL3000_MODELS,  # noqa: E402
 from shared.models.equipment import EquipmentType  # noqa: E402
 
 
+#: What :SOUR:FUNC accepts, mapped to what :SOUR:FUNC? answers.
+_FUNC_KEYWORD_TO_MODE = {
+    "CURRENT": "CC", "CURR": "CC",
+    "VOLTAGE": "CV", "VOLT": "CV",
+    "RESISTANCE": "CR", "RES": "CR",
+    "POWER": "CP", "POW": "CP",
+}
+
+
 class ScriptedDL3000:
     """Minimal DL3000 SCPI simulator."""
 
@@ -41,7 +50,13 @@ class ScriptedDL3000:
         self.writes.append(cmd)
         c = cmd.strip().upper()
         if c.startswith(":SOUR:FUNC "):
-            self.func = c.split()[1]
+            # The setting takes the long form -- CURRent, VOLTage,
+            # RESistance, POWer -- while the query answers CC/CV/CR/CP.
+            # The instrument is asymmetric here and the driver follows
+            # it; sending the short form is accepted and does nothing,
+            # which is the bug that had CV, CR and CP all reading back
+            # as CC on the bench.
+            self.func = _FUNC_KEYWORD_TO_MODE.get(c.split()[1], c.split()[1])
         elif c.startswith(":SOUR:INP:STAT "):
             self.input = "1" if c.split()[1] in ("ON", "1") else "0"
         elif c.startswith(":SOUR:") and ":LEV:IMM " in c:
@@ -53,9 +68,17 @@ class ScriptedDL3000:
             hi = {"CURR": "60" if "3031" in self.model else "40", "VOLT": "150", "RES": "15000"}[key]
             lo = {"CURR": "6" if "3031" in self.model else "4", "VOLT": "15", "RES": "15"}[key]
             self.ranges[key] = {"MIN": lo, "MAX": hi, "DEF": lo if key == "CURR" else hi}.get(arg, arg)
-        elif c in ("*RST", "*CLS"):
+        elif c == "*RST":
             self.func = "CC"
             self.input = "0"
+        elif c == "*CLS":
+            # Status and error queue only. *CLS does not reset the
+            # operating mode on a real load, and pretending it does was
+            # harmless only while nothing sent it: the driver now
+            # clears the queue before every checked write, so a
+            # simulator that reset the mode there put every reading back
+            # to CC one command after it was set.
+            pass
 
     def query(self, cmd):
         self.queries.append(cmd)
@@ -176,7 +199,8 @@ async def test_setpoint_validation_dl3021a():
     load, inst = make_driver(RigolDL3021A, "DL3021A")
     await load.connect()
     await load.set_mode("cc")
-    assert ":SOUR:FUNC CC" in inst.writes
+    # The long form, because the short one is accepted and ignored.
+    assert ":SOUR:FUNC CURRent" in inst.writes
     await load.set_current(40.0)
     with pytest.raises(ValueError):
         await load.set_current(40.01)
