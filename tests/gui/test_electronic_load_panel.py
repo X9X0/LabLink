@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 try:
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QDoubleSpinBox
 
 
     GUI_AVAILABLE = True
@@ -1380,12 +1380,37 @@ class TestTransientAndBatterySitSideBySide:
     def test_the_fields_clamp_rather_than_compress(self, qapp):
         """Nothing here scrolls horizontally, so a narrow window must
         not squeeze the spin boxes into uselessness -- better that the
-        groups hold their minimum and the panel overflows."""
+        groups hold their minimum and the panel overflows.
+
+        Measured against each group's own minimum, not a pixel count.
+        This asserted >= 900 and >= 860, which are this machine's
+        numbers: CI runs offscreen on Linux with narrower fonts, got
+        747, and failed a layout that was doing exactly what it should.
+        A group whose widgets all fit is correct at any width the
+        fonts produce, and a hard number can only ever be right on the
+        machine it was read off.
+        """
         narrow = self._shown(qapp, width=1500)
-        assert narrow.transient_group.geometry().width() >= 900, (
-            narrow.transient_group.geometry().width())
-        assert narrow.battery_group.geometry().width() >= 860, (
-            narrow.battery_group.geometry().width())
+        for name in ("transient_group", "battery_group"):
+            group = getattr(narrow, name)
+            floor = group.minimumSizeHint().width()
+            assert group.geometry().width() >= floor, (
+                "%s squeezed to %d, below its own minimum of %d"
+                % (name, group.geometry().width(), floor))
+
+    def test_the_spin_boxes_can_still_show_their_values(self, qapp):
+        """What the clamp is protecting. A spin box narrower than its
+        own minimum hint is one whose digits are cut off."""
+        narrow = self._shown(qapp, width=1500)
+        boxes = (narrow.transient_group.findChildren(QDoubleSpinBox)
+                 + narrow.battery_group.findChildren(QDoubleSpinBox))
+        assert boxes, "no spin boxes found to check"
+        for box in boxes:
+            if not box.isVisibleTo(narrow):
+                continue
+            assert box.width() >= box.minimumSizeHint().width(), (
+                "a field was squeezed to %d, below its minimum of %d"
+                % (box.width(), box.minimumSizeHint().width()))
 
 
 class TestSendingAList:
