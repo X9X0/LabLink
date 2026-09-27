@@ -169,3 +169,69 @@ class TestTheQuantityGettersRespectTheChannel:
         manager = AcquisitionManager()
         with pytest.raises(NotImplementedError):
             await manager._get_channel_value(self.VoltsOnly(), "current")
+
+
+class TestARowIsOneSample:
+    """Every channel in a row must come from one read.
+
+    Calling get_readings per channel made a row three separate visits
+    to the instrument. Stepping a load from 0.1 A to 0.3 A to 0.5 A
+    while acquiring volts, amps and watts, the rows taken during a step
+    disagreed with themselves:
+
+        4.97 V   0.14 A   0.84490 W      (V*I = 0.6958)
+
+    The current there was read after the voltage and before the power,
+    and the load moved in between. It also cost three round trips a
+    sample where one does.
+    """
+
+    class Drifting:
+        """A supply whose current rises on every read, as one does while
+        a load is being stepped."""
+
+        def __init__(self):
+            self.reads = 0
+
+        async def get_readings(self):
+            self.reads += 1
+            return {"voltage_actual": 5.0,
+                    "current_actual": 0.1 * self.reads}
+
+    @pytest.mark.asyncio
+    async def test_one_read_serves_the_whole_row(self):
+        manager = AcquisitionManager()
+        supply = self.Drifting()
+
+        sample = await manager._read_once(supply)
+        volts = await manager._get_channel_value(supply, "voltage", sample)
+        amps = await manager._get_channel_value(supply, "current", sample)
+        watts = await manager._get_channel_value(supply, "power", sample)
+
+        assert supply.reads == 1, (
+            f"{supply.reads} visits to the instrument for one row")
+        assert watts == pytest.approx(volts * amps), (
+            f"{volts} V x {amps} A is not {watts} W -- the row is not one "
+            f"sample")
+
+    @pytest.mark.asyncio
+    async def test_without_a_shared_read_it_would_drift(self):
+        """The bug, demonstrated: three independent reads disagree."""
+        manager = AcquisitionManager()
+        supply = self.Drifting()
+
+        volts = await manager._get_channel_value(supply, "voltage")
+        amps = await manager._get_channel_value(supply, "current")
+        watts = await manager._get_channel_value(supply, "power")
+
+        assert supply.reads == 3
+        assert watts != pytest.approx(volts * amps), (
+            "the fixture is meant to drift; if it does not, this test "
+            "proves nothing")
+
+    @pytest.mark.asyncio
+    async def test_a_lone_caller_still_gets_a_value(self):
+        """create_session and the trigger wait pass no sample."""
+        manager = AcquisitionManager()
+        value = await manager._get_channel_value(Supply(), "voltage")
+        assert value == pytest.approx(5.01)

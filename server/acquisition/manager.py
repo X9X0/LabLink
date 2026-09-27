@@ -288,10 +288,16 @@ class AcquisitionManager:
                 timestamp = datetime.now().timestamp()
                 values = []
 
+                # One read for the whole row. See _read_once: taking
+                # one per channel made a row three separate visits to
+                # the instrument, and the rows taken while a load was
+                # stepping disagreed with themselves.
+                sample = await self._read_once(equipment)
+
                 for channel in config.channels:
                     try:
-                        # Get measurement from equipment
-                        value = await self._get_channel_value(equipment, channel)
+                        value = await self._get_channel_value(
+                            equipment, channel, sample)
                         values.append(value)
                         complaints.pop(channel, None)   # it is reading again
                     except Exception as e:
@@ -447,7 +453,30 @@ class AcquisitionManager:
         return getattr(readings, "__dict__", None) or {}
 
     @classmethod
-    async def _value_from_readings(cls, equipment, channel):
+    async def _read_once(cls, equipment):
+        """One get_readings, as a mapping, or None.
+
+        A sample's channels must come from one read. Calling
+        get_readings per channel made each row three separate visits to
+        the instrument, and on the bench -- stepping a load from 0.1 A
+        to 0.3 A to 0.5 A while acquiring volts, amps and watts -- the
+        rows taken during a step disagreed with themselves:
+
+            4.97 V   0.14 A   0.84490 W     (V*I = 0.6958)
+
+        The current in that row was read after the voltage and before
+        the power, and the load moved in between. It also cost three
+        round trips a sample where one does.
+        """
+        if not hasattr(equipment, "get_readings"):
+            return None
+        try:
+            return cls._as_mapping(await equipment.get_readings()) or None
+        except Exception:
+            return None
+
+    @classmethod
+    async def _value_from_readings(cls, equipment, channel, readings=None):
         """Resolve a channel against get_readings, or None if it cannot.
 
         Every instrument here implements get_readings; only some
@@ -459,13 +488,14 @@ class AcquisitionManager:
         Power is computed when a driver does not report it. The supplies
         report volts and amps and nothing else, and multiplying them is
         not a guess.
+
+        ``readings`` is the sample's single read, passed in by the
+        acquisition loop so every channel in a row comes from the same
+        visit to the instrument. Without it one is taken here, which is
+        right for a one-off caller.
         """
-        if not hasattr(equipment, "get_readings"):
-            return None
-        try:
-            values = cls._as_mapping(await equipment.get_readings())
-        except Exception:
-            return None
+        values = readings if readings is not None else await cls._read_once(
+            equipment)
         if not values:
             return None
 
@@ -488,8 +518,14 @@ class AcquisitionManager:
                 return values[key]
         return None
 
-    async def _get_channel_value(self, equipment, channel: str) -> float:
-        """Get current value from equipment channel."""
+    async def _get_channel_value(self, equipment, channel: str,
+                                 readings=None) -> float:
+        """Get current value from equipment channel.
+
+        ``readings`` is the sample's single get_readings, supplied by
+        the acquisition loop so that every channel of a row comes from
+        one visit to the instrument.
+        """
         # A driver that resolves channel names itself gets first refusal;
         # if it does not recognise this one, its readings still might.
         # Kept so the reason can be re-raised if nothing else works. A
@@ -508,7 +544,8 @@ class AcquisitionManager:
             except Exception as e:
                 refused = e
 
-        value = await self._value_from_readings(equipment, channel)
+        value = await self._value_from_readings(
+            equipment, channel, readings)
         if value is not None:
             return value
 
