@@ -310,3 +310,66 @@ class TestTheLoopKeepsRunning:
             f"refresh locked the window for {frozen:.2f}s, and it runs on "
             f"a 5s timer -- so that is every five seconds for as long as "
             f"the server is slow")
+
+
+class TestARepositoryWithNoTags:
+    """The periodic refresh must not raise a modal.
+
+    _populate_versions runs on the five-second refresh path. When
+    get_git_tags came back empty it opened QMessageBox.warning inline,
+    so a checkout with no tags reopened that dialog every five seconds
+    -- and opening a modal inline from a coroutine blocks the loop
+    inside the nested Qt event loop, where processEvents never returns
+    and nothing bounding the wait gets to check its deadline.
+
+    It never ran here: a working clone has tags. actions/checkout
+    fetches none, so in CI it ran every time, and it hung the job for
+    two and a half hours before anybody could see a log.
+    """
+
+    @staticmethod
+    def _no_tags(monkeypatch):
+        import client.utils.git_operations as git_ops
+
+        monkeypatch.setattr(git_ops, "get_git_tags", lambda *a, **k: [])
+
+    def test_the_timer_path_opens_nothing(self, panel, qapp, monkeypatch):
+        """fetch=False is the periodic pass. It has nobody to talk to."""
+        self._no_tags(monkeypatch)
+        dialogs = Dialogs()
+        dialogs.install(monkeypatch)
+
+        panel._populate_versions()
+        qapp.processEvents()
+
+        assert dialogs.shown == [], (
+            f"the five-second refresh raised {dialogs.shown}")
+
+    def test_asking_for_versions_still_says_so(self, panel, qapp, monkeypatch):
+        """fetch=True is the Refresh Versions button, and silence there
+        would leave the operator wondering whether it worked."""
+        self._no_tags(monkeypatch)
+        dialogs = Dialogs()
+        dialogs.install(monkeypatch)
+
+        panel._populate_versions(fetch=True)
+        for _ in range(20):                 # let the deferral land
+            qapp.processEvents()
+
+        assert any("No Versions Found" in title
+                   for _kind, title, _text in dialogs.shown), dialogs.shown
+
+    @pytest.mark.asyncio
+    async def test_refresh_does_not_freeze_with_no_tags(self, panel, qapp,
+                                                        monkeypatch):
+        """The CI case end to end: no tags, and refresh must still let
+        the loop breathe."""
+        self._no_tags(monkeypatch)
+        Dialogs().install(monkeypatch)
+        panel.client = Client(delay=REQUEST_SEC)
+
+        frozen = await longest_freeze(qapp, panel.refresh)
+
+        assert frozen < TestTheLoopKeepsRunning.FREEZE_SEC, (
+            f"refresh locked the window for {frozen:.2f}s on a tagless "
+            f"checkout")

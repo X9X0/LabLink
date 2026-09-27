@@ -1434,18 +1434,39 @@ class SystemPanel(QWidget):
             else:
                 if fetch:
                     self.logs_text.append("No git tags found")
-                QMessageBox.warning(
-                    self,
-                    "No Versions Found",
-                    "No git tags found in the repository.\n\n"
-                    "Create version tags to use stable mode."
-                )
+                    # Only when the operator asked, and only deferred.
+                    #
+                    # This was an inline modal on the five-second refresh
+                    # path. On a checkout with no tags it reopened every
+                    # five seconds, and opening it inline from a
+                    # coroutine blocks the loop inside the nested Qt
+                    # event loop -- processEvents never returns, so
+                    # nothing that bounds the wait ever gets to check
+                    # its deadline.
+                    #
+                    # It hung CI for two and a half hours before the job
+                    # was bounded. Local clones have tags, so the branch
+                    # never ran here; actions/checkout fetches none, so
+                    # it ran there every time.
+                    self._say_later(
+                        QMessageBox.warning,
+                        "No Versions Found",
+                        "No git tags found in the repository.\n\n"
+                        "Create version tags to use stable mode.",
+                    )
+                else:
+                    self.version_selector.blockSignals(True)
+                    self.version_selector.clear()
+                    self.version_selector.blockSignals(False)
 
         except Exception as e:
             logger.error(f"Error fetching git tags: {e}")
             self.logs_text.append(f"\n❌ Error: {str(e)}")
-            QMessageBox.critical(
-                self, "Error", f"Failed to fetch git tags:\n{str(e)}"
+            # Deferred for the same reason, and for the same path: this
+            # runs on the timer too.
+            self._say_later(
+                QMessageBox.critical, "Error",
+                f"Failed to fetch git tags:\n{str(e)}",
             )
 
         finally:
