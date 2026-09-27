@@ -110,6 +110,11 @@ class ElectronicLoadPanel(InstrumentPanel):
         #: Which subsystem is driving the input, as the load last
         #: reported it: FIX, LIST, WAV, BATT, OCP or OPP.
         self._function_mode = "FIX"
+        #: Whether this panel started the list that is running. The
+        #: load's RUN bit cannot answer that on its own: it stays up
+        #: after a list is stopped by hand, and it was already up from
+        #: an earlier arming the first time this panel read it.
+        self._list_started = False
         super().__init__(parent)
 
     # The readouts moved into MeasurementViews when the three display
@@ -809,8 +814,23 @@ class ElectronicLoadPanel(InstrumentPanel):
         except Exception as e:
             logger.debug(f"Could not read the list state: {e}")
             return
-        if isinstance(status, dict) and "list_running" in status:
-            self._show_list_running(bool(status["list_running"]))
+        if not (isinstance(status, dict) and "list_running" in status):
+            return
+        if not status["list_running"]:
+            # The load says no list is stepping, and on that it is
+            # believable: the bit comes down of its own accord when a
+            # list finishes its cycles.
+            self._list_started = False
+            self._show_list_running(False)
+            return
+        # The bit being up is weaker news than it looks. It stays up
+        # after a list is stopped by hand -- seen on the bench, with
+        # the setpoint already handed back and the input off -- and it
+        # was still up from a previous arming when this panel first
+        # went near it. So it can confirm a run this panel started and
+        # cannot start one on its own.
+        if self._list_started:
+            self._show_list_running(True)
 
     async def _poll_battery(self):
         """Keep the discharge figures live, and only while discharging.
@@ -1005,6 +1025,8 @@ class ElectronicLoadPanel(InstrumentPanel):
             self._show_list_running(not wanted)
             return
         self._function_mode = "LIST" if wanted else "FIX"
+        self._list_started = wanted
+        self._show_list_running(wanted)
         if not wanted:
             self.status_message.emit("List stopped -- back to fixed operation")
         elif self.input_button.isChecked():
@@ -1014,6 +1036,8 @@ class ElectronicLoadPanel(InstrumentPanel):
                 "List started -- switch the load on to draw the steps")
 
     def _show_list_running(self, running: bool):
+        if not running:
+            self._list_started = False
         """Put the button where the load actually is, commanding
         nothing."""
         self.list_run_button.blockSignals(True)

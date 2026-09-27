@@ -1297,6 +1297,15 @@ class RigolDL3000Base(BaseEquipment):
         Which law: the caller's if it named one, otherwise the one the
         list was running under, since that is what the operator has
         been watching. CC only if neither can be had.
+
+        The input is switched off first when :LIST:END says OFF. A
+        list that reaches the end of its own cycles honours that
+        setting and switches the input off; one stopped by hand did
+        not, and the load carried on sinking -- at the fixed setpoint,
+        which is a different current from the step it was interrupted
+        on and one nobody asked for. Stopping by hand now ends the way
+        finishing would have. Off first, so the load does not pass
+        through the fixed setpoint on the way out.
         """
         if mode is None:
             try:
@@ -1305,6 +1314,18 @@ class RigolDL3000Base(BaseEquipment):
                 logger.debug("%s: could not read the list mode, leaving to "
                              "CC: %s" % (self.resource_string, e))
                 mode = "CC"
+
+        try:
+            hold_last = await self.get_list_end_state()
+        except Exception as e:
+            # Not knowing is a reason to leave the input alone, not to
+            # switch off an input the operator may be relying on.
+            logger.debug("%s: could not read the list end state, leaving "
+                         "the input as it is: %s" % (self.resource_string, e))
+            hold_last = True
+        if not hold_last:
+            await self.set_input(False)
+
         await self.set_mode(mode)
 
         # Worth confirming: a stop that quietly did not stop leaves the

@@ -1615,7 +1615,8 @@ class TestRunningAList:
         Run was pressed, the load set the RUN bit, and the button
         popped back out on the next refresh because :FUNC:MODE?
         answered WAV -- the waveform screen was up -- and WAV is not
-        LIST. The list was running the whole time.
+        LIST. Whatever the list was doing, the mode query was not the
+        thing to ask, and it must not move this button.
         """
         panel = self._panel()
         panel._show_list_running(True)
@@ -1636,26 +1637,79 @@ class TestRunningAList:
         assert not panel.list_run_button.isChecked()
         assert panel.battery_enable.isChecked()
 
-    def test_the_run_bit_is_what_drives_it(self, qapp):
-        """Straight from get_protection_status, which is the load's own
-        word for whether a list is stepping."""
+    def _panel_reporting(self, run_bit):
+        """A panel whose load reports the RUN bit however we say."""
         client = FakeLoadClient()
 
         def with_status(equipment_id, command, parameters=None):
             if command == "get_protection_status":
                 client.commands.append((command, parameters or {}))
                 return {"success": True,
-                        "data": {"raw": 16512, "list_running": True}}
+                        "data": {"raw": 16512 if run_bit else 16384,
+                                 "list_running": run_bit}}
             return FakeLoadClient.send_command(
                 client, equipment_id, command, parameters)
 
         panel = self._panel(client)
         client.send_command = with_status
+        return panel
+
+    def test_the_run_bit_confirms_a_run_this_panel_started(self, qapp):
+        panel = self._panel_reporting(True)
+        _with_loop(qapp, lambda: panel.list_run_button.click())
 
         _run(panel, "poll")
 
         assert panel.list_run_button.isChecked(), (
             "the RUN bit said it was running and the button did not")
+
+    def test_the_run_bit_alone_does_not_press_the_button(self, qapp):
+        """It is weaker news than it looks.
+
+        The bit was already up when this panel first read it, left over
+        from an arming nobody in this session did, and it is up on a
+        load that has been stopped by hand. Either way, pressing "Stop
+        list" for a list the panel never started offers to stop
+        something that may not be running.
+        """
+        panel = self._panel_reporting(True)
+
+        _run(panel, "poll")
+
+        assert not panel.list_run_button.isChecked(), (
+            "a stale RUN bit pressed the button on its own")
+
+    def test_a_stop_that_leaves_the_bit_up_still_releases(self, qapp):
+        """The bench case for this.
+
+        Stopping a running list hands the setpoint back and switches
+        the input off, and the RUN bit stays up regardless -- it only
+        comes down when a list reaches the end of its own cycles. The
+        button latched on "Stop list" and could not be pressed again.
+        """
+        panel = self._panel_reporting(True)
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+        assert panel.list_run_button.isChecked()
+
+        _with_loop(qapp, lambda: panel.list_run_button.click())   # stop
+
+        _run(panel, "poll")
+
+        assert not panel.list_run_button.isChecked(), (
+            "the button latched on a RUN bit that never comes down")
+        assert "Run" in panel.list_run_button.text()
+
+    def test_the_bit_coming_down_releases_the_button(self, qapp):
+        """A list that finishes its cycles clears RUN by itself, and
+        the button has to follow that without being told."""
+        panel = self._panel_reporting(True)
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+        assert panel.list_run_button.isChecked()
+
+        panel.client.send_command = self._panel_reporting(False).client.send_command
+        _run(panel, "poll")
+
+        assert not panel.list_run_button.isChecked()
 
     def test_showing_the_mode_commands_nothing(self, qapp):
         client = FakeLoadClient()

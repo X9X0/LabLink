@@ -476,6 +476,44 @@ class TestRunningTheList:
         await load.stop_list("CC")
         assert ":TRIG" not in commands(load), commands(load)
 
+    @pytest.mark.asyncio
+    async def test_stopping_honours_an_end_state_of_off(self):
+        """A list that reaches the end of its cycles switches the input
+        off when :LIST:END is OFF. One stopped by hand did not, and the
+        load went on sinking at the fixed setpoint -- a current nobody
+        asked for, and not the step it was interrupted on."""
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX",
+                               ":SOUR:LIST:END?": "OFF"})
+        await load.stop_list("CC")
+        sent = commands(load)
+        assert ":SOUR:INP:STAT OFF" in sent, sent
+        off = sent.index(":SOUR:INP:STAT OFF")
+        assert off < sent.index(":SOUR:FUNC CURRent"), (
+            "the load passed through the fixed setpoint on its way out: %s"
+            % sent)
+
+    @pytest.mark.asyncio
+    async def test_stopping_leaves_the_input_alone_when_holding_last(self):
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX",
+                               ":SOUR:LIST:END?": "LAST"})
+        await load.stop_list("CC")
+        assert not any("INP" in c for c in commands(load)), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_end_state_leaves_the_input_alone(self):
+        """Not knowing is a reason to leave it, not to switch off an
+        input somebody may be relying on."""
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX"})
+
+        async def no_end_state(command):
+            if "LIST:END" in command:
+                raise RuntimeError("no reply")
+            return "CC" if "LIST:MODE" in command else "FIX"
+
+        load._query = no_end_state
+        await load.stop_list("CC")
+        assert not any("INP" in c for c in commands(load)), commands(load)
+
 
 class TestTheApiCanReachAllOfIt:
     @pytest.mark.parametrize("action,args", [
