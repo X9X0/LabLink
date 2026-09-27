@@ -1049,3 +1049,221 @@ class TestTheLoadGroupLayout:
         panel = self._shown(qapp, width=900)
         assert not self._overlap(panel.setpoint_dial, panel.apply_button)
         assert not self._overlap(panel.apply_button, panel.input_button)
+
+
+BATTERY_CAPABILITIES = dict(CAPABILITIES,
+                            function_modes=["FIX", "LIST", "WAV", "BATT",
+                                            "OCP", "OPP"])
+
+
+class TestTheBatteryGroup:
+    """Battery discharge, the one function mode worth a panel.
+
+    The driver has had the whole subsystem since e8fcc2b and nothing
+    could reach it. List needs a step table and is its own piece of
+    work. OCP and OPP are setters all the way down -- no query for the
+    current a device under test tripped at, and no pass/fail -- and on
+    this firmware asking for either selects battery discharge instead,
+    which the driver refuses rather than pretends.
+    """
+
+    def _panel(self, client=None, capabilities=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(capabilities or BATTERY_CAPABILITIES)
+        return panel
+
+    def test_it_is_there_when_the_load_has_the_mode(self, qapp):
+        panel = self._panel()
+        assert panel.battery_group.isVisibleTo(panel)
+
+    def test_it_is_hidden_when_the_load_does_not(self, qapp):
+        """Not every load in the registry is a DL3000."""
+        panel = self._panel(capabilities=CAPABILITIES)   # no function_modes
+        assert not panel.battery_group.isVisibleTo(panel)
+
+    def test_entering_hands_over_the_setpoint(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.battery_enable.click())
+
+        assert ("set_function_mode", {"function_mode": "BATT"}) in \
+            client.commands, client.commands
+
+    def test_leaving_asserts_the_regulation_mode(self, qapp):
+        """Not the mirror of entering. The load accepts
+        :SOUR:FUNC:MODE and ignores it when it will not leave the mode
+        it is in, so fixed operation is reclaimed by set_mode."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel._show_function_mode("BATT")
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.battery_enable.click())
+
+        sent = [c for c in client.commands]
+        assert any(c[0] == "set_mode" for c in sent), sent
+        assert not any(c[0] == "set_function_mode" and
+                       c[1].get("function_mode") == "FIX" for c in sent), (
+            "it tried to leave with a command the load ignores")
+
+    def test_apply_sends_every_level_and_then_the_switches(self, qapp):
+        """Order matters: arming a cut-off whose value has not been
+        sent would run the discharge against whatever the load held."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.battery_level_spin.setValue(0.5)
+        panel.stop_volts_spin.setValue(3.0)
+        panel.stop_volts_check.setChecked(True)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.battery_apply_button.click())
+
+        names = [c[0] for c in client.commands]
+        assert "set_function_parameter" in names, client.commands
+        assert "set_battery_cutoffs" in names, client.commands
+        assert names.index("set_battery_cutoffs") > \
+            names.index("set_function_parameter"), names
+
+    def test_the_cutoff_switches_carry_the_checkboxes(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.stop_volts_check.setChecked(True)
+        panel.stop_ah_check.setChecked(False)
+        panel.stop_time_check.setChecked(True)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.battery_apply_button.click())
+
+        sent = [c for c in client.commands if c[0] == "set_battery_cutoffs"]
+        assert sent, client.commands
+        assert sent[0][1] == {"volts": True, "capacity": False, "time": True}
+
+    def test_the_discharge_level_reaches_the_load(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.battery_level_spin.setValue(0.75)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.battery_apply_button.click())
+
+        levels = [c for c in client.commands
+                  if c[0] == "set_function_parameter"
+                  and c[1].get("name") == "battery_level"]
+        assert levels and levels[0][1]["value"] == pytest.approx(0.75), levels
+
+
+class TestTheBatteryResults:
+    """Capacity, energy and elapsed time as the load reports them."""
+
+    def _panel(self, qapp):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(BATTERY_CAPABILITIES)
+        return panel
+
+    def test_it_shows_what_was_measured(self, qapp):
+        panel = self._panel(qapp)
+        panel._show_battery_results(
+            {"capacity_ah": 2.5, "watt_hours": 11.25,
+             "discharge_seconds": 3661})
+        shown = panel.battery_results.text()
+        assert "2.500 Ah" in shown, shown
+        assert "11.250 Wh" in shown, shown
+        assert "1:01:01" in shown, shown
+
+    def test_an_unread_value_is_not_shown_as_zero(self, qapp):
+        """None means the load did not say, which is not the same as
+        nothing having been drawn."""
+        panel = self._panel(qapp)
+        panel._show_battery_results(
+            {"capacity_ah": None, "watt_hours": None,
+             "discharge_seconds": None})
+        shown = panel.battery_results.text()
+        assert "0.000" not in shown, shown
+        assert shown.count("--") >= 3, shown
+
+    def test_a_fresh_discharge_reads_zero(self, qapp):
+        """The bench case: 0:0:0 from the load, parsed."""
+        panel = self._panel(qapp)
+        panel._show_battery_results(
+            {"capacity_ah": 0.0, "watt_hours": 0.0, "discharge_seconds": 0.0})
+        assert "0:00:00" in panel.battery_results.text()
+
+
+class TestTheResultsAndModeStayLive:
+    """A readout that never updates is worse than none: capacity would
+    sit at whatever it read when the panel opened and look like a
+    measurement."""
+
+    class Battery(FakeLoadClient):
+        """A load in battery mode with something to report."""
+
+        def __init__(self, mode="BATT"):
+            super().__init__()
+            self.mode = mode
+
+        def send_command(self, equipment_id, command, parameters=None):
+            if command == "get_function_mode":
+                self.commands.append((command, parameters or {}))
+                return {"success": True, "data": self.mode}
+            if command == "get_battery_results":
+                self.commands.append((command, parameters or {}))
+                return {"success": True,
+                        "data": {"capacity_ah": 1.5, "watt_hours": 7.0,
+                                 "discharge_seconds": 600}}
+            return super().send_command(equipment_id, command, parameters)
+
+    def _panel(self, client):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client)
+        panel.configure(BATTERY_CAPABILITIES)
+        return panel
+
+    def test_polling_updates_the_figures(self, qapp):
+        client = self.Battery()
+        panel = self._panel(client)
+        panel._function_mode = "BATT"
+
+        _run(panel, "poll")
+
+        assert "1.500 Ah" in panel.battery_results.text(), \
+            panel.battery_results.text()
+
+    def test_it_does_not_ask_when_not_discharging(self, qapp):
+        """Three extra queries a tick is worth it during a battery test
+        and wasted the rest of the time."""
+        client = self.Battery(mode="FIX")
+        panel = self._panel(client)
+        panel._function_mode = "FIX"
+        client.commands.clear()
+
+        _run(panel, "poll")
+
+        assert not [c for c in client.commands
+                    if c[0] == "get_battery_results"], client.commands
+
+    def test_binding_adopts_the_loads_own_mode(self, qapp):
+        """A load already discharging must not show "Enter battery
+        mode", or pressing it sends the mode it is already in."""
+        client = self.Battery(mode="BATT")
+        panel = self._panel(client)
+
+        _run(panel, "refresh_settings")
+
+        assert panel.battery_enable.isChecked()
+        assert "Leave" in panel.battery_enable.text(), \
+            panel.battery_enable.text()
+
+    def test_adopting_the_mode_commands_nothing(self, qapp):
+        client = self.Battery(mode="BATT")
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _run(panel, "refresh_settings")
+
+        wrote = [c for c in client.commands
+                 if c[0] in ("set_function_mode", "set_mode")]
+        assert wrote == [], f"showing the mode commanded the load: {wrote}"

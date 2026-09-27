@@ -19,9 +19,10 @@ from typing import Any, Dict
 
 import qasync
 from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import (QComboBox, QDial, QDoubleSpinBox, QGridLayout,
-                             QGroupBox, QHBoxLayout, QLabel, QMessageBox,
-                             QPushButton, QSizePolicy, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDial, QDoubleSpinBox,
+                             QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                             QMessageBox, QPushButton, QSizePolicy,
+                             QVBoxLayout, QWidget)
 
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
@@ -103,6 +104,11 @@ class ElectronicLoadPanel(InstrumentPanel):
         self._supports_cc_extras = False
         #: ...and whether it has a transient generator.
         self._supports_transient = False
+        #: ...and whether it has the battery discharge mode.
+        self._supports_battery = False
+        #: Which subsystem is driving the input, as the load last
+        #: reported it: FIX, LIST, WAV, BATT, OCP or OPP.
+        self._function_mode = "FIX"
         super().__init__(parent)
 
     # The readouts moved into MeasurementViews when the three display
@@ -362,6 +368,99 @@ class ElectronicLoadPanel(InstrumentPanel):
 
         layout.addWidget(self.transient_group)
 
+        # Battery discharge. A separate axis from CC/CV/CR/CP: the mode
+        # combo above picks the regulation law, this picks what drives
+        # the setpoint. The guide calls it "what controls the input
+        # regulation mode".
+        #
+        # Only battery, of the four function modes. List needs a step
+        # table and is its own piece of work; OCP and OPP are setters
+        # all the way down -- no query for the current a device under
+        # test tripped at, and no pass/fail -- and on this firmware
+        # asking for either selects battery discharge instead, which the
+        # driver refuses rather than pretends.
+        self.battery_group = QGroupBox("Battery discharge")
+        bgrid = QGridLayout(self.battery_group)
+
+        self.battery_enable = QPushButton("Enter battery mode")
+        self.battery_enable.setCheckable(True)
+        self.battery_enable.setToolTip(
+            "Hands the setpoint to the battery discharge subsystem.\n"
+            "The load still needs its input switching on to draw."
+        )
+        self.battery_enable.clicked.connect(self._on_battery_mode_toggled)
+        bgrid.addWidget(self.battery_enable, 0, 0, 1, 2)
+
+        bgrid.addWidget(QLabel("Discharge (A):"), 1, 0)
+        self.battery_level_spin = QDoubleSpinBox()
+        self.battery_level_spin.setDecimals(3)
+        self.battery_level_spin.setSingleStep(0.1)
+        self.battery_level_spin.setRange(0.0, self.max_current)
+        self.battery_level_spin.setToolTip(
+            "The current the load sinks while discharging.")
+        bgrid.addWidget(self.battery_level_spin, 1, 1)
+
+        bgrid.addWidget(QLabel("Von (V):"), 2, 0)
+        self.battery_von_spin = QDoubleSpinBox()
+        self.battery_von_spin.setDecimals(2)
+        self.battery_von_spin.setSingleStep(0.1)
+        self.battery_von_spin.setRange(0.0, self.max_voltage)
+        self.battery_von_spin.setToolTip(
+            "Starting voltage: the load waits until the battery is above\n"
+            "this before it begins."
+        )
+        bgrid.addWidget(self.battery_von_spin, 2, 1)
+
+        # Three independent cut-offs. Each is a separate command on the
+        # load and each has its own switch, so a discharge with all
+        # three off runs until something else stops it -- which is worth
+        # being able to see at a glance.
+        self.stop_volts_check = QCheckBox("Stop below (V):")
+        self.stop_volts_check.setToolTip(
+            "End the discharge when the battery falls to this voltage.")
+        bgrid.addWidget(self.stop_volts_check, 1, 2)
+        self.stop_volts_spin = QDoubleSpinBox()
+        self.stop_volts_spin.setDecimals(2)
+        self.stop_volts_spin.setSingleStep(0.1)
+        self.stop_volts_spin.setRange(0.0, self.max_voltage)
+        bgrid.addWidget(self.stop_volts_spin, 1, 3)
+
+        self.stop_ah_check = QCheckBox("Stop after (Ah):")
+        self.stop_ah_check.setToolTip(
+            "End the discharge once this much charge has been drawn.")
+        bgrid.addWidget(self.stop_ah_check, 2, 2)
+        self.stop_ah_spin = QDoubleSpinBox()
+        self.stop_ah_spin.setDecimals(3)
+        self.stop_ah_spin.setSingleStep(0.1)
+        self.stop_ah_spin.setRange(0.0, 999.0)
+        bgrid.addWidget(self.stop_ah_spin, 2, 3)
+
+        self.stop_time_check = QCheckBox("Stop after (s):")
+        self.stop_time_check.setToolTip(
+            "End the discharge after this long.")
+        bgrid.addWidget(self.stop_time_check, 3, 2)
+        self.stop_time_spin = QDoubleSpinBox()
+        self.stop_time_spin.setDecimals(0)
+        self.stop_time_spin.setSingleStep(60)
+        self.stop_time_spin.setRange(0.0, 360000.0)
+        bgrid.addWidget(self.stop_time_spin, 3, 3)
+
+        self.battery_apply_button = QPushButton("Apply battery settings")
+        self.battery_apply_button.clicked.connect(self._apply_battery)
+        bgrid.addWidget(self.battery_apply_button, 3, 0, 1, 2)
+
+        # What the discharge has measured. Readable while it runs and
+        # after it stops, which is the only way to get the result out --
+        # the load shows it on the front panel and has no "test
+        # finished" query.
+        self.battery_results = QLabel("Capacity: --    Energy: --    Elapsed: --")
+        self.battery_results.setToolTip(
+            "Read from the load while the discharge runs and after it "
+            "stops.")
+        bgrid.addWidget(self.battery_results, 4, 0, 1, 4)
+
+        layout.addWidget(self.battery_group)
+
         # The same digital / analog / graph views the supply has, over
         # volts, amps and watts. A load's three quantities are exactly
         # what MeasurementViews takes, so this is the whole of it.
@@ -412,8 +511,14 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.von_spin.setRange(0.0, self.max_voltage)
         self._supports_transient = bool(
             capabilities.get("supports_transient"))
+        self._supports_battery = "BATT" in (
+            capabilities.get("function_modes") or ())
+        self.battery_level_spin.setRange(0.0, self.max_current)
+        self.battery_von_spin.setRange(0.0, self.max_voltage)
+        self.stop_volts_spin.setRange(0.0, self.max_voltage)
         for spin in (self.level_a_spin, self.level_b_spin):
             spin.setRange(0.0, self.max_current)
+        self.battery_group.setVisible(self._supports_battery)
         self._range_setpoint()
         self._show_ranges_for_mode()
         self._show_cc_extras()
@@ -426,6 +531,24 @@ class ElectronicLoadPanel(InstrumentPanel):
         readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
         self._apply_readings(readings or {}, adopt_setpoint=True)
         await self._refresh_ranges()
+        await self._refresh_function_mode()
+
+    async def _refresh_function_mode(self):
+        """Ask the load which subsystem is driving it.
+
+        Without this the button says whatever it was left saying: a
+        load already in battery discharge would show "Enter battery
+        mode", and pressing it would send the mode it is already in.
+        """
+        if not self._supports_battery:
+            return
+        try:
+            mode = await self.send("get_function_mode", {}, priority=False)
+        except Exception as e:
+            logger.debug(f"Could not read the function mode: {e}")
+            return
+        if isinstance(mode, str) and mode:
+            self._show_function_mode(mode)
 
     async def _refresh_ranges(self):
         """Ask the load which range each mode is in.
@@ -616,6 +739,27 @@ class ElectronicLoadPanel(InstrumentPanel):
     async def poll(self):
         readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
         self._apply_readings(readings or {})
+        await self._poll_battery()
+
+    async def _poll_battery(self):
+        """Keep the discharge figures live, and only while discharging.
+
+        Three extra queries a tick is worth it during a battery test and
+        wasted the rest of the time, so it follows the mode rather than
+        the clock. A readout that never updates is worse than none:
+        capacity would sit at whatever it read when the panel opened and
+        look like a measurement.
+        """
+        if not self._supports_battery or self._function_mode != "BATT":
+            return
+        try:
+            results = await self.send("get_battery_results", {},
+                                      priority=False)
+        except Exception as e:
+            logger.debug(f"Could not read the battery results: {e}")
+            return
+        if isinstance(results, dict):
+            self._show_battery_results(results)
 
     def _apply_readings(self, readings: Dict[str, Any], adopt_setpoint: bool = False):
         import time
@@ -712,6 +856,105 @@ class ElectronicLoadPanel(InstrumentPanel):
         while this one is still current.
         """
         return await ask(put_it_up)
+
+    def _on_battery_mode_toggled(self, wanted: bool):
+        """Enter or leave battery discharge."""
+        if not (self.client and self.equipment):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return              # see _on_mode_changed
+        self._send_function_mode("BATT" if wanted else "FIX")
+
+    @qasync.asyncSlot(str)
+    async def _send_function_mode(self, mode: str):
+        """Switch the subsystem that drives the setpoint.
+
+        Leaving is not the mirror of entering. The load accepts
+        :SOUR:FUNC:MODE and ignores it when it will not leave the mode
+        it is in, so going back to fixed operation is done by asserting
+        the regulation mode, which reclaims the setpoint for the
+        FUNCtion command. The driver says as much when it refuses.
+        """
+        try:
+            if mode == "FIX":
+                regulation = self.mode_combo.currentData() or "CC"
+                await self.send("set_mode", {"mode": regulation})
+            else:
+                await self.send("set_function_mode", {"function_mode": mode})
+            self._function_mode = mode
+            self.status_message.emit(
+                "Battery discharge selected -- switch the load on to start"
+                if mode == "BATT" else "Back to fixed operation")
+        except Exception as e:
+            logger.error(f"Switching function mode failed: {e}")
+            self.status_message.emit(f"Switching function mode failed: {e}")
+            self._show_function_mode(self._function_mode)
+
+    def _show_function_mode(self, mode: str):
+        """Put the button where the load actually is, commanding
+        nothing."""
+        self._function_mode = mode
+        self.battery_enable.blockSignals(True)
+        self.battery_enable.setChecked(mode == "BATT")
+        self.battery_enable.setText(
+            "Leave battery mode" if mode == "BATT" else "Enter battery mode")
+        self.battery_enable.blockSignals(False)
+
+    def _apply_battery(self):
+        if not (self.client and self.equipment):
+            return
+        self._send_battery()
+
+    @qasync.asyncSlot()
+    async def _send_battery(self):
+        """The levels first, then the cut-off switches.
+
+        In that order on purpose: arming a cut-off whose value has not
+        been sent yet would run the discharge against whatever the load
+        happened to be holding.
+        """
+        try:
+            for name, spin in (
+                ("battery_level", self.battery_level_spin),
+                ("battery_von", self.battery_von_spin),
+                ("battery_stop_volts", self.stop_volts_spin),
+                ("battery_stop_ah", self.stop_ah_spin),
+                ("battery_stop_time", self.stop_time_spin),
+            ):
+                await self.send("set_function_parameter",
+                                {"name": name, "value": float(spin.value())})
+
+            await self.send("set_battery_cutoffs", {
+                "volts": self.stop_volts_check.isChecked(),
+                "capacity": self.stop_ah_check.isChecked(),
+                "time": self.stop_time_check.isChecked(),
+            })
+            self.status_message.emit("Battery settings applied")
+        except Exception as e:
+            logger.error(f"Applying battery settings failed: {e}")
+            self.status_message.emit(f"Applying battery settings failed: {e}")
+
+    def _show_battery_results(self, results: Dict[str, Any]):
+        """Capacity, energy and elapsed time, as the load reports them.
+
+        discharge_seconds arrives as seconds; the load answers
+        :MEASure:DISChargingTime? with H:M:S and the driver parses it,
+        the guide's claim of "a real number" notwithstanding.
+        """
+        def shown(value, suffix, places=3):
+            return "--" if value is None else f"{value:.{places}f} {suffix}"
+
+        seconds = results.get("discharge_seconds")
+        elapsed = "--"
+        if seconds is not None:
+            whole = int(seconds)
+            elapsed = f"{whole // 3600:d}:{whole % 3600 // 60:02d}:{whole % 60:02d}"
+        self.battery_results.setText(
+            f"Capacity: {shown(results.get('capacity_ah'), 'Ah')}    "
+            f"Energy: {shown(results.get('watt_hours'), 'Wh')}    "
+            f"Elapsed: {elapsed}")
 
     def _show_transient(self):
         """Transient lives inside CC, and only on a load that has it."""
