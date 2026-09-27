@@ -274,8 +274,8 @@ class TestTheBatteryCutoffs:
 class TestTheBatteryResults:
     @pytest.mark.asyncio
     async def test_it_reads_capacity_energy_and_time(self):
-        load = driver(answers={":MEAS:CAP?": "2.5", ":MEAS:WATT?": "11.25",
-                               ":MEAS:DISC?": "3600"})
+        load = driver(answers={"CAPability?": "2.5", "WATThours?": "11.25",
+                               "DISChargingTime?": "3600"})
         results = await load.get_battery_results()
         assert results["capacity_ah"] == pytest.approx(2.5)
         assert results["watt_hours"] == pytest.approx(11.25)
