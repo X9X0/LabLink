@@ -28,6 +28,7 @@ from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
 from client.ui.instruments.measurement_views import (Channel,
                                                      MeasurementViews)
+from client.ui.instruments.list_dialog import ListDialog
 from client.utils.modals import ask
 
 logger = logging.getLogger(__name__)
@@ -217,7 +218,19 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.cc_apply_button.clicked.connect(self._apply_cc_options)
         extras.addWidget(self.cc_apply_button)
         extras.addStretch()
-        grid.addWidget(self.cc_extras, 3, 0, 1, 5)
+        grid.addWidget(self.cc_extras, 3, 0, 1, 4)
+
+        # Beside the CC extras rather than below anything, because
+        # the readouts have already been given back every row that
+        # could be spared. Outside cc_extras on purpose: that hides
+        # in CV, CR and CP, and a list runs in all four.
+        self.list_button = QPushButton("Edit list...")
+        self.list_button.setToolTip(
+            "Build a list sequence: a profile the load steps through\n"
+            "on its own clock, down to 50us a step."
+        )
+        self.list_button.clicked.connect(self._open_list_dialog)
+        grid.addWidget(self.list_button, 3, 4)
 
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_setpoint)
@@ -971,6 +984,89 @@ class ElectronicLoadPanel(InstrumentPanel):
             f"Capacity: {shown(results.get('capacity_ah'), 'Ah')}    "
             f"Energy: {shown(results.get('watt_hours'), 'Wh')}    "
             f"Elapsed: {elapsed}")
+
+    def _open_list_dialog(self):
+        """Open the list editor, filled from the load if it will say."""
+        if getattr(self, "_list_dialog", None) is None:
+            self._list_dialog = ListDialog(self, max_current=self.max_current)
+            self._list_dialog.send_button.clicked.connect(self._send_list)
+        self._list_dialog.show()
+        self._list_dialog.raise_()
+
+        # Only ask the load when there is a loop to ask on. asyncSlot
+        # schedules, and scheduling without a running loop raises --
+        # which would make the button fail to open a dialog that is
+        # perfectly usable empty. Same guard as the mode and range
+        # handlers.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._read_list_back()
+
+    @qasync.asyncSlot()
+    async def _read_list_back(self):
+        """Show what the load is already holding, if it answers.
+
+        Silent on failure: a load with no list configured answers
+        badly, and an empty editor is the right thing to show then.
+        """
+        if not (self.client and self.equipment):
+            return
+        try:
+            mode = await self.send("get_list_mode", {}, priority=False)
+            count = await self.send("get_function_parameter",
+                                    {"name": "list_count"}, priority=False)
+            steps = await self.send("get_function_parameter",
+                                    {"name": "list_steps"}, priority=False)
+            hold = await self.send("get_list_end_state", {}, priority=False)
+        except Exception as e:
+            logger.debug(f"Could not read the list back: {e}")
+            return
+
+        rows = []
+        try:
+            for number in range(1, int(steps or 0) + 1):
+                rows.append(await self.send("get_list_step", {"step": number},
+                                            priority=False) or {})
+        except Exception as e:
+            logger.debug(f"Could not read the list steps: {e}")
+
+        self._list_dialog.load(
+            {"mode": mode, "cycles": count, "hold_last": hold}, rows)
+
+    @qasync.asyncSlot()
+    async def _send_list(self):
+        """Send the whole list, shape before contents.
+
+        The step count goes first: the load has to know how long the
+        list is before the per-step values mean anything, and a value
+        written past the current length is one the instrument will not
+        keep.
+        """
+        dialog = self._list_dialog
+        settings = dialog.settings()
+        try:
+            await self.send("set_list_mode", {"mode": settings["mode"]})
+            await self.send("set_function_parameter",
+                            {"name": "list_steps",
+                             "value": float(settings["step_count"])})
+            await self.send("set_function_parameter",
+                            {"name": "list_count",
+                             "value": float(settings["cycles"])})
+
+            for step in dialog.steps():
+                await self.send("set_list_step", step)
+
+            await self.send("set_list_end_state",
+                            {"hold_last": settings["hold_last"]})
+            self.status_message.emit(
+                f"List sent: {settings['step_count']} steps, "
+                f"{settings['cycles']} cycle(s)")
+        except Exception as e:
+            logger.error(f"Sending the list failed: {e}")
+            self.status_message.emit(f"Sending the list failed: {e}")
+            dialog.complain(f"Failed to send the list:\n{e}")
 
     def _show_transient(self):
         """Transient lives inside CC, and only on a load that has it."""

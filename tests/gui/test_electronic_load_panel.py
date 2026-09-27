@@ -1386,3 +1386,131 @@ class TestTransientAndBatterySitSideBySide:
             narrow.transient_group.geometry().width())
         assert narrow.battery_group.geometry().width() >= 860, (
             narrow.battery_group.geometry().width())
+
+
+class TestSendingAList:
+    """The panel's half: shape before contents, and in an order the
+    load can act on."""
+
+    def _panel(self, client):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client)
+        panel.configure(BATTERY_CAPABILITIES)
+        panel._open_list_dialog()
+        return panel
+
+    def test_the_button_is_there_in_every_mode(self, qapp):
+        """A list runs in CC, CV, CR and CP. The CC extras row beside it
+        hides in the other three; this must not."""
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(BATTERY_CAPABILITIES)
+        for mode in ("CC", "CV", "CR", "CP"):
+            panel.mode_combo.setCurrentIndex(panel.mode_combo.findData(mode))
+            qapp.processEvents()
+            assert panel.list_button.isVisibleTo(panel), mode
+
+    def test_the_step_count_goes_before_the_steps(self, qapp):
+        """A value written past the current length is one the
+        instrument will not keep."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel._list_dialog._set_step_count(3)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_list())
+
+        names = [c[0] for c in client.commands]
+        counts = [i for i, c in enumerate(client.commands)
+                  if c[0] == "set_function_parameter"
+                  and c[1].get("name") == "list_steps"]
+        firsts = [i for i, c in enumerate(client.commands)
+                  if c[0] == "set_list_step"]
+        assert counts and firsts, names
+        assert counts[0] < firsts[0], names
+
+    def test_every_row_is_sent(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel._list_dialog._set_step_count(4)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_list())
+
+        steps = [c for c in client.commands if c[0] == "set_list_step"]
+        assert len(steps) == 4, steps
+        assert [c[1]["step"] for c in steps] == [1, 2, 3, 4]
+
+    def test_the_mode_and_cycles_reach_the_load(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        dialog = panel._list_dialog
+        dialog.mode_combo.setCurrentIndex(dialog.mode_combo.findData("CR"))
+        dialog.cycles_spin.setValue(5)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_list())
+
+        assert ("set_list_mode", {"mode": "CR"}) in client.commands
+        cycles = [c for c in client.commands
+                  if c[0] == "set_function_parameter"
+                  and c[1].get("name") == "list_count"]
+        assert cycles and cycles[0][1]["value"] == pytest.approx(5.0)
+
+    def test_the_end_state_is_sent_last(self, qapp):
+        """It describes what happens after the run, so it has nothing
+        to say until the run is defined."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._send_list())
+
+        names = [c[0] for c in client.commands]
+        assert names[-1] == "set_list_end_state", names
+
+    def test_opening_it_twice_reuses_the_one_dialog(self, qapp):
+        """Otherwise each press leaves another window behind."""
+        panel = self._panel(FakeLoadClient())
+        first = panel._list_dialog
+        panel._open_list_dialog()
+        assert panel._list_dialog is first
+
+
+class TestTheListButtonCostsNoHeight:
+    """It shares the CC extras row rather than making one.
+
+    The readouts have been given back every row that could be spared,
+    twice, and a button that quietly took one back would undo that.
+    """
+
+    #: A DL3021A as the driver reports it. supports_slew_rate and
+    #: supports_von matter: without them the extras row hides, row 3 is
+    #: empty, and the button does make a row of its own -- which is what
+    #: a fixture missing them appeared to show.
+    FULL = dict(BATTERY_CAPABILITIES, supports_slew_rate=True,
+                supports_von=True)
+
+    def _height(self, qapp, capabilities):
+        from PyQt6.QtWidgets import QGroupBox
+
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(capabilities)
+        panel.resize(1960, 900)
+        panel.show()
+        qapp.processEvents()
+        load_group = panel.findChildren(QGroupBox)[0]
+        return panel, load_group.geometry().height()
+
+    def test_it_shares_the_extras_row(self, qapp):
+        panel, _height = self._height(qapp, self.FULL)
+        extras = panel.cc_extras.geometry()
+        button = panel.list_button.geometry()
+        assert abs(extras.y() - button.y()) < 8, (extras, button)
+        assert extras.right() <= button.left(), "they overlap"
+
+    def test_the_readouts_keep_their_height(self, qapp):
+        panel, _height = self._height(qapp, self.FULL)
+        assert panel.views.geometry().height() > 500, (
+            panel.views.geometry().height())
