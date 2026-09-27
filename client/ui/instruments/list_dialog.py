@@ -12,14 +12,16 @@ the ordinary readouts while it runs; a step table sitting on the panel
 would cost the readouts their height for something looked at once.
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
-                             QDoubleSpinBox, QGridLayout, QHBoxLayout,
-                             QHeaderView, QLabel, QMessageBox, QPushButton,
-                             QSpinBox, QTableWidget, QVBoxLayout)
+                             QDoubleSpinBox, QFileDialog, QGridLayout,
+                             QHBoxLayout, QHeaderView, QLabel, QMessageBox,
+                             QPushButton, QSpinBox, QTableWidget,
+                             QVBoxLayout)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,12 @@ MAX_WIDTH = 3600.0
 
 #: Regulation laws a list can run under, and the unit its levels carry.
 LIST_MODES = (("CC", "A"), ("CV", "V"), ("CR", "Ohm"), ("CP", "W"))
+
+#: Stamped into an exported file and checked on the way back in.
+#: Without it any JSON at all would be accepted and quietly produce
+#: an empty list, which looks like the file was read and was not.
+DOCUMENT_KIND = "lablink.load.list"
+DOCUMENT_VERSION = 1
 
 
 class ListDialog(QDialog):
@@ -127,6 +135,19 @@ class ListDialog(QDialog):
         self.step_count_label = QLabel()
         row.addWidget(self.step_count_label)
         row.addStretch()
+
+        self.import_button = QPushButton("Import...")
+        self.import_button.setToolTip("Load a list from a file.")
+        self.import_button.clicked.connect(self._import)
+        row.addWidget(self.import_button)
+
+        self.export_button = QPushButton("Export...")
+        self.export_button.setToolTip(
+            "Save this list to a file. Plain JSON, so it can be kept\n"
+            "beside a test or edited by hand."
+        )
+        self.export_button.clicked.connect(self._export)
+        row.addWidget(self.export_button)
         layout.addLayout(row)
 
         self.buttons = QDialogButtonBox()
@@ -249,6 +270,130 @@ class ListDialog(QDialog):
                         self.table.cellWidget(row, column).setValue(
                             float(step[key]))
         self._show_step_count()
+
+    # ------------------------------------------------------------------ #
+    # Files
+    # ------------------------------------------------------------------ #
+
+    def to_document(self) -> Dict[str, Any]:
+        """The whole list as a plain structure, ready for JSON."""
+        document = dict(self.settings())
+        document.update({"kind": DOCUMENT_KIND, "version": DOCUMENT_VERSION,
+                         "steps": self.steps()})
+        return document
+
+    def from_document(self, document: Any) -> List[str]:
+        """Fill the editor from a parsed file.
+
+        Returns what had to be adjusted, so the operator is told rather
+        than left holding numbers they did not write. Values outside
+        the instrument's range are clamped rather than refused: one bad
+        dwell should not cost somebody the other forty steps.
+        """
+        if not isinstance(document, dict):
+            raise ValueError("That file does not hold a list.")
+        if document.get("kind") != DOCUMENT_KIND:
+            raise ValueError("That file is not a LabLink list sequence.")
+
+        steps = document.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("That list has no steps in it.")
+
+        notes: List[str] = []
+        if len(steps) > MAX_STEPS:
+            notes.append(f"kept the first {MAX_STEPS} of {len(steps)} steps")
+            steps = steps[:MAX_STEPS]
+        if len(steps) < MIN_STEPS:
+            notes.append(f"padded to the {MIN_STEPS} steps a list needs")
+
+        cleaned = []
+        for number, step in enumerate(steps, start=1):
+            if not isinstance(step, dict):
+                raise ValueError(f"Step {number} is not readable.")
+            cleaned.append({
+                "level": self._clamped(step.get("level"), 0.0,
+                                       self._max_level, number, "level",
+                                       notes),
+                "width": self._clamped(step.get("width"), MIN_WIDTH,
+                                       MAX_WIDTH, number, "dwell", notes),
+                "slew": self._clamped(step.get("slew"), 0.001, 100.0,
+                                      number, "slew", notes),
+            })
+
+        cycles = document.get("cycles")
+        if isinstance(cycles, (int, float)) and not 0 <= cycles <= MAX_CYCLES:
+            notes.append(f"cycles clamped to 0-{MAX_CYCLES}")
+            cycles = min(max(int(cycles), 0), MAX_CYCLES)
+
+        self.load({"mode": document.get("mode", "CC"), "cycles": cycles,
+                   "hold_last": document.get("hold_last", True)}, cleaned)
+        return notes
+
+    @staticmethod
+    def _clamped(value, low, high, number, what, notes):
+        """A number inside the instrument's range, saying if it moved."""
+        if value is None:
+            return None
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Step {number} has an unreadable {what}.")
+        if value < low or value > high:
+            notes.append(f"step {number} {what} clamped to {low:g}-{high:g}")
+            return min(max(value, low), high)
+        return value
+
+    def _export(self):
+        """Write the list out.
+
+        The chooser opens inline, which is right here: these handlers
+        are ordinary slots rather than coroutines, so there is no task
+        for a nested event loop to strand.
+        """
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export list sequence", "",
+            "List sequence (*.json);;All files (*)")
+        if not filename:
+            return
+        if not filename.lower().endswith(".json"):
+            filename += ".json"
+        try:
+            with open(filename, "w", encoding="utf-8") as out:
+                json.dump(self.to_document(), out, indent=2)
+                out.write("\n")
+        except OSError as e:
+            logger.error(f"Could not export the list: {e}")
+            self.complain(f"Could not write {filename}:\n{e}")
+            return
+        self.setWindowTitle(f"List sequence - {filename}")
+
+    def _import(self):
+        """Read a list in, saying what it had to change."""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import list sequence", "",
+            "List sequence (*.json);;All files (*)")
+        if not filename:
+            return
+        try:
+            with open(filename, "r", encoding="utf-8") as source:
+                document = json.load(source)
+        except (OSError, ValueError) as e:
+            logger.error(f"Could not import the list: {e}")
+            self.complain(f"Could not read {filename}:\n{e}")
+            return
+
+        try:
+            notes = self.from_document(document)
+        except ValueError as e:
+            self.complain(str(e))
+            return
+
+        self.setWindowTitle(f"List sequence - {filename}")
+        if notes:
+            QMessageBox.information(
+                self, "Imported with changes",
+                "The list was read, with these adjustments:\n\n  "
+                + "\n  ".join(notes))
 
     def complain(self, text: str):
         """Say why a send failed, without blocking the caller's loop."""

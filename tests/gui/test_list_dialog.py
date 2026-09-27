@@ -32,7 +32,9 @@ pytestmark = pytest.mark.skipif(not GUI_AVAILABLE, reason="PyQt6 is required")
 if GUI_AVAILABLE:
     from PyQt6.QtWidgets import QApplication
 
-    from client.ui.instruments.list_dialog import (MAX_CYCLES, MAX_STEPS,
+    from client.ui.instruments.list_dialog import (DOCUMENT_KIND,
+                                                   DOCUMENT_VERSION,
+                                                   MAX_CYCLES, MAX_STEPS,
                                                    MAX_WIDTH, MIN_STEPS,
                                                    MIN_WIDTH, ListDialog)
 
@@ -232,3 +234,103 @@ class TestTheColumnsUseTheWidth:
         qapp.processEvents()
         widths = [dialog.table.columnWidth(c) for c in range(3)]
         assert max(widths) - min(widths) <= 2, widths
+
+
+class TestTheDocumentRoundTrips:
+    """Plain JSON, so a profile can live beside the test it belongs to
+    and be edited by hand."""
+
+    def test_what_goes_out_comes_back(self, dialog, qapp):
+        dialog._set_step_count(3)
+        dialog.mode_combo.setCurrentIndex(dialog.mode_combo.findData("CR"))
+        dialog.cycles_spin.setValue(4)
+        dialog.table.cellWidget(1, 0).setValue(12.5)
+        dialog.table.cellWidget(1, 1).setValue(0.25)
+        document = dialog.to_document()
+
+        fresh = ListDialog(max_current=40.0)
+        fresh.from_document(document)
+
+        assert fresh.settings() == dialog.settings()
+        assert fresh.steps() == dialog.steps()
+        fresh.deleteLater()
+
+    def test_the_file_says_what_it_is(self, dialog):
+        """Without a marker any JSON would be accepted and quietly
+        produce an empty list, which looks like it was read."""
+        document = dialog.to_document()
+        assert document["kind"] == DOCUMENT_KIND
+        assert document["version"] == DOCUMENT_VERSION
+
+    def test_it_is_json(self, dialog):
+        import json
+
+        json.loads(json.dumps(dialog.to_document()))
+
+
+class TestImportingRefusesWhatItCannotUse:
+    def test_a_file_of_the_wrong_kind(self, dialog):
+        with pytest.raises(ValueError) as refused:
+            dialog.from_document({"kind": "something.else", "steps": [{}]})
+        assert "not a LabLink" in str(refused.value)
+
+    def test_something_that_is_not_a_document(self, dialog):
+        with pytest.raises(ValueError):
+            dialog.from_document([1, 2, 3])
+
+    def test_a_list_with_no_steps(self, dialog):
+        with pytest.raises(ValueError) as refused:
+            dialog.from_document({"kind": DOCUMENT_KIND, "steps": []})
+        assert "no steps" in str(refused.value)
+
+    def test_a_step_that_is_not_readable(self, dialog):
+        with pytest.raises(ValueError):
+            dialog.from_document(
+                {"kind": DOCUMENT_KIND, "steps": [{"level": 1.0}, "nonsense"]})
+
+    def test_a_level_that_is_not_a_number(self, dialog):
+        with pytest.raises(ValueError) as refused:
+            dialog.from_document({"kind": DOCUMENT_KIND, "steps": [
+                {"level": "hot"}, {"level": 1.0}]})
+        assert "level" in str(refused.value)
+
+
+class TestImportingSaysWhatItChanged:
+    """Clamped rather than refused: one bad dwell should not cost
+    somebody the other forty steps. But silently altering numbers the
+    operator did not write would be worse than either."""
+
+    def test_a_level_above_the_load_is_clamped_and_reported(self, dialog):
+        notes = dialog.from_document({"kind": DOCUMENT_KIND, "steps": [
+            {"level": 999.0}, {"level": 1.0}]})
+        assert any("level" in n for n in notes), notes
+        assert dialog.table.cellWidget(0, 0).value() == pytest.approx(40.0)
+
+    def test_a_dwell_below_the_instruments_floor(self, dialog):
+        notes = dialog.from_document({"kind": DOCUMENT_KIND, "steps": [
+            {"level": 1.0, "width": 0.000001},
+            {"level": 1.0, "width": 1.0}]})
+        assert any("dwell" in n for n in notes), notes
+        assert dialog.table.cellWidget(0, 1).value() == pytest.approx(
+            MIN_WIDTH)
+
+    def test_too_many_steps_are_trimmed_and_reported(self, dialog):
+        notes = dialog.from_document({"kind": DOCUMENT_KIND, "steps": [
+            {"level": 1.0} for _ in range(MAX_STEPS + 20)]})
+        assert dialog.table.rowCount() == MAX_STEPS
+        assert any(str(MAX_STEPS) in n for n in notes), notes
+
+    def test_cycles_past_the_maximum(self, dialog):
+        notes = dialog.from_document({
+            "kind": DOCUMENT_KIND, "cycles": MAX_CYCLES + 500,
+            "steps": [{"level": 1.0}, {"level": 2.0}]})
+        assert any("cycles" in n for n in notes), notes
+        assert dialog.cycles_spin.value() == MAX_CYCLES
+
+    def test_a_clean_file_reports_nothing(self, dialog):
+        """Silence means nothing was touched."""
+        notes = dialog.from_document({
+            "kind": DOCUMENT_KIND, "cycles": 2, "mode": "CC",
+            "steps": [{"level": 1.0, "width": 0.5, "slew": 0.5},
+                      {"level": 2.0, "width": 0.5, "slew": 0.5}]})
+        assert notes == [], notes
