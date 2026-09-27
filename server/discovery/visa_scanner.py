@@ -12,6 +12,17 @@ from server.equipment.bk_registry import (CATEGORY_LABELS,
                                    CATEGORY_TO_EQUIPMENT_TYPE, MANUFACTURER,
                                    is_bk_manufacturer, is_drivable,
                                    resolve_model)
+from server.equipment.siglent_registry import \
+    CATEGORY_LABELS as SIGLENT_CATEGORY_LABELS
+from server.equipment.siglent_registry import \
+    CATEGORY_TO_EQUIPMENT_TYPE as SIGLENT_CATEGORY_TO_EQUIPMENT_TYPE
+from server.equipment.siglent_registry import \
+    MANUFACTURER as SIGLENT_MANUFACTURER
+from server.equipment.siglent_registry import is_drivable as siglent_is_drivable
+from server.equipment.siglent_registry import is_siglent_manufacturer
+from server.equipment.siglent_registry import \
+    resolve_model as siglent_resolve_model
+from server.equipment.siglent_registry import why_not_drivable
 
 from .bk_serial_probe import serial_port_from_resource
 from .models import (ConnectionStatus, DeviceType, DiscoveredDevice,
@@ -338,6 +349,7 @@ class VISAScanner:
                     device.confidence_score = 0.9  # High confidence if we got *IDN?
                     device.status = ConnectionStatus.AVAILABLE
                     self._apply_bk_registry(device)
+                    self._apply_siglent_registry(device)
                     logger.debug(
                         f"Successfully queried *IDN? from {resource_name}: "
                         f"{device.manufacturer} {device.model}"
@@ -444,6 +456,7 @@ class VISAScanner:
                 device.metadata["serial_port"] = port
 
         self._apply_bk_registry(device)
+        self._apply_siglent_registry(device)
         logger.info(
             f"{resource_name} is connected as {device.manufacturer} "
             f"{device.model}; described from its driver, not re-queried"
@@ -493,6 +506,52 @@ class VISAScanner:
         ))
         # A registry hit on top of a successful *IDN? is as certain as
         # identification gets short of connecting.
+        device.confidence_score = max(device.confidence_score, 0.95)
+
+    def _apply_siglent_registry(self, device: DiscoveredDevice) -> None:
+        """Enrich a discovered Siglent device from the model registry.
+
+        Same job as the B&K one, for the same reasons, plus one of its
+        own: Siglent sells two protocols under one badge. Saying which
+        of the two a device speaks, here, is what stops somebody
+        connecting a scope with a driver that will never talk to it.
+        """
+        if not is_siglent_manufacturer(device.manufacturer):
+            return
+
+        # The USB vendor id 0xF4EC is still registered to Atten, so
+        # that is what some VISA layers report for a Siglent. Normalise
+        # it, and keep what was actually said.
+        device.metadata["reported_manufacturer"] = device.manufacturer
+        device.manufacturer = SIGLENT_MANUFACTURER
+
+        siglent_model = siglent_resolve_model(device.model)
+        if not siglent_model:
+            logger.info(
+                f"Siglent device {device.model!r} at {device.resource_name} "
+                f"is not in the registry and its prefix is not one of "
+                f"Siglent's"
+            )
+            return
+
+        device.metadata.update({
+            "siglent_family": siglent_model.key,
+            "siglent_family_name": siglent_model.name,
+            "siglent_category": SIGLENT_CATEGORY_LABELS.get(
+                siglent_model.category, siglent_model.category),
+            "protocol": siglent_model.protocol,
+            "interfaces": siglent_model.interfaces,
+            "channels": siglent_model.channels,
+            "driver_supported": siglent_is_drivable(siglent_model),
+            "bench_verified": siglent_model.verified,
+        })
+        if siglent_model.notes:
+            device.metadata["notes"] = siglent_model.notes
+        if not siglent_is_drivable(siglent_model):
+            device.metadata["driver_note"] = why_not_drivable(siglent_model)
+        device.capabilities = list(dict.fromkeys(
+            device.capabilities + siglent_model.interfaces
+        ))
         device.confidence_score = max(device.confidence_score, 0.95)
 
     def _get_interface_type(self, resource_name: str) -> str:
@@ -655,6 +714,21 @@ class VISAScanner:
             bk_model = resolve_model(device_info.get("model"))
             if bk_model:
                 equipment_type = CATEGORY_TO_EQUIPMENT_TYPE.get(bk_model.category)
+                if equipment_type:
+                    return DeviceType(equipment_type)
+                return DeviceType.UNKNOWN
+
+        # Siglent next, for the same reason. The keyword heuristics below
+        # cannot place a Siglent at all: not one of their tokens appears
+        # in "SPD3303X-E", so a supply that identified itself perfectly
+        # arrived in the connect dialog as "unknown" and could not be
+        # connected. The registry knows the whole catalogue, including
+        # the families with no driver.
+        if is_siglent_manufacturer(device_info.get("manufacturer")):
+            siglent_model = siglent_resolve_model(device_info.get("model"))
+            if siglent_model:
+                equipment_type = SIGLENT_CATEGORY_TO_EQUIPMENT_TYPE.get(
+                    siglent_model.category)
                 if equipment_type:
                     return DeviceType(equipment_type)
                 return DeviceType.UNKNOWN
