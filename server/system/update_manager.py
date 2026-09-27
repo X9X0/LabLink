@@ -146,10 +146,22 @@ class UpdateManager:
         return fallback
 
     def _load_config(self):
-        """Load saved configuration from file."""
+        """Load saved configuration from file.
+
+        Reads the old config/ location if the current one is absent, so
+        a setting saved before this moved to data/ is not lost. It is
+        never written back there -- that directory is mounted read-only
+        in Docker, which is why it moved.
+        """
+        source = self.config_file
+        if not source.exists() and self.legacy_config_file.exists():
+            source = self.legacy_config_file
+            logger.info("Reading update configuration from %s; it will be "
+                        "saved to %s from now on",
+                        self.legacy_config_file, self.config_file)
         try:
-            if self.config_file.exists():
-                with open(self.config_file, "r", encoding="utf-8") as f:
+            if source.exists():
+                with open(source, "r", encoding="utf-8") as f:
                     config = json.load(f)
 
                 # Load update mode
@@ -169,7 +181,7 @@ class UpdateManager:
                 self.git_remote = config.get("git_remote", "origin")
                 self.git_branch = config.get("git_branch")
 
-                logger.info(f"Loaded update configuration from {self.config_file}")
+                logger.info(f"Loaded update configuration from {source}")
                 logger.info(f"Update mode: {self.update_mode}, Scheduled checks: {self.scheduled_check_enabled}")
 
         except Exception as e:
@@ -195,6 +207,17 @@ class UpdateManager:
 
             logger.debug(f"Saved update configuration to {self.config_file}")
 
+        except OSError as e:
+            # Loudly, and saying what it costs. This failed silently
+            # into a warning for months while /app/config was mounted
+            # read-only: the update mode reverted to its stable default
+            # on every restart, and somebody who selected the
+            # development branch got stable back without being told,
+            # and put it down to their own mis-click.
+            logger.error(
+                "Could not save update configuration to %s (%s). The update "
+                "mode will go back to %s when the server restarts.",
+                self.config_file, e, UpdateMode.STABLE.value)
         except Exception as e:
             logger.error(f"Failed to save update configuration: {e}")
 

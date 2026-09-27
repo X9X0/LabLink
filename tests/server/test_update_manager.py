@@ -209,6 +209,12 @@ def _make_manager_with_config(config_dir: Path) -> UpdateManager:
     manager = UpdateManager()
     manager.config_dir = config_dir
     manager.config_file = config_dir / "update_config.json"
+    # The fallback that reads the pre-move location has to be redirected
+    # too, or "so tests do not read or write the real project config"
+    # stops being true: it points at the checkout's own config/, and an
+    # untracked update_config.json left there by a developer run made
+    # this helper return development mode from a "fresh install".
+    manager.legacy_config_file = config_dir / "legacy_update_config.json"
 
     # Reset to __init__ defaults so a missing file means "no prior config"
     manager.update_mode = UpdateMode.STABLE
