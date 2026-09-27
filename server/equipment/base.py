@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
@@ -657,6 +657,113 @@ class BaseEquipment(ABC):
     async def execute_command(self, command: str, parameters: dict) -> Any:
         """Execute a command on the equipment."""
         pass
+
+    #: What a measurement channel may be called, and the keys a
+    #: driver's get_readings might carry it under.
+    #:
+    #: The names differ by instrument class and both are reasonable: a
+    #: supply separates what was asked for from what is happening
+    #: (voltage_set against voltage_actual), while a load reporting one
+    #: voltage has nothing to disambiguate. Callers should not have to
+    #: know which kind of instrument they have.
+    MEASUREMENT_CHANNELS: Dict[str, Tuple[Tuple[str, ...], str, str]] = {
+        "V": (("voltage", "voltage_actual"), "V", "voltage"),
+        "I": (("current", "current_actual"), "A", "current"),
+        "P": (("power", "power_actual"), "W", "power"),
+        "R": (("resistance",), "Ohm", "resistance"),
+        "VSET": (("voltage_set", "voltage_setpoint"), "V", "voltage setpoint"),
+        "ISET": (("current_set", "current_setpoint"), "A", "current setpoint"),
+    }
+
+    #: Longer spellings a caller may reasonably use for the above.
+    MEASUREMENT_ALIASES = {
+        "VOLT": "V", "VOLTAGE": "V",
+        "CURR": "I", "CURRENT": "I", "A": "I",
+        "POW": "P", "POWER": "P", "W": "P",
+        "RES": "R", "RESISTANCE": "R", "OHM": "R",
+        "VOLTAGE_SET": "VSET", "VSETPOINT": "VSET",
+        "CURRENT_SET": "ISET", "ISETPOINT": "ISET",
+    }
+
+    async def get_measurement(self, channel: str = "V") -> Dict[str, Any]:
+        """One measured quantity, derived from this driver's readings.
+
+        Every instrument implements get_readings; only some implement
+        get_measurement, and the acquisition engine reached for the
+        second. That asymmetry meant no power supply could be acquired
+        from at all -- the engine was taught to fall back to readings,
+        which fixed acquisition and left the gap, so the next caller
+        expecting get_measurement on a supply would meet it again.
+
+        A driver that can measure a channel directly should override
+        this; the DL3000 load does, because it has a SCPI query per
+        quantity and reading all four to return one would be wasteful.
+
+        Power is computed where a driver does not report it. The
+        supplies give volts and amps and nothing else, and multiplying
+        them is not a guess.
+        """
+        key = (channel or "V").strip().upper()
+        if ":" in key:                      # "CH1:V"
+            key = key.rsplit(":", 1)[1]
+        if key in ("CH1", "1", ""):
+            key = "V"
+        key = self.MEASUREMENT_ALIASES.get(key, key)
+
+        entry = self.MEASUREMENT_CHANNELS.get(key)
+        if entry is None:
+            raise ValueError(
+                "Channel must be one of %s (optionally as CH1:V)"
+                % ", ".join(sorted(self.MEASUREMENT_CHANNELS)))
+        keys, unit, quantity = entry
+
+        readings = await self._readings_mapping()
+        if readings is None:
+            raise NotImplementedError(
+                "%s reports no readings, so it cannot measure %s"
+                % (type(self).__name__, quantity))
+
+        for name in keys:
+            if readings.get(name) is not None:
+                return {"value": float(readings[name]), "unit": unit,
+                        "quantity": quantity}
+
+        if key == "P":
+            volts = self._first_present(
+                readings, self.MEASUREMENT_CHANNELS["V"][0])
+            amps = self._first_present(
+                readings, self.MEASUREMENT_CHANNELS["I"][0])
+            if volts is not None and amps is not None:
+                return {"value": float(volts) * float(amps), "unit": unit,
+                        "quantity": quantity}
+
+        raise NotImplementedError(
+            "%s does not report %s" % (type(self).__name__, quantity))
+
+    @staticmethod
+    def _first_present(readings, names):
+        for name in names:
+            if readings.get(name) is not None:
+                return readings[name]
+        return None
+
+    async def _readings_mapping(self) -> Optional[Dict[str, Any]]:
+        """This driver's get_readings as a plain dict, or None."""
+        if not hasattr(self, "get_readings"):
+            return None
+        try:
+            readings = await self.get_readings()
+        except Exception:
+            return None
+        if isinstance(readings, dict):
+            return readings
+        for method in ("model_dump", "dict"):        # pydantic v2, v1
+            if hasattr(readings, method):
+                try:
+                    return getattr(readings, method)()
+                except Exception:
+                    pass
+        return getattr(readings, "__dict__", None)
 
     # ==================== Optional Diagnostic Methods (v0.12.0) ====================
     # Subclasses can override these methods to provide equipment-specific diagnostics
