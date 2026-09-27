@@ -1267,3 +1267,55 @@ class TestTheResultsAndModeStayLive:
         wrote = [c for c in client.commands
                  if c[0] in ("set_function_mode", "set_mode")]
         assert wrote == [], f"showing the mode commanded the load: {wrote}"
+
+
+class TestTheBatteryGroupIsCompact:
+    """It shares the window with the readouts, so a row of height for
+    nothing costs something visible.
+
+    Discharge and Von are two rows against the cut-offs' three, which
+    left the left column's third row empty and pushed the measured
+    figures onto a fifth row of their own. The figures now sit in that
+    gap and the row is gone.
+    """
+
+    def _shown(self, qapp):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(BATTERY_CAPABILITIES)
+        panel.resize(1960, 900)
+        panel.show()
+        qapp.processEvents()
+        return panel
+
+    def test_the_figures_share_a_row_with_a_cutoff(self, qapp):
+        """Which is what proves the empty row is gone."""
+        panel = self._shown(qapp)
+        results = panel.battery_results.geometry()
+        last_cutoff = panel.stop_time_spin.geometry()
+        assert abs(results.y() - last_cutoff.y()) < 12, (
+            f"figures at y={results.y()}, last cut-off at "
+            f"y={last_cutoff.y()} -- they are on separate rows")
+
+    def test_nothing_sits_below_the_figures(self, qapp):
+        panel = self._shown(qapp)
+        bottom = panel.battery_results.geometry().bottom()
+        for name in ("battery_enable", "battery_apply_button",
+                     "battery_level_spin", "battery_von_spin",
+                     "stop_volts_spin", "stop_ah_spin", "stop_time_spin"):
+            assert getattr(panel, name).geometry().top() <= bottom + 4, name
+
+    def test_the_two_buttons_share_the_top_row(self, qapp):
+        panel = self._shown(qapp)
+        enter = panel.battery_enable.geometry()
+        apply_ = panel.battery_apply_button.geometry()
+        assert abs(enter.y() - apply_.y()) < 6, (enter, apply_)
+        assert enter.right() < apply_.left(), "they overlap"
+
+    def test_the_group_leaves_room_for_the_readouts(self, qapp):
+        """The whole point of tightening it."""
+        panel = self._shown(qapp)
+        assert panel.battery_group.geometry().height() <= 150, (
+            panel.battery_group.geometry().height())
+        assert panel.views.geometry().height() > \
+            panel.battery_group.geometry().height() * 2

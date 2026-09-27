@@ -447,7 +447,7 @@ class ElectronicLoadPanel(InstrumentPanel):
 
         self.battery_apply_button = QPushButton("Apply battery settings")
         self.battery_apply_button.clicked.connect(self._apply_battery)
-        bgrid.addWidget(self.battery_apply_button, 3, 0, 1, 2)
+        bgrid.addWidget(self.battery_apply_button, 0, 2, 1, 2)
 
         # What the discharge has measured. Readable while it runs and
         # after it stops, which is the only way to get the result out --
@@ -457,7 +457,12 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.battery_results.setToolTip(
             "Read from the load while the discharge runs and after it "
             "stops.")
-        bgrid.addWidget(self.battery_results, 4, 0, 1, 4)
+        # In the gap the left column leaves, not on a row of its own.
+        # Discharge and Von are two rows against the cut-offs' three,
+        # so the third was empty and the figures sat below it -- a
+        # row of height for nothing, on a panel that shares the
+        # window with the readouts.
+        bgrid.addWidget(self.battery_results, 3, 0, 1, 2)
 
         layout.addWidget(self.battery_group)
 
