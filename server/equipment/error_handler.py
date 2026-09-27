@@ -252,11 +252,37 @@ class HealthMonitor:
                 logger.error(f"Error in health monitoring loop: {e}")
 
     async def _check_all_equipment(self, equipment_manager):
-        """Check health of all connected equipment."""
-        for equipment_id, equipment in equipment_manager.equipment.items():
+        """Check health of all connected equipment.
+
+        Iterate a snapshot, not the live dict. This walked
+        ``equipment_manager.equipment`` directly while awaiting inside
+        the loop, so anything that added or removed an instrument
+        mid-pass raised "dictionary changed size during iteration".
+        Connecting one does exactly that, and it happens between two
+        awaits, so the odds are good.
+
+        The cost was not the log line. The exception escaped to
+        _monitor_loop, which caught it and slept, so every instrument
+        after the mutation went unchecked until the next interval --
+        health monitoring quietly skipping most of the bench, in the
+        minute after somebody connected something.
+
+        A snapshot has its own hazard, which the two membership checks
+        below cover: an instrument can be disconnected while this pass
+        is in flight, and reconnecting one the operator has just let
+        go of is worse than skipping it. Identity, not just presence,
+        because the id can be reused by a different object.
+        """
+        for equipment_id, equipment in list(equipment_manager.equipment.items()):
+            if equipment_manager.equipment.get(equipment_id) is not equipment:
+                continue
             try:
                 # Perform health check (get status)
                 status = await equipment.get_status()
+
+                # It may have gone while that was in flight.
+                if equipment_manager.equipment.get(equipment_id) is not equipment:
+                    continue
 
                 if not status.connected:
                     logger.warning(
