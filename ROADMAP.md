@@ -614,9 +614,58 @@ screen while the main window stays on whatever they are driving.
 
 ---
 
+#### 6. Report an Unrecognised Instrument 💡
+**Priority:** ⭐⭐
+**Target:** TBD
+**Effort:** 3-5 days
+**Related:** `server/equipment/bk_registry.py`, `server/equipment/siglent_registry.py`
+
+When discovery finds an instrument it cannot place, offer a button that
+gathers everything needed to add support for it and hands the operator a
+report to submit. Today that evidence has to be collected by hand, over SSH,
+by somebody who already knows to run `lsusb` — which means it never happens
+and the instrument stays unsupported.
+
+**What it collects:**
+- The `*IDN?` reply, verbatim, including any padding or odd field layout
+- The VISA resource string exactly as enumerated
+- USB vendor and product id, and the `lsusb` line, which catch rebadges: the
+  bench SPD3303X-E enumerates as *Atten Electronics* because `0xF4EC` is
+  still registered to Atten
+- What each registry made of it — manufacturer matched or not, model
+  resolved or not, category guessed from a prefix or not at all
+- Which transport it was found on, and LabLink's version
+
+**How it submits:**
+- Nothing leaves the machine without the operator seeing it first. The
+  report is shown in full, as text, before anything is sent
+- Serial numbers are redacted by default, with a switch to include them.
+  A serial identifies a specific instrument in a specific lab
+- Submission is a prefilled GitHub issue, so there is no service to run and
+  the operator keeps the report either way
+- A copy-to-clipboard path for a bench with no route to the internet, which
+  is most of them
+
+**Design notes:**
+- Trigger it from the connect dialog, where "unknown" is already visible.
+  It should also be reachable for an instrument that *was* identified but
+  behaved oddly — half the value is in the near misses
+- The same report shape makes a good bug attachment and a good registry
+  entry, so it should be structured rather than a wall of prose
+
+**Benefits:**
+- The hard part of adding an instrument is knowing what it answers; this
+  collects exactly that from someone who has one plugged in
+- Rebadges and vendor-id oddities show up in the data instead of being
+  rediscovered per user
+- Somebody whose instrument is unsupported gets something to do about it
+  other than give up
+
+---
+
 ### Lower Priority (v1.4.0+) ⭐
 
-#### 6. Advanced Analytics & ML 💡
+#### 7. Advanced Analytics & ML 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 2-3 weeks
@@ -635,7 +684,7 @@ screen while the main window stays on whatever they are driving.
 
 ---
 
-#### 7. Multi-Server Aggregation 💡
+#### 8. Multi-Server Aggregation 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 1-2 weeks
@@ -654,7 +703,7 @@ screen while the main window stays on whatever they are driving.
 
 ---
 
-#### 8. Web Dashboard Enhancements 💡
+#### 9. Web Dashboard Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 1-2 weeks
@@ -674,7 +723,7 @@ screen while the main window stays on whatever they are driving.
 
 ---
 
-#### 9. Equipment Discovery Enhancements 💡
+#### 10. Equipment Discovery Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 3-5 days
