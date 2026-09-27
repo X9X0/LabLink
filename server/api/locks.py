@@ -164,6 +164,23 @@ async def acquire_lock(request: AcquireLockRequest, http_request: Request = None
     to a person rather than a session id.
     """
     try:
+        # A lock on equipment that is not registered is a confident yes
+        # to a question whose answer is no. It blocks nobody and
+        # protects nothing, and it misreports the situation: seen on the
+        # bench after a deploy restart emptied the registry, where
+        # acquiring an exclusive lock on the load succeeded and the very
+        # next command came back 404, which made a missing registration
+        # look like a broken command.
+        from server.equipment.manager import equipment_manager
+
+        if equipment_manager.get_equipment(request.equipment_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(f"No equipment {request.equipment_id!r} is "
+                        f"registered, so there is nothing to lock. If it "
+                        f"was connected before a restart, reconnect it "
+                        f"first."))
+
         username, client_ip = _identify(http_request)
         if request.username:
             username = request.username
@@ -184,6 +201,11 @@ async def acquire_lock(request: AcquireLockRequest, http_request: Request = None
 
     except LockViolation as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except HTTPException:
+        # The 404 above is an answer, not a failure. Without this the
+        # blanket handler below would turn it into a 500 and bury the
+        # one sentence that says what to do about it.
+        raise
     except Exception as e:
         logger.error(f"Error acquiring lock: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to acquire lock: {str(e)}")
