@@ -11,6 +11,11 @@ jobs:
   test-server:
     name: Server Tests with Mock Equipment
     runs-on: ubuntu-latest
+    # Bounded, for the reason comprehensive-tests.yml is: a hung
+    # job runs to GitHub's six-hour default and its log cannot be
+    # fetched until it finishes, so a stuck run is both expensive
+    # and completely silent.
+    timeout-minutes: 25
 
     strategy:
       matrix:
@@ -74,6 +79,7 @@ jobs:
   test-integration:
     name: Integration Tests with Mock Equipment
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: test-server
 
     steps:
@@ -97,24 +103,37 @@ jobs:
         env:
           LABLINK_ENABLE_MOCK_EQUIPMENT: 'true'
         run: |
-          python -m server.main &
+          # Captured to a file so the wait below can show why, if the
+          # server ever genuinely fails to come up. No pipe: $! must be
+          # the server, not a tee.
+          python -m server.main > server.log 2>&1 &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
           # Wait for server to start, and fail if it never does -- see the
           # matching note in comprehensive-tests.yml. A dead server here means
           # every integration test skips and the job still reports success.
+          #
+          # 90s, not 30. This is the same bound that was wrong over
+          # there: the server was still initialising at 26s -- equipment
+          # manager, test automation, backup, discovery, the security
+          # database migrations, then mDNS -- and the loop gave up
+          # partway through. b8e1c3d fixed the copy in
+          # comprehensive-tests.yml and left this one, so the first run
+          # of this workflow on a branch failed for a reason already
+          # diagnosed and fixed elsewhere.
           echo "Waiting for server to start..."
-          for i in {1..30}; do
+          for i in {1..90}; do
             if curl -s http://localhost:8000/health > /dev/null; then
-              echo "Server is up!"
+              echo "Server is up after ${i}s"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "::error::Server did not start within 30s"
+            if [ "$i" -eq 90 ]; then
+              echo "::error::Server did not start within 90s"
+              echo "--- last 60 lines of server output ---"
+              tail -60 server.log 2>/dev/null || echo "(no server.log)"
               exit 1
             fi
-            echo "Waiting... ($i/30)"
             sleep 1
           done
 
@@ -132,6 +151,7 @@ jobs:
   test-demo-script:
     name: Test Demo Script
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
@@ -168,6 +188,7 @@ jobs:
   lint-and-format:
     name: Lint and Format Check
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
@@ -202,6 +223,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [test-server, test-integration, test-demo-script, lint-and-format]
     if: always()
 
