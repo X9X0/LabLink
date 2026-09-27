@@ -1520,9 +1520,13 @@ class TestRunningAList:
     """The editor could build a sequence and send it, and nothing could
     hand the setpoint to the list subsystem -- so the list never ran.
 
-    There is no start command to send. The guide has no :LIST:STARt;
-    :FUNCtion:MODE LIST is itself the start, and the input switch does
-    the rest.
+    Then this button selected :FUNCtion:MODE LIST and stopped there,
+    because the guide has no :LIST:STARt and describes LIST as "the
+    input regulation mode is determined by the activated list command".
+    On the bench that only arms the list: the load sat with the RUN bit
+    set, drawing a steady current, stepping nothing. A trigger is what
+    runs it, so the button goes through the driver's start_list, which
+    sets the source, arms and fires in that order.
     """
 
     def _panel(self, client=None):
@@ -1534,20 +1538,35 @@ class TestRunningAList:
     def test_there_is_a_run_button(self, qapp):
         assert self._panel().list_run_button is not None
 
-    def test_running_hands_the_setpoint_to_the_list(self, qapp):
+    def test_running_starts_the_list(self, qapp):
         client = FakeLoadClient()
         panel = self._panel(client)
         client.commands.clear()
 
         _with_loop(qapp, lambda: panel.list_run_button.click())
 
-        assert ("set_function_mode", {"function_mode": "LIST"}) in \
-            client.commands, client.commands
+        assert any(c[0] == "start_list" for c in client.commands), \
+            client.commands
 
-    def test_stopping_asserts_the_regulation_mode(self, qapp):
-        """Same asymmetry as battery: the load accepts
-        :SOUR:FUNC:MODE and ignores it when it will not leave the mode
-        it is in."""
+    def test_running_does_not_merely_select_the_mode(self, qapp):
+        """The bug this button shipped with.
+
+        Selecting LIST and stopping there arms the load and runs
+        nothing. Whatever else the panel sends, the run has to go
+        through start_list, which is the only path that triggers.
+        """
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+
+        sent = [c[0] for c in client.commands]
+        assert "start_list" in sent, sent
+        assert "set_function_mode" not in sent, (
+            "arming the mode from the panel skips the trigger: %s" % sent)
+
+    def test_stopping_stops_the_list(self, qapp):
         client = FakeLoadClient()
         panel = self._panel(client)
         panel._show_list_running(True)
@@ -1555,8 +1574,27 @@ class TestRunningAList:
 
         _with_loop(qapp, lambda: panel.list_run_button.click())
 
-        assert any(c[0] == "set_mode" for c in client.commands), \
+        assert any(c[0] == "stop_list" for c in client.commands), \
             client.commands
+
+    def test_a_failed_start_leaves_the_button_where_the_load_is(self, qapp):
+        """A refused start that left the button reading "Stop list"
+        would invite the operator to stop a list that never began."""
+        client = FakeLoadClient()
+
+        def refuse(equipment_id, command, parameters=None):
+            if command == "start_list":
+                raise RuntimeError("locked by another session")
+            return FakeLoadClient.send_command(
+                client, equipment_id, command, parameters)
+
+        panel = self._panel(client)
+        client.send_command = refuse
+
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+
+        assert not panel.list_run_button.isChecked()
+        assert "Run" in panel.list_run_button.text()
 
     def test_the_button_says_which_way_it_goes(self, qapp):
         panel = self._panel()

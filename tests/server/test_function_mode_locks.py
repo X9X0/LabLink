@@ -26,6 +26,12 @@ class TestTheFunctionModeSettersNeedALock:
         "set_list_step",
         "set_list_mode",
         "set_list_end_state",
+        # Neither of these is spelled "set_something", so neither is
+        # caught by any of the entries above. Starting a list drives
+        # somebody else's load through a current profile; stopping one
+        # takes their running test away part-way through.
+        "start_list",
+        "stop_list",
     ])
     def test_it_is_control(self, action):
         assert requires_control(action), f"{action} bypasses the lock"
@@ -36,6 +42,9 @@ class TestTheFunctionModeSettersNeedALock:
         "get_battery_cutoffs",
         "get_battery_results",
         "get_list_step",
+        "get_list_mode",
+        "get_list_end_state",
+        "get_trigger_source",
         "get_protection_status",
         "get_readings",
     ])

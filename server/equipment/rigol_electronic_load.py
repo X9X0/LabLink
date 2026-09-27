@@ -414,6 +414,8 @@ class RigolDL3000Base(BaseEquipment):
             "get_list_mode": self.get_list_mode,
             "set_list_end_state": self.set_list_end_state,
             "get_list_end_state": self.get_list_end_state,
+            "start_list": self.start_list,
+            "stop_list": self.stop_list,
             "get_slew_limits": self.get_slew_limits,
             "get_options": self.get_options,
             "set_slew_rate": self.set_slew_rate,
@@ -1246,6 +1248,45 @@ class RigolDL3000Base(BaseEquipment):
     async def get_list_end_state(self) -> bool:
         raw = (await self._query(":SOUR:LIST:END?")).strip().upper()
         return raw.startswith("LAST")
+
+    async def start_list(self) -> None:
+        """Arm the list and fire the trigger that makes it step.
+
+        The guide gives no start command for the list, and
+        [:SOURce]:FUNCtion:MODE describes LIST as "the input regulation
+        mode is determined by the activated list command", which reads
+        like selecting the mode is itself the start. It is not.
+
+        On the bench (DL3B268M00049, firmware 00.01.05.00.01) a load in
+        LIST with its input on and the RUN bit set drew a steady
+        current and stepped nothing, for minutes. The same list ran to
+        completion the moment a trigger arrived -- every step, every
+        cycle, and the input switched itself off at the end as
+        :LIST:END OFF says it should.
+
+        The guide never connects the two: the list section does not
+        mention a trigger and :TRIGger:SOURce does not mention the
+        list. So this ordering is bench knowledge, and it belongs here
+        rather than in whichever caller happens to want a list run.
+
+        The source is set before the mode, not after. Changing the
+        trigger source disarms the transient generator -- see trigger(),
+        where setting it immediately before firing meant the generator
+        could never run -- and arming the list and then moving the
+        source out from under it invites exactly that.
+        """
+        await self.set_trigger_source("BUS")
+        await self.set_function_mode("LIST")
+        await self._command(":TRIG")
+
+    async def stop_list(self) -> None:
+        """Hand the setpoint back to the fixed level.
+
+        There is no stop command either. Leaving a function mode is
+        done by asserting the one you want, which is the asymmetry
+        set_function_mode documents.
+        """
+        await self.set_function_mode("FIX")
 
     async def get_protection_status(self) -> Dict[str, Any]:
         """What the load's questionable status register is reporting.

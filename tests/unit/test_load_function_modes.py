@@ -376,6 +376,80 @@ class TestTheList:
         assert await load.get_list_end_state() is False
 
 
+class TestRunningTheList:
+    """Selecting LIST arms the list. A trigger runs it.
+
+    The guide never says so. Its list section does not mention a
+    trigger, :TRIGger:SOURce does not mention the list, and
+    [:SOURce]:FUNCtion:MODE describes LIST as "the input regulation
+    mode is determined by the activated list command", which reads like
+    the mode selection is the start.
+
+    The bench says otherwise. On DL3B268M00049, firmware
+    00.01.05.00.01, a load in LIST with its input on and the RUN bit
+    set drew a steady current and stepped nothing for minutes. The same
+    list ran every step of every cycle the moment a trigger arrived,
+    and switched its own input off at the end as :LIST:END OFF says.
+    """
+
+    def _armed(self):
+        return driver(answers={":SOUR:FUNC:MODE?": "LIST",
+                               ":TRIG:SOUR?": "MANUAL"})
+
+    @pytest.mark.asyncio
+    async def test_starting_a_list_fires_a_trigger(self):
+        """The whole bug in one assertion: without this the load arms
+        and never steps."""
+        load = self._armed()
+        await load.start_list()
+        assert ":TRIG" in commands(load), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_it_selects_list_mode_too(self):
+        load = self._armed()
+        await load.start_list()
+        assert ":SOUR:FUNC:MODE LIST" in commands(load), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_the_source_is_bus_before_the_mode_is_armed(self):
+        """Order matters, and it is not arbitrary.
+
+        Changing the trigger source disarms the transient generator --
+        the reason trigger() reads the source instead of setting it --
+        so the source is moved first and the list armed onto a source
+        that is already right.
+        """
+        load = self._armed()
+        await load.start_list()
+        sent = commands(load)
+        assert ":TRIG:SOUR BUS" in sent, sent
+        assert sent.index(":TRIG:SOUR BUS") < sent.index(":SOUR:FUNC:MODE LIST")
+        assert sent.index(":SOUR:FUNC:MODE LIST") < sent.index(":TRIG")
+
+    @pytest.mark.asyncio
+    async def test_a_mode_that_did_not_land_is_not_triggered(self):
+        """If the load did not go to LIST, firing a trigger runs
+        whatever it did go to. set_function_mode raises; start_list must
+        let that through rather than trigger anyway."""
+        load = driver(answers={":SOUR:FUNC:MODE?": "BATT",
+                               ":TRIG:SOUR?": "MANUAL"})
+        with pytest.raises(Exception):
+            await load.start_list()
+        assert ":TRIG" not in commands(load), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_stopping_goes_back_to_fixed(self):
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX"})
+        await load.stop_list()
+        assert ":SOUR:FUNC:MODE FIX" in commands(load), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_stopping_does_not_trigger_anything(self):
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX"})
+        await load.stop_list()
+        assert ":TRIG" not in commands(load), commands(load)
+
+
 class TestTheApiCanReachAllOfIt:
     @pytest.mark.parametrize("action,args", [
         ("set_function_mode", {"function_mode": "OCP"}),
@@ -384,6 +458,8 @@ class TestTheApiCanReachAllOfIt:
         ("set_list_step", {"step": 1, "level": 1.0}),
         ("set_list_mode", {"mode": "CC"}),
         ("set_list_end_state", {"hold_last": True}),
+        ("start_list", {}),
+        ("stop_list", {}),
     ])
     @pytest.mark.asyncio
     async def test_the_setters_are_dispatched(self, action, args):

@@ -234,9 +234,9 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.list_run_button = QPushButton("Run list")
         self.list_run_button.setCheckable(True)
         self.list_run_button.setToolTip(
-            "Hand the setpoint to the list. The load still needs its\n"
-            "input switching on to draw, and runs the sequence on its\n"
-            "own clock until the cycles are done."
+            "Hand the setpoint to the list and trigger it. The load\n"
+            "still needs its input switching on to draw, and then runs\n"
+            "the sequence on its own clock until the cycles are done."
         )
         self.list_run_button.clicked.connect(self._on_list_run_toggled)
 
@@ -787,13 +787,19 @@ class ElectronicLoadPanel(InstrumentPanel):
         """Ask the load whether a list is actually stepping.
 
         Bit 128 of the questionable status register -- the guide calls
-        it RUN, "Runs in List mode" -- and the only honest answer
-        available. :FUNC:MODE? reports which front-panel screen is up,
-        so a load running a list on the waveform display says WAV.
+        it RUN, "Runs in List mode". It covers armed as well as
+        stepping: the bit goes up when LIST is selected and comes down
+        when the list finishes its cycles.
 
-        Seen on the bench: Run was pressed, the load set bit 128, and
-        the button popped back out on the next refresh because WAV is
-        not LIST. The list was running the whole time.
+        :FUNC:MODE? is not usable for this. It reports which
+        front-panel screen is up, so a load in LIST with the waveform
+        display showing answers WAV.
+
+        An earlier note here said a list was running the whole time
+        while the button popped out. It was not. The load was armed and
+        never triggered, which held the bit up indefinitely -- see
+        start_list in the driver. With the trigger sent the list ends
+        and the bit clears on its own.
         """
         if not self._supports_battery:
             return          # same capability: a DL3000 has both or neither
@@ -952,7 +958,9 @@ class ElectronicLoadPanel(InstrumentPanel):
             said = {
                 "BATT": "Battery discharge selected -- switch the load on "
                         "to start",
-                "LIST": "List selected -- switch the load on to run it",
+                # Selecting the mode only arms it; Run list is what
+                # triggers a list into stepping.
+                "LIST": "List mode selected -- press Run list to start it",
             }.get(mode, "Back to fixed operation")
             self.status_message.emit(said)
         except Exception as e:
@@ -961,13 +969,15 @@ class ElectronicLoadPanel(InstrumentPanel):
             self._show_function_mode(self._function_mode)
 
     def _on_list_run_toggled(self, wanted: bool):
-        """Enter or leave list mode.
+        """Start or stop the list.
 
-        There is no start command to send: the guide has no
-        :LIST:STARt, and :FUNCtion:MODE LIST is itself the start --
-        "the input regulation mode is determined by the activated list
-        command". Leaving is the same asymmetry as battery, so it goes
-        through the same path.
+        Selecting LIST does not start one. The load arms, sets the RUN
+        bit, and steps nothing until a trigger arrives -- which is what
+        this button used to do, and why a list that looked armed never
+        moved. The driver's start_list does the whole sequence in the
+        order the bench established; arming and triggering are one
+        action from here, because a half-started list is
+        indistinguishable from a broken one.
         """
         if not (self.client and self.equipment):
             return
@@ -975,7 +985,27 @@ class ElectronicLoadPanel(InstrumentPanel):
             asyncio.get_running_loop()
         except RuntimeError:
             return              # see _on_mode_changed
-        self._send_function_mode("LIST" if wanted else "FIX")
+        self._send_list_run(wanted)
+
+    @qasync.asyncSlot(bool)
+    async def _send_list_run(self, wanted: bool):
+        try:
+            await self.send("start_list" if wanted else "stop_list", {})
+        except Exception as e:
+            logger.error(f"Running the list failed: {e}")
+            self.status_message.emit(f"Running the list failed: {e}")
+            # Back where the load still is, rather than showing a run
+            # that was never started.
+            self._show_list_running(not wanted)
+            return
+        self._function_mode = "LIST" if wanted else "FIX"
+        if not wanted:
+            self.status_message.emit("List stopped -- back to fixed operation")
+        elif self.input_button.isChecked():
+            self.status_message.emit("List running")
+        else:
+            self.status_message.emit(
+                "List started -- switch the load on to draw the steps")
 
     def _show_list_running(self, running: bool):
         """Put the button where the load actually is, commanding

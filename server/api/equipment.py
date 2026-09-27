@@ -45,6 +45,12 @@ CONTROL_COMMANDS = {
     "set_function",
     "set_list",
     "set_battery",
+    # Running a list is control, and neither of these is spelled
+    # "set_something", so neither is caught by any entry above. Starting
+    # one drives somebody else's load through a current profile; stopping
+    # one takes their running test away mid-sequence.
+    "start_list",
+    "stop_list",
     "set_range",
     "set_channel",
     "set_trigger",
