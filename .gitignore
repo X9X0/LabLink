@@ -42,6 +42,14 @@ Thumbs.db
 *.hdf5
 *.npy
 data/
+# ...except test fixtures. "data/" is for captured measurements and
+# scratch output, but it matches any directory of that name at any
+# depth, so tests/unit/data/ fell under it silently. git add -A skipped
+# the keyword table generated from the Rigol manuals, the commit looked
+# clean, and CI failed on a FileNotFoundError for a file that had
+# passed locally all day.
+!tests/**/data/
+!tests/**/data/**
 logs/
 *_debug.log
 *.log

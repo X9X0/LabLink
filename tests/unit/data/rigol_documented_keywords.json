@@ -1,0 +1,3929 @@
+{
+ "bk_electronic_load.py": {
+  "families": [
+   "B&K SCPI"
+  ],
+  "guides": [
+   "1696B__1696B_Series_programming_manual.txt",
+   "1900B__1900B_Series_programming_manual.txt",
+   "2194__2194_programming_manual.txt",
+   "2510B__2510B_Series_programming_manual.txt",
+   "2680__2680_Series_programming_manual.txt",
+   "2840__2840_Series_programming_manual.txt",
+   "4088__4088_Series_programming_manual.txt",
+   "5335B__5335B_programming_manual.txt",
+   "5490C__5490C_Series_programming_manual.txt",
+   "8460__8460_programming_manual.txt",
+   "8500B__8500B_Series_programming_manual.txt",
+   "8550__8550_Series_programming_manual.txt",
+   "8600__8600_Series_programming_manual.txt",
+   "9115__9115_Series_programming_manual.txt",
+   "9129B__9129B_programming_manual.txt",
+   "9130B__9130B_Series_programming_manual.txt",
+   "9130C__9130C_Series_programming_manual.txt",
+   "9140__9140_Series_programming_manual.txt",
+   "9240__9240_Series_programming_manual.txt",
+   "9800__9800_Series_programming_manual.txt",
+   "9810__9810_Series_programming_manual.txt",
+   "9830B__9830B_Series_programming_manual.txt",
+   "BA6010__BA6010_Series_programming_manual.txt",
+   "MDL__MDL_Series_programming_manual.txt",
+   "MR__MR_Series_programming_manual.txt",
+   "RFM3000__RFM3000_Series_programming_manual.txt"
+  ],
+  "keywords": {}
+ },
+ "bk_power_supply.py": {
+  "families": [
+   "B&K SCPI"
+  ],
+  "guides": [
+   "1696B__1696B_Series_programming_manual.txt",
+   "1900B__1900B_Series_programming_manual.txt",
+   "2194__2194_programming_manual.txt",
+   "2510B__2510B_Series_programming_manual.txt",
+   "2680__2680_Series_programming_manual.txt",
+   "2840__2840_Series_programming_manual.txt",
+   "4088__4088_Series_programming_manual.txt",
+   "5335B__5335B_programming_manual.txt",
+   "5490C__5490C_Series_programming_manual.txt",
+   "8460__8460_programming_manual.txt",
+   "8500B__8500B_Series_programming_manual.txt",
+   "8550__8550_Series_programming_manual.txt",
+   "8600__8600_Series_programming_manual.txt",
+   "9115__9115_Series_programming_manual.txt",
+   "9129B__9129B_programming_manual.txt",
+   "9130B__9130B_Series_programming_manual.txt",
+   "9130C__9130C_Series_programming_manual.txt",
+   "9140__9140_Series_programming_manual.txt",
+   "9240__9240_Series_programming_manual.txt",
+   "9800__9800_Series_programming_manual.txt",
+   "9810__9810_Series_programming_manual.txt",
+   "9830B__9830B_Series_programming_manual.txt",
+   "BA6010__BA6010_Series_programming_manual.txt",
+   "MDL__MDL_Series_programming_manual.txt",
+   "MR__MR_Series_programming_manual.txt",
+   "RFM3000__RFM3000_Series_programming_manual.txt"
+  ],
+  "keywords": {
+   "CURR": {
+    "documented": [
+     "CURR",
+     "CURRent"
+    ],
+    "truncates": [
+     "CURRent"
+    ]
+   },
+   "ERR": {
+    "documented": [
+     "ERR",
+     "ERRor"
+    ],
+    "truncates": [
+     "ERRor"
+    ]
+   },
+   "IDN": {
+    "common": true
+   },
+   "MEAS": {
+    "documented": [
+     "MEAS",
+     "MEASure"
+    ],
+    "truncates": [
+     "MEASMODE",
+     "MEASure"
+    ]
+   },
+   "SYST": {
+    "documented": [
+     "SYST",
+     "SYSTe",
+     "SYSTem"
+    ],
+    "truncates": [
+     "SYSTEM",
+     "SYSTe",
+     "SYSTem",
+     "SYStem",
+     "System"
+    ]
+   },
+   "VOLT": {
+    "documented": [
+     "VOLT",
+     "VOLTage"
+    ],
+    "truncates": [
+     "VOLTAGE",
+     "VOLTage",
+     "Voltage"
+    ]
+   }
+  }
+ },
+ "bk_scpi.py": {
+  "families": [
+   "B&K SCPI"
+  ],
+  "guides": [
+   "1696B__1696B_Series_programming_manual.txt",
+   "1900B__1900B_Series_programming_manual.txt",
+   "2194__2194_programming_manual.txt",
+   "2510B__2510B_Series_programming_manual.txt",
+   "2680__2680_Series_programming_manual.txt",
+   "2840__2840_Series_programming_manual.txt",
+   "4088__4088_Series_programming_manual.txt",
+   "5335B__5335B_programming_manual.txt",
+   "5490C__5490C_Series_programming_manual.txt",
+   "8460__8460_programming_manual.txt",
+   "8500B__8500B_Series_programming_manual.txt",
+   "8550__8550_Series_programming_manual.txt",
+   "8600__8600_Series_programming_manual.txt",
+   "9115__9115_Series_programming_manual.txt",
+   "9129B__9129B_programming_manual.txt",
+   "9130B__9130B_Series_programming_manual.txt",
+   "9130C__9130C_Series_programming_manual.txt",
+   "9140__9140_Series_programming_manual.txt",
+   "9240__9240_Series_programming_manual.txt",
+   "9800__9800_Series_programming_manual.txt",
+   "9810__9810_Series_programming_manual.txt",
+   "9830B__9830B_Series_programming_manual.txt",
+   "BA6010__BA6010_Series_programming_manual.txt",
+   "MDL__MDL_Series_programming_manual.txt",
+   "MR__MR_Series_programming_manual.txt",
+   "RFM3000__RFM3000_Series_programming_manual.txt"
+  ],
+  "keywords": {
+   "AC": {
+    "documented": [
+     "AC"
+    ],
+    "truncates": [
+     "ACAL",
+     "ACAPParent",
+     "ACFREQuency",
+     "ACPR",
+     "ACPRatio",
+     "ACQ"
+    ]
+   },
+   "ALEV": {
+    "documented": [
+     "ALEV",
+     "ALEVel"
+    ],
+    "truncates": [
+     "ALEVel"
+    ]
+   },
+   "AWID": {
+    "documented": [
+     "AWID",
+     "AWIDth"
+    ],
+    "truncates": [
+     "AWIDT",
+     "AWIDth"
+    ]
+   },
+   "BLEV": {
+    "documented": [
+     "BLEV",
+     "BLEVel"
+    ],
+    "truncates": [
+     "BLEVel"
+    ]
+   },
+   "BWID": {
+    "documented": [
+     "BWID",
+     "BWIDth"
+    ],
+    "truncates": [
+     "BWIDT",
+     "BWIDth"
+    ]
+   },
+   "CLE": {
+    "documented": [
+     "CLE",
+     "CLEar"
+    ],
+    "truncates": [
+     "CLEAr",
+     "CLEV",
+     "CLEVel",
+     "CLEar"
+    ]
+   },
+   "CURR": {
+    "documented": [
+     "CURR",
+     "CURRent"
+    ],
+    "truncates": [
+     "CURRent"
+    ]
+   },
+   "DC": {
+    "documented": [
+     "DC"
+    ],
+    "truncates": [
+     "DCCN",
+     "DCIC",
+     "DCLN",
+     "DCSP",
+     "DCUT",
+     "DCYC"
+    ]
+   },
+   "DEL": {
+    "documented": [
+     "DEL",
+     "DELay",
+     "DELete",
+     "DELta"
+    ],
+    "truncates": [
+     "DELAY",
+     "DELT",
+     "DELTa",
+     "DELay",
+     "DELete",
+     "DELta"
+    ]
+   },
+   "ERR": {
+    "documented": [
+     "ERR",
+     "ERRor"
+    ],
+    "truncates": [
+     "ERRor"
+    ]
+   },
+   "IDN": {
+    "common": true
+   },
+   "INST": {
+    "documented": [
+     "INST",
+     "INSTrument",
+     "INSTrunent",
+     "INSTument"
+    ],
+    "truncates": [
+     "INSTrument",
+     "INSTrunent",
+     "INSTument",
+     "INStrument"
+    ]
+   },
+   "LOC": {
+    "documented": [
+     "LOC",
+     "LOCal"
+    ],
+    "truncates": [
+     "LOCK",
+     "LOCal"
+    ]
+   },
+   "MEAS": {
+    "documented": [
+     "MEAS",
+     "MEASure"
+    ],
+    "truncates": [
+     "MEASMODE",
+     "MEASure"
+    ]
+   },
+   "MODE": {
+    "documented": [
+     "MODE",
+     "MODe",
+     "Mode"
+    ],
+    "truncates": [
+     "MODel"
+    ]
+   },
+   "NSEL": {
+    "documented": [
+     "NSELect"
+    ],
+    "truncates": [
+     "NSELect"
+    ]
+   },
+   "OUTP": {
+    "documented": [
+     "OUTP",
+     "OUTPut",
+     "OUTp"
+    ],
+    "truncates": [
+     "OUTPut"
+    ]
+   },
+   "POW": {
+    "documented": [
+     "POW",
+     "POWer"
+    ],
+    "truncates": [
+     "POWer",
+     "PowerFactor"
+    ]
+   },
+   "PROT": {
+    "documented": [
+     "PROT",
+     "PROTect",
+     "PROTection",
+     "PROToct"
+    ],
+    "truncates": [
+     "PROTect",
+     "PROTection",
+     "PROToct"
+    ]
+   },
+   "STAT": {
+    "documented": [
+     "STAT",
+     "STATe",
+     "STATistical",
+     "STATistics",
+     "STATus"
+    ],
+    "truncates": [
+     "STATUS",
+     "STATe",
+     "STATistical",
+     "STATistics",
+     "STATus"
+    ]
+   },
+   "SYST": {
+    "documented": [
+     "SYST",
+     "SYSTe",
+     "SYSTem"
+    ],
+    "truncates": [
+     "SYSTEM",
+     "SYSTe",
+     "SYSTem",
+     "SYStem",
+     "System"
+    ]
+   },
+   "TRAN": {
+    "documented": [
+     "TRAN",
+     "TRANsient",
+     "TRANsition",
+     "TRANsparence"
+    ],
+    "truncates": [
+     "TRANsient",
+     "TRANsition",
+     "TRANsparence"
+    ]
+   },
+   "TRIP": {
+    "documented": [
+     "TRIPed"
+    ],
+    "truncates": [
+     "TRIPed"
+    ]
+   },
+   "TST": {
+    "common": true
+   },
+   "VOLT": {
+    "documented": [
+     "VOLT",
+     "VOLTage"
+    ],
+    "truncates": [
+     "VOLTAGE",
+     "VOLTage",
+     "Voltage"
+    ]
+   }
+  }
+ },
+ "rigol_daq.py": {
+  "families": [
+   "M300"
+  ],
+  "guides": [
+   "M300__M300 Programming Manual.txt"
+  ],
+  "keywords": {
+   "AC": {
+    "documented": [
+     "AC"
+    ],
+    "truncates": []
+   },
+   "ALARm": {
+    "documented": [
+     "ALARm"
+    ],
+    "truncates": []
+   },
+   "CHANnel": {
+    "documented": [
+     "CHANnel"
+    ],
+    "truncates": []
+   },
+   "CLOSe": {
+    "documented": [
+     "CLOSe"
+    ],
+    "truncates": []
+   },
+   "CONFigure": {
+    "documented": [
+     "CONFigure"
+    ],
+    "truncates": []
+   },
+   "COUNt": {
+    "documented": [
+     "COUNt"
+    ],
+    "truncates": []
+   },
+   "CTYPe": {
+    "documented": [
+     "CTYPe"
+    ],
+    "truncates": []
+   },
+   "CURR": {
+    "documented": [
+     "CURR",
+     "CURRent"
+    ],
+    "truncates": [
+     "CURRent"
+    ]
+   },
+   "CURRENT": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "CURRent": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": []
+   },
+   "DC": {
+    "documented": [
+     "DC"
+    ],
+    "truncates": []
+   },
+   "DMM": {
+    "documented": [
+     "DMM"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "FORMat": {
+    "documented": [
+     "FORMat"
+    ],
+    "truncates": []
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency",
+     "Frequency"
+    ],
+    "truncates": []
+   },
+   "FRESistance": {
+    "documented": [
+     "FRESistance",
+     "FResistance"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "INSTalled": {
+    "documented": [
+     "INSTalled"
+    ],
+    "truncates": []
+   },
+   "INSTrument": {
+    "documented": [
+     "INSTrument"
+    ],
+    "truncates": []
+   },
+   "OPEN": {
+    "documented": [
+     "OPEN",
+     "OPENtimes"
+    ],
+    "truncates": [
+     "OPENtimes"
+    ]
+   },
+   "PERiod": {
+    "documented": [
+     "PERiod"
+    ],
+    "truncates": []
+   },
+   "POINts": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": []
+   },
+   "READing": {
+    "documented": [
+     "READing"
+    ],
+    "truncates": []
+   },
+   "REMove": {
+    "documented": [
+     "REMove"
+    ],
+    "truncates": []
+   },
+   "RESistance": {
+    "documented": [
+     "RESistance",
+     "Resistance"
+    ],
+    "truncates": []
+   },
+   "ROUTe": {
+    "documented": [
+     "ROUTe"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SCAN": {
+    "documented": [
+     "SCAN"
+    ],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TEMPerature": {
+    "documented": [
+     "TEMPerature"
+    ],
+    "truncates": []
+   },
+   "TIME": {
+    "documented": [
+     "TIME"
+    ],
+    "truncates": [
+     "TIMer"
+    ]
+   },
+   "TIMer": {
+    "documented": [
+     "TIMer"
+    ],
+    "truncates": []
+   },
+   "TRG": {
+    "common": true
+   },
+   "TRIGger": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": []
+   },
+   "UNIT": {
+    "documented": [
+     "UNIT"
+    ],
+    "truncates": []
+   },
+   "VOLT": {
+    "documented": [
+     "VOLT",
+     "VOLTage"
+    ],
+    "truncates": [
+     "VOLTage"
+    ]
+   },
+   "VOLTAGE": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   },
+   "VOLTage": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_electronic_load.py": {
+  "families": [
+   "DL3000"
+  ],
+  "guides": [
+   "DL3000__DL3000 Programming Manual.txt"
+  ],
+  "keywords": {
+   "ADUT": {
+    "documented": [
+     "ADUT"
+    ],
+    "truncates": []
+   },
+   "ALEV": {
+    "documented": [
+     "ALEV"
+    ],
+    "truncates": []
+   },
+   "AWID": {
+    "documented": [
+     "AWID"
+    ],
+    "truncates": []
+   },
+   "BATT": {
+    "documented": [
+     "BATT",
+     "BATTary"
+    ],
+    "truncates": [
+     "BATTary"
+    ]
+   },
+   "BLEV": {
+    "documented": [
+     "BLEV"
+    ],
+    "truncates": []
+   },
+   "BWID": {
+    "documented": [
+     "BWID"
+    ],
+    "truncates": []
+   },
+   "CAPability": {
+    "documented": [
+     "CAPability"
+    ],
+    "truncates": []
+   },
+   "CENabstop": {
+    "documented": [],
+    "truncates": []
+   },
+   "CLS": {
+    "common": true
+   },
+   "COND": {
+    "documented": [
+     "COND",
+     "CONDition"
+    ],
+    "truncates": [
+     "CONDition"
+    ]
+   },
+   "COUN": {
+    "documented": [
+     "COUN"
+    ],
+    "truncates": []
+   },
+   "CST": {
+    "documented": [
+     "CST",
+     "CSTop"
+    ],
+    "truncates": [
+     "CSTop"
+    ]
+   },
+   "CURR": {
+    "documented": [
+     "CURR",
+     "CURRent"
+    ],
+    "truncates": [
+     "CURRent"
+    ]
+   },
+   "DISChargingTime": {
+    "documented": [
+     "DISChargingTime"
+    ],
+    "truncates": []
+   },
+   "END": {
+    "documented": [
+     "END"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "FREQ": {
+    "documented": [
+     "FREQ"
+    ],
+    "truncates": []
+   },
+   "FUNC": {
+    "documented": [
+     "FUNC"
+    ],
+    "truncates": []
+   },
+   "IDEL": {
+    "documented": [
+     "IDEL"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "IMAX": {
+    "documented": [
+     "IMAX"
+    ],
+    "truncates": []
+   },
+   "IMIN": {
+    "documented": [
+     "IMIN"
+    ],
+    "truncates": []
+   },
+   "IMM": {
+    "documented": [
+     "IMM",
+     "IMMediate"
+    ],
+    "truncates": [
+     "IMMediate"
+    ]
+   },
+   "INP": {
+    "documented": [
+     "INP"
+    ],
+    "truncates": []
+   },
+   "ISET": {
+    "documented": [
+     "ISET"
+    ],
+    "truncates": []
+   },
+   "IST": {
+    "documented": [
+     "IST"
+    ],
+    "truncates": []
+   },
+   "LEV": {
+    "documented": [
+     "LEV"
+    ],
+    "truncates": []
+   },
+   "LIST": {
+    "documented": [
+     "LIST"
+    ],
+    "truncates": []
+   },
+   "MEAS": {
+    "documented": [
+     "MEASure"
+    ],
+    "truncates": [
+     "MEASure"
+    ]
+   },
+   "MEASure": {
+    "documented": [
+     "MEASure"
+    ],
+    "truncates": []
+   },
+   "MODE": {
+    "documented": [
+     "MODE"
+    ],
+    "truncates": []
+   },
+   "NEG": {
+    "documented": [
+     "NEG"
+    ],
+    "truncates": []
+   },
+   "OCP": {
+    "documented": [
+     "OCP"
+    ],
+    "truncates": []
+   },
+   "OPP": {
+    "documented": [
+     "OPP"
+    ],
+    "truncates": []
+   },
+   "OPT": {
+    "common": true
+   },
+   "PDEL": {
+    "documented": [
+     "PDEL"
+    ],
+    "truncates": []
+   },
+   "PMAX": {
+    "documented": [
+     "PMAX"
+    ],
+    "truncates": []
+   },
+   "PMIN": {
+    "documented": [
+     "PMIN"
+    ],
+    "truncates": []
+   },
+   "POS": {
+    "documented": [
+     "POS"
+    ],
+    "truncates": []
+   },
+   "POW": {
+    "documented": [
+     "POW",
+     "POWer"
+    ],
+    "truncates": [
+     "POWer"
+    ]
+   },
+   "PSET": {
+    "documented": [
+     "PSET"
+    ],
+    "truncates": []
+   },
+   "PST": {
+    "documented": [
+     "PST"
+    ],
+    "truncates": []
+   },
+   "QUES": {
+    "documented": [
+     "QUES",
+     "QUEStionable"
+    ],
+    "truncates": [
+     "QUEStionable"
+    ]
+   },
+   "RANG": {
+    "documented": [
+     "RANG",
+     "RANGe"
+    ],
+    "truncates": [
+     "RANGe"
+    ]
+   },
+   "RES": {
+    "documented": [
+     "RES",
+     "RESet",
+     "RESistance"
+    ],
+    "truncates": [
+     "RESTart",
+     "RESet",
+     "RESistance"
+    ]
+   },
+   "RST": {
+    "common": true
+   },
+   "SLEW": {
+    "documented": [
+     "SLEW"
+    ],
+    "truncates": []
+   },
+   "SOUR": {
+    "documented": [
+     "SOUR",
+     "SOURce"
+    ],
+    "truncates": [
+     "SOURce"
+    ]
+   },
+   "STAT": {
+    "documented": [
+     "STAT",
+     "STATus"
+    ],
+    "truncates": [
+     "STATE",
+     "STATus"
+    ]
+   },
+   "STEP": {
+    "documented": [
+     "STEP"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TENabstop": {
+    "documented": [],
+    "truncates": []
+   },
+   "TIM": {
+    "documented": [
+     "TIM",
+     "TIMestop"
+    ],
+    "truncates": [
+     "TIME",
+     "TIMestop"
+    ]
+   },
+   "TOCP": {
+    "documented": [
+     "TOCP"
+    ],
+    "truncates": []
+   },
+   "TOPP": {
+    "documented": [
+     "TOPP"
+    ],
+    "truncates": []
+   },
+   "TRAN": {
+    "documented": [
+     "TRAN"
+    ],
+    "truncates": []
+   },
+   "TRIG": {
+    "documented": [
+     "TRIG",
+     "TRIGger"
+    ],
+    "truncates": [
+     "TRIGger"
+    ]
+   },
+   "VENabstop": {
+    "documented": [],
+    "truncates": []
+   },
+   "VOCP": {
+    "documented": [
+     "VOCP"
+    ],
+    "truncates": []
+   },
+   "VOLT": {
+    "documented": [
+     "VOLT",
+     "VOLTage"
+    ],
+    "truncates": [
+     "VOLTage"
+    ]
+   },
+   "VON": {
+    "documented": [
+     "VON"
+    ],
+    "truncates": [
+     "VOND"
+    ]
+   },
+   "VOND": {
+    "documented": [
+     "VOND"
+    ],
+    "truncates": []
+   },
+   "VOPP": {
+    "documented": [
+     "VOPP"
+    ],
+    "truncates": []
+   },
+   "VST": {
+    "documented": [
+     "VST",
+     "VSTop"
+    ],
+    "truncates": [
+     "VSTop"
+    ]
+   },
+   "WATThours": {
+    "documented": [
+     "WATThours"
+    ],
+    "truncates": []
+   },
+   "WID": {
+    "documented": [
+     "WID"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_function_generator.py": {
+  "families": [
+   "DG1000Z",
+   "DG2000",
+   "DG4000",
+   "DG5000",
+   "DG5000PRO",
+   "DG6000",
+   "DG800",
+   "DG800PRO",
+   "DG900"
+  ],
+  "guides": [
+   "DG1000Z__DG1000Z Programming Guide.txt",
+   "DG2000__DG2000 Programming Guide.txt",
+   "DG4000__DG4000 Programming Guide.txt",
+   "DG5000PRO__DG5000 Pro Programming Guide.txt",
+   "DG5000__DG5000 Programming Guide.txt",
+   "DG6000__DG6000 Series Programming Guide.txt",
+   "DG800PRO__DG800 Pro _ DG900 Pro Series Programming Guide.txt",
+   "DG800__DG800 Programming Guide.txt",
+   "DG900__DG900 Programming Guide.txt"
+  ],
+  "keywords": {
+   "APPL": {
+    "documented": [
+     "APPL",
+     "APPLy"
+    ],
+    "truncates": [
+     "APPLy"
+    ]
+   },
+   "BEEPer": {
+    "documented": [
+     "BEEPer"
+    ],
+    "truncates": []
+   },
+   "BURSt": {
+    "documented": [
+     "BURSt"
+    ],
+    "truncates": []
+   },
+   "COUNter": {
+    "documented": [
+     "COUNter"
+    ],
+    "truncates": []
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": [
+     "DATAB"
+    ]
+   },
+   "DC": {
+    "documented": [
+     "DC"
+    ],
+    "truncates": [
+     "DCYC",
+     "DCYCle"
+    ]
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "FREQ": {
+    "documented": [
+     "FREQ",
+     "FREQuency"
+    ],
+    "truncates": [
+     "FREQuency"
+    ]
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "FUNCtion": {
+    "documented": [
+     "FUNCtion"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "INITiate": {
+    "documented": [],
+    "truncates": []
+   },
+   "INTernal": {
+    "documented": [
+     "INTernal",
+     "Internal"
+    ],
+    "truncates": []
+   },
+   "LEADing": {
+    "documented": [
+     "LEADing"
+    ],
+    "truncates": []
+   },
+   "MEASure": {
+    "documented": [
+     "MEASure"
+    ],
+    "truncates": []
+   },
+   "MOD": {
+    "documented": [
+     "MOD"
+    ],
+    "truncates": [
+     "MODE"
+    ]
+   },
+   "NCYCles": {
+    "documented": [
+     "NCYCles"
+    ],
+    "truncates": []
+   },
+   "PERiod": {
+    "documented": [
+     "PERiod"
+    ],
+    "truncates": []
+   },
+   "PHASe": {
+    "documented": [
+     "PHASe"
+    ],
+    "truncates": []
+   },
+   "PULSe": {
+    "documented": [
+     "PULSe"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "STARt": {
+    "documented": [
+     "STARt"
+    ],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATE",
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "STOP": {
+    "documented": [
+     "STOP"
+    ],
+    "truncates": [
+     "STOPB"
+    ]
+   },
+   "SWEep": {
+    "documented": [
+     "SWEep",
+     "Sweep"
+    ],
+    "truncates": []
+   },
+   "SYNChronize": {
+    "documented": [
+     "SYNChronize"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TIME": {
+    "documented": [
+     "TIME"
+    ],
+    "truncates": [
+     "TIMer"
+    ]
+   },
+   "TRACe": {
+    "documented": [
+     "TRACe"
+    ],
+    "truncates": []
+   },
+   "TRANsition": {
+    "documented": [
+     "TRANsition"
+    ],
+    "truncates": []
+   },
+   "TRAiling": {
+    "documented": [
+     "TRAiling"
+    ],
+    "truncates": []
+   },
+   "TST": {
+    "common": true
+   }
+  }
+ },
+ "rigol_modern_scope.py": {
+  "families": [
+   "DHO",
+   "DHO800",
+   "DHO_MHO5000",
+   "DS70000",
+   "DS8000",
+   "DS80000",
+   "MHO2000",
+   "MHO900",
+   "MSO5000",
+   "MSO7000",
+   "MSO8000"
+  ],
+  "guides": [
+   "DHO800__DHO800_DHO900 Programming Guide.txt",
+   "DHO_MHO5000__DHO_MHO5000 Series Programming Guide.txt",
+   "DHO__DHO Programming Guide.txt",
+   "DS70000__DS70000 Series Programming Guide.txt",
+   "DS80000__DS80000 Series Programming Guide.txt",
+   "DS8000__DS8000 Programming Manual.txt",
+   "MHO2000__MHO2000 Series Programming Guide.txt",
+   "MHO900__MHO900 Programming Guide.txt",
+   "MSO5000__MSO5000 Programming Manual.txt",
+   "MSO8000__MSO8000 Programming Guide.txt"
+  ],
+  "keywords": {
+   "ACQ": {
+    "documented": [
+     "ACQuire"
+    ],
+    "truncates": [
+     "ACQuire"
+    ]
+   },
+   "AUToscale": {
+    "documented": [
+     "AUToscale"
+    ],
+    "truncates": []
+   },
+   "AUToset": {
+    "documented": [
+     "AUToset"
+    ],
+    "truncates": [
+     "AUTosetup"
+    ]
+   },
+   "AVER": {
+    "documented": [
+     "AVERages"
+    ],
+    "truncates": [
+     "AVERages"
+    ]
+   },
+   "BEG": {
+    "documented": [
+     "BEGin"
+    ],
+    "truncates": [
+     "BEGin"
+    ]
+   },
+   "CLE": {
+    "documented": [
+     "CLE",
+     "CLEar"
+    ],
+    "truncates": [
+     "CLEVel",
+     "CLEar"
+    ]
+   },
+   "COUP": {
+    "documented": [
+     "COUPle",
+     "COUPling"
+    ],
+    "truncates": [
+     "COUPle",
+     "COUPling"
+    ]
+   },
+   "DATA": {
+    "documented": [
+     "DATA",
+     "DATa"
+    ],
+    "truncates": []
+   },
+   "DIG": {
+    "documented": [
+     "DIGital"
+    ],
+    "truncates": [
+     "DIGital"
+    ]
+   },
+   "DISP": {
+    "documented": [
+     "DISP",
+     "DISPlay",
+     "DISPtype"
+    ],
+    "truncates": [
+     "DISPlay",
+     "DISPtype"
+    ]
+   },
+   "EDGE": {
+    "documented": [
+     "EDGE"
+    ],
+    "truncates": []
+   },
+   "ENAB": {
+    "documented": [
+     "ENABle"
+    ],
+    "truncates": [
+     "ENABle",
+     "ENAble"
+    ]
+   },
+   "END": {
+    "documented": [
+     "END",
+     "ENDian"
+    ],
+    "truncates": [
+     "ENDian"
+    ]
+   },
+   "ERR": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": [
+     "ERRor"
+    ]
+   },
+   "FORM": {
+    "documented": [
+     "FORM",
+     "FORMat"
+    ],
+    "truncates": [
+     "FORMat"
+    ]
+   },
+   "HOLD": {
+    "documented": [
+     "HOLDoff"
+    ],
+    "truncates": [
+     "HOLDoff"
+    ]
+   },
+   "IDN": {
+    "common": true
+   },
+   "ITEM": {
+    "documented": [
+     "ITEM"
+    ],
+    "truncates": []
+   },
+   "LA": {
+    "documented": [
+     "LA"
+    ],
+    "truncates": [
+     "LABel",
+     "LAN",
+     "LANGuage",
+     "LAYer"
+    ]
+   },
+   "LEV": {
+    "documented": [
+     "LEVel"
+    ],
+    "truncates": [
+     "LEVel"
+    ]
+   },
+   "MAIN": {
+    "documented": [
+     "MAIN"
+    ],
+    "truncates": []
+   },
+   "MDEP": {
+    "documented": [
+     "MDEPth"
+    ],
+    "truncates": [
+     "MDEPth"
+    ]
+   },
+   "MEAS": {
+    "documented": [
+     "MEAS",
+     "MEASure"
+    ],
+    "truncates": [
+     "MEASure"
+    ]
+   },
+   "MEASure": {
+    "documented": [
+     "MEASure"
+    ],
+    "truncates": []
+   },
+   "MODE": {
+    "documented": [
+     "MODE",
+     "MODEalarm",
+     "MODEcommand"
+    ],
+    "truncates": [
+     "MODEalarm",
+     "MODEcommand"
+    ]
+   },
+   "NREJ": {
+    "documented": [
+     "NREJect"
+    ],
+    "truncates": [
+     "NREJect"
+    ]
+   },
+   "OFFS": {
+    "documented": [
+     "OFFSet"
+    ],
+    "truncates": [
+     "OFFSet"
+    ]
+   },
+   "POIN": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": [
+     "POINT",
+     "POINts"
+    ]
+   },
+   "PRE": {
+    "documented": [
+     "PREamble"
+    ],
+    "truncates": [
+     "PREFix",
+     "PRESs",
+     "PREamble"
+    ]
+   },
+   "RES": {
+    "documented": [
+     "RES",
+     "RESet",
+     "RESst",
+     "RESult"
+    ],
+    "truncates": [
+     "RESUlt",
+     "RESet",
+     "RESst",
+     "RESult"
+    ]
+   },
+   "RST": {
+    "common": true
+   },
+   "RUN": {
+    "documented": [
+     "RUN"
+    ],
+    "truncates": [
+     "RUNStop",
+     "RUNT"
+    ]
+   },
+   "SCAL": {
+    "documented": [
+     "SCALe"
+    ],
+    "truncates": [
+     "SCALe"
+    ]
+   },
+   "SING": {
+    "documented": [],
+    "truncates": []
+   },
+   "SLOP": {
+    "documented": [
+     "SLOPe"
+    ],
+    "truncates": [
+     "SLOPA",
+     "SLOPB",
+     "SLOPE",
+     "SLOPe"
+    ]
+   },
+   "SOUR": {
+    "documented": [
+     "SOUR",
+     "SOURce"
+    ],
+    "truncates": [
+     "SOURce"
+    ]
+   },
+   "SRAT": {
+    "documented": [
+     "SRATe"
+    ],
+    "truncates": [
+     "SRATe"
+    ]
+   },
+   "STAR": {
+    "documented": [
+     "STAR",
+     "STARt"
+    ],
+    "truncates": [
+     "STARt"
+    ]
+   },
+   "STAT": {
+    "documented": [
+     "STATe",
+     "STATic",
+     "STATistic",
+     "STATistics",
+     "STATus"
+    ],
+    "truncates": [
+     "STATe",
+     "STATic",
+     "STATistic",
+     "STATistics",
+     "STATus"
+    ]
+   },
+   "STOP": {
+    "documented": [
+     "STOP"
+    ],
+    "truncates": []
+   },
+   "SWE": {
+    "documented": [
+     "SWEep",
+     "SWEeptype"
+    ],
+    "truncates": [
+     "SWEep",
+     "SWEeptype"
+    ]
+   },
+   "SYST": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": [
+     "SYSTem"
+    ]
+   },
+   "TFOR": {
+    "documented": [],
+    "truncates": []
+   },
+   "TIM": {
+    "documented": [
+     "TIMe",
+     "TIMebase",
+     "TIMeout"
+    ],
+    "truncates": [
+     "TIME",
+     "TIMe",
+     "TIMebase",
+     "TIMeout"
+    ]
+   },
+   "TRIG": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": [
+     "TRIGger"
+    ]
+   },
+   "TYPE": {
+    "documented": [
+     "TYPE",
+     "TYPe"
+    ],
+    "truncates": []
+   },
+   "WAV": {
+    "documented": [
+     "WAV",
+     "WAVeform",
+     "WAVeforms",
+     "WAVetype"
+    ],
+    "truncates": [
+     "WAVeform",
+     "WAVeforms",
+     "WAVetype"
+    ]
+   }
+  }
+ },
+ "rigol_multimeter.py": {
+  "families": [
+   "DM3058",
+   "DM3068"
+  ],
+  "guides": [
+   "DM3058__DM3058 Programming Guide.txt",
+   "DM3068__DM3068 Programming Guide.txt"
+  ],
+  "keywords": {
+   "AC": {
+    "documented": [
+     "AC"
+    ],
+    "truncates": []
+   },
+   "ADDRess": {
+    "documented": [
+     "ADDRess"
+    ],
+    "truncates": []
+   },
+   "AUTO": {
+    "documented": [
+     "AUTO",
+     "AUTOip"
+    ],
+    "truncates": [
+     "AUTOip"
+    ]
+   },
+   "AVERage": {
+    "documented": [
+     "AVERage"
+    ],
+    "truncates": []
+   },
+   "BAUD": {
+    "documented": [
+     "BAUD"
+    ],
+    "truncates": []
+   },
+   "BEEPer": {
+    "documented": [
+     "BEEPer"
+    ],
+    "truncates": []
+   },
+   "BRIGht": {
+    "documented": [
+     "BRIGht"
+    ],
+    "truncates": []
+   },
+   "CALCulate": {
+    "documented": [
+     "CALCulate"
+    ],
+    "truncates": []
+   },
+   "CAPacitance": {
+    "documented": [
+     "CAPacitance"
+    ],
+    "truncates": []
+   },
+   "CLEar": {
+    "documented": [
+     "CLEar"
+    ],
+    "truncates": []
+   },
+   "CONTinuity": {
+    "documented": [
+     "CONTinuity"
+    ],
+    "truncates": []
+   },
+   "COUNt": {
+    "documented": [
+     "COUNt"
+    ],
+    "truncates": [
+     "COUNtAgilent"
+    ]
+   },
+   "CURRent": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "DC": {
+    "documented": [
+     "DC"
+    ],
+    "truncates": []
+   },
+   "DHCP": {
+    "documented": [
+     "DHCP"
+    ],
+    "truncates": []
+   },
+   "DIODe": {
+    "documented": [
+     "DIODe"
+    ],
+    "truncates": []
+   },
+   "DISPlay": {
+    "documented": [
+     "DISPlay"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "EXT": {
+    "documented": [
+     "EXT"
+    ],
+    "truncates": []
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "FRESistance": {
+    "documented": [
+     "FRESistance"
+    ],
+    "truncates": []
+   },
+   "FUNCtion": {
+    "documented": [
+     "FUNCtion"
+    ],
+    "truncates": []
+   },
+   "GATEway": {
+    "documented": [
+     "GATEway"
+    ],
+    "truncates": []
+   },
+   "GPIB": {
+    "documented": [
+     "GPIB"
+    ],
+    "truncates": []
+   },
+   "HOLD": {
+    "documented": [
+     "HOLD"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "IMPEdance": {
+    "documented": [
+     "IMPEdance",
+     "IMPedance"
+    ],
+    "truncates": []
+   },
+   "INTErface": {
+    "documented": [
+     "INTErface"
+    ],
+    "truncates": []
+   },
+   "INTErval": {
+    "documented": [
+     "INTErval"
+    ],
+    "truncates": [
+     "INTErvalRIGOL"
+    ]
+   },
+   "IP": {
+    "documented": [
+     "IP"
+    ],
+    "truncates": []
+   },
+   "LAN": {
+    "documented": [
+     "LAN"
+    ],
+    "truncates": [
+     "LANG",
+     "LANGuage"
+    ]
+   },
+   "LOWEr": {
+    "documented": [
+     "LOWEr",
+     "LOWer"
+    ],
+    "truncates": []
+   },
+   "MASK": {
+    "documented": [
+     "MASK"
+    ],
+    "truncates": []
+   },
+   "MAX": {
+    "documented": [
+     "MAX",
+     "MAXimum"
+    ],
+    "truncates": [
+     "MAXimum"
+    ]
+   },
+   "MEASure": {
+    "documented": [
+     "MEASure"
+    ],
+    "truncates": []
+   },
+   "MIN": {
+    "documented": [
+     "MIN",
+     "MINimum"
+    ],
+    "truncates": [
+     "MINimum"
+    ]
+   },
+   "OFFSet": {
+    "documented": [
+     "OFFSet"
+    ],
+    "truncates": []
+   },
+   "ON": {
+    "documented": [
+     "ON"
+    ],
+    "truncates": []
+   },
+   "PARIty": {
+    "documented": [
+     "PARIty"
+    ],
+    "truncates": []
+   },
+   "PERiod": {
+    "documented": [
+     "PERiod"
+    ],
+    "truncates": []
+   },
+   "PF": {
+    "documented": [
+     "PF"
+    ],
+    "truncates": []
+   },
+   "RATE": {
+    "documented": [
+     "RATE"
+    ],
+    "truncates": []
+   },
+   "REL": {
+    "documented": [
+     "REL"
+    ],
+    "truncates": []
+   },
+   "RESistance": {
+    "documented": [
+     "RESistance"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SENSitivity": {
+    "documented": [
+     "SENSitivity"
+    ],
+    "truncates": []
+   },
+   "SERIal": {
+    "documented": [
+     "SERIal"
+    ],
+    "truncates": []
+   },
+   "SINGle": {
+    "documented": [
+     "SINGle"
+    ],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": [
+     "SOURceAgilent",
+     "SOURceRIGOL"
+    ]
+   },
+   "STATe": {
+    "documented": [
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "STATistic": {
+    "documented": [
+     "STATistic"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TRIGger": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": [
+     "TRIGgered"
+    ]
+   },
+   "TRIGgered": {
+    "documented": [
+     "TRIGgered"
+    ],
+    "truncates": []
+   },
+   "TST": {
+    "common": true
+   },
+   "UPPEr": {
+    "documented": [
+     "UPPEr",
+     "UPPer"
+    ],
+    "truncates": []
+   },
+   "UTILity": {
+    "documented": [
+     "UTILity"
+    ],
+    "truncates": []
+   },
+   "VOLTAGE": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   },
+   "VOLTage": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_multimeter_dm858.py": {
+  "families": [
+   "DM858"
+  ],
+  "guides": [
+   "DM858__DM858 Series Programming Guide.txt"
+  ],
+  "keywords": {
+   "AC": {
+    "documented": [
+     "AC"
+    ],
+    "truncates": []
+   },
+   "AVERage": {
+    "documented": [
+     "AVERage"
+    ],
+    "truncates": []
+   },
+   "BEEPer": {
+    "documented": [
+     "BEEPer"
+    ],
+    "truncates": []
+   },
+   "CALC": {
+    "documented": [
+     "CALCulate"
+    ],
+    "truncates": [
+     "CALCulate"
+    ]
+   },
+   "CALCULATE": {
+    "documented": [
+     "CALCulate"
+    ],
+    "truncates": []
+   },
+   "CALCulate": {
+    "documented": [
+     "CALCulate"
+    ],
+    "truncates": []
+   },
+   "CAPacitance": {
+    "documented": [
+     "CAPacitance"
+    ],
+    "truncates": []
+   },
+   "CLEar": {
+    "documented": [
+     "CLEar"
+    ],
+    "truncates": []
+   },
+   "CONDition": {
+    "documented": [
+     "CONDition"
+    ],
+    "truncates": []
+   },
+   "CONFigure": {
+    "documented": [
+     "CONFigure"
+    ],
+    "truncates": []
+   },
+   "COUNt": {
+    "documented": [
+     "COUNt"
+    ],
+    "truncates": []
+   },
+   "CURR": {
+    "documented": [
+     "CURR",
+     "CURRent"
+    ],
+    "truncates": [
+     "CURRent"
+    ]
+   },
+   "CURRENT": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "CURRent": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": []
+   },
+   "DC": {
+    "documented": [
+     "DC"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "FORMat": {
+    "documented": [
+     "FORMat"
+    ],
+    "truncates": []
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "FRESistance": {
+    "documented": [
+     "FRESistance"
+    ],
+    "truncates": []
+   },
+   "FUNCtion": {
+    "documented": [
+     "FUNCtion"
+    ],
+    "truncates": []
+   },
+   "HCOPy": {
+    "documented": [
+     "HCOPy"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "IMMediate": {
+    "documented": [
+     "IMMediate"
+    ],
+    "truncates": []
+   },
+   "LAST": {
+    "documented": [
+     "LAST"
+    ],
+    "truncates": []
+   },
+   "LIMit": {
+    "documented": [
+     "LIMit"
+    ],
+    "truncates": []
+   },
+   "LOWer": {
+    "documented": [
+     "LOWer"
+    ],
+    "truncates": []
+   },
+   "MAXimum": {
+    "documented": [
+     "MAXimum"
+    ],
+    "truncates": []
+   },
+   "MINimum": {
+    "documented": [
+     "MINimum"
+    ],
+    "truncates": []
+   },
+   "NPLC": {
+    "documented": [
+     "NPLC"
+    ],
+    "truncates": []
+   },
+   "PERiod": {
+    "documented": [
+     "PERiod"
+    ],
+    "truncates": []
+   },
+   "POINts": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": []
+   },
+   "QUEStionable": {
+    "documented": [
+     "QUEStionable"
+    ],
+    "truncates": []
+   },
+   "RANGe": {
+    "documented": [
+     "RANGe"
+    ],
+    "truncates": []
+   },
+   "REMove": {
+    "documented": [
+     "REMove"
+    ],
+    "truncates": []
+   },
+   "RESistance": {
+    "documented": [
+     "RESistance"
+    ],
+    "truncates": []
+   },
+   "RESolution": {
+    "documented": [
+     "RESolution"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SAMPle": {
+    "documented": [
+     "SAMPle"
+    ],
+    "truncates": []
+   },
+   "SCALe": {
+    "documented": [
+     "SCALe"
+    ],
+    "truncates": []
+   },
+   "SDEViation": {
+    "documented": [
+     "SDEViation"
+    ],
+    "truncates": []
+   },
+   "SDUMp": {
+    "documented": [
+     "SDUMp"
+    ],
+    "truncates": []
+   },
+   "SENSe": {
+    "documented": [
+     "SENSe"
+    ],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "STATus": {
+    "documented": [
+     "STATus"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TEMPerature": {
+    "documented": [
+     "TEMPerature"
+    ],
+    "truncates": []
+   },
+   "TRG": {
+    "common": true
+   },
+   "TRIGger": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": []
+   },
+   "UNIT": {
+    "documented": [
+     "UNIT"
+    ],
+    "truncates": []
+   },
+   "UPPer": {
+    "documented": [
+     "UPPer"
+    ],
+    "truncates": []
+   },
+   "VERSion": {
+    "documented": [
+     "VERSion"
+    ],
+    "truncates": []
+   },
+   "VOLT": {
+    "documented": [
+     "VOLT",
+     "VOLTage"
+    ],
+    "truncates": [
+     "VOLTage"
+    ]
+   },
+   "VOLTAGE": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   },
+   "VOLTage": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_power_supply.py": {
+  "families": [
+   "DP1116A",
+   "DP1308A",
+   "DP2000",
+   "DP700",
+   "DP800",
+   "DP900"
+  ],
+  "guides": [
+   "DP1116A__DP1116A Programming Guide.txt",
+   "DP1308A__DP1308A Programming Guide.txt",
+   "DP2000__DP2000 Programming Guide.txt",
+   "DP700__DP700 Programming Guide.txt",
+   "DP800__DP800 Programming Guide.txt",
+   "DP900__DP900 Programming Guide.txt"
+  ],
+  "keywords": {
+   "ALL": {
+    "documented": [
+     "ALL"
+    ],
+    "truncates": []
+   },
+   "APPLy": {
+    "documented": [
+     "APPLy"
+    ],
+    "truncates": []
+   },
+   "BEEPer": {
+    "documented": [
+     "BEEPer"
+    ],
+    "truncates": []
+   },
+   "CLEAR": {
+    "documented": [
+     "CLEAR",
+     "CLEar"
+    ],
+    "truncates": []
+   },
+   "CURRent": {
+    "documented": [
+     "CURRent"
+    ],
+    "truncates": []
+   },
+   "CVCC": {
+    "documented": [
+     "CVCC"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "INSTrument": {
+    "documented": [
+     "INSTrument"
+    ],
+    "truncates": []
+   },
+   "LOCal": {
+    "documented": [
+     "LOCAl",
+     "LOCal"
+    ],
+    "truncates": []
+   },
+   "MEASure": {
+    "documented": [
+     "MEASure",
+     "MEAsure"
+    ],
+    "truncates": []
+   },
+   "NSELect": {
+    "documented": [
+     "NSELect"
+    ],
+    "truncates": []
+   },
+   "OCP": {
+    "documented": [
+     "OCP"
+    ],
+    "truncates": []
+   },
+   "ONOFFSync": {
+    "documented": [
+     "ONOFFSync"
+    ],
+    "truncates": []
+   },
+   "OPT": {
+    "common": true
+   },
+   "OTP": {
+    "documented": [
+     "OTP"
+    ],
+    "truncates": []
+   },
+   "OUTPut": {
+    "documented": [
+     "OUTPut"
+    ],
+    "truncates": [
+     "OutputOff"
+    ]
+   },
+   "OVP": {
+    "documented": [
+     "OVP"
+    ],
+    "truncates": []
+   },
+   "PAIR": {
+    "documented": [
+     "PAIR"
+    ],
+    "truncates": []
+   },
+   "POWEr": {
+    "documented": [
+     "POWER",
+     "POWEr"
+    ],
+    "truncates": [
+     "POWEron"
+    ]
+   },
+   "RANGe": {
+    "documented": [
+     "RANGe"
+    ],
+    "truncates": []
+   },
+   "REMote": {
+    "documented": [
+     "REMote"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SENSe": {
+    "documented": [
+     "SENSe"
+    ],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "SYNC": {
+    "documented": [
+     "SYNC"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TMODe": {
+    "documented": [
+     "TMODe"
+    ],
+    "truncates": []
+   },
+   "TRACKMode": {
+    "documented": [
+     "TRACKMode"
+    ],
+    "truncates": []
+   },
+   "TRACk": {
+    "documented": [
+     "TRACk"
+    ],
+    "truncates": [
+     "TRACKM",
+     "TRACKMode"
+    ]
+   },
+   "TST": {
+    "common": true
+   },
+   "VALue": {
+    "documented": [
+     "VALue"
+    ],
+    "truncates": []
+   },
+   "VERSion": {
+    "documented": [
+     "VERSion"
+    ],
+    "truncates": []
+   },
+   "VOLTage": {
+    "documented": [
+     "VOLTage"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_rf_generator.py": {
+  "families": [
+   "DSG3000",
+   "DSG3000B",
+   "DSG5000",
+   "DSG800"
+  ],
+  "guides": [
+   "DSG3000B__DSG3000B Programming Guide.txt",
+   "DSG3000__DSG3000 Programming Guide.txt",
+   "DSG5000__DSG5000 Programming Guide.txt",
+   "DSG800__DSG800 Programming Guide.txt"
+  ],
+  "keywords": {
+   "ALC": {
+    "documented": [
+     "ALC"
+    ],
+    "truncates": []
+   },
+   "DWELl": {
+    "documented": [],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [],
+    "truncates": []
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "LEVel": {
+    "documented": [
+     "LEVel"
+    ],
+    "truncates": []
+   },
+   "LFOutput": {
+    "documented": [
+     "LFOutput"
+    ],
+    "truncates": []
+   },
+   "MODE": {
+    "documented": [
+     "MODE"
+    ],
+    "truncates": []
+   },
+   "OPT": {
+    "common": true
+   },
+   "OUTPut": {
+    "documented": [
+     "OUTPut"
+    ],
+    "truncates": []
+   },
+   "POINts": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": []
+   },
+   "POWer": {
+    "documented": [
+     "POWer"
+    ],
+    "truncates": []
+   },
+   "PRESet": {
+    "documented": [
+     "PRESet"
+    ],
+    "truncates": []
+   },
+   "RFALl": {
+    "documented": [
+     "RFALl"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SHAPe": {
+    "documented": [],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": []
+   },
+   "SPACing": {
+    "documented": [],
+    "truncates": []
+   },
+   "STARt": {
+    "documented": [],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "STEP": {
+    "documented": [
+     "STEP"
+    ],
+    "truncates": []
+   },
+   "STOP": {
+    "documented": [
+     "STOP"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem",
+     "System"
+    ],
+    "truncates": []
+   },
+   "TRG": {
+    "common": true
+   },
+   "TRIGger": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": []
+   },
+   "UNIT": {
+    "documented": [
+     "UNIT"
+    ],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_scope.py": {
+  "families": [
+   "DS1000D",
+   "DS1000Z",
+   "DS2000A"
+  ],
+  "guides": [
+   "DS1000D__DS1000D_E Programming Guide.txt",
+   "DS1000Z__DS1000Z Programming Guide.txt",
+   "DS1000Z__DS1000Z-E Series Programming Guide.txt",
+   "DS2000A__DS2000A Series Programming Manual.txt"
+  ],
+  "keywords": {
+   "AUT": {
+    "documented": [
+     "AUToip",
+     "AUToscale",
+     "AUTosort"
+    ],
+    "truncates": [
+     "AUTO",
+     "AUToip",
+     "AUToscale",
+     "AUTosort"
+    ]
+   },
+   "CHAN": {
+    "documented": [],
+    "truncates": []
+   },
+   "CLE": {
+    "documented": [
+     "CLEar"
+    ],
+    "truncates": [
+     "CLEVel",
+     "CLEar"
+    ]
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": []
+   },
+   "EDGE": {
+    "documented": [
+     "EDGE",
+     "EDGe"
+    ],
+    "truncates": []
+   },
+   "FALL": {
+    "documented": [
+     "FALLtime"
+    ],
+    "truncates": [
+     "FALLtime"
+    ]
+   },
+   "FORM": {
+    "documented": [
+     "FORM",
+     "FORMat"
+    ],
+    "truncates": [
+     "FORMat"
+    ]
+   },
+   "FREQ": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": [
+     "FREQuency"
+    ]
+   },
+   "IDN": {
+    "common": true
+   },
+   "ITEM": {
+    "documented": [
+     "ITEM"
+    ],
+    "truncates": []
+   },
+   "LEV": {
+    "documented": [
+     "LEV",
+     "LEVel"
+    ],
+    "truncates": [
+     "LEVA",
+     "LEVB",
+     "LEVel",
+     "LEVelA",
+     "LEVelB"
+    ]
+   },
+   "MAIN": {
+    "documented": [
+     "MAIN"
+    ],
+    "truncates": []
+   },
+   "MEAS": {
+    "documented": [
+     "MEAS",
+     "MEASure"
+    ],
+    "truncates": [
+     "MEASure"
+    ]
+   },
+   "MODE": {
+    "documented": [
+     "MODE"
+    ],
+    "truncates": []
+   },
+   "NWID": {
+    "documented": [
+     "NWIDth"
+    ],
+    "truncates": [
+     "NWIDth"
+    ]
+   },
+   "OFFS": {
+    "documented": [
+     "OFFS",
+     "OFFSet"
+    ],
+    "truncates": [
+     "OFFSet"
+    ]
+   },
+   "PDUT": {
+    "documented": [
+     "PDUTy",
+     "PDUTycycle"
+    ],
+    "truncates": [
+     "PDUTy",
+     "PDUTycycle"
+    ]
+   },
+   "PER": {
+    "documented": [
+     "PERiod"
+    ],
+    "truncates": [
+     "PERS",
+     "PERSist",
+     "PERiod"
+    ]
+   },
+   "PRE": {
+    "documented": [
+     "PREamble"
+    ],
+    "truncates": [
+     "PREShoot",
+     "PRESs",
+     "PREVious",
+     "PREamble"
+    ]
+   },
+   "PWID": {
+    "documented": [
+     "PWIDth"
+    ],
+    "truncates": [
+     "PWIDth"
+    ]
+   },
+   "RIS": {
+    "documented": [
+     "RISetime"
+    ],
+    "truncates": [
+     "RISetime"
+    ]
+   },
+   "RUN": {
+    "documented": [
+     "RUN"
+    ],
+    "truncates": [
+     "RUNT"
+    ]
+   },
+   "SCAL": {
+    "documented": [
+     "SCAL",
+     "SCALe"
+    ],
+    "truncates": [
+     "SCALe"
+    ]
+   },
+   "SING": {
+    "documented": [],
+    "truncates": []
+   },
+   "SLOP": {
+    "documented": [
+     "SLOP",
+     "SLOPe"
+    ],
+    "truncates": [
+     "SLOPA",
+     "SLOPB",
+     "SLOPe"
+    ]
+   },
+   "SOUR": {
+    "documented": [
+     "SOUR",
+     "SOURce"
+    ],
+    "truncates": [
+     "SOURce"
+    ]
+   },
+   "STAR": {
+    "documented": [
+     "STAR",
+     "STARt"
+    ],
+    "truncates": [
+     "STARt"
+    ]
+   },
+   "STAT": {
+    "documented": [
+     "STAT",
+     "STATe",
+     "STATistic",
+     "STATus"
+    ],
+    "truncates": [
+     "STATe",
+     "STATistic",
+     "STATus"
+    ]
+   },
+   "STOP": {
+    "documented": [
+     "STOP"
+    ],
+    "truncates": []
+   },
+   "SWE": {
+    "documented": [
+     "SWE",
+     "SWEep"
+    ],
+    "truncates": [
+     "SWEep"
+    ]
+   },
+   "TFOR": {
+    "documented": [],
+    "truncates": []
+   },
+   "TIM": {
+    "documented": [
+     "TIM",
+     "TIMe",
+     "TIMebase",
+     "TIMeout"
+    ],
+    "truncates": [
+     "TIME",
+     "TIMe",
+     "TIMebase",
+     "TIMeout",
+     "TimeOFFSet",
+     "TimeSCALe"
+    ]
+   },
+   "TRIG": {
+    "documented": [
+     "TRIG",
+     "TRIGger",
+     "Trig"
+    ],
+    "truncates": [
+     "TRIGger"
+    ]
+   },
+   "VAV": {
+    "documented": [
+     "VAVerage"
+    ],
+    "truncates": [
+     "VAVG",
+     "VAVerage"
+    ]
+   },
+   "VMAX": {
+    "documented": [
+     "VMAX"
+    ],
+    "truncates": []
+   },
+   "VMIN": {
+    "documented": [
+     "VMIN"
+    ],
+    "truncates": []
+   },
+   "VPP": {
+    "documented": [
+     "VPP"
+    ],
+    "truncates": []
+   },
+   "VRMS": {
+    "documented": [
+     "VRMS"
+    ],
+    "truncates": []
+   },
+   "WAV": {
+    "documented": [
+     "WAV",
+     "WAVeform"
+    ],
+    "truncates": [
+     "WAVeform"
+    ]
+   }
+  }
+ },
+ "rigol_spectrum_analyzer.py": {
+  "families": [
+   "DSA1000",
+   "DSA700",
+   "DSA800",
+   "RSA3000",
+   "RSA5000"
+  ],
+  "guides": [
+   "DSA1000__DSA1000 Programming Guide.txt",
+   "DSA700__DSA700 Programming manual.txt",
+   "DSA800__DSA800 Programming Guide.txt",
+   "RSA3000__RSA3000 Programming Manual.txt",
+   "RSA5000__RSA5000 Programming Manual.txt",
+   "RSA5000__RSA5000 VSA Programming Manual.txt"
+  ],
+  "keywords": {
+   "AMPLitude": {
+    "documented": [
+     "AMPLitude"
+    ],
+    "truncates": []
+   },
+   "AOFF": {
+    "documented": [
+     "AOFF"
+    ],
+    "truncates": []
+   },
+   "ATTenuation": {
+    "documented": [
+     "ATTenuation"
+    ],
+    "truncates": []
+   },
+   "AUTO": {
+    "documented": [
+     "AUTO"
+    ],
+    "truncates": [
+     "AUToip"
+    ]
+   },
+   "AVERage": {
+    "documented": [
+     "AVERage"
+    ],
+    "truncates": []
+   },
+   "BANDwidth": {
+    "documented": [
+     "BANDwidth"
+    ],
+    "truncates": []
+   },
+   "BORDer": {
+    "documented": [
+     "BORDer"
+    ],
+    "truncates": []
+   },
+   "CALCulate": {
+    "documented": [
+     "CALCulate"
+    ],
+    "truncates": []
+   },
+   "CENTer": {
+    "documented": [
+     "CENTer"
+    ],
+    "truncates": []
+   },
+   "CHPower": {
+    "documented": [
+     "CHPower"
+    ],
+    "truncates": []
+   },
+   "CLEar": {
+    "documented": [
+     "CLEar"
+    ],
+    "truncates": []
+   },
+   "CONDition": {
+    "documented": [
+     "CONDition"
+    ],
+    "truncates": []
+   },
+   "CONFigure": {
+    "documented": [
+     "CONFIgure",
+     "CONFigure"
+    ],
+    "truncates": []
+   },
+   "CONTinuous": {
+    "documented": [
+     "CONTinuous"
+    ],
+    "truncates": []
+   },
+   "COUNt": {
+    "documented": [
+     "COUNt"
+    ],
+    "truncates": []
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": []
+   },
+   "DETector": {
+    "documented": [
+     "DETector"
+    ],
+    "truncates": []
+   },
+   "DISPlay": {
+    "documented": [
+     "DISPlay"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "EXTernal": {
+    "documented": [
+     "EXTernal"
+    ],
+    "truncates": []
+   },
+   "FETCh": {
+    "documented": [
+     "FETCh"
+    ],
+    "truncates": []
+   },
+   "FORMat": {
+    "documented": [
+     "FORMat"
+    ],
+    "truncates": []
+   },
+   "FREQ": {
+    "documented": [
+     "FREQ",
+     "FREQuency"
+    ],
+    "truncates": [
+     "FREQuency"
+    ]
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "FULL": {
+    "documented": [],
+    "truncates": []
+   },
+   "FUNCtion": {
+    "documented": [
+     "FUNCtion"
+    ],
+    "truncates": []
+   },
+   "GAIN": {
+    "documented": [
+     "GAIN"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "IMMediate": {
+    "documented": [
+     "IMMediate"
+    ],
+    "truncates": []
+   },
+   "IMPedance": {
+    "documented": [
+     "IMPedance"
+    ],
+    "truncates": []
+   },
+   "INITiate": {
+    "documented": [
+     "INITiate"
+    ],
+    "truncates": []
+   },
+   "INPut": {
+    "documented": [
+     "INPut"
+    ],
+    "truncates": []
+   },
+   "INSTrument": {
+    "documented": [
+     "INSTrument"
+    ],
+    "truncates": []
+   },
+   "INTegration": {
+    "documented": [
+     "INTegration"
+    ],
+    "truncates": []
+   },
+   "LEVel": {
+    "documented": [
+     "LEVel"
+    ],
+    "truncates": []
+   },
+   "MARKer": {
+    "documented": [
+     "MARKer"
+    ],
+    "truncates": []
+   },
+   "MAX": {
+    "documented": [
+     "MAX",
+     "MAXimum"
+    ],
+    "truncates": [
+     "MAXHold",
+     "MAXimum"
+    ]
+   },
+   "MEAN": {
+    "documented": [],
+    "truncates": []
+   },
+   "MIN": {
+    "documented": [
+     "MINimum"
+    ],
+    "truncates": [
+     "MINimum"
+    ]
+   },
+   "MMEMory": {
+    "documented": [
+     "MMEMory"
+    ],
+    "truncates": []
+   },
+   "MODE": {
+    "documented": [
+     "MODE"
+    ],
+    "truncates": [
+     "Model"
+    ]
+   },
+   "OBWidth": {
+    "documented": [
+     "OBWidth"
+    ],
+    "truncates": []
+   },
+   "OPC": {
+    "common": true
+   },
+   "OPERation": {
+    "documented": [
+     "OPERation"
+    ],
+    "truncates": []
+   },
+   "OUTPut": {
+    "documented": [
+     "OUTPut"
+    ],
+    "truncates": []
+   },
+   "PEAK": {
+    "documented": [
+     "PEAK"
+    ],
+    "truncates": []
+   },
+   "PERCent": {
+    "documented": [
+     "PERCent"
+    ],
+    "truncates": []
+   },
+   "POINts": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": []
+   },
+   "POWer": {
+    "documented": [
+     "POWer"
+    ],
+    "truncates": []
+   },
+   "READ": {
+    "documented": [
+     "READ",
+     "READout",
+     "READy"
+    ],
+    "truncates": [
+     "READout",
+     "READy"
+    ]
+   },
+   "RESet": {
+    "documented": [
+     "RESet"
+    ],
+    "truncates": []
+   },
+   "RESolution": {
+    "documented": [
+     "RESolution"
+    ],
+    "truncates": []
+   },
+   "RF": {
+    "documented": [
+     "RF"
+    ],
+    "truncates": []
+   },
+   "RLEVel": {
+    "documented": [
+     "RLEVel"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SCALe": {
+    "documented": [
+     "SCALe"
+    ],
+    "truncates": []
+   },
+   "SCReen": {
+    "documented": [
+     "SCReen"
+    ],
+    "truncates": []
+   },
+   "SEARch": {
+    "documented": [
+     "SEARch"
+    ],
+    "truncates": []
+   },
+   "SELect": {
+    "documented": [
+     "SELect"
+    ],
+    "truncates": [
+     "SELection"
+    ]
+   },
+   "SENSe": {
+    "documented": [
+     "SENSe"
+    ],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": []
+   },
+   "SPAN": {
+    "documented": [
+     "SPAN"
+    ],
+    "truncates": []
+   },
+   "STARt": {
+    "documented": [
+     "STARt"
+    ],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "STATus": {
+    "documented": [
+     "STATus"
+    ],
+    "truncates": []
+   },
+   "STOP": {
+    "documented": [
+     "STOP"
+    ],
+    "truncates": []
+   },
+   "STORe": {
+    "documented": [
+     "STORe"
+    ],
+    "truncates": []
+   },
+   "SWEep": {
+    "documented": [
+     "SWEep"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "TIME": {
+    "documented": [
+     "TIME"
+    ],
+    "truncates": []
+   },
+   "TRACe": {
+    "documented": [
+     "TRACe"
+    ],
+    "truncates": []
+   },
+   "UNIT": {
+    "documented": [
+     "UNIT"
+    ],
+    "truncates": []
+   },
+   "VIDeo": {
+    "documented": [
+     "VIDeo"
+    ],
+    "truncates": []
+   },
+   "WINdow": {
+    "documented": [
+     "WINDow",
+     "WINdow"
+    ],
+    "truncates": []
+   },
+   "ZERO": {
+    "documented": [],
+    "truncates": []
+   }
+  }
+ },
+ "rigol_vna.py": {
+  "families": [
+   "DNA6000",
+   "RSAN"
+  ],
+  "guides": [
+   "DNA6000__DNA6000 Programming Guide.txt",
+   "DNA6000__DNA6000-R Series Programming Guide.txt",
+   "RSAN__RSAN VNA Programming Manual.txt"
+  ],
+  "keywords": {
+   "ABORt": {
+    "documented": [
+     "ABORt"
+    ],
+    "truncates": []
+   },
+   "AMPLitude": {
+    "documented": [
+     "AMPLitude"
+    ],
+    "truncates": []
+   },
+   "BANDwidth": {
+    "documented": [
+     "BANDwidth"
+    ],
+    "truncates": []
+   },
+   "CALibration": {
+    "documented": [
+     "CALibration"
+    ],
+    "truncates": []
+   },
+   "CLEAr": {
+    "documented": [
+     "CLEAr",
+     "CLEar"
+    ],
+    "truncates": []
+   },
+   "CONFigure": {
+    "documented": [
+     "CONFigure"
+    ],
+    "truncates": []
+   },
+   "CONTinuous": {
+    "documented": [
+     "CONTinuous"
+    ],
+    "truncates": []
+   },
+   "DATA": {
+    "documented": [
+     "DATA"
+    ],
+    "truncates": []
+   },
+   "DISPlay": {
+    "documented": [
+     "DISPLAY",
+     "DISPLay",
+     "DISPlay",
+     "Display"
+    ],
+    "truncates": []
+   },
+   "ERRor": {
+    "documented": [
+     "ERRor"
+    ],
+    "truncates": []
+   },
+   "EXTernal": {
+    "documented": [
+     "EXTernal"
+    ],
+    "truncates": []
+   },
+   "FORM": {
+    "documented": [
+     "FORM",
+     "FORMat"
+    ],
+    "truncates": [
+     "FORMat"
+    ]
+   },
+   "FREQuency": {
+    "documented": [
+     "FREQuency"
+    ],
+    "truncates": []
+   },
+   "IDN": {
+    "common": true
+   },
+   "IMMediate": {
+    "documented": [
+     "IMMediate"
+    ],
+    "truncates": []
+   },
+   "INITiate": {
+    "documented": [
+     "INITiate"
+    ],
+    "truncates": []
+   },
+   "INSTrument": {
+    "documented": [
+     "INSTrument"
+    ],
+    "truncates": []
+   },
+   "LEVel": {
+    "documented": [
+     "LEVel"
+    ],
+    "truncates": []
+   },
+   "MAX": {
+    "documented": [
+     "MAX",
+     "MAXimum"
+    ],
+    "truncates": [
+     "MAXimum"
+    ]
+   },
+   "MAXimum": {
+    "documented": [
+     "MAXimum"
+    ],
+    "truncates": []
+   },
+   "MIN": {
+    "documented": [
+     "MINimum"
+    ],
+    "truncates": [
+     "MINimum"
+    ]
+   },
+   "NEW": {
+    "documented": [
+     "NEW"
+    ],
+    "truncates": []
+   },
+   "OPC": {
+    "common": true
+   },
+   "OUTPut": {
+    "documented": [
+     "OUTPut"
+    ],
+    "truncates": []
+   },
+   "POINts": {
+    "documented": [
+     "POINts"
+    ],
+    "truncates": [
+     "POINtsweep"
+    ]
+   },
+   "POWer": {
+    "documented": [
+     "POWer"
+    ],
+    "truncates": []
+   },
+   "RESolution": {
+    "documented": [
+     "RESolution"
+    ],
+    "truncates": []
+   },
+   "RST": {
+    "common": true
+   },
+   "SELect": {
+    "documented": [
+     "SELect"
+    ],
+    "truncates": []
+   },
+   "SENSe": {
+    "documented": [
+     "SENSe"
+    ],
+    "truncates": []
+   },
+   "SOURce": {
+    "documented": [
+     "SOURce"
+    ],
+    "truncates": []
+   },
+   "STATe": {
+    "documented": [
+     "STATE",
+     "STATe"
+    ],
+    "truncates": []
+   },
+   "SWEep": {
+    "documented": [
+     "SWEep"
+    ],
+    "truncates": []
+   },
+   "SYSTem": {
+    "documented": [
+     "SYSTem"
+    ],
+    "truncates": []
+   },
+   "THROugh": {
+    "documented": [
+     "THROugh"
+    ],
+    "truncates": []
+   },
+   "TRACe": {
+    "documented": [
+     "TRACe"
+    ],
+    "truncates": [
+     "TRACes"
+    ]
+   },
+   "TRIGger": {
+    "documented": [
+     "TRIGger"
+    ],
+    "truncates": []
+   }
+  }
+ }
+}
