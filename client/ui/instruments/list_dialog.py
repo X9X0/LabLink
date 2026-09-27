@@ -17,9 +17,9 @@ from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
-                             QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
-                             QMessageBox, QPushButton, QSpinBox,
-                             QTableWidget, QTableWidgetItem, QVBoxLayout)
+                             QDoubleSpinBox, QGridLayout, QHBoxLayout,
+                             QHeaderView, QLabel, QMessageBox, QPushButton,
+                             QSpinBox, QTableWidget, QVBoxLayout)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,20 @@ class ListDialog(QDialog):
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(
             ["Level (A)", "Dwell (s)", "Slew (A/us)"])
-        self.table.verticalHeader().setDefaultSectionSize(24)
+
+        # Row height from the widget that has to fit in it, not a
+        # number. 24px was measured against this machine's spin box and
+        # clipped the digits on a Windows theme, where the same control
+        # is taller -- the values were there and simply cut in half.
+        self.table.verticalHeader().setDefaultSectionSize(self._row_height())
+
+        # The three columns share the width. Fixed columns left most of
+        # the table empty to the right of Slew, which reads as though
+        # something is missing.
+        header = self.table.horizontalHeader()
+        for column in range(3):
+            header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.Stretch)
         self.table.setToolTip(
             "One row per step. Dwell is how long the load holds that\n"
             "level; slew is how fast it gets there."
@@ -129,6 +142,17 @@ class ListDialog(QDialog):
     # The table
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _row_height() -> int:
+        """Tall enough for a spin box on this platform, with room.
+
+        Asked of a real one rather than assumed: the height differs by
+        theme and by display scaling, and a row shorter than its
+        contents clips them without any other sign of trouble.
+        """
+        probe = QDoubleSpinBox()
+        return max(probe.sizeHint().height() + 8, 30)
+
     def _spin(self, minimum, maximum, decimals, value, step):
         box = QDoubleSpinBox()
         box.setRange(minimum, maximum)
@@ -150,6 +174,7 @@ class ListDialog(QDialog):
             row, 1, self._spin(MIN_WIDTH, MAX_WIDTH, 5, 0.1, 0.01))
         self.table.setCellWidget(
             row, 2, self._spin(0.001, 100.0, 3, 0.5, 0.01))
+        self.table.setRowHeight(row, self._row_height())
         self._show_step_count()
 
     def _remove_step(self):

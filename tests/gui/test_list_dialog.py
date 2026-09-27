@@ -173,3 +173,62 @@ class TestShowingWhatTheLoadHolds:
                     [{"level": 1.0, "width": None, "slew": None},
                      {"level": 2.0, "width": None, "slew": None}])
         assert dialog.table.cellWidget(0, 2).value() == pytest.approx(before)
+
+
+class TestTheRowsFitTheirContents:
+    """A row shorter than the widget in it clips the digits, and gives
+    no other sign of trouble.
+
+    The height was a measured constant -- 24px, taken against this
+    machine's spin box -- and on a Windows theme the same control is
+    taller. The values were there and cut in half.
+    """
+
+    def test_a_row_is_taller_than_the_spin_box_in_it(self, dialog):
+        spin = dialog.table.cellWidget(0, 0)
+        assert dialog.table.rowHeight(0) > spin.sizeHint().height(), (
+            f"row {dialog.table.rowHeight(0)}px against a spin box "
+            f"{spin.sizeHint().height()}px -- the digits are clipped")
+
+    def test_it_asks_the_widget_rather_than_assuming(self, dialog):
+        """The number differs by theme and by display scaling, so it
+        cannot be a constant."""
+        from PyQt6.QtWidgets import QDoubleSpinBox
+
+        probe = QDoubleSpinBox()
+        assert dialog._row_height() >= probe.sizeHint().height() + 4
+
+    def test_added_rows_get_it_too(self, dialog):
+        """setDefaultSectionSize covers the rows the table makes; a row
+        added later needs it applying."""
+        dialog.add_button.click()
+        last = dialog.table.rowCount() - 1
+        spin = dialog.table.cellWidget(last, 0)
+        assert dialog.table.rowHeight(last) > spin.sizeHint().height()
+
+    def test_every_row_is_the_same_height(self, dialog):
+        dialog._set_step_count(5)
+        heights = {dialog.table.rowHeight(r)
+                   for r in range(dialog.table.rowCount())}
+        assert len(heights) == 1, heights
+
+
+class TestTheColumnsUseTheWidth:
+    """Fixed columns left most of the table empty to the right of Slew,
+    which reads as though something is missing."""
+
+    def test_they_fill_the_table(self, dialog, qapp):
+        dialog.resize(900, 500)
+        dialog.show()
+        qapp.processEvents()
+        used = sum(dialog.table.columnWidth(c) for c in range(3))
+        assert used > dialog.table.geometry().width() * 0.9, (
+            f"{used}px of columns in a {dialog.table.geometry().width()}px "
+            f"table")
+
+    def test_they_share_it_evenly(self, dialog, qapp):
+        dialog.resize(900, 500)
+        dialog.show()
+        qapp.processEvents()
+        widths = [dialog.table.columnWidth(c) for c in range(3)]
+        assert max(widths) - min(widths) <= 2, widths
