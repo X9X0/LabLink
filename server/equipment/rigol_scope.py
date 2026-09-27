@@ -1294,7 +1294,21 @@ class RigolDS1102D(LegacyScopeExtras, BaseEquipment):
                 measurements["fall_time"] = float(await self._query(":MEAS:FALL?"))
                 measurements["positive_width"] = float(await self._query(":MEAS:PWID?"))
                 measurements["negative_width"] = float(await self._query(":MEAS:NWID?"))
-                measurements["duty_cycle"] = float(await self._query(":MEAS:DUTY?"))
+                # :MEAS:DUTY? is not a command on any scope this driver
+                # claims. The guides have PDUTy/NDUTy (DS2000A) and
+                # PDUTycycle/NDUTycycle (DS1000D/E) -- there is no
+                # unqualified "duty", because duty cycle is signed.
+                #
+                # Both spellings capitalise P, D, U and T, so PDUT is the
+                # legal short form of either and works across the range,
+                # the same way BATT covers Rigol's BATTary/BATTery split
+                # on the DL3000.
+                #
+                # Sent as DUTY it was not a command, and it failed inside
+                # this try block: the debug log fires, duty_cycle is
+                # quietly absent, and every caller has been seeing a
+                # measurement dictionary with one key missing.
+                measurements["duty_cycle"] = float(await self._query(":MEAS:PDUT?"))
             except Exception as e:
                 logger.debug(f"Some timing measurements not available: {e}")
 
