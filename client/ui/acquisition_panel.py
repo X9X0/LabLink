@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
 
 import qasync
 from client.api.client import LabLinkClient, call_blocking
+from client.utils.modals import ask, say_later
 
 try:
     from client.ui.widgets.plot_widget import PlotWidget
@@ -772,17 +773,38 @@ Samples Collected: {session.get('sample_count', 0)}
         finally:
             self._sessions_refresh_in_flight = False
 
-    def create_session(self):
+    def _say_later(self, show, title: str, text: str):
+        """Put up a dialog once this coroutine has let go of the loop.
+
+        See client/utils/modals.py. A modal opened inline from a
+        coroutine runs a nested Qt event loop while this task is still
+        current; asyncio refuses that, and if nothing dismisses the
+        dialog processEvents never returns and the loop stops.
+        """
+        say_later(self, show, title, text)
+
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop.
+
+        Used for the delete confirmation and for the export file
+        chooser -- QFileDialog runs a nested loop exactly as
+        QMessageBox does, which is easy to forget because it does not
+        look like a message box.
+        """
+        return await ask(put_it_up)
+
+    @qasync.asyncSlot()
+    async def create_session(self):
         """Create new acquisition session."""
         if not self.client:
-            QMessageBox.warning(
-                self, "Not Connected", "Please connect to a server first"
-            )
+            self._say_later(
+                QMessageBox.warning, "Not Connected", "Please connect to a server first")
             return
 
         equipment_id = self.equipment_combo.currentData()
         if not equipment_id:
-            QMessageBox.warning(self, "No Equipment", "Please select equipment")
+            self._say_later(
+                QMessageBox.warning, "No Equipment", "Please select equipment")
             return
 
         try:
@@ -827,38 +849,38 @@ Samples Collected: {session.get('sample_count', 0)}
             )
 
             # Create session
-            result = self.client.create_acquisition_session(
-                equipment_id, config.to_dict()
-            )
+            result = await call_blocking(
+                self.client.create_acquisition_session, equipment_id, config.to_dict())
             acquisition_id = result.get("acquisition_id")
 
             if acquisition_id:
                 self.current_acquisition_id = acquisition_id
-                QMessageBox.information(
-                    self, "Success", f"Session created: {acquisition_id}"
-                )
+                self._say_later(
+                    QMessageBox.information, "Success", f"Session created: {acquisition_id}")
                 self.refresh_sessions()
             else:
-                QMessageBox.warning(
-                    self, "Error", "Failed to get acquisition ID from response"
-                )
+                self._say_later(
+                    QMessageBox.warning, "Error", "Failed to get acquisition ID from response")
 
         except Exception as e:
             logger.error(f"Error creating acquisition session: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to create session:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to create session:\n{str(e)}")
 
-    def start_acquisition(self):
+    @qasync.asyncSlot()
+    async def start_acquisition(self):
         """Start data acquisition."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(
-                self, "No Session", "Please select or create a session first"
-            )
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select or create a session first")
             return
 
         try:
-            result = self.client.start_acquisition(self.current_acquisition_id)
+            result = await call_blocking(
+                self.client.start_acquisition, self.current_acquisition_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Acquisition started")
+                self._say_later(
+                    QMessageBox.information, "Success", "Acquisition started")
                 self.acquisition_started.emit(self.current_acquisition_id)
                 self.refresh_sessions()
 
@@ -868,9 +890,11 @@ Samples Collected: {session.get('sample_count', 0)}
                 )
         except Exception as e:
             logger.error(f"Error starting acquisition: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to start:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to start:\n{str(e)}")
 
-    def stop_acquisition(self):
+    @qasync.asyncSlot()
+    async def stop_acquisition(self):
         """Stop data acquisition."""
         if not self.current_acquisition_id:
             return
@@ -882,84 +906,101 @@ Samples Collected: {session.get('sample_count', 0)}
             if acquisition_id in self.streaming_acquisitions:
                 asyncio.create_task(self._stop_acquisition_stream(acquisition_id))
 
-            result = self.client.stop_acquisition(acquisition_id)
+            result = await call_blocking(
+                self.client.stop_acquisition, acquisition_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Acquisition stopped")
+                self._say_later(
+                    QMessageBox.information, "Success", "Acquisition stopped")
                 self.acquisition_stopped.emit(acquisition_id)
                 self.refresh_sessions()
         except Exception as e:
             logger.error(f"Error stopping acquisition: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to stop:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to stop:\n{str(e)}")
 
-    def pause_acquisition(self):
+    @qasync.asyncSlot()
+    async def pause_acquisition(self):
         """Pause data acquisition."""
         if not self.current_acquisition_id:
             return
 
         try:
-            result = self.client.pause_acquisition(self.current_acquisition_id)
+            result = await call_blocking(
+                self.client.pause_acquisition, self.current_acquisition_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Acquisition paused")
+                self._say_later(
+                    QMessageBox.information, "Success", "Acquisition paused")
                 self.refresh_sessions()
         except Exception as e:
             logger.error(f"Error pausing acquisition: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to pause:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to pause:\n{str(e)}")
 
-    def resume_acquisition(self):
+    @qasync.asyncSlot()
+    async def resume_acquisition(self):
         """Resume paused acquisition."""
         if not self.current_acquisition_id:
             return
 
         try:
-            result = self.client.resume_acquisition(self.current_acquisition_id)
+            result = await call_blocking(
+                self.client.resume_acquisition, self.current_acquisition_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Acquisition resumed")
+                self._say_later(
+                    QMessageBox.information, "Success", "Acquisition resumed")
                 self.refresh_sessions()
         except Exception as e:
             logger.error(f"Error resuming acquisition: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to resume:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to resume:\n{str(e)}")
 
-    def delete_current_session(self):
+    @qasync.asyncSlot()
+    async def delete_current_session(self):
         """Delete currently selected session."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
-        reply = QMessageBox.question(
+        reply = await self._ask(lambda: QMessageBox.question(
             self,
             "Confirm Delete",
             f"Delete acquisition session {self.current_acquisition_id}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+        ))
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                result = self.client.delete_acquisition_session(
-                    self.current_acquisition_id
-                )
+                result = await call_blocking(
+                    self.client.delete_acquisition_session, self.current_acquisition_id)
                 if result.get("success"):
-                    QMessageBox.information(self, "Success", "Session deleted")
+                    self._say_later(
+                        QMessageBox.information, "Success", "Session deleted")
                     self.current_acquisition_id = None
                     self.refresh_sessions()
             except Exception as e:
                 logger.error(f"Error deleting session: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to delete:\n{str(e)}")
+                self._say_later(
+                    QMessageBox.critical, "Error", f"Failed to delete:\n{str(e)}")
 
-    def export_current_session(self):
+    @qasync.asyncSlot()
+    async def export_current_session(self):
         """Export data from current session."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
             from PyQt6.QtWidgets import QFileDialog
 
-            filename, _ = QFileDialog.getSaveFileName(
+            filename, _ = await self._ask(lambda: QFileDialog.getSaveFileName(
                 self,
                 "Export Acquisition Data",
                 "",
-                "CSV Files (*.csv);;HDF5 Files (*.h5);;NumPy Files (*.npy);;JSON Files (*.json)",
-            )
+                "CSV Files (*.csv);;HDF5 Files (*.h5);;"
+                "NumPy Files (*.npy);;JSON Files (*.json)",
+            ))
 
             if filename:
                 # Determine format from extension
@@ -972,28 +1013,28 @@ Samples Collected: {session.get('sample_count', 0)}
                 else:
                     fmt = "json"
 
-                result = self.client.export_acquisition_data(
-                    self.current_acquisition_id, format=fmt, filepath=filename
-                )
+                result = await call_blocking(
+                    self.client.export_acquisition_data, self.current_acquisition_id, format=fmt, filepath=filename)
 
                 if result.get("success"):
-                    QMessageBox.information(
-                        self, "Success", f"Data exported to {filename}"
-                    )
+                    self._say_later(
+                        QMessageBox.information, "Success", f"Data exported to {filename}")
         except Exception as e:
             logger.error(f"Error exporting data: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to export:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to export:\n{str(e)}")
 
-    def load_acquisition_data(self):
+    @qasync.asyncSlot()
+    async def load_acquisition_data(self):
         """Load and display acquisition data."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
-            result = self.client.get_acquisition_data(
-                self.current_acquisition_id, max_points=self.max_points_spin.value()
-            )
+            result = await call_blocking(
+                self.client.get_acquisition_data, self.current_acquisition_id, max_points=self.max_points_spin.value())
 
             # API returns data in format: {channels: [...], data: {timestamps: [...], values: {CH1: [...]}}}
             channels = result.get("channels", [])
@@ -1033,25 +1074,26 @@ Samples Collected: {session.get('sample_count', 0)}
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to load data:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to load data:\n{str(e)}")
 
-    def show_rolling_stats(self):
+    @qasync.asyncSlot()
+    async def show_rolling_stats(self):
         """Show rolling statistics."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
             # First get acquisition data to discover channels
-            data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id, max_points=1
-            )
+            data_result = await call_blocking(
+                self.client.get_acquisition_data, self.current_acquisition_id, max_points=1)
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(
-                    self, "No Channels", "No channels found in acquisition data"
-                )
+                self._say_later(
+                    QMessageBox.warning, "No Channels", "No channels found in acquisition data")
                 return
 
             self.stats_table.setRowCount(0)
@@ -1059,9 +1101,8 @@ Samples Collected: {session.get('sample_count', 0)}
             # Get rolling stats for each channel
             for channel in channels:
                 try:
-                    result = self.client.get_acquisition_rolling_stats(
-                        self.current_acquisition_id, channel=channel
-                    )
+                    result = await call_blocking(
+                        self.client.get_acquisition_rolling_stats, self.current_acquisition_id, channel=channel)
                     stats = result.get("stats", {})
                     self._add_stat_row(f"{channel} - Mean", stats.get("mean", 0), "")
                     self._add_stat_row(f"{channel} - Std Dev", stats.get("std", 0), "")
@@ -1078,25 +1119,26 @@ Samples Collected: {session.get('sample_count', 0)}
 
         except Exception as e:
             logger.error(f"Error getting rolling stats: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to get statistics:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to get statistics:\n{str(e)}")
 
-    def show_fft_analysis(self):
+    @qasync.asyncSlot()
+    async def show_fft_analysis(self):
         """Show FFT analysis."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
             # Get channels from session data
-            data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id, max_points=1
-            )
+            data_result = await call_blocking(
+                self.client.get_acquisition_data, self.current_acquisition_id, max_points=1)
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(
-                    self, "No Channels", "No channels found in acquisition data"
-                )
+                self._say_later(
+                    QMessageBox.warning, "No Channels", "No channels found in acquisition data")
                 return
 
             self.stats_table.setRowCount(0)
@@ -1104,9 +1146,8 @@ Samples Collected: {session.get('sample_count', 0)}
             # Get FFT analysis for each channel
             for channel in channels:
                 try:
-                    result = self.client.get_acquisition_fft(
-                        self.current_acquisition_id, channel=channel
-                    )
+                    result = await call_blocking(
+                        self.client.get_acquisition_fft, self.current_acquisition_id, channel=channel)
                     fft_data = result.get("fft", {})
                     self._add_stat_row(
                         f"{channel} - Fundamental Freq",
@@ -1122,25 +1163,26 @@ Samples Collected: {session.get('sample_count', 0)}
 
         except Exception as e:
             logger.error(f"Error getting FFT analysis: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to get FFT:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to get FFT:\n{str(e)}")
 
-    def show_trend_analysis(self):
+    @qasync.asyncSlot()
+    async def show_trend_analysis(self):
         """Show trend analysis."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
             # Get channels from session data
-            data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id, max_points=1
-            )
+            data_result = await call_blocking(
+                self.client.get_acquisition_data, self.current_acquisition_id, max_points=1)
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(
-                    self, "No Channels", "No channels found in acquisition data"
-                )
+                self._say_later(
+                    QMessageBox.warning, "No Channels", "No channels found in acquisition data")
                 return
 
             self.stats_table.setRowCount(0)
@@ -1148,9 +1190,8 @@ Samples Collected: {session.get('sample_count', 0)}
             # Get trend analysis for each channel
             for channel in channels:
                 try:
-                    result = self.client.get_acquisition_trend(
-                        self.current_acquisition_id, channel=channel
-                    )
+                    result = await call_blocking(
+                        self.client.get_acquisition_trend, self.current_acquisition_id, channel=channel)
                     trend_data = result.get("trend", {})
                     self._add_stat_row(
                         f"{channel} - Trend", trend_data.get("trend", "unknown"), ""
@@ -1168,25 +1209,26 @@ Samples Collected: {session.get('sample_count', 0)}
 
         except Exception as e:
             logger.error(f"Error getting trend analysis: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to get trend:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to get trend:\n{str(e)}")
 
-    def show_quality_metrics(self):
+    @qasync.asyncSlot()
+    async def show_quality_metrics(self):
         """Show data quality metrics."""
         if not self.current_acquisition_id:
-            QMessageBox.warning(self, "No Session", "Please select a session first")
+            self._say_later(
+                QMessageBox.warning, "No Session", "Please select a session first")
             return
 
         try:
             # Get channels from session data
-            data_result = self.client.get_acquisition_data(
-                self.current_acquisition_id, max_points=1
-            )
+            data_result = await call_blocking(
+                self.client.get_acquisition_data, self.current_acquisition_id, max_points=1)
             channels = data_result.get("channels", [])
 
             if not channels:
-                QMessageBox.warning(
-                    self, "No Channels", "No channels found in acquisition data"
-                )
+                self._say_later(
+                    QMessageBox.warning, "No Channels", "No channels found in acquisition data")
                 return
 
             self.stats_table.setRowCount(0)
@@ -1194,9 +1236,8 @@ Samples Collected: {session.get('sample_count', 0)}
             # Get quality metrics for each channel
             for channel in channels:
                 try:
-                    result = self.client.get_acquisition_quality(
-                        self.current_acquisition_id, channel=channel
-                    )
+                    result = await call_blocking(
+                        self.client.get_acquisition_quality, self.current_acquisition_id, channel=channel)
                     quality_data = result.get("quality", {})
                     self._add_stat_row(
                         f"{channel} - Quality Grade",
@@ -1225,7 +1266,8 @@ Samples Collected: {session.get('sample_count', 0)}
 
         except Exception as e:
             logger.error(f"Error getting quality metrics: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to get quality:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to get quality:\n{str(e)}")
 
     def _add_stat_row(self, metric: str, value: float, unit: str):
         """Add row to statistics table."""

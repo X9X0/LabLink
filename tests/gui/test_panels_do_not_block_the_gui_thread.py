@@ -200,6 +200,7 @@ class TestNoCoroutineOpensAModalInline:
 #: synchronous round trip on the GUI thread.
 BUTTON_DRIVEN = [
     "client.ui.sync_panel",
+    "client.ui.acquisition_panel",
 ]
 
 
