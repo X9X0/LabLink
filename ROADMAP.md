@@ -575,9 +575,48 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ---
 
+#### 5. Multi-Instrument Readout Window 💡
+**Priority:** ⭐⭐
+**Target:** TBD
+**Effort:** 1-2 weeks
+**Related:** #248 (detachable panels), `docs/INSTRUMENT_PANELS.md`
+
+A pop-out window holding a mix of readouts drawn from several instruments at
+once, so an operator with a second monitor can watch a whole bench on one
+screen while the main window stays on whatever they are driving.
+
+**Features:**
+- A separate top-level window, freely placed on any monitor
+- The operator picks which readouts appear: any measurement from any
+  connected instrument, in any combination — supply volts beside load amps
+  beside a DMM reading, rather than one instrument per panel
+- Several such windows at once, each with its own selection
+- Layout and selection persist across restarts
+- Readouts only, no control: nothing in this window takes an equipment lock,
+  so it can sit open beside somebody else's session without contending for
+  the instruments it is watching
+
+**Design notes:**
+- Distinct from #248. That detaches an existing per-instrument panel intact;
+  this composes a new view out of readouts belonging to different
+  instruments. #248 is not a precondition — they share the panel work already
+  done, not each other.
+- Reuse `MeasurementViews` (`client/ui/instruments/`) so a readout looks the
+  same here as in its own panel.
+- Feeds off the same polling the panels use. Worth checking it does not
+  multiply the poll rate on an instrument that is already on screen twice —
+  the acquisition manager's one-read-per-sample approach is the pattern.
+
+**Benefits:**
+- A whole bench visible at a glance during a long run
+- Second monitor stops being wasted space
+- Watching costs no lock, so an observer can watch a bench in use
+
+---
+
 ### Lower Priority (v1.4.0+) ⭐
 
-#### 5. Advanced Analytics & ML 💡
+#### 6. Advanced Analytics & ML 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 2-3 weeks
@@ -596,7 +635,7 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ---
 
-#### 6. Multi-Server Aggregation 💡
+#### 7. Multi-Server Aggregation 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 1-2 weeks
@@ -615,7 +654,7 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ---
 
-#### 7. Web Dashboard Enhancements 💡
+#### 8. Web Dashboard Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 1-2 weeks
@@ -635,7 +674,7 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md) and [docs/archive
 
 ---
 
-#### 8. Equipment Discovery Enhancements 💡
+#### 9. Equipment Discovery Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 3-5 days
