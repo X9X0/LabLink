@@ -23,6 +23,25 @@ from client.ui.theme import apply_status_colors
 logger = logging.getLogger(__name__)
 
 
+def _printable(text: str) -> str:
+    """A resource string fit to put in front of somebody.
+
+    Some instruments NUL-pad their USB descriptors and the padding
+    survives into the resource string, where Qt draws each NUL as an
+    empty box. On the bench a Siglent SPD3303X-E enumerates as
+
+        USB0::62700::5168::SPD3XJGCA01014\\x00\\x00\\x00\\x00::0::INSTR
+
+    which reads as four corrupt characters in the middle of the serial
+    and had the operator wondering which digits had been mangled.
+
+    Display only. The string sent to the server is the one the device
+    was enumerated under, padding and all, because that is what opens
+    it.
+    """
+    return "".join(c for c in (text or "") if c.isprintable() or c == " ")
+
+
 class ConnectDeviceDialog(QDialog):
     """Dialog for selecting and connecting to discovered devices."""
 
@@ -69,10 +88,11 @@ class ConnectDeviceDialog(QDialog):
             device_type = device.get("device_type", "unknown")
             confidence = device.get("confidence_score", 0.0)
 
+            shown_resource = _printable(resource_name)
             if manufacturer and model:
-                display_text = f"{resource_name}  —  {manufacturer} {model} ({device_type})"
+                display_text = f"{shown_resource}  —  {manufacturer} {model} ({device_type})"
             else:
-                display_text = f"{resource_name}  —  {device_type}"
+                display_text = f"{shown_resource}  —  {device_type}"
 
             item = QListWidgetItem(display_text)
             item.setData(Qt.ItemDataRole.UserRole, device)  # Store full device info

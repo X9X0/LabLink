@@ -187,3 +187,43 @@ class TestTheCatalogueExport:
     def test_only_the_spd_families_claim_a_driver(self):
         driven = {e["key"] for e in catalog() if e["drivable"]}
         assert driven == {"SPD3000X", "SPD1000X"}
+
+
+class TestTheConnectDialogsModelString:
+    """The connect dialog offers "{manufacturer} {model}" as one
+    string and sends that as the model.
+
+    B&K's registry has always tolerated it, so B&K instruments
+    connected. This one did not, and the server refused the connection
+    with "Unsupported equipment model: Siglent Technologies
+    SPD3303X-E" -- naming, as unsupported, the instrument it had just
+    identified on the line above.
+    """
+
+    @pytest.mark.parametrize("given,expected", [
+        ("Siglent Technologies SPD3303X-E", "SPD3000X"),
+        ("Siglent Technologies SPD3303X", "SPD3000X"),
+        ("SIGLENT SPD1168X", "SPD1000X"),
+        ("Siglent Technologies Co., Ltd SDM3065X", "SDM3000"),
+        ("Atten Electronics SPD3303X", "SPD3000X"),
+        ("SIGLENT SDS1104X-E", "SDS1000X-E"),
+    ])
+    def test_a_manufacturer_prefix_is_tolerated(self, given, expected):
+        family = resolve_model(given)
+        assert family is not None, given
+        assert family.key == expected
+
+    def test_a_prefixed_unknown_sku_still_reaches_the_prefix_scheme(self):
+        assert resolve_model("Siglent Technologies SPD9999Q").category == "psu"
+
+    @pytest.mark.parametrize("given", ["Siglent", "SIGLENT",
+                                       "Siglent Technologies", "Atten"])
+    def test_a_manufacturer_on_its_own_resolves_to_nothing(self, given):
+        """Stripping the name must not leave an empty string that then
+        matches something."""
+        assert resolve_model(given) is None
+
+    @pytest.mark.parametrize("given", ["RIGOL TECHNOLOGIES DL3021A",
+                                       "B&K Precision 9205B"])
+    def test_other_vendors_are_still_not_claimed(self, given):
+        assert resolve_model(given) is None

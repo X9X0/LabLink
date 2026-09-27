@@ -272,12 +272,38 @@ def _prefix_match(candidate: str) -> Optional[SiglentModel]:
     return None
 
 
+#: Manufacturer words that turn up glued to the front of a model.
+#: Longest first, so the longer spelling is stripped before its own
+#: prefix matches. See _without_manufacturer.
+_MANUFACTURER_WORDS = (
+    "SIGLENTTECHNOLOGIESCOLTD", "SIGLENTTECHNOLOGIES", "SIGLENT",
+    "ATTENELECTRONICS", "ATTEN",
+)
+
+
+def _without_manufacturer(squashed: str) -> str:
+    """Drop a leading manufacturer name from an already-squashed model.
+
+    The connect dialog offers "{manufacturer} {model}" as one string --
+    "Siglent Technologies SPD3303X-E" -- and sends it as the model.
+    B&K's registry has always tolerated that, so B&K instruments
+    connected and this one was refused with "Unsupported equipment
+    model: Siglent Technologies SPD3303X-E", naming the instrument it
+    had just identified.
+    """
+    for word in _MANUFACTURER_WORDS:
+        if squashed.startswith(word) and len(squashed) > len(word):
+            return squashed[len(word):]
+    return squashed
+
+
 def resolve_model(model: Optional[str]) -> Optional[SiglentModel]:
     """Resolve a model string to a family.
 
     Tries, in order: an exact family key, a SKU named by some family,
     a squashed comparison so spacing and hyphens cannot matter, then
-    the prefix scheme.
+    the prefix scheme -- and then all of that again with a leading
+    manufacturer name removed.
     """
     if not model:
         return None
@@ -289,6 +315,20 @@ def resolve_model(model: Optional[str]) -> Optional[SiglentModel]:
         return MODELS[candidate]
 
     squashed = _squash(candidate)
+    found = _resolve_squashed(squashed)
+    if found is not None:
+        return found
+
+    trimmed = _without_manufacturer(squashed)
+    if trimmed != squashed:
+        return _resolve_squashed(trimmed)
+    return None
+
+
+def _resolve_squashed(squashed: str) -> Optional[SiglentModel]:
+    """resolve_model's lookups, against an already-squashed string."""
+    if not squashed:
+        return None
     for entry in MODELS.values():
         for sku in entry.skus:
             if _squash(sku) == squashed:
