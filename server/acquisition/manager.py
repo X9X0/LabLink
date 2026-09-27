@@ -47,6 +47,36 @@ class AcquisitionManager:
         """
         acquisition_id = config.acquisition_id
 
+        # Refuse a channel this instrument cannot read, here rather than
+        # once per sample forever.
+        #
+        # Starting an acquisition on a supply with channel CH1 -- which
+        # it does not implement -- used to be accepted, and then failed
+        # on every sample at the configured rate. The session ran, the
+        # buffer filled with NaN, the operator saw a session that was
+        # "acquiring", and the only sign of trouble was the log.
+        #
+        # Probing costs one read per channel and is the same read the
+        # loop is about to make; there is no capability flag to consult,
+        # because _get_channel_value discovers what works by trying.
+        unreadable = []
+        for channel in config.channels:
+            try:
+                await self._get_channel_value(equipment, channel)
+            except NotImplementedError:
+                unreadable.append(channel)
+            except Exception:
+                # Something else -- an instrument that is busy, or off.
+                # That is the loop's to report and retry, not a reason
+                # to refuse the session.
+                pass
+        if unreadable:
+            raise ValueError(
+                "%s cannot acquire from %s. Choose a channel it reads, or "
+                "an instrument that supports acquisition."
+                % (config.equipment_id,
+                   ", ".join(repr(c) for c in unreadable)))
+
         # Create session
         session = AcquisitionSession(
             acquisition_id=acquisition_id,
@@ -182,6 +212,42 @@ class AcquisitionManager:
 
         return True
 
+    #: How often a channel that keeps failing may say so.
+    COMPLAIN_EVERY_SEC = 5.0
+
+    @staticmethod
+    def _complain_occasionally(complaints, acquisition_id, channel, error):
+        """Report a channel that will not read, without flooding.
+
+        The first failure is logged at once, because that is the one
+        that says what went wrong. After that the same failure is
+        counted and reported at most every COMPLAIN_EVERY_SEC, carrying
+        the count so the rate is still visible. A *different* error on
+        the same channel is always logged, since it is new information.
+
+        Unbounded logging here is what turned one misconfigured session
+        -- channel CH1 on a supply that does not implement acquisition
+        -- into 6,287 identical lines in ten seconds.
+        """
+        message = str(error)
+        now = datetime.now().timestamp()
+        seen = complaints.get(channel)
+
+        if seen is None or seen[0] != message:
+            complaints[channel] = [message, 1, now]
+            logger.error("Acquisition %s: error reading channel %s: %s",
+                         acquisition_id, channel, message)
+            return
+
+        seen[1] += 1
+        if now - seen[2] < AcquisitionManager.COMPLAIN_EVERY_SEC:
+            return
+        logger.error(
+            "Acquisition %s: channel %s still failing (%d times in %.0fs): %s",
+            acquisition_id, channel, seen[1], now - seen[2], message)
+        seen[1] = 0
+        seen[2] = now
+
     async def _acquisition_loop(self, acquisition_id: str, equipment):
         """Main acquisition loop (runs in background task)."""
         session = self._sessions[acquisition_id]
@@ -199,6 +265,14 @@ class AcquisitionManager:
             sleep_time = 1.0 / config.sample_rate
 
             samples_acquired = 0
+
+            #: channel -> [message, count, when it was last reported].
+            #: A channel that cannot be read fails on every sample, and
+            #: every sample used to be logged: 6,287 identical lines and
+            #: 1.1 MB in ten seconds on the bench, from one acquisition
+            #: started against a supply with a channel it does not
+            #: implement. On a Pi that fills the disk.
+            complaints: Dict[str, list] = {}
 
             while True:
                 # Check if we should stop
@@ -219,8 +293,10 @@ class AcquisitionManager:
                         # Get measurement from equipment
                         value = await self._get_channel_value(equipment, channel)
                         values.append(value)
+                        complaints.pop(channel, None)   # it is reading again
                     except Exception as e:
-                        logger.error(f"Error reading channel {channel}: {e}")
+                        self._complain_occasionally(
+                            complaints, acquisition_id, channel, e)
                         values.append(np.nan)
 
                 # Add to buffer

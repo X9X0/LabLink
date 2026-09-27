@@ -91,6 +91,12 @@ async def create_session(request: CreateSessionRequest):
 
     except HTTPException:
         raise
+    except ValueError as e:
+        # A configuration the instrument cannot honour -- a channel it
+        # does not read, most often. The operator can fix that; 500 says
+        # they cannot, and buries the sentence that tells them how.
+        logger.info("Acquisition session refused: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating acquisition session: {e}")
         raise HTTPException(

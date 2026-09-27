@@ -56,8 +56,29 @@ class UpdateManager:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
         # Configuration directory
-        self.config_dir = self.root_dir / "config"
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+        #
+        # Written to data/, not config/. In Docker the compose file
+        # mounts /opt/lablink/config read-only -- correct, since it is
+        # the shipped configuration -- while /app/data is a writable
+        # volume, which is where the security and discovery databases
+        # and the JWT secret already live.
+        #
+        # Saving here failed on every write with "[Errno 30] Read-only
+        # file system", and because the default is STABLE the update
+        # mode silently reverted to stable on every restart. Somebody
+        # selecting the development branch got stable back without
+        # being told, and put it down to their own mis-click.
+        #
+        # An existing config/update_config.json is still read, so a
+        # setting saved before this moved is not lost.
+        self.config_dir = self.root_dir / "data"
+        self.legacy_config_file = self.root_dir / "config" / "update_config.json"
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:                # read-only too: say so once
+            logger.warning(
+                "Cannot create %s (%s); update settings will not persist",
+                self.config_dir, e)
         self.config_file = self.config_dir / "update_config.json"
 
         # Check if running in Docker
