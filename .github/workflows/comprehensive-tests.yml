@@ -86,7 +86,17 @@ jobs:
           # Importing a test module runs anything at its top level. That used
           # to rewrite profiles/*.json on every collection, so the timestamps
           # got committed by accident. Catch it here rather than in review.
-          pytest tests/ --collect-only -q > /dev/null
+          #
+          # Output kept rather than sent to /dev/null. A collection error
+          # exits non-zero here and, under `bash -e`, failed the whole job
+          # with nothing but "exit code 2" in the log -- the name of the
+          # module that would not import went to /dev/null with everything
+          # else. That is a step whose failure says only that it failed.
+          if ! pytest tests/ --collect-only -q > /tmp/collect.txt 2>&1; then
+            echo "Test collection failed -- nothing below ran:"
+            tail -40 /tmp/collect.txt
+            exit 1
+          fi
           if ! git diff --quiet; then
             echo "Collecting tests modified tracked files:"
             git diff --stat
