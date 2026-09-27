@@ -14,6 +14,9 @@ from .bk_power_supply import (BK1685B, BK1687B, BK1688B, BK1696, BK1901B,
                               BK1902B, BK9103, BK9104, BK9130B, BK9205B,
                               BK9206B)
 from .bk_registry import (PROTOCOL_SCPI, equipment_type_for, resolve_model)
+from .siglent_power_supply import spd_driver_for
+from .siglent_registry import resolve_model as siglent_resolve_model
+from .siglent_registry import why_not_drivable as siglent_why_not_drivable
 from .bk_scpi import (BKSCPIElectronicLoad, BKSCPIMultimeter,
                       BKSCPIPowerSupply)
 from .mock.mock_electronic_load import MockElectronicLoad
@@ -451,6 +454,17 @@ class EquipmentManager:
         if keyword_driver is not None:
             return keyword_driver(self.resource_manager, resource_string)
 
+        # Siglent: tried before B&K because several B&K families are
+        # Siglent rebadges, and a rebadge reports its B&K model number.
+        # A genuine Siglent answers with a Siglent model, which no B&K
+        # family claims, so the two cannot collide -- but order makes
+        # that explicit rather than lucky.
+        siglent_equipment = self._create_siglent_instance(
+            resource_string, model
+        )
+        if siglent_equipment is not None:
+            return siglent_equipment
+
         # B&K Precision: dispatched through the model registry so every
         # documented family is reachable, not just the hand-listed few.
         bk_equipment = self._create_bk_instance(
@@ -460,6 +474,29 @@ class EquipmentManager:
             return bk_equipment
 
         return None
+
+    def _create_siglent_instance(self, resource_string: str,
+                                 model: Optional[str]):
+        """Build a Siglent driver for `model`, or None.
+
+        None covers two different situations and the log says which.
+        Most of Siglent's catalogue is identified here and driven
+        nowhere: saying "unsupported" and stopping sends somebody
+        looking for a cable fault on an instrument that is answering
+        perfectly well.
+        """
+        info = siglent_resolve_model(model)
+        if info is None:
+            return None
+
+        driver = spd_driver_for(model)
+        if driver is None:
+            logger.warning("%s", siglent_why_not_drivable(info))
+            return None
+
+        logger.info("Using the Siglent SPD driver for %s (%s)",
+                    info.name, model)
+        return driver(self.resource_manager, resource_string, model=model)
 
     #: Models with a hand-written driver, which wins over the generic one.
     _BK_SPECIFIC_DRIVERS = {

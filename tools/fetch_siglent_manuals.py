@@ -37,6 +37,18 @@ GUIDES = [
      "https://int.siglent.com/upload_file/user/SDG2000X/SDG_Remote_Control_Manual(Rev1.0).pdf"),
     ("SDG_ProgrammingGuide_PG_E03B.pdf",
      "https://siglentna.com/USA_website_2014/Documents/Program_Material/SDG_ProgrammingGuide_PG_E03B.pdf"),
+    # Programmable power supplies -- SPD3303X-E on the bench at
+    # 192.168.91.191, USB f4ec:1430, *IDN? "Siglent Technologies,
+    # SPD3303X-E,SPD3XJGCA01014,1.01.01.03.12R1 V6.2".
+    ("SPD3303X_ProgrammingGuide_PG_E02A.pdf",
+     "https://siglentna.com/wp-content/uploads/dlm_uploads/2017/10/"
+     "SPD3303X_ProgrammingGuide_PG_E02A.pdf"),
+    ("SPD3000X_ProgrammingGuide_EN.pdf",
+     "https://int.siglent.com/u_file/document/"
+     "SPD3000X_Series_Programming_Guide_EN.pdf"),
+    ("SPD1000X_ProgrammingGuide_EN.pdf",
+     "https://siglentna.com/wp-content/uploads/dlm_uploads/2019/10/"
+     "SPD1000X_ProgrammingGuide_PG0901X_E01A.pdf"),
 ]
 
 
