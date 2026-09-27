@@ -528,11 +528,11 @@ class TestAnUnreadableResultSaysWhy:
     @pytest.mark.asyncio
     async def test_a_reply_that_is_not_a_number_is_quoted_back(self):
         load = driver(answers={"CAPability?": "2.5", "WATThours?": "1.0",
-                               "DISChargingTime?": "00:01:30"})
+                               "DISChargingTime?": "not a time"})
         results = await load.get_battery_results()
 
         assert results["discharge_seconds"] is None
-        assert "00:01:30" in results["unreadable"]["discharge_seconds"]
+        assert "not a time" in results["unreadable"]["discharge_seconds"]
         assert results["capacity_ah"] == pytest.approx(2.5)
 
     @pytest.mark.asyncio
@@ -557,3 +557,52 @@ class TestAnUnreadableResultSaysWhy:
         results = await load.get_battery_results()
         assert "unreadable" not in results
         assert results["discharge_seconds"] == pytest.approx(90)
+
+
+class TestTheDischargeTimeIsADuration:
+    """The guide's Return Format says "The query returns a real
+    number". It does not.
+
+    On DL3B268M00049, firmware 00.01.05.00.01, the reply is ``0:0:0``
+    -- hours:minutes:seconds, unpadded. float() on that raises, which
+    is why this field read None through four bench runs while capacity
+    and watt-hours beside it came back fine. Two of those runs were the
+    DISC spelling being wrong; the other two were this, and nothing in
+    the API showed the difference until the raw reply was reported.
+    """
+
+    @pytest.mark.parametrize("raw,seconds", [
+        ("0:0:0", 0),
+        ("0:1:30", 90),
+        ("1:0:0", 3600),
+        ("2:03:04", 7384),
+        ("1:30", 90),          # M:S
+    ])
+    @pytest.mark.asyncio
+    async def test_it_reads_a_duration(self, raw, seconds):
+        load = driver(answers={"DISChargingTime?": raw})
+        results = await load.get_battery_results()
+        assert results["discharge_seconds"] == pytest.approx(seconds)
+        assert "unreadable" not in results
+
+    @pytest.mark.asyncio
+    async def test_a_plain_number_still_works(self):
+        """The guide says there is one, and a later firmware may agree."""
+        load = driver(answers={"DISChargingTime?": "90.5"})
+        results = await load.get_battery_results()
+        assert results["discharge_seconds"] == pytest.approx(90.5)
+
+    @pytest.mark.parametrize("raw", ["", "abc", "1:2:3:4"])
+    @pytest.mark.asyncio
+    async def test_nonsense_is_still_reported_not_guessed(self, raw):
+        load = driver(answers={"DISChargingTime?": raw})
+        results = await load.get_battery_results()
+        assert results["discharge_seconds"] is None
+        assert "discharge_seconds" in results["unreadable"]
+
+    @pytest.mark.asyncio
+    async def test_the_bench_reply_that_started_this(self):
+        load = driver(answers={"DISChargingTime?": "0:0:0"})
+        results = await load.get_battery_results()
+        assert results["discharge_seconds"] == 0.0, (
+            "the exact reply the load gave on 2026-09-27")

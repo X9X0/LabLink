@@ -1104,6 +1104,33 @@ class RigolDL3000Base(BaseEquipment):
                 out[key] = None
         return out
 
+    @staticmethod
+    def _parse_discharge_time(raw: str) -> float:
+        """Seconds from what :MEASure:DISChargingTime? actually returns.
+
+        The guide says, under Return Format, "The query returns a real
+        number". It does not. On DL3B268M00049, firmware
+        00.01.05.00.01, it returns ``0:0:0`` -- hours:minutes:seconds,
+        unpadded -- and float() on that raises, which is how this read
+        None through four bench runs while capacity and watt-hours beside
+        it read back fine.
+
+        A plain number is still accepted, because the guide says there
+        is one and a later firmware may agree with it.
+        """
+        text = (raw or "").strip()
+        if not text:
+            raise ValueError("empty response")
+        if ":" not in text:
+            return float(text)
+        parts = text.split(":")
+        if len(parts) > 3:
+            raise ValueError(f"not a duration: {text!r}")
+        seconds = 0.0
+        for part in parts:                      # H:M:S, or M:S
+            seconds = seconds * 60 + float(part)
+        return seconds
+
     async def get_battery_results(self) -> Dict[str, Optional[float]]:
         """What the discharge has measured so far.
 
@@ -1126,7 +1153,9 @@ class RigolDL3000Base(BaseEquipment):
                             % (self.resource_string, scpi, e))
                 continue
             try:
-                out[key] = float(raw.strip())
+                out[key] = (self._parse_discharge_time(raw)
+                            if key == "discharge_seconds"
+                            else float(raw.strip()))
             except (TypeError, ValueError):
                 unreadable[key] = repr(raw)[:80]
                 logger.info("%s: %s answered %r, which is not a number"
