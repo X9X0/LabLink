@@ -781,6 +781,30 @@ class ElectronicLoadPanel(InstrumentPanel):
         readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
         self._apply_readings(readings or {})
         await self._poll_battery()
+        await self._poll_list_running()
+
+    async def _poll_list_running(self):
+        """Ask the load whether a list is actually stepping.
+
+        Bit 128 of the questionable status register -- the guide calls
+        it RUN, "Runs in List mode" -- and the only honest answer
+        available. :FUNC:MODE? reports which front-panel screen is up,
+        so a load running a list on the waveform display says WAV.
+
+        Seen on the bench: Run was pressed, the load set bit 128, and
+        the button popped back out on the next refresh because WAV is
+        not LIST. The list was running the whole time.
+        """
+        if not self._supports_battery:
+            return          # same capability: a DL3000 has both or neither
+        try:
+            status = await self.send("get_protection_status", {},
+                                     priority=False)
+        except Exception as e:
+            logger.debug(f"Could not read the list state: {e}")
+            return
+        if isinstance(status, dict) and "list_running" in status:
+            self._show_list_running(bool(status["list_running"]))
 
     async def _poll_battery(self):
         """Keep the discharge figures live, and only while discharging.
@@ -970,7 +994,14 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.battery_enable.setText(
             "Leave battery mode" if mode == "BATT" else "Enter battery mode")
         self.battery_enable.blockSignals(False)
-        self._show_list_running(mode == "LIST")
+        # Deliberately not driven from here. :FUNC:MODE? answers with
+        # the front-panel interface, so a load happily running a list
+        # with the waveform screen up reports WAV, and comparing that
+        # to "LIST" un-presses a button whose command worked. The
+        # status register's RUN bit is the load's own word for it; see
+        # _poll_list_running.
+        if mode in ("BATT", "FIX", "OCP", "OPP"):
+            self._show_list_running(False)
 
     def _apply_battery(self):
         if not (self.client and self.equipment):

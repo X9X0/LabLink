@@ -1550,7 +1550,7 @@ class TestRunningAList:
         it is in."""
         client = FakeLoadClient()
         panel = self._panel(client)
-        panel._show_function_mode("LIST")
+        panel._show_list_running(True)
         client.commands.clear()
 
         _with_loop(qapp, lambda: panel.list_run_button.click())
@@ -1561,24 +1561,63 @@ class TestRunningAList:
     def test_the_button_says_which_way_it_goes(self, qapp):
         panel = self._panel()
         assert "Run" in panel.list_run_button.text()
-        panel._show_function_mode("LIST")
+        panel._show_list_running(True)
         assert "Stop" in panel.list_run_button.text()
 
     def test_it_follows_the_load_rather_than_the_last_click(self, qapp):
         """A load already running a list must not offer to start one."""
         panel = self._panel()
-        panel._show_function_mode("LIST")
+        panel._show_list_running(True)
         assert panel.list_run_button.isChecked()
 
-    def test_the_two_function_buttons_do_not_disagree(self, qapp):
-        """One mode, two buttons. Entering battery must un-press run."""
+    def test_the_mode_query_cannot_unpress_a_running_list(self, qapp):
+        """The bench case, and the reason the button does not follow
+        the mode.
+
+        Run was pressed, the load set the RUN bit, and the button
+        popped back out on the next refresh because :FUNC:MODE?
+        answered WAV -- the waveform screen was up -- and WAV is not
+        LIST. The list was running the whole time.
+        """
         panel = self._panel()
-        panel._show_function_mode("LIST")
+        panel._show_list_running(True)
+
+        panel._show_function_mode("WAV")
+
+        assert panel.list_run_button.isChecked(), (
+            "the mode query un-pressed a list that was running")
+
+    def test_the_two_function_buttons_do_not_disagree(self, qapp):
+        """One instrument, two buttons. Entering battery must un-press
+        run, because the load cannot be doing both."""
+        panel = self._panel()
+        panel._show_list_running(True)
         assert panel.list_run_button.isChecked()
 
         panel._show_function_mode("BATT")
         assert not panel.list_run_button.isChecked()
         assert panel.battery_enable.isChecked()
+
+    def test_the_run_bit_is_what_drives_it(self, qapp):
+        """Straight from get_protection_status, which is the load's own
+        word for whether a list is stepping."""
+        client = FakeLoadClient()
+
+        def with_status(equipment_id, command, parameters=None):
+            if command == "get_protection_status":
+                client.commands.append((command, parameters or {}))
+                return {"success": True,
+                        "data": {"raw": 16512, "list_running": True}}
+            return FakeLoadClient.send_command(
+                client, equipment_id, command, parameters)
+
+        panel = self._panel(client)
+        client.send_command = with_status
+
+        _run(panel, "poll")
+
+        assert panel.list_run_button.isChecked(), (
+            "the RUN bit said it was running and the button did not")
 
     def test_showing_the_mode_commands_nothing(self, qapp):
         client = FakeLoadClient()
