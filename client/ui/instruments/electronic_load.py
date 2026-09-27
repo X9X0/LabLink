@@ -18,9 +18,10 @@ import math
 from typing import Any, Dict
 
 import qasync
-from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QGroupBox,
-                             QHBoxLayout, QLabel, QMessageBox, QPushButton,
-                             QSizePolicy, QVBoxLayout, QWidget)
+from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtWidgets import (QComboBox, QDial, QDoubleSpinBox, QGridLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QMessageBox,
+                             QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
@@ -144,6 +145,20 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.setpoint_spin.setSingleStep(0.1)
         self.setpoint_spin.setRange(0.0, self.max_current)
         grid.addWidget(self.setpoint_spin, 1, 1)
+
+        # The knob, as the supply has one. It commands as it turns --
+        # that is what a knob is for, and what the supply's does -- while
+        # Apply stays for a value typed into the box.
+        self.setpoint_dial = QDial()
+        self.setpoint_dial.setNotchesVisible(True)
+        self.setpoint_dial.setWrapping(False)
+        self.setpoint_dial.setToolTip(
+            "Sets the load as it turns.\n"
+            "Wheel: 0.1 step, Ctrl coarse, Shift fine."
+        )
+        self.setpoint_dial.valueChanged.connect(self._on_setpoint_dial_changed)
+        self.setpoint_dial.installEventFilter(self)
+        grid.addWidget(self.setpoint_dial, 0, 3, 3, 1)
 
         self.range_label = QLabel("Range:")
         grid.addWidget(self.range_label, 2, 0)
@@ -421,6 +436,127 @@ class ElectronicLoadPanel(InstrumentPanel):
         self._active_ranges = found
         self._show_ranges_for_mode()
 
+    #: Wheel steps, in the setpoint's own units. The same three the
+    #: supply uses, so a knob behaves the same wherever it is found.
+    WHEEL_STEP = 0.10
+    WHEEL_STEP_COARSE = 1.00        # Ctrl
+    WHEEL_STEP_FINE = 0.01          # Shift
+
+    #: Most dial units to offer. A dial is dragged, not typed into, so
+    #: past a few thousand steps the extra resolution is unreachable by
+    #: hand and only makes the drag coarser.
+    MAX_DIAL_UNITS = 4000
+
+    def _dial_scale(self) -> float:
+        """Dial units per unit of setpoint, for the current mode.
+
+        The supply can hard-code x10 because volts are volts. Here the
+        setpoint is amps, volts, ohms or watts by turn, and 15 kOhm at
+        x10 would be 150,000 steps of a thing you drag with a mouse.
+        """
+        maximum = max(float(self.setpoint_spin.maximum()), 1e-9)
+        for scale in (100.0, 10.0, 1.0, 0.1, 0.01):
+            if maximum * scale <= self.MAX_DIAL_UNITS:
+                return scale
+        return 0.01
+
+    def _range_dial(self):
+        """Give the dial the current mode's span, commanding nothing."""
+        scale = self._dial_scale()
+        self.setpoint_dial.blockSignals(True)
+        try:
+            self.setpoint_dial.setRange(
+                int(self.setpoint_spin.minimum() * scale),
+                int(self.setpoint_spin.maximum() * scale))
+            self.setpoint_dial.setValue(
+                int(self.setpoint_spin.value() * scale))
+        finally:
+            self.setpoint_dial.blockSignals(False)
+
+    def _show_setpoint(self, value: float):
+        """Move the knob and the field together, commanding nothing.
+
+        blockSignals is what stops the display writing back to the
+        instrument; without it, showing a reading would send it.
+        """
+        scale = self._dial_scale()
+        for widget in (self.setpoint_dial, self.setpoint_spin):
+            widget.blockSignals(True)
+        try:
+            self.setpoint_spin.setValue(value)
+            self.setpoint_dial.setValue(int(value * scale))
+        finally:
+            for widget in (self.setpoint_dial, self.setpoint_spin):
+                widget.blockSignals(False)
+
+    def _on_setpoint_dial_changed(self, units: int):
+        """The operator turned the knob: follow it, and command."""
+        value = units / self._dial_scale()
+        self.setpoint_spin.blockSignals(True)
+        self.setpoint_spin.setValue(value)
+        self.setpoint_spin.blockSignals(False)
+        self._command_setpoint(value)
+
+    def _command_setpoint(self, value: float):
+        """Send the setpoint for the mode the load is in.
+
+        Coalesced through write_latest: a dial sends on every notch, and
+        one HTTP request per notch against an instrument that answers
+        one at a time is how the supply's dial used to lose them to
+        503s.
+        """
+        if not (self.client and self.equipment):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return              # see _on_mode_changed
+        mode = self.mode_combo.currentData() or "CC"
+        _label, _unit, command, field = MODES[mode]
+        self.commanded("setpoint", value)
+        self.write_latest(
+            "setpoint", value,
+            lambda v: self._send_dialled_setpoint(command, field, v))
+
+    @qasync.asyncSlot(str, str, float)
+    async def _send_dialled_setpoint(self, command: str, field: str,
+                                     value: float):
+        """Just the setpoint. Unlike Apply this does not re-send the
+        mode: the knob is turned while the load is already running, and
+        a mode command on every notch would be noise at best."""
+        try:
+            await self.send(command, {field: value})
+        except Exception as e:
+            logger.error(f"Setting the load failed: {e}")
+            self.status_message.emit(f"Setting the load failed: {e}")
+
+    def eventFilter(self, watched, event):
+        """Take the wheel over the dial, as the supply panel does.
+
+        QAbstractSlider moves by singleStep times the platform's
+        scroll-lines setting, which makes one notch three dial units;
+        and it treats Ctrl and Shift alike. The step is applied to the
+        spin box rather than the dial, because the box carries three
+        decimals and the dial's integer units do not.
+        """
+        if event.type() == QEvent.Type.Wheel and watched is self.setpoint_dial:
+            modifiers = event.modifiers()
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                step = self.WHEEL_STEP_COARSE
+            elif modifiers & Qt.KeyboardModifier.ShiftModifier:
+                step = self.WHEEL_STEP_FINE
+            else:
+                step = self.WHEEL_STEP
+            if event.angleDelta().y() < 0:
+                step = -step
+            value = min(max(self.setpoint_spin.value() + step,
+                            self.setpoint_spin.minimum()),
+                        self.setpoint_spin.maximum())
+            self._show_setpoint(value)
+            self._command_setpoint(value)
+            return True
+        return super().eventFilter(watched, event)
+
     def _range_setpoint(self):
         mode = self.mode_combo.currentData() or "CC"
         _label, unit, _cmd, _field = MODES[mode]
@@ -430,6 +566,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.setpoint_spin.setRange(0.0, maximum)
         self.setpoint_spin.setDecimals(1 if mode == "CR" else 3)
         self.setpoint_spin.blockSignals(False)
+        self._range_dial()
         self.setpoint_label.setText(f"{_label.split()[1].capitalize()} ({unit}):")
 
     def set_controls_enabled(self, enabled: bool):
@@ -484,9 +621,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         if setpoint is not None and mode in MODES:
             self.setpoint_indicator.setText(f"Setpoint: {float(setpoint):g} {MODES[mode][1]}")
             if adopt_setpoint:
-                self.setpoint_spin.blockSignals(True)
-                self.setpoint_spin.setValue(float(setpoint))
-                self.setpoint_spin.blockSignals(False)
+                self._show_setpoint(float(setpoint))
 
         # Unless the operator has just clicked the button and the load has
         # not caught up: until it agrees, the click is what is true. A

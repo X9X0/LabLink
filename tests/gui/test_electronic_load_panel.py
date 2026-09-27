@@ -871,3 +871,105 @@ class TestTheSelectorShowsTheRangeTheLoadIsIn:
         assert panel.range_combo.currentData() == pytest.approx(40.0), (
             "after declining, the selector showed a range the load was "
             "not in")
+
+
+class TestTheSetpointKnob:
+    """A knob on the load, built the way the supply's is.
+
+    It commands as it turns, which is what a knob is for and what the
+    supply's does; Apply stays for a value typed into the box. The
+    wheel is taken over so Ctrl is coarse and Shift fine, because
+    QAbstractSlider would otherwise move three dial units a notch and
+    treat the two modifiers alike.
+
+    The one thing that cannot be copied across is the scale. The
+    supply's dial is a fixed x10 because volts are volts; here the
+    setpoint is amps, volts, ohms or watts by turn, and 15 kOhm at x10
+    would be 150,000 steps of something dragged with a mouse.
+    """
+
+    def _panel(self, client=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(CAPABILITIES)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CC"))
+        return panel
+
+    def test_the_knob_exists(self, qapp):
+        panel = self._panel()
+        assert panel.setpoint_dial is not None
+
+    def test_its_span_is_the_modes_span(self, qapp):
+        panel = self._panel()
+        scale = panel._dial_scale()
+        assert panel.setpoint_dial.maximum() == int(
+            panel.setpoint_spin.maximum() * scale)
+
+    @pytest.mark.parametrize("mode", ["CC", "CV", "CR", "CP"])
+    def test_no_mode_gives_an_unusable_number_of_steps(self, qapp, mode):
+        """A dial is dragged, not typed into."""
+        panel = self._panel()
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData(mode))
+        span = panel.setpoint_dial.maximum() - panel.setpoint_dial.minimum()
+        assert 0 < span <= panel.MAX_DIAL_UNITS, (
+            f"{mode}: {span} steps")
+
+    def test_turning_it_moves_the_box(self, qapp):
+        panel = self._panel()
+        scale = panel._dial_scale()
+        panel.setpoint_dial.setValue(int(2.5 * scale))
+        assert panel.setpoint_spin.value() == pytest.approx(2.5, abs=1 / scale)
+
+    def test_turning_it_commands_the_load(self, qapp):
+        """The difference from Apply: a knob sends as it turns."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp,
+                   lambda: panel.setpoint_dial.setValue(
+                       int(2.0 * panel._dial_scale())))
+
+        sent = [c for c in client.commands if c[0] == "set_current"]
+        assert sent, f"turning the knob sent nothing: {client.commands}"
+
+    def test_showing_a_reading_commands_nothing(self, qapp):
+        """The trap this kind of control falls into: the display writes
+        back to the instrument."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel._show_setpoint(3.0))
+
+        assert client.commands == [], (
+            f"showing a reading commanded the load: {client.commands}")
+        assert panel.setpoint_spin.value() == pytest.approx(3.0)
+
+    def test_changing_mode_commands_no_setpoint(self, qapp):
+        """Re-ranging the box for a new mode moves the knob with it, and
+        a knob that commanded on every programmatic move would send a
+        setpoint nobody asked for -- in the new mode's units."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.mode_combo.setCurrentIndex(
+            panel.mode_combo.findData("CV")))
+
+        setpoints = [c for c in client.commands
+                     if c[0] in ("set_current", "set_voltage",
+                                 "set_resistance", "set_power")]
+        assert setpoints == [], f"switching mode sent {setpoints}"
+
+    def test_the_knob_follows_the_instrument(self, qapp):
+        """A reading of 47 ohms in CR must move it, not just the box."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CR"))
+
+        _run(panel, "refresh_settings")
+
+        scale = panel._dial_scale()
+        assert panel.setpoint_dial.value() == pytest.approx(
+            int(47.0 * scale), abs=1)
