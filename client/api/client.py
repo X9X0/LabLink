@@ -113,9 +113,42 @@ class _TimeoutSession(requests.Session):
         # so this genuinely happens.
         self._renewal_lock = threading.Lock()
 
+    @staticmethod
+    def _keep_the_servers_reason(response):
+        """Fold the server's own explanation into ``reason``.
+
+        FastAPI answers a refusal with {"detail": "..."} saying what was
+        actually wrong. ``raise_for_status`` builds its message from the
+        status code and ``reason`` alone, so every call site that uses
+        it -- which is all of them -- reported "404 Client Error: Not
+        Found" and dropped the sentence that mattered.
+
+        On the bench that turned "No data to export" into "Failed to
+        export: 404 Client Error", and the operator pressed the button
+        three more times because nothing told them the session had no
+        samples yet.
+
+        Done here rather than at sixty call sites, and only for errors,
+        so a successful response is untouched.
+        """
+        if response.status_code < 400:
+            return
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            return
+        if not detail:
+            return
+        if isinstance(detail, list):        # pydantic validation errors
+            detail = "; ".join(
+                str(d.get("msg", d)) if isinstance(d, dict) else str(d)
+                for d in detail)
+        response.reason = str(detail)
+
     def request(self, method, url, **kwargs):
         kwargs.setdefault("timeout", _DEFAULT_TIMEOUT)
         response = super().request(method, url, **kwargs)
+        self._keep_the_servers_reason(response)
 
         if response.status_code != 401 or self.renew_token is None:
             return response
@@ -139,6 +172,7 @@ class _TimeoutSession(requests.Session):
         # super(), so the retry cannot re-enter this method and loop: one
         # renewal, one retry, then whatever the server says stands.
         retried = super().request(method, url, **kwargs)
+        self._keep_the_servers_reason(retried)
         if retried.status_code == 401:
             logger.warning(f"Still unauthorized after renewing: {url}")
         return retried
