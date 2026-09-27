@@ -460,3 +460,111 @@ class TestTheyAreOnTheirOwnRow:
         assert source.index("layout.addLayout(button_layout)") < \
                source.index("bulk_layout.addWidget(self.connect_all_btn)"), (
             "the bulk buttons are still in the first row")
+
+
+class TestARefreshDuringTheLoop:
+    """The list is rebuilt out from under a bulk loop.
+
+    _refresh_from clears self.equipment_list and extends it with freshly
+    built Equipment objects, so nothing in it survives a refresh by
+    identity. The bulk loops take seconds per instrument -- four real
+    ones took thirteen -- and the periodic refresh runs every five, so a
+    rebuild lands mid-loop as a matter of course.
+
+    On the bench that showed as Connect All connecting all four
+    instruments and displaying one. The server log had four "Connected
+    to ..." lines; the panel had a single dot. Clicking again appeared
+    to fix it, but the second pass connected nothing -- the server
+    answered "already open" three times -- it was just fast enough to
+    finish between refreshes, so its writes survived.
+    """
+
+    @staticmethod
+    def _rebuild(panel, gear):
+        """What a periodic refresh does: same rows, new objects."""
+        fresh = [Gear(g.equipment_id,
+                      g.connection_status == ConnectionStatus.CONNECTED)
+                 for g in gear]
+        panel.equipment_list.clear()
+        panel.equipment_list.extend(fresh)
+        return fresh
+
+    @pytest.mark.asyncio
+    async def test_connect_all_survives_it(self, panel, qapp, monkeypatch):
+        Dialogs().install(monkeypatch)
+        gear = [Gear(n, connected=False) for n in ("a", "b", "c", "d")]
+        server = Server()
+        _wire(panel, server, gear)
+
+        # Rebuild the list once, part-way through, exactly as the
+        # five-second refresh does.
+        original = server.connect_equipment
+        state = {"n": 0}
+
+        def connect_then_maybe_refresh(resource, kind, model):
+            answer = original(resource, kind, model)
+            state["n"] += 1
+            if state["n"] == 2:
+                TestARefreshDuringTheLoop._rebuild(panel, panel.equipment_list)
+            return answer
+
+        server.connect_equipment = connect_then_maybe_refresh
+
+        await drive(panel.connect_all(), qapp)
+
+        assert server.connected == ["a", "b", "c", "d"], server.connected
+        shown = {g.equipment_id: g.connection_status
+                 for g in panel.equipment_list}
+        assert all(s == ConnectionStatus.CONNECTED for s in shown.values()), (
+            f"connected four, displayed {shown}")
+
+    @pytest.mark.asyncio
+    async def test_disconnect_all_survives_it(self, panel, qapp, monkeypatch):
+        Dialogs().install(monkeypatch)
+        gear = [Gear(n, connected=True) for n in ("a", "b", "c", "d")]
+        server = Server()
+        _wire(panel, server, gear)
+        monkeypatch.setattr(panel, "_ask", lambda put_it_up: _answer("off"))
+
+        original = server.disconnect_equipment
+        state = {"n": 0}
+
+        def disconnect_then_maybe_refresh(equipment_id, on_disconnect):
+            answer = original(equipment_id, on_disconnect)
+            state["n"] += 1
+            if state["n"] == 2:
+                TestARefreshDuringTheLoop._rebuild(panel, panel.equipment_list)
+            return answer
+
+        server.disconnect_equipment = disconnect_then_maybe_refresh
+
+        await drive(panel.disconnect_all(), qapp)
+
+        assert len(server.disconnected) == 4, server.disconnected
+        shown = {g.equipment_id: g.connection_status
+                 for g in panel.equipment_list}
+        assert all(s == ConnectionStatus.DISCONNECTED
+                   for s in shown.values()), (
+            f"disconnected four, displayed {shown}")
+
+    @pytest.mark.asyncio
+    async def test_a_failure_is_still_not_marked_connected(self, panel, qapp,
+                                                           monkeypatch):
+        """Keying by resource name must not become "mark everything"."""
+        Dialogs().install(monkeypatch)
+        gear = [Gear(n, connected=False) for n in ("a", "b", "c")]
+        server = Server(refuse=["b"])
+        _wire(panel, server, gear)
+
+        await drive(panel.connect_all(), qapp)
+
+        shown = {g.equipment_id: g.connection_status
+                 for g in panel.equipment_list}
+        assert shown["a"] == ConnectionStatus.CONNECTED
+        assert shown["c"] == ConnectionStatus.CONNECTED
+        assert shown["b"] == ConnectionStatus.DISCONNECTED, (
+            "the one that refused was marked connected")
+
+
+async def _answer(value):
+    return value

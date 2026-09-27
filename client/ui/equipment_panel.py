@@ -950,6 +950,30 @@ class EquipmentPanel(QWidget):
         return [eq for eq in self.equipment_list
                 if eq.connection_status == ConnectionStatus.CONNECTED]
 
+    def _mark_status(self, keys, status, key_of):
+        """Set a status on whatever the list holds *now*.
+
+        Every refresh rebuilds the list from scratch -- _refresh_from
+        clears it and extends it with freshly built Equipment objects --
+        so a status written to an object captured before a bulk loop
+        began is written to something the list no longer contains.
+
+        The bulk loops take seconds per instrument and the periodic
+        refresh runs every five, so on a four-instrument bench the
+        refresh lands mid-loop and every write after it is lost. Seen
+        on the bench as Connect All connecting all four instruments and
+        showing one: the server log had four "Connected to ..." lines
+        while the panel showed a single dot, and a second click
+        appeared to fix it only because the already-open short-circuit
+        made the second pass fast enough to finish between refreshes.
+
+        Keyed on something stable rather than on object identity, and
+        applied at the end, so it survives any number of rebuilds.
+        """
+        for equipment in self.equipment_list:
+            if key_of(equipment) in keys:
+                equipment.connection_status = status
+
     def _bulk_progress(self, title: str, total: int):
         """A progress box for a bulk action, shown without blocking.
 
@@ -1037,6 +1061,11 @@ class EquipmentPanel(QWidget):
         progress = self._bulk_progress(
             f"Connecting {len(targets)} instrument(s)...", len(targets))
         done, failed = [], []
+        # Keyed by resource name, not by object: see _mark_status. The
+        # equipment_id is the server's to assign, and on a first connect
+        # the list may not have it yet; the resource name is what the
+        # operator's row and the server agree on throughout.
+        connected = set()
         try:
             for index, equipment in enumerate(targets):
                 self._step_progress(
@@ -1058,7 +1087,7 @@ class EquipmentPanel(QWidget):
                         equipment.model,
                     )
                     if result.get("status") == "connected":
-                        equipment.connection_status = ConnectionStatus.CONNECTED
+                        connected.add(equipment.resource_name)
                         done.append(self._describe(equipment))
                     else:
                         failed.append((self._describe(equipment),
@@ -1073,6 +1102,8 @@ class EquipmentPanel(QWidget):
             if progress is not None:
                 progress.close()
             self._set_bulk_buttons_enabled(True)
+            self._mark_status(connected, ConnectionStatus.CONNECTED,
+                              lambda eq: eq.resource_name)
             self._update_equipment_list_widget()
             self._update_details_panel()
             self.refresh()
@@ -1132,6 +1163,10 @@ class EquipmentPanel(QWidget):
         progress = self._bulk_progress(
             f"Disconnecting {len(targets)} instrument(s)...", len(targets))
         done, failed = [], []
+        # See _mark_status. Disconnecting is slower than connecting --
+        # it puts each instrument into a safe state first -- so a
+        # mid-loop refresh is likelier here, not less.
+        disconnected = set()
         try:
             for index, equipment in enumerate(targets):
                 self._step_progress(
@@ -1154,9 +1189,7 @@ class EquipmentPanel(QWidget):
                         on_disconnect,
                     )
                     if result.get("status") == "disconnected":
-                        equipment.connection_status = (
-                            ConnectionStatus.DISCONNECTED
-                        )
+                        disconnected.add(equipment_id)
                         done.append(self._describe(equipment))
                     else:
                         failed.append((self._describe(equipment),
@@ -1170,6 +1203,8 @@ class EquipmentPanel(QWidget):
             if progress is not None:
                 progress.close()
             self._set_bulk_buttons_enabled(True)
+            self._mark_status(disconnected, ConnectionStatus.DISCONNECTED,
+                              lambda eq: eq.equipment_id)
             self._update_equipment_list_widget()
             self._update_details_panel()
             self.refresh()
