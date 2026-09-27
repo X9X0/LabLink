@@ -512,3 +512,48 @@ class TestWhatTheBenchFound:
         load = driver(answers={":SOUR:FUNC?": "BANANA"})
         with pytest.raises(ValueError):
             await load.get_mode()
+
+
+class TestAnUnreadableResultSaysWhy:
+    """A None with no account of itself is what hid the DISC bug.
+
+    The discharge time read None through four bench runs: first because
+    :MEAS:DISC? dropped the buried capital and was not a command, then,
+    with the guide's own :MEASure:DISChargingTime?, for a reason nothing
+    in the API would show. The error queue stayed clean both times, so
+    the only two candidates -- no reply at all, or a reply that is not a
+    number -- looked identical from outside.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_reply_that_is_not_a_number_is_quoted_back(self):
+        load = driver(answers={"CAPability?": "2.5", "WATThours?": "1.0",
+                               "DISChargingTime?": "00:01:30"})
+        results = await load.get_battery_results()
+
+        assert results["discharge_seconds"] is None
+        assert "00:01:30" in results["unreadable"]["discharge_seconds"]
+        assert results["capacity_ah"] == pytest.approx(2.5)
+
+    @pytest.mark.asyncio
+    async def test_no_reply_is_told_apart_from_a_bad_reply(self):
+        load = driver()
+
+        async def silent(command):
+            if "DISCharging" in command:
+                raise OSError("timeout")
+            if "ERR" in command.upper():
+                return '0,"No error"'
+            return "1.0"
+        load._query = silent
+
+        results = await load.get_battery_results()
+        assert "no reply" in results["unreadable"]["discharge_seconds"]
+
+    @pytest.mark.asyncio
+    async def test_a_clean_read_says_nothing_extra(self):
+        load = driver(answers={"CAPability?": "2.5", "WATThours?": "1.0",
+                               "DISChargingTime?": "90"})
+        results = await load.get_battery_results()
+        assert "unreadable" not in results
+        assert results["discharge_seconds"] == pytest.approx(90)

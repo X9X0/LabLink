@@ -1111,13 +1111,35 @@ class RigolDL3000Base(BaseEquipment):
         the only way to get the result out: the load shows it on the
         front panel and has no "test finished" query.
         """
-        out: Dict[str, Optional[float]] = {}
+        out: Dict[str, Any] = {}
+        unreadable: Dict[str, str] = {}
         for key, scpi in _BATTERY_RESULTS.items():
+            out[key] = None
             try:
-                out[key] = float((await self._query(scpi)).strip())
+                raw = await self._query(scpi)
             except Exception as e:
-                logger.debug("%s query failed: %s" % (key, e))
-                out[key] = None
+                # No answer at all: a read timeout, which is not a SCPI
+                # error and leaves the queue clean. Worth telling apart
+                # from an answer we could not parse.
+                unreadable[key] = "no reply (%s)" % type(e).__name__
+                logger.info("%s: %s got no reply: %s"
+                            % (self.resource_string, scpi, e))
+                continue
+            try:
+                out[key] = float(raw.strip())
+            except (TypeError, ValueError):
+                unreadable[key] = repr(raw)[:80]
+                logger.info("%s: %s answered %r, which is not a number"
+                            % (self.resource_string, scpi, raw))
+        if unreadable:
+            # Say what happened rather than returning a bare None. The
+            # discharge time has read None on this load through four
+            # separate bench runs -- first because DISC dropped the
+            # buried capital and was not a command, and then, with the
+            # guide's own spelling, for a reason nothing in the API
+            # would show. A None with no account of itself is the thing
+            # that hid the first bug; it should not hide the second.
+            out["unreadable"] = unreadable
         return out
 
     async def set_list_step(
