@@ -415,36 +415,133 @@ class AcquisitionManager:
 
                 await asyncio.sleep(0.1)  # Check every 100ms
 
+    #: Channel names understood against a driver's get_readings(), and
+    #: the keys drivers actually use for them.
+    #:
+    #: The names differ by instrument class and both are reasonable: a
+    #: supply distinguishes what was asked for from what is happening
+    #: (voltage_set against voltage_actual), while a load reporting one
+    #: voltage has nothing to disambiguate. Acquisition should not make
+    #: the operator know which.
+    READING_ALIASES = {
+        "voltage": ("voltage", "voltage_actual"),
+        "current": ("current", "current_actual"),
+        "power": ("power", "power_actual"),
+        "resistance": ("resistance",),
+        "voltage_set": ("voltage_set", "voltage_setpoint"),
+        "current_set": ("current_set", "current_setpoint"),
+        "setpoint": ("setpoint",),
+    }
+
+    @staticmethod
+    def _as_mapping(readings):
+        """A dict from whatever get_readings returned."""
+        if isinstance(readings, dict):
+            return readings
+        for method in ("model_dump", "dict"):            # pydantic v2, v1
+            if hasattr(readings, method):
+                try:
+                    return getattr(readings, method)()
+                except Exception:
+                    pass
+        return getattr(readings, "__dict__", None) or {}
+
+    @classmethod
+    async def _value_from_readings(cls, equipment, channel):
+        """Resolve a channel against get_readings, or None if it cannot.
+
+        Every instrument here implements get_readings; only some
+        implement get_measurement. Before this, acquisition knew the
+        second and not the first, so no power supply could be acquired
+        from at all -- and since the loop discovered that per sample,
+        the session ran anyway and filled with NaN.
+
+        Power is computed when a driver does not report it. The supplies
+        report volts and amps and nothing else, and multiplying them is
+        not a guess.
+        """
+        if not hasattr(equipment, "get_readings"):
+            return None
+        try:
+            values = cls._as_mapping(await equipment.get_readings())
+        except Exception:
+            return None
+        if not values:
+            return None
+
+        wanted = str(channel).strip().lower()
+        for key in cls.READING_ALIASES.get(wanted, (wanted,)):
+            if values.get(key) is not None:
+                return float(values[key])
+
+        if wanted == "power":
+            volts = cls._first_of(values, cls.READING_ALIASES["voltage"])
+            amps = cls._first_of(values, cls.READING_ALIASES["current"])
+            if volts is not None and amps is not None:
+                return float(volts) * float(amps)
+        return None
+
+    @staticmethod
+    def _first_of(values, keys):
+        for key in keys:
+            if values.get(key) is not None:
+                return values[key]
+        return None
+
     async def _get_channel_value(self, equipment, channel: str) -> float:
         """Get current value from equipment channel."""
-        # This is a simplified version - equipment drivers should implement proper channel reading
-
-        # Try common methods
+        # A driver that resolves channel names itself gets first refusal;
+        # if it does not recognise this one, its readings still might.
+        # Kept so the reason can be re-raised if nothing else works. A
+        # driver that has get_measurement and fails may be refusing the
+        # channel or may simply be busy, and those must not end up
+        # looking the same: create_session refuses a session outright on
+        # NotImplementedError, and an instrument that is merely switched
+        # off must not be mistaken for one that cannot acquire at all.
+        refused = None
         if hasattr(equipment, "get_measurement"):
-            result = await equipment.get_measurement(channel)
-            if isinstance(result, dict) and "value" in result:
-                return float(result["value"])
-            return float(result)
-
-        elif hasattr(equipment, "get_voltage"):
-            return float(await equipment.get_voltage())
-
-        elif hasattr(equipment, "get_current"):
-            return float(await equipment.get_current())
-
-        else:
-            # Fallback: try to execute command
             try:
-                result = await equipment.execute_command(
-                    "get_measurement", {"channel": channel}
-                )
+                result = await equipment.get_measurement(channel)
                 if isinstance(result, dict) and "value" in result:
                     return float(result["value"])
                 return float(result)
-            except Exception:
-                raise NotImplementedError(
-                    f"Equipment doesn't implement data acquisition for channel {channel}"
-                )
+            except Exception as e:
+                refused = e
+
+        value = await self._value_from_readings(equipment, channel)
+        if value is not None:
+            return value
+
+        # These ignore the channel entirely, so they are a last resort
+        # and only for the quantity they actually return. Reached by
+        # asking for "current", get_voltage would have answered volts.
+        wanted = str(channel).strip().lower()
+        if wanted in self.READING_ALIASES["voltage"] and hasattr(
+                equipment, "get_voltage"):
+            return float(await equipment.get_voltage())
+
+        if wanted in self.READING_ALIASES["current"] and hasattr(
+                equipment, "get_current"):
+            return float(await equipment.get_current())
+
+        # Last resort: ask the driver's command dispatch.
+        try:
+            result = await equipment.execute_command(
+                "get_measurement", {"channel": channel}
+            )
+            if isinstance(result, dict) and "value" in result:
+                return float(result["value"])
+            return float(result)
+        except Exception:
+            if refused is not None and not isinstance(
+                    refused, NotImplementedError):
+                # The driver knows this channel and could not read it --
+                # busy, off, locked. The loop's to retry, not grounds to
+                # refuse the session.
+                raise refused
+            raise NotImplementedError(
+                f"Equipment doesn't implement data acquisition for channel {channel}"
+            )
 
     def get_session(self, acquisition_id: str) -> Optional[AcquisitionSession]:
         """Get acquisition session by ID."""
