@@ -1279,14 +1279,47 @@ class RigolDL3000Base(BaseEquipment):
         await self.set_function_mode("LIST")
         await self._command(":TRIG")
 
-    async def stop_list(self) -> None:
+    async def stop_list(self, mode: Optional[str] = None) -> None:
         """Hand the setpoint back to the fixed level.
 
-        There is no stop command either. Leaving a function mode is
-        done by asserting the one you want, which is the asymmetry
-        set_function_mode documents.
+        Leaving is not the mirror of entering, which is the asymmetry
+        set_function_mode documents and this shipped ignoring.
+        :SOUR:FUNC:MODE FIX is accepted and ignored while a list is
+        running: the load stays in LIST and queues no error, so
+        set_function_mode's read-back refused it with "went to list
+        when asked for fixed" and stopping a running list failed on
+        the bench.
+
+        The way out is to assert the regulation law, which reclaims
+        the setpoint for the FUNCtion command -- the same route the
+        battery panel already used to leave battery discharge.
+
+        Which law: the caller's if it named one, otherwise the one the
+        list was running under, since that is what the operator has
+        been watching. CC only if neither can be had.
         """
-        await self.set_function_mode("FIX")
+        if mode is None:
+            try:
+                mode = await self.get_list_mode()
+            except Exception as e:
+                logger.debug("%s: could not read the list mode, leaving to "
+                             "CC: %s" % (self.resource_string, e))
+                mode = "CC"
+        await self.set_mode(mode)
+
+        # Worth confirming: a stop that quietly did not stop leaves the
+        # operator watching a load they believe is theirs again.
+        try:
+            arrived = await self.get_function_mode()
+        except Exception as e:
+            logger.debug("%s: could not confirm the list stopped: %s"
+                         % (self.resource_string, e))
+            return
+        if arrived == "LIST":
+            raise CommandRejected(
+                "%s is still in list mode after setting the regulation "
+                "mode to %s, and reported no error. The list is still "
+                "driving the input." % (self.model, mode))
 
     async def get_protection_status(self) -> Dict[str, Any]:
         """What the load's questionable status register is reporting.

@@ -990,7 +990,13 @@ class ElectronicLoadPanel(InstrumentPanel):
     @qasync.asyncSlot(bool)
     async def _send_list_run(self, wanted: bool):
         try:
-            await self.send("start_list" if wanted else "stop_list", {})
+            if wanted:
+                await self.send("start_list", {})
+            else:
+                # The law to come back to is the one the selector is
+                # showing, the same as leaving battery discharge.
+                await self.send("stop_list", {
+                    "mode": self.mode_combo.currentData() or "CC"})
         except Exception as e:
             logger.error(f"Running the list failed: {e}")
             self.status_message.emit(f"Running the list failed: {e}")

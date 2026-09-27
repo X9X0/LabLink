@@ -438,15 +438,42 @@ class TestRunningTheList:
         assert ":TRIG" not in commands(load), commands(load)
 
     @pytest.mark.asyncio
-    async def test_stopping_goes_back_to_fixed(self):
+    async def test_stopping_asserts_the_regulation_law(self):
+        """Leaving is not the mirror of entering.
+
+        :SOUR:FUNC:MODE FIX is accepted and ignored while a list runs
+        -- the load stays in LIST and queues no error -- so stopping
+        has to reclaim the setpoint for the FUNCtion command instead.
+        This shipped sending FIX, and stopping a running list failed on
+        the bench with "went to list when asked for fixed".
+        """
         load = driver(answers={":SOUR:FUNC:MODE?": "FIX"})
+        await load.stop_list("CC")
+        sent = commands(load)
+        assert ":SOUR:FUNC CURRent" in sent, sent
+        assert ":SOUR:FUNC:MODE FIX" not in sent, (
+            "the load ignores this while a list is running: %s" % sent)
+
+    @pytest.mark.asyncio
+    async def test_stopping_defaults_to_the_law_the_list_ran_under(self):
+        load = driver(answers={":SOUR:FUNC:MODE?": "FIX",
+                               ":SOUR:LIST:MODE?": "CV"})
         await load.stop_list()
-        assert ":SOUR:FUNC:MODE FIX" in commands(load), commands(load)
+        assert ":SOUR:FUNC VOLTage" in commands(load), commands(load)
+
+    @pytest.mark.asyncio
+    async def test_a_list_that_will_not_stop_is_reported(self):
+        """A stop that quietly did not stop leaves the operator
+        believing the load is theirs again while the list drives it."""
+        load = driver(answers={":SOUR:FUNC:MODE?": "LIST",
+                               ":SOUR:LIST:MODE?": "CC"})
+        with pytest.raises(Exception):
+            await load.stop_list("CC")
 
     @pytest.mark.asyncio
     async def test_stopping_does_not_trigger_anything(self):
         load = driver(answers={":SOUR:FUNC:MODE?": "FIX"})
-        await load.stop_list()
+        await load.stop_list("CC")
         assert ":TRIG" not in commands(load), commands(load)
 
 
