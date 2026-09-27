@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
 
 import qasync
 from client.api.client import LabLinkClient, call_blocking
+from client.utils.modals import ask, say_later
 
 logger = logging.getLogger(__name__)
 
@@ -395,31 +396,47 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
         finally:
             self._groups_refresh_in_flight = False
 
-    def create_sync_group(self):
+    def _say_later(self, show, title: str, text: str):
+        """Put up a dialog once this coroutine has let go of the loop.
+
+        See client/utils/modals.py. Opening a modal inline from a
+        coroutine lets the nested Qt loop step other asyncio tasks while
+        this one is still current, which asyncio refuses outright -- and
+        when the modal is one nothing dismisses, processEvents never
+        returns and the loop stops altogether.
+        """
+        say_later(self, show, title, text)
+
+    async def _ask(self, put_it_up):
+        """Run a modal that has an answer, without blocking the loop."""
+        return await ask(put_it_up)
+
+    @qasync.asyncSlot()
+    async def create_sync_group(self):
         """Create new sync group."""
         if not self.client:
-            QMessageBox.warning(
-                self, "Not Connected", "Please connect to a server first"
-            )
+            self._say_later(
+                QMessageBox.warning, "Not Connected", "Please connect to a server first")
             return
 
         group_id = self.group_id_edit.text().strip()
         if not group_id:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a group ID")
+            self._say_later(
+                QMessageBox.warning, "Invalid Input", "Please enter a group ID")
             return
 
         # Get selected equipment
         selected_items = self.equipment_list.selectedItems()
         if not selected_items:
-            QMessageBox.warning(
-                self, "No Equipment", "Please select at least one equipment"
-            )
+            self._say_later(
+                QMessageBox.warning, "No Equipment", "Please select at least one equipment")
             return
 
         equipment_ids = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
 
         try:
-            result = self.client.create_sync_group(
+            result = await call_blocking(
+                self.client.create_sync_group,
                 group_id=group_id,
                 equipment_ids=equipment_ids,
                 master_equipment_id=self.master_combo.currentData(),
@@ -429,125 +446,151 @@ Ready Equipment: {status.get('ready_count', 0)}/{status.get('equipment_count', 0
             )
 
             if result.get("success"):
-                QMessageBox.information(
-                    self, "Success", f"Sync group '{group_id}' created"
-                )
+                self._say_later(
+                    QMessageBox.information, "Success", f"Sync group '{group_id}' created")
                 self.sync_group_created.emit(group_id)
                 self.refresh_groups()
                 self.group_id_edit.clear()
         except Exception as e:
             logger.error(f"Error creating sync group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to create group:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to create group:\n{str(e)}")
 
-    def add_acquisition_to_group(self):
+    @qasync.asyncSlot()
+    async def add_acquisition_to_group(self):
         """Add acquisition to current sync group."""
         if not self.current_group_id:
-            QMessageBox.warning(
-                self, "No Group Selected", "Please select a sync group first"
-            )
+            self._say_later(
+                QMessageBox.warning, "No Group Selected", "Please select a sync group first")
             return
 
         data = self.add_acq_combo.currentData()
         if not data:
-            QMessageBox.warning(self, "No Acquisition", "Please select an acquisition")
+            self._say_later(
+                QMessageBox.warning, "No Acquisition", "Please select an acquisition")
             return
 
         equipment_id, acquisition_id = data
 
         try:
-            result = self.client.add_to_sync_group(
+            result = await call_blocking(
+                self.client.add_to_sync_group,
                 self.current_group_id, equipment_id, acquisition_id
             )
 
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Acquisition added to group")
+                self._say_later(
+                    QMessageBox.information, "Success", "Acquisition added to group")
                 self.refresh_groups()
         except Exception as e:
             logger.error(f"Error adding acquisition to group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to add:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to add:\n{str(e)}")
 
-    def start_sync_group(self):
+    @qasync.asyncSlot()
+    async def start_sync_group(self):
         """Start synchronized acquisition."""
         if not self.current_group_id:
-            QMessageBox.warning(self, "No Group", "Please select a sync group first")
+            self._say_later(
+                QMessageBox.warning, "No Group", "Please select a sync group first")
             return
 
         try:
-            result = self.client.start_sync_group(self.current_group_id)
+            result = await call_blocking(
+                self.client.start_sync_group, self.current_group_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Sync group started")
+                self._say_later(
+                    QMessageBox.information, "Success", "Sync group started")
                 self.sync_group_started.emit(self.current_group_id)
                 self.refresh_groups()
         except Exception as e:
             logger.error(f"Error starting sync group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to start:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to start:\n{str(e)}")
 
-    def stop_sync_group(self):
+    @qasync.asyncSlot()
+    async def stop_sync_group(self):
         """Stop synchronized acquisition."""
         if not self.current_group_id:
             return
 
         try:
-            result = self.client.stop_sync_group(self.current_group_id)
+            result = await call_blocking(
+                self.client.stop_sync_group, self.current_group_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Sync group stopped")
+                self._say_later(
+                    QMessageBox.information, "Success", "Sync group stopped")
                 self.sync_group_stopped.emit(self.current_group_id)
                 self.refresh_groups()
         except Exception as e:
             logger.error(f"Error stopping sync group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to stop:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to stop:\n{str(e)}")
 
-    def pause_sync_group(self):
+    @qasync.asyncSlot()
+    async def pause_sync_group(self):
         """Pause synchronized acquisition."""
         if not self.current_group_id:
             return
 
         try:
-            result = self.client.pause_sync_group(self.current_group_id)
+            result = await call_blocking(
+                self.client.pause_sync_group, self.current_group_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Sync group paused")
+                self._say_later(
+                    QMessageBox.information, "Success", "Sync group paused")
                 self.refresh_groups()
         except Exception as e:
             logger.error(f"Error pausing sync group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to pause:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to pause:\n{str(e)}")
 
-    def resume_sync_group(self):
+    @qasync.asyncSlot()
+    async def resume_sync_group(self):
         """Resume synchronized acquisition."""
         if not self.current_group_id:
             return
 
         try:
-            result = self.client.resume_sync_group(self.current_group_id)
+            result = await call_blocking(
+                self.client.resume_sync_group, self.current_group_id)
             if result.get("success"):
-                QMessageBox.information(self, "Success", "Sync group resumed")
+                self._say_later(
+                    QMessageBox.information, "Success", "Sync group resumed")
                 self.refresh_groups()
         except Exception as e:
             logger.error(f"Error resuming sync group: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to resume:\n{str(e)}")
+            self._say_later(
+                QMessageBox.critical, "Error", f"Failed to resume:\n{str(e)}")
 
-    def delete_sync_group(self):
+    @qasync.asyncSlot()
+    async def delete_sync_group(self):
         """Delete current sync group."""
         if not self.current_group_id:
-            QMessageBox.warning(self, "No Group", "Please select a sync group first")
+            self._say_later(
+                QMessageBox.warning, "No Group", "Please select a sync group first")
             return
 
-        reply = QMessageBox.question(
+        reply = await self._ask(lambda: QMessageBox.question(
             self,
             "Confirm Delete",
             f"Delete sync group '{self.current_group_id}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+        ))
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                result = self.client.delete_sync_group(self.current_group_id)
+                result = await call_blocking(
+                    self.client.delete_sync_group, self.current_group_id)
                 if result.get("success"):
-                    QMessageBox.information(self, "Success", "Sync group deleted")
+                    self._say_later(
+                        QMessageBox.information, "Success", "Sync group deleted")
                     self.current_group_id = None
                     self.refresh_groups()
             except Exception as e:
                 logger.error(f"Error deleting sync group: {e}")
-                QMessageBox.critical(self, "Error", f"Failed to delete:\n{str(e)}")
+                self._say_later(
+                    QMessageBox.critical, "Error", f"Failed to delete:\n{str(e)}")
 
     def closeEvent(self, event):
         """Handle widget close event."""

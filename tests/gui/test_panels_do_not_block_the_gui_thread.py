@@ -191,3 +191,112 @@ class TestNoCoroutineOpensAModalInline:
             "a coroutine opens a modal inline; the nested Qt loop will try "
             "to step other asyncio tasks while it is still current:\n  "
             + "\n  ".join(offenders))
+
+
+#: Panels whose *operator buttons* talk to the server, not just their
+#: timer. Checked separately because the timer path in both of these was
+#: already correct -- refresh_groups and refresh_sessions are coroutines
+#: with an in-flight guard -- while every button beside them made a
+#: synchronous round trip on the GUI thread.
+BUTTON_DRIVEN = [
+    "client.ui.sync_panel",
+]
+
+
+def _methods_touching_the_client(module_name):
+    """Every method whose body mentions self.client.<something>(...)."""
+    import ast
+    import importlib
+
+    module = importlib.import_module(module_name)
+    source = inspect.getsource(module)
+    tree = ast.parse(source)
+    found = {}
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        for fn in cls.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [
+                n for n in ast.walk(fn)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and isinstance(n.func.value, ast.Attribute)
+                and n.func.value.attr == "client"
+            ]
+            if calls:
+                found[fn.name] = fn
+    return found
+
+
+@pytest.mark.parametrize("module", BUTTON_DRIVEN)
+class TestTheOperatorsButtonsAreAsynchronous:
+    """A button that blocks freezes the window for the round trip.
+
+    The same defect as the timer-driven case and less visible, because
+    it only bites when the operator presses something -- which is
+    exactly when they are watching.
+    """
+
+    def test_every_handler_that_talks_to_the_server_is_a_coroutine(self, module):
+        import ast
+
+        blocking = [
+            name for name, fn in _methods_touching_the_client(module).items()
+            if not isinstance(fn, ast.AsyncFunctionDef)
+        ]
+        assert not blocking, (
+            f"{module}: {sorted(blocking)} call the synchronous client from "
+            f"a plain slot, freezing the window for the round trip")
+
+    def test_no_handler_makes_a_bare_client_call(self, module):
+        offenders = {}
+        for name, fn in _methods_touching_the_client(module).items():
+            source = inspect.getsource(
+                __import__(module, fromlist=["x"])) .splitlines()
+            body = "\n".join(source[fn.lineno - 1:fn.end_lineno])
+            bare = BARE_CALL.findall(body)
+            if bare:
+                offenders[name] = bare
+        assert not offenders, (
+            f"{module}: {offenders} -- being a coroutine buys nothing while "
+            f"the call itself still runs inline")
+
+
+@pytest.mark.parametrize("module", BUTTON_DRIVEN)
+class TestNoCoroutineOpensAModalInline:
+    """The bug that hung CI for two and a half hours.
+
+    A modal opened inline from a coroutine runs a nested Qt event loop
+    while that task is still current. asyncio refuses that outright, and
+    when nothing dismisses the dialog processEvents never returns and
+    the loop stops. Converting a handler to a coroutine without
+    converting its dialogs installs the bug rather than fixing it, so
+    the two have to be checked together.
+    """
+
+    def test_dialogs_go_through_the_deferred_helpers(self, module):
+        import ast
+        import importlib
+
+        source = inspect.getsource(importlib.import_module(module))
+        lines = source.splitlines()
+        tree = ast.parse(source)
+
+        inline = {}
+        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+            for fn in cls.body:
+                if not isinstance(fn, ast.AsyncFunctionDef):
+                    continue
+                body = "\n".join(lines[fn.lineno - 1:fn.end_lineno])
+                # A dialog is fine as an argument to _say_later or inside
+                # the lambda handed to _ask; what is not fine is calling
+                # it as a statement of its own.
+                hits = re.findall(
+                    r"(?<!_say_later\()(?<!lambda: )QMessageBox\."
+                    r"(?:warning|information|critical|question)\(",
+                    body)
+                if hits:
+                    inline[fn.name] = len(hits)
+        assert not inline, (
+            f"{module}: {inline} open a modal inline from a coroutine; use "
+            f"_say_later for a message and _ask for a prompt")
