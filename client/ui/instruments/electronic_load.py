@@ -366,7 +366,17 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.trigger_button.clicked.connect(self._fire_trigger)
         tgrid.addWidget(self.trigger_button, 3, 2, 1, 2)
 
-        layout.addWidget(self.transient_group)
+        # Transient and battery side by side rather than stacked.
+        # Both are 146px tall, so one of those heights goes back to
+        # the readouts -- 387px to 533px, which is the difference
+        # between three cramped digits and three legible ones.
+        #
+        # They need about 1780px between them. Narrower than that and
+        # the spin boxes start to compress, since nothing here
+        # scrolls horizontally.
+        self.function_row = QHBoxLayout()
+        self.function_row.setContentsMargins(0, 0, 0, 0)
+        self.function_row.addWidget(self.transient_group)
 
         # Battery discharge. A separate axis from CC/CV/CR/CP: the mode
         # combo above picks the regulation law, this picks what drives
@@ -464,7 +474,8 @@ class ElectronicLoadPanel(InstrumentPanel):
         # window with the readouts.
         bgrid.addWidget(self.battery_results, 3, 0, 1, 2)
 
-        layout.addWidget(self.battery_group)
+        self.function_row.addWidget(self.battery_group)
+        layout.addLayout(self.function_row)
 
         # The same digital / analog / graph views the supply has, over
         # volts, amps and watts. A load's three quantities are exactly

@@ -1051,9 +1051,14 @@ class TestTheLoadGroupLayout:
         assert not self._overlap(panel.apply_button, panel.input_button)
 
 
+#: A DL3021A as the driver actually reports it. supports_transient
+#: matters here: without it the transient group is hidden and never
+#: laid out, so a layout test sees an unpositioned 640x480 default and
+#: cannot say anything about where it sits.
 BATTERY_CAPABILITIES = dict(CAPABILITIES,
                             function_modes=["FIX", "LIST", "WAV", "BATT",
-                                            "OCP", "OPP"])
+                                            "OCP", "OPP"],
+                            supports_transient=True)
 
 
 class TestTheBatteryGroup:
@@ -1319,3 +1324,65 @@ class TestTheBatteryGroupIsCompact:
             panel.battery_group.geometry().height())
         assert panel.views.geometry().height() > \
             panel.battery_group.geometry().height() * 2
+
+
+class TestTransientAndBatterySitSideBySide:
+    """Stacked, the two groups cost 292px of a window the readouts have
+    to share. Side by side they cost 146px, and the three digits that
+    are the point of the panel get the difference.
+    """
+
+    def _shown(self, qapp, width=1960, capabilities=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(capabilities or BATTERY_CAPABILITIES)
+        panel.resize(width, 900)
+        panel.show()
+        qapp.processEvents()
+        return panel
+
+    def test_they_share_a_row(self, qapp):
+        panel = self._shown(qapp)
+        transient = panel.transient_group.geometry()
+        battery = panel.battery_group.geometry()
+        assert abs(transient.y() - battery.y()) < 8, (transient, battery)
+        assert transient.right() < battery.left(), "they overlap"
+
+    def test_the_readouts_get_the_height(self, qapp):
+        panel = self._shown(qapp)
+        assert panel.views.geometry().height() > 500, (
+            panel.views.geometry().height())
+
+    def test_battery_takes_the_room_when_transient_hides(self, qapp):
+        """Transient lives inside CC. In CV there is nobody to share
+        with, and a half-width group beside empty space would be silly."""
+        panel = self._shown(qapp)
+        panel.mode_combo.setCurrentIndex(panel.mode_combo.findData("CV"))
+        qapp.processEvents()
+
+        assert not panel.transient_group.isVisibleTo(panel)
+        assert panel.battery_group.geometry().width() > 1500, (
+            panel.battery_group.geometry().width())
+
+    def test_transient_takes_the_room_on_a_load_with_no_battery(self, qapp):
+        """Not every load in the registry is a DL3000.
+
+        Transient is left supported here on purpose: a fixture with
+        neither hides both groups, and a test that cannot see either
+        one proves nothing about which takes the room.
+        """
+        no_battery = dict(CAPABILITIES, supports_transient=True)
+        panel = self._shown(qapp, capabilities=no_battery)
+        assert not panel.battery_group.isVisibleTo(panel)
+        assert panel.transient_group.geometry().width() > 1500, (
+            panel.transient_group.geometry().width())
+
+    def test_the_fields_clamp_rather_than_compress(self, qapp):
+        """Nothing here scrolls horizontally, so a narrow window must
+        not squeeze the spin boxes into uselessness -- better that the
+        groups hold their minimum and the panel overflows."""
+        narrow = self._shown(qapp, width=1500)
+        assert narrow.transient_group.geometry().width() >= 900, (
+            narrow.transient_group.geometry().width())
+        assert narrow.battery_group.geometry().width() >= 860, (
+            narrow.battery_group.geometry().width())
