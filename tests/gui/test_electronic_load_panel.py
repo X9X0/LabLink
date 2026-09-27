@@ -72,7 +72,7 @@ class FakeLoadClient:
 #: capabilities only say which ranges a load has, never which one it is
 #: in -- so a test asserting the panel "commanded nothing" has to mean
 #: it changed nothing, not that it stayed silent.
-READS = {"get_ranges"}
+READS = {"get_ranges", "get_function_mode"}
 
 
 def controls(client):
@@ -1512,5 +1512,99 @@ class TestTheListButtonCostsNoHeight:
 
     def test_the_readouts_keep_their_height(self, qapp):
         panel, _height = self._height(qapp, self.FULL)
+        assert panel.views.geometry().height() > 500, (
+            panel.views.geometry().height())
+
+
+class TestRunningAList:
+    """The editor could build a sequence and send it, and nothing could
+    hand the setpoint to the list subsystem -- so the list never ran.
+
+    There is no start command to send. The guide has no :LIST:STARt;
+    :FUNCtion:MODE LIST is itself the start, and the input switch does
+    the rest.
+    """
+
+    def _panel(self, client=None):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), client or FakeLoadClient())
+        panel.configure(BATTERY_CAPABILITIES)
+        return panel
+
+    def test_there_is_a_run_button(self, qapp):
+        assert self._panel().list_run_button is not None
+
+    def test_running_hands_the_setpoint_to_the_list(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+
+        assert ("set_function_mode", {"function_mode": "LIST"}) in \
+            client.commands, client.commands
+
+    def test_stopping_asserts_the_regulation_mode(self, qapp):
+        """Same asymmetry as battery: the load accepts
+        :SOUR:FUNC:MODE and ignores it when it will not leave the mode
+        it is in."""
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        panel._show_function_mode("LIST")
+        client.commands.clear()
+
+        _with_loop(qapp, lambda: panel.list_run_button.click())
+
+        assert any(c[0] == "set_mode" for c in client.commands), \
+            client.commands
+
+    def test_the_button_says_which_way_it_goes(self, qapp):
+        panel = self._panel()
+        assert "Run" in panel.list_run_button.text()
+        panel._show_function_mode("LIST")
+        assert "Stop" in panel.list_run_button.text()
+
+    def test_it_follows_the_load_rather_than_the_last_click(self, qapp):
+        """A load already running a list must not offer to start one."""
+        panel = self._panel()
+        panel._show_function_mode("LIST")
+        assert panel.list_run_button.isChecked()
+
+    def test_the_two_function_buttons_do_not_disagree(self, qapp):
+        """One mode, two buttons. Entering battery must un-press run."""
+        panel = self._panel()
+        panel._show_function_mode("LIST")
+        assert panel.list_run_button.isChecked()
+
+        panel._show_function_mode("BATT")
+        assert not panel.list_run_button.isChecked()
+        assert panel.battery_enable.isChecked()
+
+    def test_showing_the_mode_commands_nothing(self, qapp):
+        client = FakeLoadClient()
+        panel = self._panel(client)
+        client.commands.clear()
+
+        panel._show_function_mode("LIST")
+        qapp.processEvents()
+
+        assert client.commands == [], client.commands
+
+    def test_the_run_button_costs_no_height(self, qapp):
+        """It shares the cell with Edit list, which shares the row with
+        the CC extras."""
+        from PyQt6.QtWidgets import QGroupBox
+
+        full = dict(BATTERY_CAPABILITIES, supports_slew_rate=True,
+                    supports_von=True)
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(full)
+        panel.resize(1960, 900)
+        panel.show()
+        qapp.processEvents()
+
+        assert abs(panel.list_run_button.geometry().y()
+                   - panel.list_button.geometry().y()) < 6
         assert panel.views.geometry().height() > 500, (
             panel.views.geometry().height())

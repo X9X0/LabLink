@@ -230,7 +230,21 @@ class ElectronicLoadPanel(InstrumentPanel):
             "on its own clock, down to 50us a step."
         )
         self.list_button.clicked.connect(self._open_list_dialog)
-        grid.addWidget(self.list_button, 3, 4)
+        # Editing and running share the cell, so neither costs a row.
+        self.list_run_button = QPushButton("Run list")
+        self.list_run_button.setCheckable(True)
+        self.list_run_button.setToolTip(
+            "Hand the setpoint to the list. The load still needs its\n"
+            "input switching on to draw, and runs the sequence on its\n"
+            "own clock until the cycles are done."
+        )
+        self.list_run_button.clicked.connect(self._on_list_run_toggled)
+
+        list_buttons = QHBoxLayout()
+        list_buttons.setContentsMargins(0, 0, 0, 0)
+        list_buttons.addWidget(self.list_button)
+        list_buttons.addWidget(self.list_run_button)
+        grid.addLayout(list_buttons, 3, 4)
 
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_setpoint)
@@ -569,8 +583,6 @@ class ElectronicLoadPanel(InstrumentPanel):
         load already in battery discharge would show "Enter battery
         mode", and pressing it would send the mode it is already in.
         """
-        if not self._supports_battery:
-            return
         try:
             mode = await self.send("get_function_mode", {}, priority=False)
         except Exception as e:
@@ -913,13 +925,41 @@ class ElectronicLoadPanel(InstrumentPanel):
             else:
                 await self.send("set_function_mode", {"function_mode": mode})
             self._function_mode = mode
-            self.status_message.emit(
-                "Battery discharge selected -- switch the load on to start"
-                if mode == "BATT" else "Back to fixed operation")
+            said = {
+                "BATT": "Battery discharge selected -- switch the load on "
+                        "to start",
+                "LIST": "List selected -- switch the load on to run it",
+            }.get(mode, "Back to fixed operation")
+            self.status_message.emit(said)
         except Exception as e:
             logger.error(f"Switching function mode failed: {e}")
             self.status_message.emit(f"Switching function mode failed: {e}")
             self._show_function_mode(self._function_mode)
+
+    def _on_list_run_toggled(self, wanted: bool):
+        """Enter or leave list mode.
+
+        There is no start command to send: the guide has no
+        :LIST:STARt, and :FUNCtion:MODE LIST is itself the start --
+        "the input regulation mode is determined by the activated list
+        command". Leaving is the same asymmetry as battery, so it goes
+        through the same path.
+        """
+        if not (self.client and self.equipment):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return              # see _on_mode_changed
+        self._send_function_mode("LIST" if wanted else "FIX")
+
+    def _show_list_running(self, running: bool):
+        """Put the button where the load actually is, commanding
+        nothing."""
+        self.list_run_button.blockSignals(True)
+        self.list_run_button.setChecked(running)
+        self.list_run_button.setText("Stop list" if running else "Run list")
+        self.list_run_button.blockSignals(False)
 
     def _show_function_mode(self, mode: str):
         """Put the button where the load actually is, commanding
@@ -930,6 +970,7 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.battery_enable.setText(
             "Leave battery mode" if mode == "BATT" else "Enter battery mode")
         self.battery_enable.blockSignals(False)
+        self._show_list_running(mode == "LIST")
 
     def _apply_battery(self):
         if not (self.client and self.equipment):
