@@ -10,7 +10,9 @@ import os
 import re
 import sys
 
-MANUALS = "//wsl.localhost/Ubuntu/home/stevecap/Manuals/Rigol/_text_extracted"
+ROOT = "//wsl.localhost/Ubuntu/home/stevecap/Manuals"
+MANUALS = f"{ROOT}/Rigol/_text_extracted"
+BK_MANUALS = f"{ROOT}/BK/_text_extracted"
 OUT = "tests/unit/data/rigol_documented_keywords.json"
 
 COVERAGE = {
@@ -22,8 +24,14 @@ COVERAGE = {
     "rigol_function_generator.py": ["DG1000Z", "DG2000", "DG4000", "DG5000",
                                     "DG6000", "DG800", "DG900", "DG5000PRO",
                                     "DG800PRO"],
-    "rigol_scope.py": ["DS1000Z", "DS1000D", "DS2000A", "DS_MSO4000",
-                       "DS6000", "DS1000B", "DS1000CA"],
+    # Exactly the families _LEGACY_KEYWORDS gives this class: DS1054Z /
+    # DS1074Z / DS1104Z, DS1052D/E and DS1102D/E, and the
+    # MSO2072A/DS2072A group. Not DS1000B, DS1000CA, DS6000 or MSO4000
+    # -- those were a guess of mine, and the DS1000B guide spells the
+    # single-trigger command :SINGLe where every model this driver
+    # actually drives spells it :SINGle. Widening the map beyond what a
+    # driver claims does not add coverage, it invents disagreement.
+    "rigol_scope.py": ["DS1000Z", "DS1000D", "DS2000A"],
     "rigol_modern_scope.py": ["MSO5000", "MSO7000", "MSO8000", "DS8000",
                               "DS70000", "DS80000", "DHO", "DHO800",
                               "DHO_MHO5000", "MHO900", "MHO2000"],
@@ -39,9 +47,28 @@ COVERAGE = {
 COMMON = {"IDN", "RST", "CLS", "OPC", "OPT", "TST", "TRG", "WAI",
           "ESR", "ESE", "SRE", "STB", "PSC", "RCL", "SAV"}
 
-LITERAL = re.compile(r'["\']([:*][A-Za-z0-9:*?\[\]]{2,}[^"\']*)["\']')
+# Colon-joined keywords, with or without a leading colon: the Rigol
+# drivers write ":OUTP:PROT:CLE", the B&K ones "OUTP:PROT:CLE".
+# Matching only the first form made the first B&K audit see 2 keywords
+# instead of 23, and report a clean bill of health it had not earned.
+#   :KEYWORD[:KEYWORD...]   -- Rigol style, and single-word commands
+#                              like :RUN, :STOP, :CLE, :AUT
+#   KEYWORD:KEYWORD[...]    -- B&K style, no leading colon
+# The second alternative demands an inner colon; without that it would
+# match every capitalised word in the file.
+LITERAL = re.compile(
+    r'["\']('
+    r'[:*][A-Za-z][A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)*'
+    r'|[A-Za-z][A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)+'
+    r')\??["\' ]')
 KEYWORD = re.compile(r"^[A-Za-z]+$")
-PATH = re.compile(r"(?:^|[\s(])((?::[A-Za-z][A-Za-z0-9\[\]]*){1,6}\??)")
+# A command path as a guide prints it. Both forms: Rigol leads with a
+# colon (":SOURce:FUNCtion"), B&K often does not ("CONF:CURR:AC",
+# "MEASure:VOLTage:AC"). Reading only the colon-led form left AC out of
+# the B&K table and made a perfectly good keyword look like a
+# truncation of ACQuire.
+PATH = re.compile(
+    r"(?:^|[\s(])(:?[A-Za-z][A-Za-z0-9\[\]]*(?::[A-Za-z][A-Za-z0-9\[\]]*){1,6}\??)")
 
 
 def caps(word):
@@ -61,15 +88,22 @@ def driver_keywords(path):
                 yield part, common
 
 
-def documented(families):
+def documented(families, manuals=None):
+    """Mnemonics from the guides. families=None means every guide in
+    that folder, which is how B&K is read: a series manual covers its
+    siblings (the 8600 guide documents 8601, 8602, 8610 and 8614) and
+    the registry names families the filenames do not."""
+    manuals = manuals or MANUALS
     found = collections.defaultdict(set)
     allcaps = set()
     used = []
-    for name in sorted(os.listdir(MANUALS)):
-        if not name.endswith(".txt") or name.split("__", 1)[0] not in families:
+    for name in sorted(os.listdir(manuals)):
+        if not name.endswith(".txt"):
+            continue
+        if families is not None and name.split("__", 1)[0] not in families:
             continue
         used.append(name)
-        guide = os.path.join(MANUALS, name)
+        guide = os.path.join(manuals, name)
         with open(guide, encoding="utf-8", errors="replace") as f:
             text = f.read()
         for path in PATH.findall(text):
@@ -93,6 +127,30 @@ def main():
         return 1
 
     table = {}
+
+    bk_docs, bk_guides = ({}, [])
+    if os.path.isdir(BK_MANUALS):
+        bk_docs, bk_guides = documented(None, BK_MANUALS)
+    for driver in ("bk_scpi.py", "bk_power_supply.py",
+                   "bk_electronic_load.py"):
+        path = os.path.join("server/equipment", driver)
+        if not os.path.exists(path) or not bk_guides:
+            continue
+        entries = {}
+        for word, is_common in sorted(set(driver_keywords(path))):
+            up = word.upper()
+            if is_common and up in COMMON:
+                entries[word] = {"common": True}
+                continue
+            entries[word] = {
+                "documented": sorted(bk_docs.get(up, [])),
+                "truncates": sorted({m for sps in bk_docs.values() for m in sps
+                                     if m.upper().startswith(up)
+                                     and len(up) < len(m)})[:6],
+            }
+        table[driver] = {"guides": bk_guides, "families": ["B&K SCPI"],
+                         "keywords": entries}
+
     for driver, families in sorted(COVERAGE.items()):
         path = os.path.join("server/equipment", driver)
         if not os.path.exists(path):

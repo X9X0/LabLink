@@ -50,7 +50,17 @@ TABLE = os.path.join(os.path.dirname(__file__), "data",
 with open(TABLE, encoding="utf-8") as _f:
     DOCUMENTED = json.load(_f)
 
-LITERAL = re.compile(r'["\']([:*][A-Za-z0-9:*?\[\]]{2,}[^"\']*)["\']')
+#: Must match tools/regenerate_rigol_keyword_table.py exactly, or the
+#: table and this check disagree about what the drivers send.
+#:
+#:   :KEYWORD[:KEYWORD...]   -- Rigol style, including single-word
+#:                              commands like :RUN, :STOP, :CLE
+#:   KEYWORD:KEYWORD[...]    -- B&K style, no leading colon
+LITERAL = re.compile(
+    r'["\']('
+    r'[:*][A-Za-z][A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)*'
+    r'|[A-Za-z][A-Za-z0-9]*(?::[A-Za-z][A-Za-z0-9]*)+'
+    r')\??["\' ]')
 KEYWORD = re.compile(r"^[A-Za-z]+$")
 
 
@@ -81,7 +91,7 @@ def cases():
 
 class TestTheTableIsReal:
     def test_it_covers_every_driver_with_a_guide(self):
-        assert len(DOCUMENTED) >= 11, "drivers went missing from the table"
+        assert len(DOCUMENTED) >= 14, "drivers went missing from the table"
 
     def test_every_entry_names_its_guides(self):
         for driver, entry in DOCUMENTED.items():
@@ -90,6 +100,15 @@ class TestTheTableIsReal:
     def test_the_load_is_backed_by_the_dl3000_guide(self):
         guides = DOCUMENTED["rigol_electronic_load.py"]["guides"]
         assert any("DL3000" in g for g in guides), guides
+
+    def test_the_bk_drivers_are_backed_too(self):
+        """Not only Rigol. The B&K SCPI driver talks to forty-eight
+        families, and its commands are written without a leading colon
+        -- which is how the first audit of it saw two keywords instead
+        of twenty-three and called that clean."""
+        assert "bk_scpi.py" in DOCUMENTED
+        assert DOCUMENTED["bk_scpi.py"]["guides"], "no B&K guide behind it"
+        assert len(DOCUMENTED["bk_scpi.py"]["keywords"]) >= 20
 
 
 class TestEveryKeywordIsLegal:
