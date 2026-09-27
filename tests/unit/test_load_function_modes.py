@@ -297,12 +297,26 @@ class TestTheBatteryResults:
 class TestTheList:
     @pytest.mark.asyncio
     async def test_a_step_sets_level_width_and_slew(self):
+        """Step 3 to a caller is index 2 to the instrument.
+
+        The guide: "The step value starts from 0", and its example
+        settles it -- :SOUR:LIST:WID 3,3 sets the width for Step 4.
+        """
         load = driver()
         await load.set_list_step(3, level=1.5, width=0.2, slew=0.5)
         sent = commands(load)
-        assert ":SOUR:LIST:LEV 3,1.5" in sent
-        assert ":SOUR:LIST:WID 3,0.2" in sent
-        assert ":SOUR:LIST:SLEW 3,0.5" in sent
+        assert ":SOUR:LIST:LEV 2,1.5" in sent, sent
+        assert ":SOUR:LIST:WID 2,0.2" in sent, sent
+        assert ":SOUR:LIST:SLEW 2,0.5" in sent, sent
+
+    @pytest.mark.asyncio
+    async def test_the_first_step_is_reachable(self):
+        """It was not. Sending the caller's number unchanged made step
+        1 land on the instrument's step 1, which is the front panel's
+        step 2, and nothing addressed the first."""
+        load = driver()
+        await load.set_list_step(1, level=0.5)
+        assert ":SOUR:LIST:LEV 0,0.5" in commands(load), commands(load)
 
     @pytest.mark.asyncio
     async def test_only_what_was_asked_for_is_sent(self):
@@ -326,6 +340,8 @@ class TestTheList:
                                ":SOUR:LIST:WID?": "0.2",
                                ":SOUR:LIST:SLEW?": "0.5"})
         step = await load.get_list_step(2)
+        # Reading uses the same conversion, or a round trip would
+        # silently address a different step each way.
         assert step["level"] == pytest.approx(1.5)
         assert step["width"] == pytest.approx(0.2)
 

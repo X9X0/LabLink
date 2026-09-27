@@ -1181,8 +1181,17 @@ class RigolDL3000Base(BaseEquipment):
         """Set one step of the list.
 
         :LIST:LEVel, :WIDth and :SLEW all take <step>,<value>, so a step
-        is the unit a caller thinks in. Steps are numbered from 1, as
-        the front panel numbers them.
+        is the unit a caller thinks in. Steps are numbered from 1 here,
+        as the front panel numbers them, and converted on the way out.
+
+        The guide is explicit that SCPI counts from zero -- "The step
+        value starts from 0" -- and its own example settles it:
+
+            :SOUR:LIST:WID 3,3   /*Sets the width for Step 4 to 3 s.*/
+
+        This said it numbered from 1 and then sent the number
+        unchanged, so every step landed one place along and the first
+        one could not be addressed at all.
         """
         step = int(step)
         if step < 1:
@@ -1192,17 +1201,20 @@ class RigolDL3000Base(BaseEquipment):
                             (slew, ":SOUR:LIST:SLEW")):
             if value is None:
                 continue
-            await self._command(f"{scpi} {step},{float(value)}")
+            await self._command(f"{scpi} {step - 1},{float(value)}")
 
     async def get_list_step(self, step: int) -> Dict[str, Optional[float]]:
-        """Read one step of the list back."""
+        """Read one step of the list back, numbered from 1 as above."""
         step = int(step)
+        if step < 1:
+            raise SetpointRefused("List steps are numbered from 1")
         out: Dict[str, Optional[float]] = {}
         for key, scpi in (("level", ":SOUR:LIST:LEV?"),
                           ("width", ":SOUR:LIST:WID?"),
                           ("slew", ":SOUR:LIST:SLEW?")):
             try:
-                out[key] = float((await self._query(f"{scpi} {step}")).strip())
+                out[key] = float(
+                    (await self._query(f"{scpi} {step - 1}")).strip())
             except Exception as e:
                 logger.debug("list step %d %s query failed: %s"
                              % (step, key, e))
