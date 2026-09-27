@@ -86,3 +86,69 @@ class TestConnectingUsesTheRealString:
         stored = item.data(Qt.ItemDataRole.UserRole)
         assert stored["resource_name"] == PADDED, (
             "the resource string was rewritten; it would no longer open")
+
+
+def _device(model="SPD3303X-E", equipment_id=None, resource=None):
+    return {
+        "resource_name": resource or PADDED,
+        "manufacturer": "Siglent Technologies",
+        "model": model,
+        "device_type": "power_supply",
+        "confidence_score": 0.95,
+        "metadata": {"equipment_id": equipment_id} if equipment_id else {},
+    }
+
+
+class _StubClient:
+    def get_supported_models(self, supported_only=True):
+        raise RuntimeError("offline")
+
+
+def _dialog(devices):
+    from client.ui.connect_dialog import ConnectDeviceDialog
+    return ConnectDeviceDialog(devices, _StubClient())
+
+
+class TestAlreadyConnectedDevicesAreNotOffered:
+    """An instrument the server already holds open cannot be connected
+    again -- pressing Connect hands back the id it already has -- so
+    listing it alongside the ones you can connect is just confusing.
+    """
+
+    def test_a_connected_device_is_left_out(self, qapp):
+        dialog = _dialog([
+            _device(model="SPD3303X-E"),
+            _device(model="DL3021A", equipment_id="load_b8929b78",
+                    resource="USB0::6833::3601::DL3B268M00049::0::INSTR"),
+        ])
+        assert dialog.resource_list.count() == 1
+        assert "SPD3303X-E" in dialog.resource_list.item(0).text()
+
+    def test_it_says_what_it_left_out(self, qapp):
+        dialog = _dialog([
+            _device(model="SPD3303X-E"),
+            _device(model="DL3021A", equipment_id="load_b8929b78",
+                    resource="USB0::6833::3601::DL3B268M00049::0::INSTR"),
+        ])
+        assert len(dialog.already_connected) == 1
+        assert len(dialog.all_devices) == 2
+
+    def test_everything_connected_is_said_plainly(self, qapp):
+        """Not an empty list with no explanation."""
+        dialog = _dialog([
+            _device(model="DL3021A", equipment_id="load_b8929b78"),
+        ])
+        assert dialog.resource_list.count() == 0
+        assert not dialog.connect_btn.isEnabled()
+
+    def test_connect_stays_available_when_there_is_something_to_connect(
+            self, qapp):
+        dialog = _dialog([_device()])
+        assert dialog.connect_btn.isEnabled()
+
+    def test_a_device_with_no_metadata_is_offered(self, qapp):
+        """Absence of the marker means the server is not holding it."""
+        device = _device()
+        device.pop("metadata")
+        dialog = _dialog([device])
+        assert dialog.resource_list.count() == 1

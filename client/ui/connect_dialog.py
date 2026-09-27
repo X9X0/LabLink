@@ -42,6 +42,17 @@ def _printable(text: str) -> str:
     return "".join(c for c in (text or "") if c.isprintable() or c == " ")
 
 
+def _is_connected(device: Dict[str, Any]) -> bool:
+    """Whether the server already holds this instrument open.
+
+    The scanner records the equipment id on anything it found already
+    open, and describes it from its driver rather than re-querying it.
+    That marker is what this reads.
+    """
+    metadata = device.get("metadata") or {}
+    return bool(metadata.get("equipment_id"))
+
+
 class ConnectDeviceDialog(QDialog):
     """Dialog for selecting and connecting to discovered devices."""
 
@@ -54,7 +65,16 @@ class ConnectDeviceDialog(QDialog):
             parent: Parent widget
         """
         super().__init__(parent)
-        self.devices = devices  # List of device dicts with full info
+        self.all_devices = list(devices)
+        # An instrument the server already holds open cannot be
+        # connected again -- pressing Connect on one hands back the
+        # equipment id it already has -- so offering it here is an
+        # invitation to wonder why nothing happened. The scan still
+        # reports them; this dialog is the place that only shows what
+        # there is something to do about.
+        self.already_connected = [
+            d for d in self.all_devices if _is_connected(d)]
+        self.devices = [d for d in self.all_devices if not _is_connected(d)]
         self.client = client
         self.connected = False
 
@@ -72,9 +92,22 @@ class ConnectDeviceDialog(QDialog):
         header = QLabel("<h3>Discovered Equipment</h3>")
         layout.addWidget(header)
 
-        info = QLabel(
-            f"Found {len(self.devices)} device(s). Devices with confirmed identification are highlighted."
-        )
+        if self.devices:
+            said = (f"Found {len(self.devices)} device(s) to connect. "
+                    f"Devices with confirmed identification are highlighted.")
+        elif self.already_connected:
+            said = ("Nothing new was found. Every instrument the scan saw "
+                    "is already connected and on the Equipment list.")
+        else:
+            said = "No devices found."
+        if self.already_connected:
+            said += (f"\n{len(self.already_connected)} already connected, "
+                     f"not listed here: "
+                     + ", ".join(sorted(
+                         f"{d.get('manufacturer', '')} {d.get('model', '')}".strip()
+                         or _printable(d.get("resource_name", "?"))
+                         for d in self.already_connected)))
+        info = QLabel(said)
         info.setWordWrap(True)
         layout.addWidget(info)
 
@@ -153,6 +186,9 @@ class ConnectDeviceDialog(QDialog):
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(self._connect_device)
         self.connect_btn.setDefault(True)
+        # Nothing to connect: a live button here can only produce "no
+        # device selected".
+        self.connect_btn.setEnabled(bool(self.devices))
         button_layout.addWidget(self.connect_btn)
 
         cancel_btn = QPushButton("Cancel")

@@ -47,7 +47,8 @@ from shared.models.data import PowerSupplyData
 from shared.models.equipment import (EquipmentInfo, EquipmentStatus,
                                      EquipmentType)
 
-from .base import BaseEquipment, CommandRejected, SetpointRefused
+from .base import (BaseEquipment, CommandRejected, SetpointRefused,
+                   generate_equipment_id)
 from .siglent_registry import MANUFACTURER, resolve_idn, resolve_model
 
 logger = logging.getLogger(__name__)
@@ -234,20 +235,32 @@ class SiglentSPD(BaseEquipment):
 
     async def get_info(self) -> EquipmentInfo:
         return EquipmentInfo(
-            id=self.cached_info.id if self.cached_info else "unknown",
-            name=f"{MANUFACTURER} {self.model}",
-            equipment_type=EquipmentType.POWER_SUPPLY,
+            id=generate_equipment_id(self.resource_string, "ps_"),
+            type=EquipmentType.POWER_SUPPLY,
             manufacturer=MANUFACTURER,
             model=self.model,
             serial_number=self.serial_number,
-            connection_string=self.resource_string,
+            connection_type=self._determine_connection_type(),
+            resource_string=self.resource_string,
         )
 
     async def get_status(self) -> EquipmentStatus:
         return EquipmentStatus(
-            equipment_id=self.cached_info.id if self.cached_info else "unknown",
+            id=self.cached_info.id if self.cached_info else "unknown",
             connected=self.connected,
+            firmware_version=self.firmware_version,
+            capabilities=self._capabilities(),
         )
+
+    def _capabilities(self) -> Dict[str, Any]:
+        return {
+            "channels": self.num_channels,
+            "programmable_channels": list(self.programmable_channels),
+            "max_voltage": self.max_voltage,
+            "max_current": self.max_current,
+            "has_fixed_rail": self.has_fixed_rail,
+            "tracking_modes": sorted(TRACK_BY_NAME),
+        }
 
     # ------------------------------------------------------------------ #
     # Setpoints

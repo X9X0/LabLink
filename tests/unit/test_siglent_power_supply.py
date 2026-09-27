@@ -32,6 +32,9 @@ def supply(cls=SiglentSPD3303X, answers=None):
     made.max_voltage = cls.max_voltage
     made.max_current = cls.max_current
     made.cached_info = None
+    made.connected = True
+    made.serial_number = None
+    made.firmware_version = None
     made._io_lock = asyncio.Lock()
     made.written = []
     answers = answers or {}
@@ -432,3 +435,59 @@ class TestDriverSelection:
                                        "9205B", None])
     def test_everything_else_gets_none(self, model):
         assert spd_driver_for(model) is None
+
+
+class TestItDescribesItselfToTheServer:
+    """get_info and get_status build models the API validates.
+
+    This shipped wrong and the bench found it. get_info was written
+    with field names that do not exist on EquipmentInfo -- name,
+    equipment_type, connection_string -- so connecting the supply got
+    as far as opening it and then failed with
+
+        500 Server Error: 3 validation errors for EquipmentInfo
+        type / connection_type / resource_string: Field required
+
+    Every test above drove the wire protocol and not one called
+    get_info, which is how a driver that talks to the instrument
+    correctly could still be impossible to connect.
+    """
+
+    @pytest.mark.asyncio
+    async def test_get_info_validates(self):
+        psu = supply()
+        psu.serial_number = "SPD3XJGCA01014"
+        psu.firmware_version = "1.01.01.03.12R1 V6.2"
+        info = await psu.get_info()
+        assert info.type.value == "power_supply"
+        assert info.resource_string == psu.resource_string
+        assert info.connection_type.value == "usb"
+        assert info.manufacturer == "Siglent Technologies"
+
+    @pytest.mark.asyncio
+    async def test_the_id_is_stable_for_one_resource(self):
+        first, second = supply(), supply()
+        assert (await first.get_info()).id == (await second.get_info()).id
+
+    @pytest.mark.asyncio
+    async def test_a_nul_padded_resource_still_yields_an_id(self):
+        """The supply pads its descriptors, and the padding reaches the
+        resource string."""
+        psu = supply()
+        psu.resource_string = (
+            "USB0::62700::5168::SPD3XJGCA01014\x00\x00\x00\x00::0::INSTR")
+        psu.serial_number = psu.firmware_version = None
+        info = await psu.get_info()
+        assert info.id.startswith("ps_")
+
+    @pytest.mark.asyncio
+    async def test_get_status_validates_and_reports_capabilities(self):
+        psu = supply()
+        psu.serial_number = psu.firmware_version = None
+        psu.connected = True
+        psu.cached_info = await psu.get_info()
+        status = await psu.get_status()
+        assert status.id == psu.cached_info.id
+        assert status.connected is True
+        assert status.capabilities["channels"] == 3
+        assert status.capabilities["programmable_channels"] == [1, 2]
