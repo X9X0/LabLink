@@ -158,7 +158,9 @@ class ElectronicLoadPanel(InstrumentPanel):
         )
         self.setpoint_dial.valueChanged.connect(self._on_setpoint_dial_changed)
         self.setpoint_dial.installEventFilter(self)
-        grid.addWidget(self.setpoint_dial, 0, 3, 3, 1)
+        self.setpoint_dial.setFixedSize(96, 96)
+        grid.addWidget(self.setpoint_dial, 0, 2, 3, 1,
+                       Qt.AlignmentFlag.AlignCenter)
 
         self.range_label = QLabel("Range:")
         grid.addWidget(self.range_label, 2, 0)
@@ -209,11 +211,13 @@ class ElectronicLoadPanel(InstrumentPanel):
         self.cc_apply_button.clicked.connect(self._apply_cc_options)
         extras.addWidget(self.cc_apply_button)
         extras.addStretch()
-        grid.addWidget(self.cc_extras, 3, 0, 1, 4)
+        grid.addWidget(self.cc_extras, 3, 0, 1, 5)
 
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_setpoint)
-        grid.addWidget(self.apply_button, 0, 2, 3, 1)
+        self.apply_button.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                        QSizePolicy.Policy.Expanding)
+        grid.addWidget(self.apply_button, 0, 3, 3, 1)
 
         # "Input" is the instrument's own word for the terminals, and on
         # a panel next to a supply's "Output" it reads as the same kind of
@@ -225,7 +229,22 @@ class ElectronicLoadPanel(InstrumentPanel):
             "QPushButton:checked { background-color: #b06000; color: white; }"
         )
         self.input_button.clicked.connect(self._on_input_toggled)
-        grid.addWidget(self.input_button, 0, 3, 3, 1)
+        self.input_button.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                        QSizePolicy.Policy.Expanding)
+        grid.addWidget(self.input_button, 0, 4, 3, 1)
+
+        # The fields take a third of the width and the two buttons
+        # the rest, with the knob between them at its own size.
+        # Before this the knob and the input button were both at
+        # column 3 of the same rows, so Qt drew them on top of one
+        # another.
+        for field in (self.mode_combo, self.setpoint_spin,
+                      self.range_combo):
+            field.setMaximumWidth(340)
+        grid.setColumnStretch(1, 3)
+        grid.setColumnStretch(2, 0)
+        grid.setColumnStretch(3, 4)
+        grid.setColumnStretch(4, 4)
         layout.addWidget(controls)
 
         # Transient operation -- the Con, Pul and Tog keys. Inside CC

@@ -973,3 +973,79 @@ class TestTheSetpointKnob:
         scale = panel._dial_scale()
         assert panel.setpoint_dial.value() == pytest.approx(
             int(47.0 * scale), abs=1)
+
+
+class TestTheLoadGroupLayout:
+    """The knob, Apply and the input button must not sit on top of
+    each other.
+
+    They did. The knob was added at grid cell (0, 3) spanning three
+    rows, which is exactly where the input button already was, so Qt
+    drew one over the other and the panel shipped with a dial
+    overlapping "Load disabled".
+
+    Geometry rather than appearance: a test cannot say whether a layout
+    looks right, but it can say whether two widgets occupy the same
+    space, and that is the part that was wrong.
+    """
+
+    def _shown(self, qapp, width=1560):
+        panel = ElectronicLoadPanel()
+        panel.set_instrument(_load(), FakeLoadClient())
+        panel.configure(CAPABILITIES)
+        panel.resize(width, 400)
+        panel.show()
+        qapp.processEvents()
+        return panel
+
+    @staticmethod
+    def _overlap(a, b):
+        one, two = a.geometry(), b.geometry()
+        return not (one.right() < two.left() or two.right() < one.left())
+
+    def test_nothing_in_the_row_overlaps(self, qapp):
+        panel = self._shown(qapp)
+        pairs = (
+            ("knob", panel.setpoint_dial, "Apply", panel.apply_button),
+            ("knob", panel.setpoint_dial, "input", panel.input_button),
+            ("Apply", panel.apply_button, "input", panel.input_button),
+            ("setpoint", panel.setpoint_spin, "knob", panel.setpoint_dial),
+        )
+        for a_name, a, b_name, b in pairs:
+            assert not self._overlap(a, b), (
+                f"{a_name} at {a.geometry()} overlaps {b_name} at "
+                f"{b.geometry()}")
+
+    def test_they_read_left_to_right(self, qapp):
+        """Fields, then the knob, then Apply, then the input button."""
+        panel = self._shown(qapp)
+        order = [name for _x, name in sorted((
+            (panel.setpoint_spin.geometry().x(), "fields"),
+            (panel.setpoint_dial.geometry().x(), "knob"),
+            (panel.apply_button.geometry().x(), "apply"),
+            (panel.input_button.geometry().x(), "input"),
+        ))]
+        assert order == ["fields", "knob", "apply", "input"], order
+
+    def test_the_buttons_are_full_height(self, qapp):
+        """They span the three rows, as the mock-up has them."""
+        panel = self._shown(qapp)
+        rows = panel.range_combo.geometry().bottom() - \
+            panel.mode_combo.geometry().top()
+        for name, button in (("Apply", panel.apply_button),
+                             ("input", panel.input_button)):
+            assert button.geometry().height() >= rows * 0.8, (
+                f"{name} is {button.geometry().height()}px against "
+                f"{rows}px of rows")
+
+    def test_the_fields_do_not_sprawl(self, qapp):
+        """A wide window should give the space to the buttons, not to a
+        combo box a thousand pixels long."""
+        panel = self._shown(qapp, width=1900)
+        assert panel.mode_combo.geometry().width() <= 400, (
+            panel.mode_combo.geometry().width())
+
+    def test_it_still_holds_at_a_narrow_width(self, qapp):
+        panel = self._shown(qapp, width=900)
+        assert not self._overlap(panel.setpoint_dial, panel.apply_button)
+        assert not self._overlap(panel.apply_button, panel.input_button)
