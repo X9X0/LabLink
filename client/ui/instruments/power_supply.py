@@ -33,6 +33,18 @@ from client.ui.theme import dialog_palette, get_theme_setting
 logger = logging.getLogger(__name__)
 
 
+def _spell_short(seconds: float) -> str:
+    """Seconds for a button face, so it does not resize as it counts."""
+    seconds = max(0.0, float(seconds))
+    if seconds < 60:
+        return "%ds" % round(seconds)
+    minutes, rest = divmod(int(round(seconds)), 60)
+    if minutes < 60:
+        return "%d:%02d" % (minutes, rest)
+    hours, minutes = divmod(minutes, 60)
+    return "%d:%02d:%02d" % (hours, minutes, rest)
+
+
 class PowerSupplyPanel(InstrumentPanel):
     """Drive a DC power supply and watch what it does."""
 
@@ -81,6 +93,12 @@ class PowerSupplyPanel(InstrumentPanel):
         #: Open timer editors, by channel. Held so a second click
         #: raises the one already up rather than stacking another.
         self._timer_dialogs = {}
+        #: Per channel: how long the five groups add up to, as last
+        #: read or sent, and how much of it has been counted off. The
+        #: instrument reports neither -- see _advance_timers.
+        self._timer_total = {}
+        self._timer_elapsed = {}
+        self._timer_last_tick = {}
 
         super().__init__(parent)
 
@@ -594,7 +612,7 @@ class PowerSupplyPanel(InstrumentPanel):
         """
         if not self._ready_to_send():
             return
-        if what == "read":
+        if what in ("read", "read_total"):
             self._read_timer_steps(channel)
         else:
             self._send_timer_steps(channel)
@@ -602,8 +620,10 @@ class PowerSupplyPanel(InstrumentPanel):
     @qasync.asyncSlot(int)
     async def _read_timer_steps(self, channel: int):
         """Fill the editor from the supply."""
+        # Called with no editor open too, to total the groups for a
+        # run that started elsewhere.
         dialog = self._timer_dialogs.get(channel)
-        if dialog is None or not (self.client and self.equipment):
+        if not (self.client and self.equipment):
             return
         steps = []
         for group in (1, 2, 3, 4, 5):
@@ -616,7 +636,8 @@ class PowerSupplyPanel(InstrumentPanel):
                                % (channel, group, e))
                 continue
             steps.append((step or {}).get("data") or step or {})
-        if dialog.isVisible():
+        self._remember_timer_total(channel, steps)
+        if dialog is not None and dialog.isVisible():
             dialog.load(steps)
 
     @qasync.asyncSlot(int)
@@ -645,6 +666,7 @@ class PowerSupplyPanel(InstrumentPanel):
                     "CH%d timer group %d was refused: %s"
                     % (channel, step["group"], e))
                 return
+        self._remember_timer_total(channel, dialog.steps())
         self.status_message.emit(
             "CH%d timer set. Press Timer to run it." % channel)
 
@@ -666,6 +688,11 @@ class PowerSupplyPanel(InstrumentPanel):
             self.status_message.emit(
                 "Switching CH%d's timer failed: %s" % (channel, e))
             self._show_timer(channel, not wanted)
+            return
+        # The next poll confirms it; this is so the button moves on the
+        # click rather than up to a poll interval later.
+        self._note_timer_state(channel, wanted, True)
+        self._show_timer(channel, wanted)
 
     def _show_timer(self, channel: int, running: bool):
         button = self._timer_buttons.get(channel)
@@ -673,8 +700,67 @@ class PowerSupplyPanel(InstrumentPanel):
             return
         button.blockSignals(True)
         button.setChecked(bool(running))
-        button.setText("Timer running" if running else "Timer off")
+        button.setText(self._timer_label(channel, running))
         button.blockSignals(False)
+
+    def _timer_label(self, channel: int, running: bool) -> str:
+        """What the button says.
+
+        Elapsed against the total when both are known, because "Timer
+        running" on its own tells an operator nothing they cannot see
+        from the readings. The figure is this panel's count, not the
+        supply's, so it is shown against the total rather than as a
+        time remaining -- there is a difference between "about this far
+        through" and a countdown the instrument would stand behind.
+        """
+        if not running:
+            return "Timer off"
+        total = self._timer_total.get(channel)
+        if not total:
+            return "Timer running"
+        elapsed = min(self._timer_elapsed.get(channel, 0.0), total)
+        return "Timer %s / %s" % (_spell_short(elapsed), _spell_short(total))
+
+    def _note_timer_state(self, channel: int, running: bool,
+                          output_on: bool) -> None:
+        """Keep the estimate in step with the run.
+
+        Starting resets the count. Stopping forgets it. While it runs
+        the clock only advances when the output is on, because the
+        guide is explicit that switching the output off pauses the
+        countdown rather than ending it.
+        """
+        import time
+
+        was = bool(self._timer_last_tick.get(channel) is not None)
+        if not running:
+            self._timer_elapsed.pop(channel, None)
+            self._timer_last_tick.pop(channel, None)
+            return
+        now = time.monotonic()
+        if not was:
+            self._timer_elapsed[channel] = 0.0
+            self._timer_last_tick[channel] = now
+            # A run that started somewhere other than this panel still
+            # wants a total to count against.
+            if not self._timer_total.get(channel):
+                self._timer_steps_requested("read_total", channel)
+            return
+        previous = self._timer_last_tick.get(channel) or now
+        self._timer_last_tick[channel] = now
+        if output_on:
+            self._timer_elapsed[channel] = (
+                self._timer_elapsed.get(channel, 0.0) + (now - previous))
+
+    def _remember_timer_total(self, channel: int, steps) -> None:
+        """Total the five groups, so there is something to count
+        against."""
+        total = 0.0
+        for step in steps or []:
+            seconds = (step or {}).get("seconds")
+            if seconds:
+                total += float(seconds)
+        self._timer_total[channel] = total
 
     def _build_channel_views(self, number: int,
                              capabilities: Dict[str, Any]):
@@ -987,6 +1073,12 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.show_output(bool(entry.get("output_enabled")))
             strip.show_mode(bool(entry.get("in_cv_mode")),
                             bool(entry.get("in_cc_mode")))
+            number = entry.get("channel")
+            if number in self._timer_buttons and "timer_running" in entry:
+                running = bool(entry.get("timer_running"))
+                self._note_timer_state(
+                    number, running, bool(entry.get("output_enabled")))
+                self._show_timer(number, running)
             views = self._channel_views.get(entry.get("channel"))
             if views is not None:
                 voltage = entry.get("voltage_actual") or 0.0

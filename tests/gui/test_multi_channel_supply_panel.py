@@ -750,3 +750,143 @@ class TestTheFixedRailsSwitchMoves:
         made = panel(qapp, SIGLENT)
         said = made._strips[3].output_button.toolTip().lower()
         assert "does not report" in said
+
+
+class TestTheTimerButtonFollowsTheSupply:
+    """It said "Timer off" while the timer ran, and then wanted two
+    clicks to run again.
+
+    Both from the same cause. Qt checks a checkable button on click and
+    nothing ever un-checked it, so when a run finished -- the timer
+    switches itself off at zero -- the button was still pressed. The
+    next click therefore sent OFF, appeared to do nothing, and it took
+    a second click to start again.
+
+    Running or not is the instrument's own word: bits 6 and 7 of the
+    status register, carried in the poll.
+    """
+
+    def _poll(self, made, running, output_on=True, channel=1):
+        made._apply_all_readings({"coupling": "independent", "channels": [{
+            "channel": channel, "timer_running": running,
+            "output_enabled": output_on,
+            "voltage_actual": 1.0, "current_actual": 0.1,
+            "power_actual": 0.1, "voltage_set": 1.0, "current_set": 0.1,
+            "in_cv_mode": True, "in_cc_mode": False,
+        }]})
+
+    def test_a_running_timer_says_so(self, qapp):
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True)
+        assert made._timer_buttons[1].isChecked()
+        assert "off" not in made._timer_buttons[1].text().lower()
+
+    def test_a_finished_run_releases_the_button(self, qapp):
+        """The fix for the two clicks: the timer switches itself off at
+        zero, and the button has to follow or the next click sends
+        OFF."""
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True)
+        assert made._timer_buttons[1].isChecked()
+
+        self._poll(made, False)
+
+        assert not made._timer_buttons[1].isChecked(), (
+            "the button stayed pressed after the run ended, so the next "
+            "click would stop a timer that is not running")
+        assert made._timer_buttons[1].text() == "Timer off"
+
+    def test_one_click_is_enough_to_run_it_again(self, qapp):
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True)
+        self._poll(made, False)
+        # A click now is a start, not a stop.
+        assert not made._timer_buttons[1].isChecked()
+
+    def test_it_is_per_channel(self, qapp):
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True, channel=1)
+        assert made._timer_buttons[1].isChecked()
+        assert not made._timer_buttons[2].isChecked()
+
+    def test_a_poll_without_timer_state_leaves_it_alone(self, qapp):
+        """An older server does not send it, and absence is not "off"."""
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True)
+        made._apply_all_readings({"channels": [{
+            "channel": 1, "output_enabled": True, "voltage_actual": 1.0,
+            "current_actual": 0.1, "power_actual": 0.1,
+            "voltage_set": 1.0, "current_set": 0.1}]})
+        assert made._timer_buttons[1].isChecked()
+
+
+class TestHowFarThroughTheTimerIs:
+    """Counted here, not asked of the supply.
+
+    The timer subsystem is three commands -- TIMEr:SET, TIMEr:SET? and
+    TIMEr -- and none reports time remaining, so there is nothing to
+    query. The figure is shown against the total rather than as a
+    countdown, because "about this far through" is what it is.
+    """
+
+    def _poll(self, made, running, output_on=True):
+        made._apply_all_readings({"coupling": "independent", "channels": [{
+            "channel": 1, "timer_running": running,
+            "output_enabled": output_on,
+            "voltage_actual": 1.0, "current_actual": 0.1,
+            "power_actual": 0.1, "voltage_set": 1.0, "current_set": 0.1,
+            "in_cv_mode": True, "in_cc_mode": False,
+        }]})
+
+    def test_the_total_comes_from_the_five_groups(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._remember_timer_total(1, [{"seconds": 2}, {"seconds": 120},
+                                       {"seconds": 0}])
+        assert made._timer_total[1] == pytest.approx(122.0)
+
+    def test_the_button_shows_elapsed_against_the_total(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._remember_timer_total(1, [{"seconds": 2}, {"seconds": 120}])
+        self._poll(made, True)
+        made._timer_elapsed[1] = 45.0
+        made._show_timer(1, True)
+        assert "45s" in made._timer_buttons[1].text()
+        assert "2:02" in made._timer_buttons[1].text()
+
+    def test_without_a_total_it_just_says_running(self, qapp):
+        """Better than a figure counted against nothing."""
+        made = panel(qapp, SIGLENT)
+        self._poll(made, True)
+        assert made._timer_buttons[1].text() == "Timer running"
+
+    def test_the_count_does_not_run_past_the_total(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._remember_timer_total(1, [{"seconds": 10}])
+        self._poll(made, True)
+        made._timer_elapsed[1] = 999.0
+        made._show_timer(1, True)
+        assert "10s / 10s" in made._timer_buttons[1].text()
+
+    def test_the_count_pauses_while_the_output_is_off(self, qapp):
+        """The guide: switching the output off pauses the countdown
+        rather than ending it, and it resumes when the output comes
+        back on."""
+        made = panel(qapp, SIGLENT)
+        made._remember_timer_total(1, [{"seconds": 100}])
+        self._poll(made, True, output_on=True)
+        made._timer_elapsed[1] = 20.0
+
+        for _ in range(3):
+            self._poll(made, True, output_on=False)
+
+        assert made._timer_elapsed[1] == pytest.approx(20.0), (
+            "the estimate kept counting while the output was off")
+
+    def test_a_new_run_starts_the_count_over(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._remember_timer_total(1, [{"seconds": 100}])
+        self._poll(made, True)
+        made._timer_elapsed[1] = 55.0
+        self._poll(made, False)
+        self._poll(made, True)
+        assert made._timer_elapsed[1] < 1.0

@@ -455,6 +455,12 @@ class SiglentSPD(BaseEquipment):
                 in_cc = bool(status.get("ch%d_cc" % n))
                 channels.append({
                     "channel": n,
+                    # Bits 6 and 7. There is no countdown query -- the
+                    # timer subsystem is TIMEr:SET, TIMEr:SET? and
+                    # TIMEr, and none of them reports time remaining --
+                    # so this is the whole of what the instrument will
+                    # say about a run in progress.
+                    "timer_running": bool(status.get("timer%d_on" % n)),
                     "voltage_set": setpoints["voltage"],
                     "current_set": setpoints["current"],
                     "voltage_actual": measured["voltage"],
