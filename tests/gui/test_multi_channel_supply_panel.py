@@ -643,3 +643,110 @@ class TestTheTimer:
         qapp.processEvents()
         assert not made._timer_buttons[1].isChecked()
         assert "off" in made._timer_buttons[1].text().lower()
+
+
+class TestTheTimerEditor:
+    """Starting a timer is no use without a way to say what it runs."""
+
+    def test_each_programmable_channel_has_a_set_button(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert sorted(made._timer_edit_buttons) == [1, 2]
+
+    def test_the_fixed_rail_has_none(self, qapp):
+        assert 3 not in panel(qapp, SIGLENT)._timer_edit_buttons
+
+    @pytest.mark.parametrize("mode", ["series", "parallel"])
+    def test_it_is_unavailable_when_the_pair_is_linked(self, qapp, mode):
+        """Setting groups up is refused in those modes too, so there is
+        nothing to be gained by opening the editor."""
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": mode, "channels": []})
+        assert not made._timer_edit_buttons[1].isEnabled()
+        assert "independent" in made._timer_edit_buttons[1].toolTip()
+
+    def test_it_opens_one_editor_per_channel(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._open_timer(1)
+        qapp.processEvents()
+        first = made._timer_dialogs.get(1)
+        assert first is not None
+        made._open_timer(1)
+        qapp.processEvents()
+        assert made._timer_dialogs.get(1) is first, (
+            "opened a second editor over the first")
+        first.hide()
+
+    def test_the_editor_is_ranged_from_the_supply(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._open_timer(1)
+        qapp.processEvents()
+        dialog = made._timer_dialogs[1]
+        assert dialog.table.cellWidget(0, 0).maximum() == pytest.approx(32.0)
+        assert dialog.table.cellWidget(0, 1).maximum() == pytest.approx(3.2)
+        dialog.hide()
+
+    def test_each_channel_gets_its_own_editor(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._open_timer(1)
+        made._open_timer(2)
+        qapp.processEvents()
+        assert made._timer_dialogs[1] is not made._timer_dialogs[2]
+        assert made._timer_dialogs[1].channel == 1
+        assert made._timer_dialogs[2].channel == 2
+        for number in (1, 2):
+            made._timer_dialogs[number].hide()
+
+
+class TestTheFixedRailsSwitchMoves:
+    """CH3's button stayed reading "Output off" however many times it
+    was pressed.
+
+    Every other channel's button is corrected by the poll, which
+    carries output_enabled. The fixed rail is not in the poll at all --
+    it has no bit in the status word and answers no query -- so unless
+    the panel shows what it commanded, nothing ever moves that button.
+    """
+
+    def _sent(self, made):
+        sent = []
+
+        class Client:
+            def send_command(self, equipment_id, command, parameters=None):
+                sent.append((command, parameters or {}))
+                return {"success": True, "data": {}}
+
+        made.client = Client()
+        return sent
+
+    def test_it_reads_off_before_anything_happens(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert "off" in made._strips[3].output_button.text().lower()
+
+    def test_commanding_it_on_moves_the_button(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._strips[3].show_output(True)
+        assert made._strips[3].output_button.isChecked()
+        assert "on" in made._strips[3].output_button.text().lower()
+
+    def test_and_back_off_again(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._strips[3].show_output(True)
+        made._strips[3].show_output(False)
+        assert not made._strips[3].output_button.isChecked()
+        assert "off" in made._strips[3].output_button.text().lower()
+
+    def test_a_poll_that_omits_it_leaves_it_alone(self, qapp):
+        """The reply never mentions CH3, and that must not be read as
+        "CH3 is off"."""
+        made = panel(qapp, SIGLENT)
+        made._strips[3].show_output(True)
+        made._apply_all_readings({"channels": [], "coupling": "independent"})
+        assert made._strips[3].output_button.isChecked(), (
+            "a reply with no CH3 in it switched CH3's button off")
+
+    def test_its_tooltip_says_the_state_is_unconfirmed(self, qapp):
+        """Showing a commanded state as though it were measured is the
+        thing to avoid; saying so is the honest version."""
+        made = panel(qapp, SIGLENT)
+        said = made._strips[3].output_button.toolTip().lower()
+        assert "does not report" in said

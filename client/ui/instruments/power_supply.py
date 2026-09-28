@@ -23,6 +23,7 @@ import qasync
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
 from client.ui.instruments.channel_strip import ChannelStrip
+from client.ui.instruments.timer_dialog import TimerDialog
 from client.ui.instruments.measurement_views import (Channel,
                                                      MeasurementViews)
 from client.ui.instruments.widgets import (AnalogGauge, ChartWithReadouts,
@@ -76,6 +77,10 @@ class PowerSupplyPanel(InstrumentPanel):
         #: last asked for.
         self._coupling = None
         self._timer_buttons = {}
+        self._timer_edit_buttons = {}
+        #: Open timer editors, by channel. Held so a second click
+        #: raises the one already up rather than stacking another.
+        self._timer_dialogs = {}
 
         super().__init__(parent)
 
@@ -483,6 +488,7 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.deleteLater()
         self._strips = {}
         self._timer_buttons = {}
+        self._timer_edit_buttons = {}
         for views in self._channel_views.values():
             views.setParent(None)
             views.deleteLater()
@@ -528,14 +534,119 @@ class PowerSupplyPanel(InstrumentPanel):
         only works in independent mode, and switching the output off
         pauses the countdown rather than ending it.
         """
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+
         button = QPushButton("Timer off")
         button.setCheckable(True)
         button.setToolTip(
             "Run CH%d through its five timing groups." % number)
         button.clicked.connect(
             lambda wanted, n=number: self._timer_requested(n, bool(wanted)))
-        strip.layout().addWidget(button)
+        row.addWidget(button, 1)
+
+        edit = QPushButton("Set...")
+        edit.setToolTip(
+            "Enter the five groups for CH%d: a voltage, a current and how "
+            "long to hold them, run one after another." % number)
+        edit.clicked.connect(lambda _c=False, n=number: self._open_timer(n))
+        row.addWidget(edit)
+
+        strip.layout().addLayout(row)
         self._timer_buttons[number] = button
+        self._timer_edit_buttons[number] = edit
+
+    def _open_timer(self, channel: int):
+        """Put up the editor for one channel's five groups.
+
+        Read from the instrument first. It holds these itself -- they
+        survive a disconnection and can be set from the front panel --
+        so offering an empty grid and sending it would quietly discard
+        a setup somebody had already made.
+        """
+        existing = self._timer_dialogs.get(channel)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+
+        dialog = TimerDialog(
+            channel,
+            max_voltage=self.capabilities.get("max_voltage",
+                                              self.instrument_max_voltage),
+            max_current=self.capabilities.get("max_current",
+                                              self.instrument_max_current),
+            parent=self)
+        dialog.accepted.connect(
+            lambda n=channel: self._timer_steps_requested("send", n))
+        dialog.reread_button.clicked.connect(
+            lambda _c=False, n=channel: self._timer_steps_requested("read", n))
+        self._timer_dialogs[channel] = dialog
+        dialog.show()
+        self._timer_steps_requested("read", channel)
+
+    def _timer_steps_requested(self, what: str, channel: int):
+        """Read or send, if there is anything to talk to.
+
+        The editor opens whether or not a client is attached -- an
+        operator can look at the grid -- so these two have to be as
+        guarded as every other slot that reaches the server.
+        """
+        if not self._ready_to_send():
+            return
+        if what == "read":
+            self._read_timer_steps(channel)
+        else:
+            self._send_timer_steps(channel)
+
+    @qasync.asyncSlot(int)
+    async def _read_timer_steps(self, channel: int):
+        """Fill the editor from the supply."""
+        dialog = self._timer_dialogs.get(channel)
+        if dialog is None or not (self.client and self.equipment):
+            return
+        steps = []
+        for group in (1, 2, 3, 4, 5):
+            try:
+                step = await call_blocking(
+                    self.client.send_command, self.equipment.equipment_id,
+                    "get_timer_step", {"channel": channel, "group": group})
+            except Exception as e:
+                logger.warning("Could not read CH%d timer group %d: %s"
+                               % (channel, group, e))
+                continue
+            steps.append((step or {}).get("data") or step or {})
+        if dialog.isVisible():
+            dialog.load(steps)
+
+    @qasync.asyncSlot(int)
+    async def _send_timer_steps(self, channel: int):
+        """Write all five groups, then say so.
+
+        Every group goes, including the ones left at zero: a group the
+        operator cleared has to reach the instrument, or the sequence
+        keeps running an old step they think they removed.
+        """
+        dialog = self._timer_dialogs.get(channel)
+        if dialog is None or not (self.client and self.equipment):
+            return
+        for step in dialog.steps():
+            try:
+                await call_blocking(
+                    self.client.send_command, self.equipment.equipment_id,
+                    "set_timer_step",
+                    {"channel": channel, "group": step["group"],
+                     "voltage": step["voltage"], "current": step["current"],
+                     "seconds": step["seconds"]})
+            except Exception as e:
+                logger.error("Sending CH%d timer group %d failed: %s"
+                             % (channel, step["group"], e))
+                self.status_message.emit(
+                    "CH%d timer group %d was refused: %s"
+                    % (channel, step["group"], e))
+                return
+        self.status_message.emit(
+            "CH%d timer set. Press Timer to run it." % channel)
 
     def _timer_requested(self, channel: int, wanted: bool):
         if not self._ready_to_send():
@@ -685,6 +796,14 @@ class PowerSupplyPanel(InstrumentPanel):
                 "The timer only runs in independent mode."
                 if linked else
                 "Run CH%d through its five timing groups." % number)
+        for number, edit in self._timer_edit_buttons.items():
+            # Setting groups up is refused in series and parallel too,
+            # so there is nothing to be gained by opening the editor.
+            edit.setEnabled(not linked)
+            edit.setToolTip(
+                "The timer only runs in independent mode."
+                if linked else
+                "Enter the five groups for CH%d." % number)
 
     def _single_channel_widgets_visible(self, visible: bool):
         for widget in (getattr(self, "_controls_group", None), self.views):
@@ -839,6 +958,15 @@ class PowerSupplyPanel(InstrumentPanel):
             strip = self._strips.get(channel)
             if strip is not None:
                 strip.show_output(not wanted)
+            return
+        # Show what was commanded. The poll corrects this for a channel
+        # the supply reports, and for one it does not -- the fixed rail
+        # has no bit in the status word -- this is the only thing that
+        # will ever move the button. Without it CH3's switch stayed
+        # reading "Output off" however many times it was pressed.
+        strip = self._strips.get(channel)
+        if strip is not None:
+            strip.show_output(wanted)
 
     def _apply_all_readings(self, data: Dict[str, Any]):
         """One reply, every channel."""

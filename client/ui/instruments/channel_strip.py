@@ -94,7 +94,12 @@ class ChannelStrip(QGroupBox):
         self.output_button = QPushButton("Output off")
         self.output_button.setCheckable(True)
         self.output_button.setToolTip(
-            "Switch CH%d on and off. Each channel has its own." % self.number)
+            "Switch CH%d on and off. Each channel has its own." % self.number
+            if self.programmable else
+            "Switch CH%d on and off. This is the only thing remote control\n"
+            "can do with the fixed rail, and the supply does not report\n"
+            "whether it is on -- so this button shows what it was last\n"
+            "told, not what the rail is doing." % self.number)
         self.output_button.clicked.connect(
             lambda on: self.output_toggled.emit(self.number, bool(on)))
         layout.addWidget(self.output_button)
