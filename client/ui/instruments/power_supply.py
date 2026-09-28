@@ -88,6 +88,9 @@ class PowerSupplyPanel(InstrumentPanel):
         #: What the supply says its output coupling is, not what was
         #: last asked for.
         self._coupling = None
+        #: Where the rate control lives when this is a single-channel
+        #: panel, so the columns can borrow it and give it back.
+        self._rate_home = None
         self._timer_buttons = {}
         self._timer_edit_buttons = {}
         #: Open timer editors, by channel. Held so a second click
@@ -797,11 +800,34 @@ class PowerSupplyPanel(InstrumentPanel):
         controls group -- which the columns hide. Re-parenting it keeps
         one widget and one set of handlers rather than a second rate
         that could disagree with the first.
+
+        Where it came from is remembered, because it has to go back.
         """
         rate = getattr(self, "_rate_group", None)
         if rate is None or rate.parent() is self.shared_bar:
             return
+        if self._rate_home is None:
+            self._rate_home = rate.parentWidget()
         self.shared_bar.layout().addWidget(rate)
+        rate.setVisible(True)
+
+    def _return_rate_control(self):
+        """Put it back with the single-channel controls.
+
+        Without this it stayed in the shared band, which a
+        single-channel instrument hides -- so selecting the Siglent and
+        then a B&K supply left the B&K with no refresh rate at all. The
+        same panel object serves both, so anything the columns borrow
+        has to be given back.
+        """
+        rate = getattr(self, "_rate_group", None)
+        home = self._rate_home
+        if rate is None or home is None or rate.parentWidget() is home:
+            return
+        layout = home.layout()
+        if layout is None:
+            return
+        layout.addWidget(rate)
         rate.setVisible(True)
 
     def _on_shared_mode(self, index: int, checked: bool):
@@ -898,7 +924,9 @@ class PowerSupplyPanel(InstrumentPanel):
         if not visible:
             return
         # Coming back to a single-channel instrument: put the bands the
-        # columns borrowed back out of the way.
+        # columns borrowed back out of the way, and give back the one
+        # widget they borrowed out of them.
+        self._return_rate_control()
         for widget in (self.shared_bar, self.readout_area):
             widget.setVisible(False)
 

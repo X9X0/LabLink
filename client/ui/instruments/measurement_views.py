@@ -284,13 +284,16 @@ class MeasurementViews(QWidget):
             # the values are on the readout strip and in the legend
             # already. The axis still exists and still scales, so the
             # trace is correct either way.
-            if index == 0:
-                self.chart.addAxis(axis, Qt.AlignmentFlag.AlignLeft)
-            elif index == 1:
-                self.chart.addAxis(axis, Qt.AlignmentFlag.AlignRight)
-            else:
-                axis.setVisible(False)
-                self.chart.addAxis(axis, Qt.AlignmentFlag.AlignRight)
+            # Every channel gets its scale. This used to give the
+            # third one no furniture -- the reasoning being that three
+            # sets of numbers down the sides of a narrow chart cannot
+            # be read -- which left a watts trace on the chart with
+            # nothing to read it against. A trace whose scale is not
+            # shown is a shape, not a measurement.
+            self.chart.addAxis(
+                axis,
+                Qt.AlignmentFlag.AlignLeft if index == 0
+                else Qt.AlignmentFlag.AlignRight)
             series.attachAxis(self.axis_x)
             series.attachAxis(axis)
             self.axes[channel.key] = axis

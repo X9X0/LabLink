@@ -890,3 +890,57 @@ class TestHowFarThroughTheTimerIs:
         self._poll(made, False)
         self._poll(made, True)
         assert made._timer_elapsed[1] < 1.0
+
+
+class TestTheRateControlIsGivenBack:
+    """Selecting the Siglent and then a B&K supply left the B&K with
+    no refresh rate at all.
+
+    There is one rate control and the columns borrow it, because it is
+    built inside the single-channel controls group which the columns
+    hide. It was never given back, so it stayed in the shared band --
+    which a single-channel instrument hides. The same panel object
+    serves both instruments, so anything the columns borrow has to be
+    returned.
+    """
+
+    def _rate(self, made):
+        from PyQt6.QtWidgets import QGroupBox
+
+        found = [g for g in made.findChildren(QGroupBox)
+                 if g.title() == "Refresh Rate"]
+        assert len(found) == 1, found
+        return found[0]
+
+    def test_a_single_channel_supply_has_one(self, qapp):
+        assert self._rate(panel(qapp, SINGLE)).isVisible()
+
+    def test_a_three_channel_supply_has_one(self, qapp):
+        assert self._rate(panel(qapp, SIGLENT)).isVisible()
+
+    def test_it_survives_the_switch_to_a_single_channel_supply(self, qapp):
+        """The case that lost it."""
+        made = panel(qapp, SIGLENT)
+        made.configure(SINGLE)
+        qapp.processEvents()
+        assert self._rate(made).isVisible(), (
+            "the refresh rate went with the shared band")
+
+    def test_it_survives_switching_back_and_forth(self, qapp):
+        made = panel(qapp, SIGLENT)
+        for capabilities in (SINGLE, SIGLENT, SINGLE, SIGLENT):
+            made.configure(capabilities)
+            qapp.processEvents()
+            assert self._rate(made).isVisible(), capabilities
+
+    def test_there_is_never_more_than_one(self, qapp):
+        """A second could disagree with the first about the poll."""
+        from PyQt6.QtWidgets import QGroupBox
+
+        made = panel(qapp, SIGLENT)
+        for capabilities in (SINGLE, SIGLENT, SINGLE):
+            made.configure(capabilities)
+            qapp.processEvents()
+        rates = [g for g in made.findChildren(QGroupBox)
+                 if g.title() == "Refresh Rate"]
+        assert len(rates) == 1, rates
