@@ -7,6 +7,7 @@ auto-ranging. It is the first panel to follow the InstrumentPanel contract,
 so the shell no longer has to know what a supply is.
 """
 
+import asyncio
 import logging
 from collections import deque
 from typing import Any, Dict
@@ -14,13 +15,14 @@ from typing import Any, Dict
 from PyQt6.QtCharts import QChart, QLineSeries, QValueAxis
 from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import (QButtonGroup, QDial, QDoubleSpinBox, QGroupBox,
-                             QHBoxLayout, QLabel, QPushButton, QRadioButton,
-                             QSizePolicy, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QDial, QDoubleSpinBox,
+                             QGroupBox, QHBoxLayout, QLabel, QPushButton,
+                             QRadioButton, QSizePolicy, QVBoxLayout, QWidget)
 
 import qasync
 from client.api.client import call_blocking
 from client.ui.instruments.base import POLL_READINGS, InstrumentPanel
+from client.ui.instruments.channel_strip import ChannelStrip
 from client.ui.instruments.measurement_views import (Channel,
                                                      MeasurementViews)
 from client.ui.instruments.widgets import (AnalogGauge, ChartWithReadouts,
@@ -60,6 +62,16 @@ class PowerSupplyPanel(InstrumentPanel):
 
         #: Consecutive readings that disagree with the indicator.
         self._output_state_streak = 0
+
+        #: Multi-channel supplies get a column per channel instead of
+        #: the single-channel body. One panel class still serves both:
+        #: panels are chosen by equipment type, so the Siglent and the
+        #: B&K arrive here together, and a supply with one channel must
+        #: look exactly as it always has.
+        self._strips = {}
+        self._channel_count = 1
+        self._unreadable_channels = ()
+        self._hidden_channels = set()
 
         super().__init__(parent)
 
@@ -319,8 +331,251 @@ class PowerSupplyPanel(InstrumentPanel):
         ))
         layout.addWidget(self.views, 1)
 
+        # The multi-channel body, empty until an instrument says it has
+        # more than one channel. Built here rather than on demand so the
+        # panel keeps one layout for its whole life: swapping the
+        # top-level layout while a poll is in flight is how a panel ends
+        # up drawing into widgets that have gone.
+        self.channel_bar = QWidget()
+        bar = QHBoxLayout(self.channel_bar)
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.addWidget(QLabel("Channels:"))
+        self._channel_boxes_layout = bar
+        self._channel_boxes = {}
+        bar.addStretch()
+        self.channel_bar.setVisible(False)
+        layout.addWidget(self.channel_bar)
+
+        self.channel_area = QWidget()
+        self._channel_layout = QHBoxLayout(self.channel_area)
+        self._channel_layout.setContentsMargins(0, 0, 0, 0)
+        self.channel_area.setVisible(False)
+        layout.addWidget(self.channel_area, 1)
+
+    # ------------------------------------------------------------------ #
+    # Multi-channel supplies
+    # ------------------------------------------------------------------ #
+
+    def _configure_channels(self, capabilities: Dict[str, Any]):
+        """Grow a column per channel, or leave the single-channel body.
+
+        One channel is the overwhelming case and its panel is mature,
+        so it is left exactly as it was rather than reimplemented as a
+        column of itself.
+        """
+        count = int(capabilities.get("channels", 1) or 1)
+        programmable = [int(c) for c in
+                        (capabilities.get("programmable_channels")
+                         or range(1, count + 1))]
+        unreadable = {}
+        if capabilities.get("has_fixed_rail") and count >= 3:
+            unreadable[3] = (
+                "Fixed 2.5 / 3.3 / 5 V rail, selected by the switch on the "
+                "front panel. The supply does not report its voltage or its "
+                "draw over the remote interface, so there is nothing to show "
+                "here but the switch.")
+
+        if count == self._channel_count and self._strips:
+            self._range_strips(capabilities)
+            return
+        self._channel_count = count
+        self._unreadable_channels = tuple(sorted(unreadable))
+
+        for strip in self._strips.values():
+            strip.setParent(None)
+            strip.deleteLater()
+        self._strips = {}
+        self._clear_channel_boxes()
+
+        single = count <= 1
+        self.channel_bar.setVisible(not single)
+        self.channel_area.setVisible(not single)
+        # The single-channel body and the columns are alternatives, not
+        # layers: leaving both up would draw the same instrument twice.
+        self._single_channel_widgets_visible(single)
+        if single:
+            return
+
+        self._hidden_channels = set(self._remembered_hidden())
+        for number in range(1, count + 1):
+            strip = ChannelStrip(number,
+                                 programmable=number in programmable,
+                                 note=unreadable.get(number, ""))
+            strip.setpoint_committed.connect(self._strip_setpoint_requested)
+            strip.output_toggled.connect(self._strip_output_requested)
+            self._channel_layout.addWidget(strip, 1)
+            self._strips[number] = strip
+            self._add_channel_box(number)
+        self._range_strips(capabilities)
+        self._apply_channel_visibility()
+
+    def _single_channel_widgets_visible(self, visible: bool):
+        for widget in (getattr(self, "_controls_group", None), self.views):
+            if widget is not None:
+                widget.setVisible(visible)
+
+    def _range_strips(self, capabilities: Dict[str, Any]):
+        for strip in self._strips.values():
+            strip.set_ranges(
+                capabilities.get("max_voltage", self.instrument_max_voltage),
+                capabilities.get("max_current", self.instrument_max_current),
+                capabilities.get("voltage_decimals", 3),
+                capabilities.get("current_decimals", 3),
+            )
+
+    def _clear_channel_boxes(self):
+        self._channel_boxes = {}
+        layout = self._channel_boxes_layout
+        for index in reversed(range(layout.count())):
+            widget = layout.itemAt(index).widget()
+            if isinstance(widget, QCheckBox):
+                layout.takeAt(index)
+                widget.setParent(None)
+                widget.deleteLater()
+
+    def _add_channel_box(self, number: int):
+        box = QCheckBox("CH%d" % number)
+        box.setChecked(number not in self._hidden_channels)
+        box.setToolTip(
+            "Show CH%d. Hiding a channel gives its width to the others, so "
+            "the readings left on screen get bigger." % number)
+        box.toggled.connect(
+            lambda shown, n=number: self._on_channel_toggled(n, shown))
+        # Before the stretch, so the boxes stay left-aligned.
+        self._channel_boxes_layout.insertWidget(
+            self._channel_boxes_layout.count() - 1, box)
+        self._channel_boxes[number] = box
+
+    def _on_channel_toggled(self, number: int, shown: bool):
+        if shown:
+            self._hidden_channels.discard(number)
+        else:
+            self._hidden_channels.add(number)
+        self._apply_channel_visibility()
+        self._remember_hidden()
+
+    def _apply_channel_visibility(self):
+        """Hidden columns give their width back.
+
+        Hiding a widget is not enough on its own: its stretch has to go
+        too, or the layout keeps the space and the remaining readings
+        stay the size they were beside a gap.
+        """
+        for number, strip in self._strips.items():
+            shown = number not in self._hidden_channels
+            strip.setVisible(shown)
+            self._channel_layout.setStretch(
+                self._channel_layout.indexOf(strip), 1 if shown else 0)
+
+    def _remembered_hidden(self):
+        """What was hidden on this instrument last time.
+
+        Nothing, for a panel with no instrument bound. An empty id is
+        not a key: every unbound panel would share it, so hiding a
+        channel on one supply before it had been identified would hide
+        that channel on the next supply to arrive.
+        """
+        if not self.equipment_id:
+            return []
+        try:
+            from client.utils.settings import SettingsManager
+
+            return SettingsManager().get_hidden_channels(self.equipment_id)
+        except Exception as e:
+            logger.debug("Could not read hidden channels: %s" % e)
+            return []
+
+    def _remember_hidden(self):
+        if not self.equipment_id:
+            return
+        try:
+            from client.utils.settings import SettingsManager
+
+            SettingsManager().set_hidden_channels(
+                self.equipment_id, self._hidden_channels)
+        except Exception as e:
+            logger.debug("Could not remember hidden channels: %s" % e)
+
+    def _ready_to_send(self) -> bool:
+        """Whether there is anything to send to, and a loop to send on.
+
+        An asyncSlot invoked with no running event loop does not raise
+        -- it aborts the interpreter. A strip's signals can arrive
+        outside the loop: Qt fires editingFinished when a box loses
+        focus, and that happens during teardown and in tests as
+        readily as under a running client.
+        """
+        if not (self.client and self.equipment):
+            return False
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def _strip_setpoint_requested(self, channel: int, what: str, value: float):
+        if self._ready_to_send():
+            self._on_strip_setpoint(channel, what, value)
+
+    def _strip_output_requested(self, channel: int, wanted: bool):
+        if self._ready_to_send():
+            self._on_strip_output(channel, wanted)
+        else:
+            strip = self._strips.get(channel)
+            if strip is not None:
+                strip.show_output(not wanted)
+
+    @qasync.asyncSlot(int, str, float)
+    async def _on_strip_setpoint(self, channel: int, what: str, value: float):
+        action = "set_voltage" if what == "voltage" else "set_current"
+        try:
+            await call_blocking(self.client.send_command,
+                                self.equipment.equipment_id, action,
+                                {what: value, "channel": channel})
+        except Exception as e:
+            logger.error("Setting CH%d %s failed: %s" % (channel, what, e))
+            self.status_message.emit(
+                "Setting CH%d %s failed: %s" % (channel, what, e))
+
+    @qasync.asyncSlot(int, bool)
+    async def _on_strip_output(self, channel: int, wanted: bool):
+        try:
+            await call_blocking(self.client.send_command,
+                                self.equipment.equipment_id, "set_output",
+                                {"enabled": wanted, "channel": channel})
+        except Exception as e:
+            logger.error("Switching CH%d failed: %s" % (channel, e))
+            self.status_message.emit("Switching CH%d failed: %s" % (channel, e))
+            # Back where the supply still is, rather than showing an
+            # output that was never switched.
+            strip = self._strips.get(channel)
+            if strip is not None:
+                strip.show_output(not wanted)
+
+    def _apply_all_readings(self, data: Dict[str, Any]):
+        """One reply, every channel."""
+        for entry in (data or {}).get("channels") or []:
+            strip = self._strips.get(entry.get("channel"))
+            if strip is None:
+                continue
+            strip.show_readings(entry.get("voltage_actual"),
+                                entry.get("current_actual"),
+                                entry.get("power_actual"))
+            # Not while somebody is typing into them; see
+            # _apply_readings. Asked per column, because focus in one
+            # channel says nothing about the other two.
+            if not strip.is_being_edited():
+                strip.show_setpoints(entry.get("voltage_set"),
+                                     entry.get("current_set"))
+            strip.show_output(bool(entry.get("output_enabled")))
+            strip.show_mode(bool(entry.get("in_cv_mode")),
+                            bool(entry.get("in_cc_mode")))
+
     def _create_control_section(self) -> QGroupBox:
         group = QGroupBox("Controls")
+        # Held so the multi-channel body can hide it; the two are
+        # alternatives, not layers.
+        self._controls_group = group
         layout = QVBoxLayout(group)
 
         controls_layout = QHBoxLayout()
@@ -474,6 +729,10 @@ class PowerSupplyPanel(InstrumentPanel):
             f"current {min_current}-{max_current}A"
         )
 
+        # The channel count only arrives with the capabilities, so
+        # the columns cannot be built in _build_ui.
+        self._configure_channels(capabilities)
+
     async def refresh_settings(self):
         """Show the instrument's own setpoints on the controls.
 
@@ -563,8 +822,21 @@ class PowerSupplyPanel(InstrumentPanel):
     # ------------------------------------------------------------------ #
 
     async def poll(self):
-        """One get_readings() call updates everything; several serial
-        commands in flight at once is what overloads a supply's port."""
+        """One call updates everything; several serial commands in
+        flight at once is what overloads a supply's port.
+
+        A multi-channel supply reads every channel in one request.
+        Measured against the SPD3303X-E, a per-channel get_readings
+        is ~83 ms and almost all of that is the hop rather than the
+        instrument, so three of them come to ~250 ms against a
+        100 ms poll -- the panel would fall behind its own clock.
+        """
+        if self._strips:
+            data = await call_blocking(
+                self.client.send_command, self.equipment.equipment_id,
+                "get_all_readings", {})
+            self._apply_all_readings((data or {}).get("data") or data)
+            return
         readings = await call_blocking(self.client.get_readings, self.equipment.equipment_id)
         self._apply_readings(readings)
 

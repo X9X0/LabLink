@@ -491,3 +491,93 @@ class TestItDescribesItselfToTheServer:
         assert status.connected is True
         assert status.capabilities["channels"] == 3
         assert status.capabilities["programmable_channels"] == [1, 2]
+
+
+class TestReadingEveryChannelAtOnce:
+    """Three channels at 10 Hz cannot be three round trips.
+
+    Measured on the bench: get_readings for one channel is ~83 ms and
+    a bare status query ~73 ms, so the hop dominates. Three sequential
+    calls miss a 100 ms poll by more than double.
+    """
+
+    def _supply(self):
+        return supply(answers={
+            "MEASure:VOLTage": "4.97", "MEASure:CURRent": "1.20",
+            "MEASure:POWEr": "5.96",
+            "CH1:VOLTage?": "5.00", "CH1:CURRent?": "2.00",
+            "CH2:VOLTage?": "3.30", "CH2:CURRent?": "0.50",
+            "STATus": hex(0b0110100),   # independent, CH1 on, CH2 on
+        })
+
+    @pytest.mark.asyncio
+    async def test_it_returns_every_programmable_channel(self):
+        data = await self._supply().get_all_readings()
+        assert [c["channel"] for c in data["channels"]] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_the_status_word_is_read_once_for_all_of_them(self):
+        """The saving. Reading it per channel would be three status
+        queries for one number that covers all of them."""
+        psu = self._supply()
+        asked = []
+        inner = psu._query
+
+        async def counting(command):
+            asked.append(command)
+            return await inner(command)
+
+        psu._query = counting
+        await psu.get_all_readings()
+
+        assert sum(1 for c in asked if "STATus" in c) == 1, asked
+
+    @pytest.mark.asyncio
+    async def test_each_channel_carries_its_own_setpoints(self):
+        data = await self._supply().get_all_readings()
+        first, second = data["channels"]
+        assert first["voltage_set"] == pytest.approx(5.00)
+        assert second["voltage_set"] == pytest.approx(3.30)
+
+    @pytest.mark.asyncio
+    async def test_the_fixed_rail_is_reported_as_unreadable(self):
+        """CH3 answers none of the measurement queries, and does not
+        refuse them -- it never replies, so each attempt costs a full
+        timeout. Naming it here is what stops a caller trying."""
+        data = await self._supply().get_all_readings()
+        assert [c["channel"] for c in data["unreadable"]] == [3]
+        assert "front panel" in data["unreadable"][0]["why"]
+
+    @pytest.mark.asyncio
+    async def test_the_fixed_rail_is_never_measured(self):
+        psu = self._supply()
+        asked = []
+        inner = psu._query
+
+        async def counting(command):
+            asked.append(command)
+            return await inner(command)
+
+        psu._query = counting
+        await psu.get_all_readings()
+
+        assert not any("CH3" in c for c in asked), (
+            "asked the fixed rail for something: %s" % asked)
+
+    @pytest.mark.asyncio
+    async def test_a_single_channel_supply_has_nothing_unreadable(self):
+        psu = supply(SiglentSPD1000X, answers={"STATus": "0x4"})
+        data = await psu.get_all_readings()
+        assert [c["channel"] for c in data["channels"]] == [1]
+        assert data["unreadable"] == []
+
+    @pytest.mark.asyncio
+    async def test_coupling_comes_along(self):
+        data = await self._supply().get_all_readings()
+        assert data["coupling"] == "independent"
+
+    @pytest.mark.asyncio
+    async def test_it_is_dispatched(self):
+        psu = self._supply()
+        data = await psu.execute_command("get_all_readings", {})
+        assert data["channels"]

@@ -398,6 +398,70 @@ class SiglentSPD(BaseEquipment):
             in_cc_mode=on and in_cc,
         )
 
+    async def get_all_readings(self) -> Dict[str, Any]:
+        """Every readable channel in one pass.
+
+        A panel showing three channels cannot afford a round trip
+        each. Measured on the bench against this supply: get_readings
+        for one channel is ~83 ms and a bare status query is ~73 ms,
+        so almost all of it is the hop rather than the instrument.
+        Three sequential per-channel calls come to ~250 ms against a
+        100 ms poll; one call that reads the status word once and
+        shares it across the channels is a single hop.
+
+        CH3 is reported in ``unreadable`` rather than ``channels``,
+        and that is not tidiness either. It answers none of the
+        measurement queries -- and it does not refuse them, it simply
+        never replies, so each attempt costs a full read timeout.
+        Probed on the bench:
+
+            MEASure:VOLTage? CH3  -> no reply, error queue clean
+            CH3:VOLTage?          -> no reply, then
+            SYSTem:ERRor?         -> -113,Undefined header,CH3:VOLTage?
+
+        A caller that tried CH3 anyway would stall the whole poll, not
+        just that channel, so the only safe thing is to say plainly
+        that it cannot be read.
+        """
+        async with self._io_lock:
+            status = await self.get_system_status()
+            channels = []
+            for n in self.programmable_channels:
+                measured = await self.measure(n)
+                setpoints = await self.get_setpoints(n)
+                on = bool(status.get("ch%d_on" % n))
+                in_cc = bool(status.get("ch%d_cc" % n))
+                channels.append({
+                    "channel": n,
+                    "voltage_set": setpoints["voltage"],
+                    "current_set": setpoints["current"],
+                    "voltage_actual": measured["voltage"],
+                    "current_actual": measured["current"],
+                    "power_actual": measured["power"],
+                    "output_enabled": on,
+                    # Off is not regulating anything, so claim neither.
+                    "in_cv_mode": on and not in_cc,
+                    "in_cc_mode": on and in_cc,
+                })
+
+        unreadable = []
+        if self.has_fixed_rail:
+            unreadable.append({
+                "channel": 3,
+                "why": ("a fixed 2.5/3.3/5 V rail selected by the front "
+                        "panel switch. The supply reports neither its "
+                        "voltage nor its draw over the remote interface, "
+                        "and it can only be switched on and off."),
+                "switchable": True,
+            })
+
+        return {
+            "channels": channels,
+            "unreadable": unreadable,
+            "coupling": status.get("coupling"),
+            "raw_status": status.get("raw"),
+        }
+
     async def get_measurement(self, channel: str = "V") -> Dict[str, Any]:
         """One quantity, taken directly.
 
@@ -448,6 +512,7 @@ class SiglentSPD(BaseEquipment):
             "get_output": self.get_output,
             "measure": self.measure,
             "get_readings": self.get_readings,
+            "get_all_readings": self.get_all_readings,
             "get_measurement": self.get_measurement,
             "get_system_status": self.get_system_status,
             "set_tracking": self.set_tracking,

@@ -219,6 +219,35 @@ class SettingsManager:
         if equipment_type == "power_supply":
             self.set_reading_rate(rate)
 
+    # ==================== Per-instrument Channel Visibility ============
+
+    def get_hidden_channels(self, equipment_id: str) -> List[int]:
+        """Channels the operator has taken off one instrument's panel.
+
+        Per instrument, not per type: a three-channel supply and a
+        single-channel one share a panel class, and hiding CH3 on the
+        Siglent must not mean anything to the B&K beside it.
+        """
+        key = f"control/hidden_channels/{equipment_id}"
+        raw = self.settings.value(key, "", type=str) or ""
+        out = []
+        for piece in raw.split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            try:
+                out.append(int(piece))
+            except ValueError:
+                # A key written by a newer client, or edited by hand.
+                # Losing one entry beats refusing to show the panel.
+                continue
+        return out
+
+    def set_hidden_channels(self, equipment_id: str, channels) -> None:
+        key = f"control/hidden_channels/{equipment_id}"
+        self.settings.setValue(
+            key, ",".join(str(int(c)) for c in sorted(set(channels))))
+
     # ==================== Window Settings ====================
 
     def get_window_geometry(self) -> Optional[bytes]:

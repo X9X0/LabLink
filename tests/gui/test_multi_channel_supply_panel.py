@@ -1,0 +1,407 @@
+"""A supply with more than one channel gets a column each.
+
+Panels are chosen by equipment type, so one PowerSupplyPanel serves
+the three-channel Siglent and the single-channel B&K supplies beside
+it. The columns are therefore an alternative body, not a replacement:
+a supply with one channel has to look exactly as it always has, and
+most of the tests here are about that as much as about the columns.
+"""
+
+import os
+import sys
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+
+try:
+    from PyQt6.QtWidgets import QApplication
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(not GUI_AVAILABLE, reason="PyQt6 is required")
+
+if GUI_AVAILABLE:
+    from client.ui.instruments.channel_strip import ChannelStrip
+    from client.ui.instruments.power_supply import PowerSupplyPanel
+
+
+#: What the SPD3303X-E reports.
+SIGLENT = {
+    "channels": 3,
+    "programmable_channels": [1, 2],
+    "max_voltage": 32.0,
+    "max_current": 3.2,
+    "has_fixed_rail": True,
+}
+
+#: What a B&K 9205B reports.
+SINGLE = {"channels": 1, "max_voltage": 60.0, "max_current": 25.0}
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+#: Panels are kept alive for the length of a test. A shown QWidget
+#: collected while Qt still holds pointers into it takes the
+#: interpreter down with an access violation rather than a failure,
+#: which is a miserable thing to debug.
+_ALIVE = []
+
+
+@pytest.fixture(autouse=True)
+def _close_panels(qapp):
+    yield
+    while _ALIVE:
+        made = _ALIVE.pop()
+        made.hide()
+        made.setParent(None)
+    qapp.processEvents()
+
+
+def panel(qapp, capabilities, width=1400):
+    made = PowerSupplyPanel()
+    made.configure(capabilities)
+    made.resize(width, 700)
+    made.show()
+    qapp.processEvents()
+    # Showing the panel parks focus in the first spin box, and a
+    # focused setpoint box means "being typed into" -- which would
+    # hold that channel's setpoints back. Nobody is typing in a test.
+    focused = QApplication.focusWidget()
+    if focused is not None:
+        focused.clearFocus()
+    qapp.processEvents()
+    _ALIVE.append(made)
+    return made
+
+
+class TestOneChannelIsUnchanged:
+    """The case that must not regress. Four of the five instruments on
+    the bench are single-channel."""
+
+    def test_no_columns_are_built(self, qapp):
+        assert panel(qapp, SINGLE)._strips == {}
+
+    def test_the_original_body_is_the_one_on_screen(self, qapp):
+        made = panel(qapp, SINGLE)
+        assert made._controls_group.isVisible()
+        assert made.views.isVisible()
+
+    def test_the_channel_furniture_stays_out_of_the_way(self, qapp):
+        made = panel(qapp, SINGLE)
+        assert not made.channel_bar.isVisible()
+        assert not made.channel_area.isVisible()
+
+    def test_a_server_that_reports_nothing_still_gets_a_panel(self, qapp):
+        """An older server sends no capabilities at all."""
+        made = panel(qapp, {})
+        assert made._controls_group.isVisible()
+        assert made._strips == {}
+
+    def test_the_original_controls_are_still_ranged(self, qapp):
+        made = panel(qapp, SINGLE)
+        assert made.voltage_spinbox.maximum() == pytest.approx(60.0)
+
+
+class TestThreeChannelsGetThreeColumns:
+    def test_one_strip_per_channel(self, qapp):
+        assert sorted(panel(qapp, SIGLENT)._strips) == [1, 2, 3]
+
+    def test_they_sit_side_by_side(self, qapp):
+        made = panel(qapp, SIGLENT)
+        first, second, third = (made._strips[n].geometry() for n in (1, 2, 3))
+        assert first.right() <= second.left(), "CH1 and CH2 overlap"
+        assert second.right() <= third.left(), "CH2 and CH3 overlap"
+        assert abs(first.y() - second.y()) < 8, "they are not on one row"
+
+    def test_the_single_channel_body_steps_aside(self, qapp):
+        """Both bodies up at once would draw the same instrument
+        twice, and poll it twice."""
+        made = panel(qapp, SIGLENT)
+        assert not made._controls_group.isVisible()
+        assert not made.views.isVisible()
+
+    def test_the_columns_are_ranged_from_the_capabilities(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made._strips[1].voltage_spinbox.maximum() == pytest.approx(32.0)
+        assert made._strips[2].current_spinbox.maximum() == pytest.approx(3.2)
+
+
+class TestTheFixedRail:
+    """CH3 answers no measurement query, and does not refuse them -- it
+    never replies, so asking costs a full read timeout."""
+
+    def test_it_is_not_programmable(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made._strips[3].programmable is False
+        assert made._strips[1].programmable is True
+
+    def test_it_offers_no_setpoints(self, qapp):
+        strip = panel(qapp, SIGLENT)._strips[3]
+        assert strip.voltage_spinbox is None
+        assert strip.current_spinbox is None
+
+    def test_it_shows_no_readouts(self, qapp):
+        assert panel(qapp, SIGLENT)._strips[3].readouts == {}
+
+    def test_it_still_has_its_switch(self, qapp):
+        """The one thing remote control can do with it."""
+        assert panel(qapp, SIGLENT)._strips[3].output_button is not None
+
+    def test_it_says_why_there_are_no_numbers(self, qapp):
+        """Three dashes with no explanation reads as a fault."""
+        from PyQt6.QtWidgets import QLabel
+
+        strip = panel(qapp, SIGLENT)._strips[3]
+        said = " ".join(label.text() for label in strip.findChildren(QLabel))
+        assert "front panel" in said.lower()
+
+    def test_a_supply_with_no_fixed_rail_has_none_of_this(self, qapp):
+        two = dict(SIGLENT, channels=2, has_fixed_rail=False,
+                   programmable_channels=[1, 2])
+        made = panel(qapp, two)
+        assert sorted(made._strips) == [1, 2]
+        assert all(s.programmable for s in made._strips.values())
+
+
+class TestHidingAChannel:
+    def test_there_is_a_box_per_channel(self, qapp):
+        assert sorted(panel(qapp, SIGLENT)._channel_boxes) == [1, 2, 3]
+
+    def test_unchecking_hides_the_column(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._channel_boxes[3].setChecked(False)
+        qapp.processEvents()
+        assert not made._strips[3].isVisible()
+
+    def test_the_others_take_the_width(self, qapp):
+        """The point of hiding one: the readings left on screen get
+        bigger, rather than a gap appearing where the column was."""
+        made = panel(qapp, SIGLENT)
+        before = made._strips[1].width()
+
+        made._channel_boxes[3].setChecked(False)
+        qapp.processEvents()
+
+        assert made._strips[1].width() > before, (
+            "hiding a channel left the others the size they were: %d -> %d"
+            % (before, made._strips[1].width()))
+
+    def test_showing_it_again_gives_the_width_back(self, qapp):
+        made = panel(qapp, SIGLENT)
+        wide = made._strips[1].width()
+        made._channel_boxes[3].setChecked(False)
+        qapp.processEvents()
+        made._channel_boxes[3].setChecked(True)
+        qapp.processEvents()
+        assert made._strips[1].width() == pytest.approx(wide, abs=4)
+
+    def test_hiding_every_channel_is_survivable(self, qapp):
+        made = panel(qapp, SIGLENT)
+        for number in (1, 2, 3):
+            made._channel_boxes[number].setChecked(False)
+        qapp.processEvents()
+        assert not any(s.isVisible() for s in made._strips.values())
+
+
+class TestApplyingAReading:
+    def _made(self, qapp):
+        return panel(qapp, SIGLENT)
+
+    REPLY = {
+        "channels": [
+            {"channel": 1, "voltage_set": 5.0, "current_set": 2.0,
+             "voltage_actual": 4.97, "current_actual": 1.20,
+             "power_actual": 5.96, "output_enabled": True,
+             "in_cv_mode": True, "in_cc_mode": False},
+            {"channel": 2, "voltage_set": 3.3, "current_set": 0.5,
+             "voltage_actual": 3.30, "current_actual": 0.50,
+             "power_actual": 1.65, "output_enabled": True,
+             "in_cv_mode": False, "in_cc_mode": True},
+        ],
+        "unreadable": [{"channel": 3, "why": "fixed rail", "switchable": True}],
+        "coupling": "independent",
+    }
+
+    def test_each_column_shows_its_own_reading(self, qapp):
+        made = self._made(qapp)
+        made._apply_all_readings(self.REPLY)
+        assert "4.970" in made._strips[1].readouts["voltage"].text()
+        assert "3.300" in made._strips[2].readouts["voltage"].text()
+
+    def test_the_setpoints_land_on_the_right_column(self, qapp):
+        made = self._made(qapp)
+        made._apply_all_readings(self.REPLY)
+        assert made._strips[1].voltage_spinbox.value() == pytest.approx(5.0)
+        assert made._strips[2].voltage_spinbox.value() == pytest.approx(3.3)
+
+    def test_cv_and_cc_are_per_channel(self, qapp):
+        made = self._made(qapp)
+        made._apply_all_readings(self.REPLY)
+        assert "bold" in made._strips[1].cv_indicator.styleSheet()
+        assert "bold" in made._strips[2].cc_indicator.styleSheet()
+
+    def test_the_output_buttons_follow(self, qapp):
+        made = self._made(qapp)
+        made._apply_all_readings(self.REPLY)
+        assert made._strips[1].output_button.isChecked()
+
+    def test_a_reply_missing_a_channel_is_not_a_crash(self, qapp):
+        """The fixed rail is absent from `channels` by design."""
+        made = self._made(qapp)
+        made._apply_all_readings({"channels": [self.REPLY["channels"][0]]})
+        assert made._strips[3].readouts == {}
+
+    def test_an_empty_reply_is_survivable(self, qapp):
+        made = self._made(qapp)
+        made._apply_all_readings({})
+        made._apply_all_readings(None)
+
+    def test_typing_in_one_channel_does_not_freeze_the_others(self, qapp):
+        """The panel-wide check was too coarse once there are columns.
+
+        A polled reading overwrites the setpoint boxes, so it has to
+        stand off while somebody is typing -- but focus in CH1 says
+        nothing about CH2, and holding CH2's setpoints back because
+        CH1 has the cursor would leave it showing a stale number.
+        """
+        made = self._made(qapp)
+        made._strips[1].voltage_spinbox.setFocus()
+        qapp.processEvents()
+
+        made._apply_all_readings(self.REPLY)
+
+        assert made._strips[1].voltage_spinbox.value() != pytest.approx(5.0), (
+            "overwrote the value being typed into CH1")
+        assert made._strips[2].voltage_spinbox.value() == pytest.approx(3.3), (
+            "froze CH2 because CH1 had the cursor")
+
+    def test_a_channel_being_typed_into_still_shows_its_readings(self, qapp):
+        """Only the setpoint boxes stand off. The measured value is
+        not something the operator is editing."""
+        made = self._made(qapp)
+        made._strips[1].voltage_spinbox.setFocus()
+        qapp.processEvents()
+
+        made._apply_all_readings(self.REPLY)
+
+        assert "4.970" in made._strips[1].readouts["voltage"].text()
+
+
+class TestAStripCommandsNothingItself:
+    """A strip reports what was asked for; the panel owns the server."""
+
+    def test_committing_a_setpoint_names_its_channel(self, qapp):
+        strip = ChannelStrip(2)
+        _ALIVE.append(strip)
+        seen = []
+        strip.setpoint_committed.connect(
+            lambda *args: seen.append(args))
+        strip.voltage_spinbox.setValue(4.0)
+        strip.voltage_spinbox.editingFinished.emit()
+        assert seen == [(2, "voltage", 4.0)]
+
+    def test_the_output_button_names_its_channel(self, qapp):
+        strip = ChannelStrip(3, programmable=False, note="fixed")
+        _ALIVE.append(strip)
+        seen = []
+        strip.output_toggled.connect(lambda *args: seen.append(args))
+        strip.output_button.click()
+        assert seen == [(3, True)]
+
+    def test_showing_a_setpoint_does_not_command_one(self, qapp):
+        """These boxes are wired to send. Putting the instrument's own
+        value on them must not send it straight back."""
+        strip = ChannelStrip(1)
+        _ALIVE.append(strip)
+        seen = []
+        strip.setpoint_committed.connect(lambda *args: seen.append(args))
+        strip.show_setpoints(voltage=7.5, current=1.0)
+        assert seen == []
+
+    def test_ranging_does_not_command_anything(self, qapp):
+        """setMaximum clamps a value that no longer fits and Qt emits
+        the change; the single-channel panel learned that the hard
+        way, commanding the instrument it had just switched to."""
+        strip = ChannelStrip(1)
+        _ALIVE.append(strip)
+        strip.set_ranges(32.0, 3.2)
+        strip.show_setpoints(voltage=30.0)
+        seen = []
+        strip.setpoint_committed.connect(lambda *args: seen.append(args))
+        strip.set_ranges(5.0, 1.0)
+        assert seen == []
+
+
+class TestLosingFocusIsNotACommand:
+    """editingFinished fires whenever a box loses focus, not only when
+    something was typed.
+
+    Found by a crash rather than a failure: clearing focus fired the
+    signal, which reached an asyncSlot with no running event loop, and
+    an asyncSlot invoked outside a loop aborts the interpreter instead
+    of raising. Two faults in one, and the quieter of the two is the
+    worse: re-sending a setpoint the operator had just changed on the
+    front panel.
+    """
+
+    def test_tabbing_past_an_untouched_field_sends_nothing(self, qapp):
+        strip = ChannelStrip(1)
+        _ALIVE.append(strip)
+        strip.set_ranges(32.0, 3.2)
+        strip.show_setpoints(voltage=5.0, current=1.0)
+
+        seen = []
+        strip.setpoint_committed.connect(lambda *args: seen.append(args))
+        strip.voltage_spinbox.setFocus()
+        strip.voltage_spinbox.clearFocus()
+        qapp.processEvents()
+
+        assert seen == [], "commanded a setpoint nobody changed"
+
+    def test_a_value_that_did_change_is_still_sent(self, qapp):
+        strip = ChannelStrip(1)
+        _ALIVE.append(strip)
+        strip.set_ranges(32.0, 3.2)
+        strip.show_setpoints(voltage=5.0)
+
+        seen = []
+        strip.setpoint_committed.connect(lambda *args: seen.append(args))
+        strip.voltage_spinbox.setValue(7.5)
+        strip.voltage_spinbox.editingFinished.emit()
+
+        assert seen == [(1, "voltage", 7.5)]
+
+    def test_the_same_value_twice_is_sent_once(self, qapp):
+        strip = ChannelStrip(1)
+        _ALIVE.append(strip)
+        strip.set_ranges(32.0, 3.2)
+        seen = []
+        strip.setpoint_committed.connect(lambda *args: seen.append(args))
+
+        strip.voltage_spinbox.setValue(3.0)
+        strip.voltage_spinbox.editingFinished.emit()
+        strip.voltage_spinbox.editingFinished.emit()
+
+        assert len(seen) == 1, seen
+
+    def test_a_strip_signal_outside_the_event_loop_is_dropped(self, qapp):
+        """There is no loop running in a test, and there is none
+        during teardown either."""
+        made = panel(qapp, SIGLENT)
+        made._strips[1].voltage_spinbox.setValue(9.0)
+        made._strips[1].voltage_spinbox.editingFinished.emit()
+        qapp.processEvents()   # must not abort
+
+    def test_an_output_click_outside_the_loop_puts_the_button_back(self, qapp):
+        """A button that stayed pressed would claim an output that was
+        never switched."""
+        made = panel(qapp, SIGLENT)
+        made._strips[1].output_button.click()
+        qapp.processEvents()
+        assert not made._strips[1].output_button.isChecked()
