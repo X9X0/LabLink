@@ -97,6 +97,12 @@ class MeasurementViews(QWidget):
         self.vertical = bool(vertical)
         self._with_selector = bool(with_selector)
         self._with_tools = bool(with_tools)
+        #: Whether min/max tracking and auto-ranging are on. Kept here
+        #: rather than read off the buttons, because a view built
+        #: without tools is driven by a panel's shared buttons and has
+        #: none of its own to ask.
+        self._minmax_tracking = False
+        self._autorange = False
 
         self._extremes: Dict[str, list] = {
             c.key: [None, None] for c in self.channels
@@ -386,7 +392,7 @@ class MeasurementViews(QWidget):
     # ------------------------------------------------------------------ #
 
     def _track_extremes(self):
-        if self.minmax_button is None or not self.minmax_button.isChecked():
+        if not self._minmax_tracking:
             return
         for channel in self.channels:
             value = self._last[channel.key]
@@ -410,10 +416,9 @@ class MeasurementViews(QWidget):
         first = self.channels[0]
         if self._extremes[first.key][0] is None:
             if self.minmax_label is not None:
-                tracking = (self.minmax_button is not None
-                            and self.minmax_button.isChecked())
                 self.minmax_label.setText(
-                    "waiting for a reading..." if tracking else "")
+                    "waiting for a reading..."
+                    if self._minmax_tracking else "")
             return
         parts = []
         for channel in self.channels:
@@ -430,8 +435,7 @@ class MeasurementViews(QWidget):
         Cleared when tracking is off, so a stale pair cannot sit on the
         face looking current.
         """
-        tracking = (self.minmax_button is not None
-                    and self.minmax_button.isChecked())
+        tracking = self._minmax_tracking
         for channel in self.channels:
             gauge = self.gauges[channel.key]
             if tracking:
@@ -439,7 +443,25 @@ class MeasurementViews(QWidget):
             else:
                 gauge.set_markers(None, None)
 
+    def set_minmax_tracking(self, enabled: bool) -> None:
+        """Track the extremes, or stop. Public so a panel's shared
+        button can drive several views at once."""
+        self._on_minmax_toggled(bool(enabled))
+        if self.minmax_button is not None:
+            self.minmax_button.blockSignals(True)
+            self.minmax_button.setChecked(bool(enabled))
+            self.minmax_button.blockSignals(False)
+
+    def set_autorange(self, enabled: bool) -> None:
+        """Fit the scales to the readings, or go back to full scale."""
+        self._on_autorange_toggled(bool(enabled))
+        if self.autorange_button is not None:
+            self.autorange_button.blockSignals(True)
+            self.autorange_button.setChecked(bool(enabled))
+            self.autorange_button.blockSignals(False)
+
     def _on_minmax_toggled(self, enabled: bool):
+        self._minmax_tracking = bool(enabled)
         if self.minmax_reset_button is not None:
             self.minmax_reset_button.setEnabled(enabled)
         if enabled:
@@ -458,7 +480,7 @@ class MeasurementViews(QWidget):
         if key not in self._full_scale:
             return
         self._full_scale[key] = float(maximum)
-        if self.autorange_button is None or not self.autorange_button.isChecked():
+        if not self._autorange:
             self.gauges[key].max_value = float(maximum)
             self.axes[key].setRange(0, float(maximum))
             self.gauges[key].update()
@@ -478,7 +500,7 @@ class MeasurementViews(QWidget):
         self._apply_auto_range()
 
     def _apply_auto_range(self):
-        if self.autorange_button is None or not self.autorange_button.isChecked():
+        if not self._autorange:
             return
         for channel in self.channels:
             top = nice_range(self._last[channel.key],
@@ -492,6 +514,7 @@ class MeasurementViews(QWidget):
             self.gauges[channel.key].update()
 
     def _on_autorange_toggled(self, enabled: bool):
+        self._autorange = bool(enabled)
         if enabled:
             self._auto_top = {c.key: None for c in self.channels}
             self._apply_auto_range()

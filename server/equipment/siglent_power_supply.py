@@ -63,6 +63,12 @@ SWITCHABLE_CHANNELS = (1, 2, 3)
 
 #: Output coupling. The instrument calls it tracking.
 TRACK_MODES = {0: "independent", 1: "series", 2: "parallel"}
+
+#: The five timing groups a channel can hold, run one after another.
+TIMER_GROUPS = (1, 2, 3, 4, 5)
+
+#: Longest a single timing group can hold, per the guide.
+MAX_TIMER_SECONDS = 10000.0
 TRACK_BY_NAME = {name: value for value, name in TRACK_MODES.items()}
 
 
@@ -362,14 +368,30 @@ class SiglentSPD(BaseEquipment):
         out: Dict[str, Any] = {"raw": raw, "value": value}
         for bit, (name, _why) in _STATUS_BITS.items():
             out[name] = bool(value & (1 << bit))
-        # Bits 2 and 3 are one field: 01 independent, 10 parallel. The
-        # quick start gives no encoding for series, so it is reported as
-        # what it is rather than guessed at.
+        # Bits 2 and 3 are one field. The quick start documents two of
+        # its four values -- "01: Independent mode; 10: Parallel mode"
+        # -- and says nothing about series, which is the third mode the
+        # same instrument offers.
+        #
+        # Asked on the bench (DL3B268M00049's neighbour, SPD3XJGCA01014):
+        #
+        #   OUTPut:TRACK 0 -> SYSTem:STATus? 0x4  bits 01  independent
+        #   OUTPut:TRACK 1 -> SYSTem:STATus? 0xc  bits 11  series
+        #   OUTPut:TRACK 2 -> SYSTem:STATus? 0x8  bits 10  parallel
+        #
+        # So 11 is series. Recorded here because a panel cannot show
+        # which mode a supply is in without it, and the only other way
+        # to find out is to do what this comment did.
         coupling = (value >> 2) & 0b11
         out["coupling"] = {0b01: "independent",
+                           0b11: "series",
                            0b10: "parallel"}.get(coupling)
         out["coupling_bits"] = coupling
         return out
+
+    async def get_tracking(self) -> Optional[str]:
+        """Which of independent, series or parallel the supply is in."""
+        return (await self.get_system_status()).get("coupling")
 
     async def get_readings(self, channel: Union[int, str] = 1
                            ) -> PowerSupplyData:
@@ -484,7 +506,23 @@ class SiglentSPD(BaseEquipment):
     # ------------------------------------------------------------------ #
 
     async def set_tracking(self, mode: Union[int, str]) -> None:
-        """Independent, series or parallel."""
+        """Independent, series or parallel.
+
+        These are not display options. The guide: in series "CH1 and
+        CH2 are linked internally into one channel which is controlled
+        by CH1", rated 0-60 V / 0-3.2 A, with the load across CH2's
+        positive and CH1's negative terminal; in parallel they are
+        linked the same way, rated 0-32 V / 0-6.4 A, with the load on
+        CH1's terminals. So the wiring an operator wants depends on the
+        mode, and changing it under a live load changes what their
+        circuit is connected to.
+
+        Which is why the outputs go off first. The guide's own
+        procedure starts from a supply that is off -- "Make sure that
+        parallel/series mode is off" before wiring -- and switching
+        while sourcing is not something to do on the operator's behalf
+        without being asked.
+        """
         if isinstance(mode, str):
             value = TRACK_BY_NAME.get(mode.strip().lower())
             if value is None:
@@ -497,7 +535,129 @@ class SiglentSPD(BaseEquipment):
                 raise SetpointRefused(
                     "Tracking mode must be 0, 1 or 2 (%s)"
                     % ", ".join("%d=%s" % kv for kv in TRACK_MODES.items()))
+        # Off first: see the docstring. Both channels, because in
+        # series and parallel it is CH1 that carries the pair.
+        for channel in self.programmable_channels:
+            try:
+                await self.set_output(False, channel)
+            except Exception as e:
+                logger.debug("%s: could not switch CH%d off before changing "
+                             "the coupling: %s"
+                             % (self.resource_string, channel, e))
         await self._command("OUTPut:TRACK %d" % value)
+
+    # ------------------------------------------------------------------ #
+    # Timer
+    # ------------------------------------------------------------------ #
+
+    async def _refuse_unless_independent(self, what: str) -> None:
+        """The timer only runs in independent mode.
+
+        The guide is explicit: "The timer function is invalid when the
+        series mode or parallel mode is turn on." The instrument does
+        not say so -- it accepts the command and does nothing -- so
+        the refusal has to come from here or not at all.
+        """
+        try:
+            coupling = await self.get_tracking()
+        except Exception as e:
+            logger.debug("%s: could not read the coupling before %s: %s"
+                         % (self.resource_string, what, e))
+            return
+        if coupling in (None, "independent"):
+            return
+        raise SetpointRefused(
+            "The %s timer only runs in independent mode, and this supply is "
+            "in %s mode. In %s, CH1 and CH2 are one channel controlled by "
+            "CH1, and the timer is ignored -- the instrument accepts the "
+            "command and does nothing. Set independent mode first."
+            % (self.model, coupling, coupling))
+
+    def _check_timer_group(self, group: Union[int, str]) -> int:
+        try:
+            number = int(group)
+        except (TypeError, ValueError):
+            raise SetpointRefused("Timer group %r is not a number" % group)
+        if number not in TIMER_GROUPS:
+            raise SetpointRefused(
+                "The %s has timer groups %s, not %r"
+                % (self.model, "-".join(str(g) for g in
+                                        (TIMER_GROUPS[0], TIMER_GROUPS[-1])),
+                   group))
+        return number
+
+    async def set_timer_step(self, channel: Union[int, str],
+                             group: Union[int, str], voltage: float,
+                             current: float, seconds: float) -> None:
+        """One of the five timing groups for a channel.
+
+        Each group is a voltage, a current and how long to hold them,
+        and the five run one after another -- the guide calls it
+        consecutive output. Longest per group is 10000 s.
+        """
+        n = self._check_channel(channel)
+        number = self._check_timer_group(group)
+        voltage, current = float(voltage), float(current)
+        seconds = float(seconds)
+        if voltage < 0 or voltage > self.max_voltage:
+            raise SetpointRefused(
+                "%.3f V is outside the %s range of 0 to %g V"
+                % (voltage, self.model, self.max_voltage))
+        if current < 0 or current > self.max_current:
+            raise SetpointRefused(
+                "%.3f A is outside the %s range of 0 to %g A"
+                % (current, self.model, self.max_current))
+        if seconds < 0 or seconds > MAX_TIMER_SECONDS:
+            raise SetpointRefused(
+                "A timer group holds for 0 to %g s; %g was asked for"
+                % (MAX_TIMER_SECONDS, seconds))
+        await self._refuse_unless_independent("timer")
+        await self._command("TIMEr:SET CH%d,%d,%.3f,%.3f,%g"
+                            % (n, number, voltage, current, seconds))
+
+    async def get_timer_step(self, channel: Union[int, str],
+                             group: Union[int, str]) -> Dict[str, Any]:
+        """What one timing group holds.
+
+        The reply is three comma-separated numbers, voltage then
+        current then seconds.
+        """
+        n = self._check_channel(channel)
+        number = self._check_timer_group(group)
+        raw = (await self._query("TIMEr:SET? CH%d,%d" % (n, number))).strip()
+        parts = [piece.strip() for piece in raw.split(",")]
+        out: Dict[str, Any] = {"channel": n, "group": number, "raw": raw}
+        for key, piece in zip(("voltage", "current", "seconds"), parts):
+            try:
+                out[key] = float(piece)
+            except ValueError:
+                out[key] = None
+        for key in ("voltage", "current", "seconds"):
+            out.setdefault(key, None)
+        return out
+
+    async def set_timer_enabled(self, enabled: bool,
+                                channel: Union[int, str] = 1) -> None:
+        """Start or stop a channel's timer.
+
+        Worth knowing, from the guide: switching the output off while
+        the timer runs stops the countdown rather than ending it, and
+        it picks up again when the output comes back on. The timer
+        switches itself off when the time reaches zero.
+        """
+        n = self._check_channel(channel)
+        if enabled:
+            await self._refuse_unless_independent("timer")
+        await self._command("TIMEr CH%d,%s" % (n, "ON" if enabled else "OFF"))
+
+    async def get_timer_running(self, channel: Union[int, str] = 1) -> bool:
+        """Whether a channel's timer is counting.
+
+        From the status word: bit 6 is CH1's timer, bit 7 is CH2's.
+        """
+        n = self._check_channel(channel)
+        status = await self.get_system_status()
+        return bool(status.get("timer%d_on" % n))
 
     # ------------------------------------------------------------------ #
     # Dispatch
@@ -516,6 +676,11 @@ class SiglentSPD(BaseEquipment):
             "get_measurement": self.get_measurement,
             "get_system_status": self.get_system_status,
             "set_tracking": self.set_tracking,
+            "get_tracking": self.get_tracking,
+            "set_timer_step": self.set_timer_step,
+            "get_timer_step": self.get_timer_step,
+            "set_timer_enabled": self.set_timer_enabled,
+            "get_timer_running": self.get_timer_running,
             "get_error": self.get_error,
             "get_info": self.get_info,
             "get_status": self.get_status,

@@ -525,3 +525,121 @@ class TestComingBackToOneChannel:
         assert sorted(made._strips) == [1, 2, 3]
         assert sorted(made._channel_views) == [1, 2]
         assert made._rate_group.isVisible()
+
+
+class TestTheSharedReadoutTools:
+    """Min/Max, Reset and Auto Range belong to the readout as a whole,
+    so there is one of each rather than one per column."""
+
+    def test_they_are_on_the_shared_bar(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made.shared_minmax_button is not None
+        assert made.shared_minmax_reset is not None
+        assert made.shared_autorange_button is not None
+
+    def test_minmax_drives_every_column(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made.shared_minmax_button.setChecked(True)
+        qapp.processEvents()
+        assert all(v._minmax_tracking for v in made._channel_views.values())
+
+    def test_reset_only_matters_while_tracking(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert not made.shared_minmax_reset.isEnabled()
+        made.shared_minmax_button.setChecked(True)
+        qapp.processEvents()
+        assert made.shared_minmax_reset.isEnabled()
+
+    def test_auto_range_drives_every_column(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made.shared_autorange_button.setChecked(True)
+        qapp.processEvents()
+        assert all(v._autorange for v in made._channel_views.values())
+
+    def test_a_column_has_no_tools_of_its_own(self, qapp):
+        made = panel(qapp, SIGLENT)
+        for views in made._channel_views.values():
+            assert views.minmax_button is None
+            assert views.autorange_button is None
+
+
+class TestSeriesAndParallel:
+    """Not display options. In either mode CH1 and CH2 are linked
+    internally into one channel controlled by CH1, and the load is
+    wired differently for each."""
+
+    def test_there_is_a_button_for_each_mode(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert sorted(made.coupling_buttons) == [
+            "independent", "parallel", "series"]
+
+    def test_the_indicator_follows_the_supply(self, qapp):
+        """Not the last button pressed. The driver switches the outputs
+        off on the way and any of it can be refused."""
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": "parallel", "channels": []})
+        assert "Parallel" in made.coupling_indicator.text()
+        assert made.coupling_buttons["parallel"].isChecked()
+
+    def test_a_click_alone_does_not_move_the_indicator(self, qapp):
+        """With nothing to send to, the panel must not claim a mode
+        the instrument is not in."""
+        made = panel(qapp, SIGLENT)
+        made.coupling_buttons["series"].click()
+        qapp.processEvents()
+        assert not made.coupling_buttons["series"].isChecked()
+        assert "--" in made.coupling_indicator.text()
+
+    @pytest.mark.parametrize("mode", ["series", "parallel"])
+    def test_ch2_is_locked_out_when_the_pair_is_linked(self, qapp, mode):
+        """CH1 controls both, so CH2's own controls would be
+        commanding something that is not listening."""
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": mode, "channels": []})
+        assert not made._strips[2].voltage_spinbox.isEnabled()
+        assert not made._strips[2].output_button.isEnabled()
+
+    def test_ch1_is_left_alone(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": "series", "channels": []})
+        assert made._strips[1].voltage_spinbox.isEnabled()
+
+    def test_independent_gives_ch2_back(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": "parallel", "channels": []})
+        made._apply_all_readings({"coupling": "independent", "channels": []})
+        assert made._strips[2].voltage_spinbox.isEnabled()
+
+
+class TestTheTimer:
+    """Five timing groups per channel, run one after another. The
+    guide: "The timer function is invalid when the series mode or
+    parallel mode is turn on."
+    """
+
+    def test_each_programmable_channel_has_a_timer(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert sorted(made._timer_buttons) == [1, 2]
+
+    def test_the_fixed_rail_has_none(self, qapp):
+        assert 3 not in panel(qapp, SIGLENT)._timer_buttons
+
+    @pytest.mark.parametrize("mode", ["series", "parallel"])
+    def test_it_is_unavailable_when_the_pair_is_linked(self, qapp, mode):
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": mode, "channels": []})
+        assert not made._timer_buttons[1].isEnabled()
+        assert "independent" in made._timer_buttons[1].toolTip()
+
+    def test_independent_makes_it_available_again(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._apply_all_readings({"coupling": "series", "channels": []})
+        made._apply_all_readings({"coupling": "independent", "channels": []})
+        assert made._timer_buttons[1].isEnabled()
+
+    def test_a_click_that_cannot_be_sent_puts_the_button_back(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made._timer_buttons[1].click()
+        qapp.processEvents()
+        assert not made._timer_buttons[1].isChecked()
+        assert "off" in made._timer_buttons[1].text().lower()

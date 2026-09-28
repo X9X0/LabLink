@@ -220,13 +220,14 @@ class TestTheStatusWord:
 
     @pytest.mark.asyncio
     async def test_an_unknown_coupling_is_reported_not_guessed(self):
-        """The quick start documents 01 for independent and 10 for
-        parallel, and gives no encoding for series. An undocumented
-        value is left as None rather than invented."""
-        psu = supply(answers={"STATus": hex(0b1100)})
+        """Three of the four values of this two-bit field are known --
+        01 independent and 10 parallel from the guide, 11 series from
+        the bench. 00 is not, and is left as None rather than
+        invented."""
+        psu = supply(answers={"STATus": hex(0b0000)})
         status = await psu.get_system_status()
         assert status["coupling"] is None
-        assert status["coupling_bits"] == 0b11
+        assert status["coupling_bits"] == 0b00
 
     @pytest.mark.asyncio
     async def test_a_reply_that_is_not_hex_is_refused(self):
@@ -581,3 +582,129 @@ class TestReadingEveryChannelAtOnce:
         psu = self._supply()
         data = await psu.execute_command("get_all_readings", {})
         assert data["channels"]
+
+
+class TestTrackingAndTheTimer:
+    """Series, parallel and the timer, with the conditions the guide
+    states and the encoding it does not."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("0x4", "independent"),
+        ("0xc", "series"),
+        ("0x8", "parallel"),
+    ])
+    @pytest.mark.asyncio
+    async def test_each_coupling_reads_back(self, raw, expected):
+        """Bits 2 and 3 are one field and the guide documents two of
+        its four values -- 01 independent, 10 parallel -- and nothing
+        for series, which is the third mode the same supply offers.
+
+        Asked on the bench: TRACK 0 answers 0x4, TRACK 1 answers 0xc,
+        TRACK 2 answers 0x8. So 11 is series.
+        """
+        psu = supply(answers={"STATus": raw})
+        assert await psu.get_tracking() == expected
+
+    @pytest.mark.asyncio
+    async def test_changing_the_coupling_switches_the_outputs_off_first(self):
+        """Series and parallel rewire the terminals internally, and the
+        load an operator wants is wired differently for each -- CH2
+        positive to CH1 negative in series, CH1's own pair in
+        parallel. Changing that under a live output changes what their
+        circuit is connected to."""
+        psu = supply(answers={"STATus": "0x4"})
+        await psu.set_tracking("series")
+        written = sent(psu)
+        track = written.index("OUTPut:TRACK 1")
+        offs = [i for i, c in enumerate(written)
+                if c.startswith("OUTPut CH") and c.endswith(",OFF")]
+        assert offs, written
+        assert max(offs) < track, (
+            "changed the coupling before switching the outputs off: %s"
+            % written)
+
+    @pytest.mark.asyncio
+    async def test_a_timing_group_carries_volts_amps_and_seconds(self):
+        psu = supply(answers={"STATus": "0x4"})
+        await psu.set_timer_step(1, 2, voltage=3.0, current=0.5, seconds=2)
+        assert any(c.startswith("TIMEr:SET CH1,2,3.000,0.500,2")
+                   for c in sent(psu)), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_a_group_reads_back(self):
+        psu = supply(answers={"TIMEr:SET?": "3,0.5,2"})
+        step = await psu.get_timer_step(1, 2)
+        assert step["voltage"] == pytest.approx(3.0)
+        assert step["current"] == pytest.approx(0.5)
+        assert step["seconds"] == pytest.approx(2.0)
+
+    @pytest.mark.parametrize("group", [0, 6, 99, "x"])
+    @pytest.mark.asyncio
+    async def test_only_the_five_groups_exist(self, group):
+        psu = supply(answers={"STATus": "0x4"})
+        with pytest.raises(SetpointRefused):
+            await psu.set_timer_step(1, group, 1.0, 1.0, 1.0)
+        assert not sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_over_ten_thousand_seconds_is_refused(self):
+        psu = supply(answers={"STATus": "0x4"})
+        with pytest.raises(SetpointRefused):
+            await psu.set_timer_step(1, 1, 1.0, 1.0, 10001)
+        assert not sent(psu)
+
+    @pytest.mark.parametrize("coupling", ["0xc", "0x8"])
+    @pytest.mark.asyncio
+    async def test_the_timer_is_refused_in_series_or_parallel(self, coupling):
+        """The guide: "The timer function is invalid when the series
+        mode or parallel mode is turn on." The instrument does not say
+        so -- it accepts the command and does nothing -- so the
+        refusal has to come from the driver or not at all."""
+        psu = supply(answers={"STATus": coupling})
+        with pytest.raises(SetpointRefused) as caught:
+            await psu.set_timer_step(1, 1, 3.0, 0.5, 2)
+        assert "independent" in str(caught.value)
+        assert not any("TIMEr" in c for c in sent(psu)), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_starting_the_timer_is_refused_in_parallel(self):
+        psu = supply(answers={"STATus": "0x8"})
+        with pytest.raises(SetpointRefused):
+            await psu.set_timer_enabled(True, channel=1)
+        assert not sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_stopping_the_timer_is_always_allowed(self):
+        """Refusing to stop something because of the mode it is in
+        would leave it running."""
+        psu = supply(answers={"STATus": "0x8"})
+        await psu.set_timer_enabled(False, channel=1)
+        assert "TIMEr CH1,OFF" in sent(psu), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_the_timer_runs_per_channel(self):
+        psu = supply(answers={"STATus": "0x4"})
+        await psu.set_timer_enabled(True, channel=2)
+        assert "TIMEr CH2,ON" in sent(psu), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_whether_it_is_counting_comes_from_the_status_word(self):
+        # bit 6 is CH1's timer, bit 7 is CH2's.
+        psu = supply(answers={"STATus": hex(0b1000100)})
+        assert await psu.get_timer_running(1) is True
+        assert await psu.get_timer_running(2) is False
+
+    @pytest.mark.asyncio
+    async def test_the_fixed_rail_has_no_timer(self):
+        psu = supply(answers={"STATus": "0x4"})
+        with pytest.raises(SetpointRefused):
+            await psu.set_timer_enabled(True, channel=3)
+
+    @pytest.mark.parametrize("action,args", [
+        ("get_tracking", {}),
+        ("get_timer_running", {"channel": 1}),
+    ])
+    @pytest.mark.asyncio
+    async def test_the_new_getters_are_dispatched(self, action, args):
+        psu = supply(answers={"STATus": "0x4"})
+        await psu.execute_command(action, args)

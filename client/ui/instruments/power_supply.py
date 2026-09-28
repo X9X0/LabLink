@@ -72,6 +72,10 @@ class PowerSupplyPanel(InstrumentPanel):
         self._channel_count = 1
         self._unreadable_channels = ()
         self._hidden_channels = set()
+        #: What the supply says its output coupling is, not what was
+        #: last asked for.
+        self._coupling = None
+        self._timer_buttons = {}
 
         super().__init__(parent)
 
@@ -369,7 +373,71 @@ class PowerSupplyPanel(InstrumentPanel):
             self.shared_mode_buttons.addButton(radio, index)
             modes.addWidget(radio)
         self.shared_mode_buttons.idToggled.connect(self._on_shared_mode)
-        shared.addWidget(self.display_mode_group, 1)
+        shared.addWidget(self.display_mode_group)
+
+        # Independent / Series / Parallel, and which one the supply is
+        # actually in. These are not display options: in series and
+        # parallel the two channels are linked internally into one
+        # controlled by CH1, and the load is wired differently for
+        # each, so the indicator has to show the instrument's own
+        # answer rather than the last button pressed.
+        self.coupling_group = QGroupBox("Output Mode")
+        coupling = QHBoxLayout(self.coupling_group)
+        self.coupling_buttons = {}
+        for name, label, tip in (
+            ("independent", "Independent",
+             "CH1 and CH2 controlled separately."),
+            ("series", "Series",
+             "CH1 and CH2 linked internally into one channel controlled\n"
+             "by CH1, rated 0-60 V / 0-3.2 A. Wire the load across CH2's\n"
+             "positive and CH1's negative terminal."),
+            ("parallel", "Parallel",
+             "CH1 and CH2 linked internally into one channel controlled\n"
+             "by CH1, rated 0-32 V / 0-6.4 A. Wire the load to CH1's\n"
+             "terminals. CH2 only works in CC mode."),
+        ):
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setToolTip(
+                tip + "\n\nBoth outputs are switched off before the mode "
+                      "changes, because it changes what your circuit is "
+                      "connected to.")
+            button.clicked.connect(
+                lambda _checked, n=name: self._coupling_requested(n))
+            coupling.addWidget(button)
+            self.coupling_buttons[name] = button
+        self.coupling_indicator = QLabel("Mode: --")
+        self.coupling_indicator.setToolTip(
+            "What the supply reports, not what was last asked for.")
+        coupling.addWidget(self.coupling_indicator)
+        shared.addWidget(self.coupling_group)
+
+        shared.addStretch()
+
+        # Min/Max, Reset and Auto Range belong to the readout as a
+        # whole rather than to one column, so there is one of each and
+        # it drives every column.
+        self.shared_minmax_button = QPushButton("Min/Max")
+        self.shared_minmax_button.setCheckable(True)
+        self.shared_minmax_button.setToolTip(
+            "Track the lowest and highest reading on every channel.")
+        self.shared_minmax_button.toggled.connect(self._on_shared_minmax)
+        shared.addWidget(self.shared_minmax_button)
+
+        self.shared_minmax_reset = QPushButton("Reset")
+        self.shared_minmax_reset.setToolTip("Forget the extremes so far.")
+        self.shared_minmax_reset.setEnabled(False)
+        self.shared_minmax_reset.clicked.connect(self._on_shared_minmax_reset)
+        shared.addWidget(self.shared_minmax_reset)
+
+        self.shared_autorange_button = QPushButton("Auto Range")
+        self.shared_autorange_button.setCheckable(True)
+        self.shared_autorange_button.setToolTip(
+            "Fit each column's scale to what it is reading.")
+        self.shared_autorange_button.toggled.connect(
+            self._on_shared_autorange)
+        shared.addWidget(self.shared_autorange_button)
+
         self.shared_bar.setVisible(False)
         layout.addWidget(self.shared_bar)
 
@@ -414,6 +482,7 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.setParent(None)
             strip.deleteLater()
         self._strips = {}
+        self._timer_buttons = {}
         for views in self._channel_views.values():
             views.setParent(None)
             views.deleteLater()
@@ -443,11 +512,58 @@ class PowerSupplyPanel(InstrumentPanel):
             self._channel_layout.addWidget(strip, 1)
             self._strips[number] = strip
             if number in programmable:
+                self._add_timer_button(strip, number)
+            if number in programmable:
                 self._channel_views[number] = self._build_channel_views(
                     number, capabilities)
             self._add_channel_box(number)
         self._range_strips(capabilities)
         self._apply_channel_visibility()
+
+    def _add_timer_button(self, strip, number: int):
+        """A channel's timer, on its own column.
+
+        The guide: five timing groups per channel, each a voltage, a
+        current and how long to hold them, run one after another. It
+        only works in independent mode, and switching the output off
+        pauses the countdown rather than ending it.
+        """
+        button = QPushButton("Timer off")
+        button.setCheckable(True)
+        button.setToolTip(
+            "Run CH%d through its five timing groups." % number)
+        button.clicked.connect(
+            lambda wanted, n=number: self._timer_requested(n, bool(wanted)))
+        strip.layout().addWidget(button)
+        self._timer_buttons[number] = button
+
+    def _timer_requested(self, channel: int, wanted: bool):
+        if not self._ready_to_send():
+            self._show_timer(channel, not wanted)
+            return
+        self._send_timer(channel, wanted)
+
+    @qasync.asyncSlot(int, bool)
+    async def _send_timer(self, channel: int, wanted: bool):
+        try:
+            await call_blocking(self.client.send_command,
+                                self.equipment.equipment_id,
+                                "set_timer_enabled",
+                                {"enabled": wanted, "channel": channel})
+        except Exception as e:
+            logger.error("Switching CH%d's timer failed: %s" % (channel, e))
+            self.status_message.emit(
+                "Switching CH%d's timer failed: %s" % (channel, e))
+            self._show_timer(channel, not wanted)
+
+    def _show_timer(self, channel: int, running: bool):
+        button = self._timer_buttons.get(channel)
+        if button is None:
+            return
+        button.blockSignals(True)
+        button.setChecked(bool(running))
+        button.setText("Timer running" if running else "Timer off")
+        button.blockSignals(False)
 
     def _build_channel_views(self, number: int,
                              capabilities: Dict[str, Any]):
@@ -496,6 +612,79 @@ class PowerSupplyPanel(InstrumentPanel):
             return
         for views in self._channel_views.values():
             views.set_mode(index)
+
+    def _on_shared_minmax(self, tracking: bool):
+        """One button, every column.
+
+        The views each keep their own extremes -- they are per channel
+        -- but whether to track them is a decision about the readout,
+        so it is made once.
+        """
+        for views in self._channel_views.values():
+            views.set_minmax_tracking(tracking)
+        self.shared_minmax_reset.setEnabled(tracking)
+
+    def _on_shared_minmax_reset(self):
+        for views in self._channel_views.values():
+            views.reset_extremes()
+
+    def _on_shared_autorange(self, on: bool):
+        for views in self._channel_views.values():
+            views.set_autorange(on)
+
+    def _coupling_requested(self, mode: str):
+        """Ask for independent, series or parallel.
+
+        The buttons are put back where the supply says it is, not where
+        the click left them: the driver switches both outputs off on
+        the way, and if any of that is refused the panel must not be
+        showing a mode the instrument is not in.
+        """
+        self._show_coupling(self._coupling)
+        if not self._ready_to_send():
+            return
+        self._send_coupling(mode)
+
+    @qasync.asyncSlot(str)
+    async def _send_coupling(self, mode: str):
+        try:
+            await call_blocking(self.client.send_command,
+                                self.equipment.equipment_id, "set_tracking",
+                                {"mode": mode})
+        except Exception as e:
+            logger.error("Setting %s mode failed: %s" % (mode, e))
+            self.status_message.emit("Setting %s mode failed: %s" % (mode, e))
+            return
+        self.status_message.emit(
+            "%s mode selected -- both outputs were switched off, and the "
+            "load may need rewiring" % mode.capitalize()
+            if mode != "independent" else "Independent mode selected")
+
+    def _show_coupling(self, mode):
+        """Put the buttons and the indicator where the supply is."""
+        self._coupling = mode
+        for name, button in self.coupling_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(name == mode)
+            button.blockSignals(False)
+        self.coupling_indicator.setText(
+            "Mode: %s" % (mode.capitalize() if mode else "--"))
+        # In series and parallel the pair is one channel driven by CH1,
+        # so CH2's own controls would be commanding something that is
+        # not listening.
+        linked = mode in ("series", "parallel")
+        second = self._strips.get(2)
+        if second is not None:
+            second.set_controls_enabled(not linked)
+            second.setToolTip(
+                "CH1 and CH2 are linked in %s mode; CH1 controls both."
+                % mode if linked else "")
+        for number, timer in self._timer_buttons.items():
+            timer.setEnabled(not linked)
+            timer.setToolTip(
+                "The timer only runs in independent mode."
+                if linked else
+                "Run CH%d through its five timing groups." % number)
 
     def _single_channel_widgets_visible(self, visible: bool):
         for widget in (getattr(self, "_controls_group", None), self.views):
@@ -653,6 +842,10 @@ class PowerSupplyPanel(InstrumentPanel):
 
     def _apply_all_readings(self, data: Dict[str, Any]):
         """One reply, every channel."""
+        if data:
+            coupling = data.get("coupling")
+            if coupling != self._coupling:
+                self._show_coupling(coupling)
         for entry in (data or {}).get("channels") or []:
             strip = self._strips.get(entry.get("channel"))
             if strip is None:
