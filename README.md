@@ -484,6 +484,23 @@ For detailed setup instructions:
 - BK Precision 9130 DC Power Supply
 - BK Precision 1902B DC Electronic Load
 - BK Precision 1685B DC Power Supply
+- Siglent SPD3303X / SPD3303X-E Programmable DC Power Supply — two
+  programmable channels at 0-32 V / 0-3.2 A plus a fixed 2.5/3.3/5 V rail,
+  with series and parallel coupling and the per-channel timer
+- Siglent SPD1168X / SPD1305X Programmable DC Power Supply (single channel)
+
+The rest of Siglent's catalogue — the SDS and SHS oscilloscopes, SDG
+generators, SDL loads, SDM meters, SSA analysers and the rest — is
+identified during discovery but has no driver yet. Siglent sells two
+protocols under one badge: the supplies, loads and meters are
+conventional SCPI, while the scopes and generators use published
+short/long command pairs (`BSWV` for `BASIC_WAVE`) that no capitalisation
+rule predicts, so a driver for one will not talk to the other. See
+[docs/SIGLENT.md](docs/SIGLENT.md).
+
+`GET /api/equipment/models` lists every family all three registries know,
+with the interfaces it carries, the protocol it speaks and whether there
+is a driver for it.
 
 ## Technology Stack
 

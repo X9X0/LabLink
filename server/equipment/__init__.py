@@ -41,6 +41,8 @@ from .rigol_vna import RigolDNA6000, RigolRSAN, RigolVNABase
 from .rigol_spectrum_analyzer import (RigolDSA800, RigolDSA1000, RigolRSA800,
                                       RigolRSA3000, RigolRSA5000, RigolRSA6000,
                                       RigolSABase)
+from .siglent_power_supply import (SiglentSPD, SiglentSPD1000X,
+                                   SiglentSPD3303X)
 
 __all__ = [
     "BaseEquipment",
@@ -138,4 +140,7 @@ __all__ = [
     "MockRFGenerator",
     "MockVNA",
     "MockDAQ",
+    "SiglentSPD",
+    "SiglentSPD3303X",
+    "SiglentSPD1000X",
 ]

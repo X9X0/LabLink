@@ -107,18 +107,40 @@ if result["status"] == "queued":
 - **Clear error messages** - explains why access was denied
 
 **Command Classification:**
-```python
-# Control commands (require exclusive lock)
-CONTROL_COMMANDS = {
-    "set_voltage", "set_current", "set_output", "set_input",
-    "set_mode", "set_range", "reset", "calibrate", ...
-}
 
-# Observer commands (read-only, require observer or exclusive)
-OBSERVER_COMMANDS = {
-    "get_voltage", "get_current", "get_status", "get_measurement", ...
+Anything named `set_*` needs control, **by rule**. The list exists for
+the actions that change an instrument without being spelled that way.
+
+```python
+def requires_control(action: str) -> bool:
+    if action.lower().startswith("set_"):
+        return True
+    return any(cmd in action.lower() for cmd in CONTROL_COMMANDS)
+
+# For the ones that are not spelled "set_something"
+CONTROL_COMMANDS = {
+    "start_list", "stop_list", "trigger_", "reset", "clear",
+    "recall", "calibrate", ...
 }
 ```
+
+The list cannot be the only test, because a list of names only knows
+what somebody remembered to add to it. That was discovered four times
+on one branch: the `:FUNCtion:MODE` family slipped past because
+`set_mode` does not occur in `set_function_mode`; `start_list` and
+`stop_list` because they are not spelled that way; `set_tracking` and
+`set_timer_step` because they are, and still matched no entry. The
+fourth time it was sixteen at once -- `set_power`, `set_resistance`,
+`set_slew_rate`, `set_von` and the whole transient family -- which is
+an electronic load's setpoints in CR and CP mode, and its transient
+generator, reachable with no lock at all, beside `set_current` which
+was gated.
+
+`tests/server/test_every_setter_needs_a_lock.py` walks the action
+tables the drivers actually expose and asserts both halves of the
+rule: every `set_*` needs control, and nothing that only reads demands
+it. Observing an instrument somebody else is driving is what the
+observer lock is for.
 
 ### 6. Event Tracking ✅
 

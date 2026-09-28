@@ -182,10 +182,12 @@ class TestTheCatalogueExport:
         for entry in entries:
             assert entry["key"] and entry["name"]
             assert entry["category_label"]
-            assert isinstance(entry["drivable"], bool)
+            # "supported", as the other registries spell it: the models
+            # endpoint concatenates all three and filters on this key.
+            assert isinstance(entry["supported"], bool)
 
     def test_only_the_spd_families_claim_a_driver(self):
-        driven = {e["key"] for e in catalog() if e["drivable"]}
+        driven = {e["key"] for e in catalog() if e["supported"]}
         assert driven == {"SPD3000X", "SPD1000X"}
 
 
@@ -227,3 +229,60 @@ class TestTheConnectDialogsModelString:
                                        "B&K Precision 9205B"])
     def test_other_vendors_are_still_not_claimed(self, given):
         assert resolve_model(given) is None
+
+
+class TestItIsRegisteredEverywhere:
+    """DRIVER_AUTHORING.md lists where a new driver has to be named.
+
+    Missing one is not cosmetic: a family absent from the catalogue
+    never reaches the connect dialog's model list, and a catalogue
+    entry shaped differently from its neighbours makes the endpoint
+    that concatenates all three raise or quietly drop it.
+    """
+
+    def test_the_catalogue_matches_the_others(self):
+        """/api/equipment/models concatenates three registries and
+        filters on `manufacturer` and `supported`."""
+        from server.equipment.bk_registry import catalog as bk_catalog
+
+        theirs = set(bk_catalog()[0])
+        for entry in catalog():
+            missing = theirs - set(entry)
+            assert not missing, (entry["key"], sorted(missing))
+
+    def test_every_entry_names_the_manufacturer(self):
+        assert all(e["manufacturer"] == "Siglent Technologies"
+                   for e in catalog())
+
+    def test_the_supported_families_are_the_driven_ones(self):
+        assert {e["key"] for e in catalog() if e["supported"]} == {
+            "SPD3000X", "SPD1000X"}
+
+    def test_the_drivers_are_exported(self):
+        from server.equipment import (SiglentSPD, SiglentSPD1000X,
+                                      SiglentSPD3303X)
+
+        assert SiglentSPD and SiglentSPD3303X and SiglentSPD1000X
+
+    def test_the_manufacturer_constant_names_the_skus(self):
+        from shared.constants import SUPPORTED_MANUFACTURERS
+
+        assert "SIGLENT" in SUPPORTED_MANUFACTURERS
+        assert "SPD3303X-E" in SUPPORTED_MANUFACTURERS["SIGLENT"]
+
+    def test_the_readme_lists_the_supply(self):
+        """A supported instrument nobody can find is not much use."""
+        import pathlib
+
+        readme = pathlib.Path(__file__).resolve().parents[2] / "README.md"
+        assert "SPD3303X" in readme.read_text(encoding="utf-8")
+
+    def test_there_is_a_brand_document(self):
+        import pathlib
+
+        doc = (pathlib.Path(__file__).resolve().parents[2]
+               / "docs" / "SIGLENT.md")
+        said = doc.read_text(encoding="utf-8")
+        # The two things a reader most needs from it.
+        assert "BASIC_WAVE" in said, "the two protocols are not explained"
+        assert "MEAS:POW?" in said, "the abbreviation trap is not recorded"

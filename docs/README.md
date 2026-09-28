@@ -21,6 +21,7 @@ Complete documentation for the LabLink laboratory equipment control system.
 - **[Rigol DM3058/DM3068 Multimeters](RIGOL_DMM.md)** - DMM protocol notes and command surface
 - **[Rigol Equipment Catalogue](RIGOL_EQUIPMENT_CATALOG.md)** - Every Rigol family, its command tree, and LabLink compatibility/plan
 - **[Driver Authoring](DRIVER_AUTHORING.md)** - Contract and command vocabularies for writing equipment drivers
+- **[Siglent](SIGLENT.md)** - the two protocols Siglent sells under one badge, the SPD supplies, and what identification has to cope with
 - Rigol family protocol notes: [DP power supplies](RIGOL_DP.md), [Oscilloscopes](RIGOL_SCOPES.md), [DG generators](RIGOL_DG.md), [Spectrum analyzers](RIGOL_SA.md), [DSG RF generators](RIGOL_DSG.md), [DM858](RIGOL_DM858.md), [VNAs](RIGOL_VNA.md), [M300 DAQ](RIGOL_M300.md)
 
 ### Configuration & Setup

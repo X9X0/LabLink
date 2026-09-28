@@ -81,6 +81,25 @@ that sees a failed poll doubles its interval up to
 cadence on the first good one, so a slow instrument is asked less often rather
 than more. Backing off is not stopping: only a 404 or a 501 stops a timer.
 
+### Min/max belongs to the instrument
+
+`InstrumentPanel` keeps the extremes seen per equipment id and
+restores them when that instrument comes back. They cannot live on the
+readout widget: one panel serves every instrument of its type, and
+`configure()` resets the readout on each switch -- deliberately,
+because a scale held from a 25 A supply is wrong for a 5 A one. That
+threw the extremes away with it.
+
+`remember_extremes()` runs on the way out of `set_instrument`,
+`restore_extremes()` after `configure()` on the way in. Reset is the
+only thing that clears them: `MeasurementViews.extremes_reset` fires
+when they are deliberately dropped and the panel drops its kept copy
+too, or the old figures would reappear on the next switch.
+
+Session-scoped, not written to disk. An extreme from a run days ago,
+restored silently into a live panel, is a worse lie than an empty
+Min/Max.
+
 ## The registry
 
 `client/ui/instruments/registry.py` maps `EquipmentType` to a panel class.
@@ -99,7 +118,7 @@ between two supplies keeps the graph history.
 
 | Type | Panel | Polls | Default |
 |---|---|---|---|
-| `power_supply` | `PowerSupplyPanel` | `readings` (`GET /equipment/{id}/readings`) | 100 ms |
+| `power_supply` | `PowerSupplyPanel` | `readings` (`GET /equipment/{id}/readings`), or `get_all_readings` for a multi-channel supply | 100 ms |
 | `oscilloscope` | `OscilloscopePanel` | `measurements` (`get_measurements`), plus the waveform on its own timer (`get_waveform_data`, decimated to 600 points) | 500 ms / 1000 ms |
 | `electronic_load` | `ElectronicLoadPanel` | `readings` (`ElectronicLoadData`) | 200 ms |
 | `multimeter` | `MultimeterPanel` | `readings` (`MultimeterData`), plus `get_statistics` while a statistic math function is selected | 200 ms |
@@ -109,6 +128,64 @@ between two supplies keeps the graph history.
 | `vector_network_analyzer` | `VNAPanel` | `measurements` (`get_trace {trace: 1}`) | 1000 ms |
 | `data_acquisition` | `DAQPanel` | `readings` (`DataAcquisitionData`, the last scan) | 2000 ms |
 | everything else (`unknown`) | `GenericInstrumentPanel` | `state` (`get_state` command) | 2000 ms |
+
+### PowerSupplyPanel
+
+One panel class serves every supply, because panels are chosen by
+equipment type. It has **two bodies** and picks between them from
+`capabilities["channels"]`.
+
+**One channel** is the original layout, unchanged: voltage and current
+dials with spin boxes, the output button, CV/CC indicators, the
+refresh rate, and the digital / analog / graph stack. Four of the five
+instruments on the bench are single-channel, so this is the case that
+must not regress and most of the panel's tests are about it.
+
+**More than one channel** lays the same ideas out in bands:
+
+- **Controls** — a column per channel, each with its own dial and box
+  for volts and amps, its own output switch, its own CV/CC indicator
+  and its own timer. Nothing here is shared between channels. A
+  channel that is not programmable has almost nothing in its column,
+  which leaves the room above it free.
+- **Shared bar** — one Display Mode selector, one Output Mode group
+  (Independent / Series / Parallel with an indicator), one Min/Max,
+  Reset and Auto Range, and the one Refresh Rate. Three selectors
+  would be three things to keep in step; the refresh rate belongs to
+  the poll, which is per instrument.
+- **Readings** — one `MeasurementViews` per readable channel, side by
+  side, each showing that channel's volts, amps and watts stacked.
+  Built with `vertical=True, with_selector=False, with_tools=False`
+  and driven from the shared bar through `set_mode`,
+  `set_minmax_tracking` and `set_autorange`.
+
+Channels can be hidden from the `Channels:` row. A hidden column gives
+its width back — its stretch is dropped as well as its visibility, or
+the layout keeps the space and the remaining readings stay the size
+they were beside a gap. Hidden channels are remembered per instrument
+(`SettingsManager.get_hidden_channels`), never against an empty
+equipment id.
+
+**Why one request per poll.** Measured against an SPD3303X-E, a
+per-channel `get_readings` is ~83 ms and a bare status query ~73 ms,
+so the hop dominates. Three sequential calls come to ~250 ms against a
+100 ms poll. `get_all_readings` reads the status word once and shares
+it across the channels.
+
+**The indicator follows the instrument, not the button.** Changing the
+coupling switches both outputs off and can be refused at several
+points; a panel claiming a mode the supply is not in is worse than one
+that waits to be told.
+
+**A channel with no readback** — the SPD3303X's fixed CH3 — is absent
+from the poll entirely. Its switch shows what it was commanded, which
+is the only thing that will ever move it, and its tooltip says so.
+
+Anything on this panel that reaches the server goes through
+`_ready_to_send()` first. An `asyncSlot` invoked with no running event
+loop does not raise, it aborts the interpreter, and a strip's signals
+can arrive outside the loop: Qt fires `editingFinished` when a box
+loses focus, which happens during teardown and in tests.
 
 ### OscilloscopePanel
 
@@ -179,6 +256,30 @@ ON/OFF button, and three readouts (V, A, W). The setpoint is sent on Apply as
 binding the load's own mode, setpoint and input state are read from
 `/readings` onto the controls, silently.
 
+A setpoint knob sits beside the spin box, as on the supply. Battery
+discharge has its own group, and **Edit list...** opens the list
+sequence editor (`list_dialog.py`, JSON import and export) with **Run
+list** beside it.
+
+**Selecting `:FUNCtion:MODE LIST` arms a list; it does not start
+one.** The guide gives no start command and never connects the list
+to `:TRIGger`, but a load in LIST with its input on and the RUN bit
+set will sit there indefinitely. `start_list` sets the trigger source
+to BUS, selects the mode and fires `:TRIG`, in that order -- the
+source is set before the mode, because changing it afterwards disarms
+what it was meant to start.
+
+Stopping is not the mirror of starting. `:SOUR:FUNC:MODE FIX` is
+accepted and ignored while a list runs, so `stop_list` asserts the
+regulation law instead, and honours `:LIST:END` -- a list that ends
+on its own switches the input off, and one stopped by hand now does
+the same rather than leaving the load sinking at the fixed setpoint.
+
+The Run button follows the status register's RUN bit, and only
+confirms a run this panel started: the bit stays up after a hand stop
+and was already up from an earlier arming the first time the panel
+read it.
+
 ### MultimeterPanel
 
 One large readout with the instrument's annunciators (function, AUTO or the
@@ -245,6 +346,28 @@ driver family's `set_*` / `get_*` surface (`server/equipment/rigol_*.py`,
 `bk_*.py`) and the family docs (`docs/RIGOL_*.md`).
 
 ## Shared widgets
+
+`client/ui/instruments/channel_strip.py`: `ChannelStrip`, one supply
+channel's controls as a column. It reports what was asked for
+(`setpoint_committed`, `output_toggled`) and never talks to the server
+itself. A setpoint is reported only when it has actually moved --
+`editingFinished` fires whenever a box loses focus, not only when
+something was typed, so tabbing past a field used to re-send whatever
+was in it.
+
+`client/ui/instruments/timer_dialog.py`: `TimerDialog`, the five
+timing groups of a SPD channel. Reads the instrument before offering
+to change anything, because it holds these itself and they can be set
+from the front panel.
+
+`client/ui/instruments/measurement_views.py`: `MeasurementViews`, the
+Digital / Analog / Graph stack. `vertical`, `with_selector` and
+`with_tools` let a panel place several side by side under one selector
+and one set of tools; `set_mode`, `set_minmax_tracking` and
+`set_autorange` drive them from outside. Every channel gets a visible
+scale in graph mode -- a trace whose scale is not shown is a shape,
+not a measurement. `extremes()` and `restore_extremes()` let a panel
+keep min/max per instrument; see the contract above.
 
 `client/ui/instruments/widgets.py`: `FittedReadout` (text sized to its box,
 through the widget's own stylesheet because the application sheet beats

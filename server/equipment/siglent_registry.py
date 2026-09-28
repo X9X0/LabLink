@@ -443,19 +443,36 @@ def models_by_category(category: Optional[str] = None) -> List[SiglentModel]:
 
 
 def catalog() -> List[dict]:
-    """The registry as plain dicts, for the API."""
+    """The registry as plain dicts, for the API.
+
+    The same shape the B&K and Rigol catalogues use, because
+    /api/equipment/models concatenates all three and filters them on
+    `manufacturer` and `supported`. An entry missing either is not
+    just untidy -- it makes the endpoint raise, or silently drops out
+    of a filtered list.
+    """
     return [
         {
             "key": m.key,
             "name": m.name,
+            "manufacturer": MANUFACTURER,
             "category": m.category,
             "category_label": CATEGORY_LABELS.get(m.category, m.category),
             "protocol": m.protocol,
             "skus": list(m.skus),
             "interfaces": m.interfaces,
+            "usb_mode": m.usb,
             "channels": m.channels,
+            "max_voltage": m.max_voltage,
+            "max_current": m.max_current,
+            "socket_ports": [SCPI_RAW_PORT] if m.lan else [],
+            "default_baud": None,
+            "selectable_bauds": [],
+            "supports_idn": True,
             "equipment_type": equipment_type_for(m),
-            "drivable": is_drivable(m),
+            "supported": is_drivable(m),
+            # Whether a driver here has been run against the real
+            # command set, which "supported" does not say on its own.
             "verified": m.verified,
             "notes": m.notes,
         }

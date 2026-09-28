@@ -10,6 +10,9 @@ from server.config.settings import settings
 from server.discovery.models import DiscoveredDevice
 from server.equipment import rigol_registry
 from server.equipment.base import InstrumentBusy, SetpointRefused
+from server.equipment.siglent_registry import catalog as siglent_catalog
+from server.equipment.siglent_registry import (
+    resolve_model as siglent_resolve_model)
 from server.equipment.bk_registry import (CATEGORY_LABELS, MANUFACTURER,
                                           catalog, resolve_model)
 from server.equipment.locks import lock_manager
@@ -182,18 +185,23 @@ async def list_supported_models(
     """List the instrument models LabLink knows about.
 
     Every B&K Precision family with a published programming manual is listed,
-    each with the interfaces it actually carries, the protocol it speaks, and
-    whether LabLink has a driver for it. A family with ``supported: false`` is
-    still identified during discovery — it just cannot be connected yet.
+    every Rigol family, and Siglent's catalogue — each with the interfaces it
+    actually carries, the protocol it speaks, and whether LabLink has a driver
+    for it. A family with ``supported: false`` is still identified during
+    discovery — it just cannot be connected yet.
+
+    Siglent entries also carry ``verified``, which says whether a driver here
+    has been run against the real command set rather than written from the
+    manual alone.
 
     **Query parameters:**
-    - `manufacturer`: filter by manufacturer (B&K Precision or Rigol)
+    - `manufacturer`: filter by manufacturer (B&K Precision, Rigol or Siglent)
     - `equipment_type`: filter by LabLink equipment type
     - `supported_only`: omit families with no driver
 
     **Returns:** a list of model entries.
     """
-    entries = catalog() + rigol_registry.catalog()
+    entries = catalog() + rigol_registry.catalog() + siglent_catalog()
 
     if manufacturer:
         wanted = manufacturer.lower()
@@ -220,6 +228,11 @@ async def describe_model(model: str):
     """
     info = resolve_model(model)
     if info is None:
+        siglent_entry = siglent_resolve_model(model)
+        if siglent_entry is not None:
+            for entry in siglent_catalog():
+                if entry["key"] == siglent_entry.key:
+                    return {"query": model, **entry}
         rigol_entry = rigol_registry.resolve_model(model)
         if rigol_entry is None:
             raise HTTPException(

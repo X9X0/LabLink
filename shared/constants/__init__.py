@@ -67,6 +67,11 @@ SUPPORTED_MANUFACTURERS = {
         "M300",
     ],
     "BK_PRECISION": ["9206B", "9130B", "9131B", "1902B"],
+    # The SPD supplies are the Siglent families with a driver. The
+    # rest of Siglent's catalogue is identified by
+    # server/equipment/siglent_registry.py and reported by
+    # /api/equipment/models, which is the fuller list.
+    "SIGLENT": ["SPD3303X", "SPD3303X-E", "SPD1168X", "SPD1305X"],
 }
 
 # Every spelling of B&K Precision seen in a *IDN? reply across their published

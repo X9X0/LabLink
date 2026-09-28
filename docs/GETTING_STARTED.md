@@ -136,6 +136,13 @@ python test_client.py
 - **BK Precision 9130B** - Triple Output DC Power Supply
 - **BK Precision 1902B** - DC Electronic Load
 - **BK Precision 1685B** - DC Power Supply
+- **Siglent SPD3303X / SPD3303X-E** - Programmable DC Power Supply, two
+  programmable channels plus a fixed rail (see `docs/SIGLENT.md`)
+- **Siglent SPD1168X / SPD1305X** - Programmable DC Power Supply
+
+The rest of Siglent's catalogue is identified during discovery but has
+no driver yet. `GET /api/equipment/models` lists every family all three
+registries know about, and whether there is a driver for it.
 
 ### Adding More Equipment
 

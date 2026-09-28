@@ -675,8 +675,13 @@ LabLink supports equipment through:
 - Rigol electronic loads (DL3000 series)
 - Rigol digital multimeters (DM3058, DM3058E, DM3068)
 - BK Precision power supplies
+- Siglent SPD programmable DC power supplies (SPD3303X / X-E, SPD1000X)
 - Keysight equipment (various models)
 - Generic SCPI instruments
+
+Other Siglent instruments are identified when discovered but cannot be
+connected yet -- see `docs/SIGLENT.md` for why the scopes and
+generators need a different driver from the supplies.
 
 ### File Formats
 
