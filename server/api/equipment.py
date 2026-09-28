@@ -51,6 +51,15 @@ CONTROL_COMMANDS = {
     # one takes their running test away mid-sequence.
     "start_list",
     "stop_list",
+    # Coupling and the timer, for the same reason. Changing a supply
+    # from independent to series or parallel links its two channels
+    # internally and switches both outputs off -- doing that to
+    # somebody else's running experiment is the whole point of the
+    # lock. "set_tracking" matches no entry above, and neither does
+    # "set_timer_step": this test is a list of names somebody
+    # remembered, which is why it keeps needing adding to.
+    "set_tracking",
+    "set_timer",
     "set_range",
     "set_channel",
     "set_trigger",
@@ -67,8 +76,31 @@ CONTROL_COMMANDS = {
 
 
 def requires_control(action: str) -> bool:
-    """Check if an action requires exclusive equipment control."""
+    """Whether an action needs exclusive control of the instrument.
+
+    Anything named ``set_*`` does, by rule rather than by being on a
+    list. The list below is still needed for the actions that change an
+    instrument without being spelled that way -- start_list, trigger,
+    reset, recall -- but it cannot be the only test, because a list of
+    names only knows what somebody remembered to add to it.
+
+    That has been discovered four times on this branch. The
+    :FUNCtion:MODE family slipped past because "set_mode" does not
+    occur in "set_function_mode"; start_list and stop_list because
+    they are not spelled "set_something"; set_tracking and
+    set_timer_step because they are, and still matched no entry. The
+    fourth time it was sixteen at once -- set_power, set_resistance,
+    set_slew_rate, set_von and the whole transient family -- which is
+    the load's setpoints in CR and CP mode reachable with no lock at
+    all, beside set_current which was gated.
+
+    So the prefix is the rule and the list is the exception. A reader
+    adding a driver action gets the right answer without knowing this
+    function exists.
+    """
     action_lower = action.lower()
+    if action_lower.startswith("set_"):
+        return True
     return any(cmd in action_lower for cmd in CONTROL_COMMANDS)
 
 
