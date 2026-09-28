@@ -213,6 +213,83 @@ class InstrumentPanel(QWidget):
     # Instrument binding
     # ------------------------------------------------------------------ #
 
+    #: Extremes seen per instrument, by equipment id, for the life of
+    #: the session. Kept off the widgets because one panel serves every
+    #: instrument of its type and re-ranges itself on each switch --
+    #: which is what used to throw these away. Not written to disk: an
+    #: extreme from a run days ago, restored silently, is a worse lie
+    #: than an empty Min/Max.
+    _extremes_by_equipment: Dict[str, Dict[str, Any]] = {}
+
+    def measurement_views(self):
+        """Every readout this panel owns.
+
+        The default covers the panels with one, and the supply's
+        columns. A panel with none returns nothing and the min/max
+        memory simply does not apply to it.
+        """
+        found = []
+        views = getattr(self, "views", None)
+        if views is not None and hasattr(views, "extremes"):
+            found.append(("", views))
+        for number, extra in sorted(
+                getattr(self, "_channel_views", {}).items()):
+            found.append((str(number), extra))
+        return found
+
+    def _extremes_key(self, equipment_id, suffix: str) -> str:
+        return "%s/%s" % (equipment_id, suffix)
+
+    def remember_extremes(self) -> None:
+        """Put the current instrument's extremes away."""
+        equipment_id = self.equipment_id
+        if not equipment_id:
+            return
+        for suffix, views in self.measurement_views():
+            try:
+                InstrumentPanel._extremes_by_equipment[
+                    self._extremes_key(equipment_id, suffix)] = views.extremes()
+            except Exception as e:      # pragma: no cover - defensive
+                logger.debug("Could not keep min/max for %s: %s"
+                             % (equipment_id, e))
+
+    def restore_extremes(self) -> None:
+        """Put back what this instrument had seen before."""
+        equipment_id = self.equipment_id
+        if not equipment_id:
+            return
+        for suffix, views in self.measurement_views():
+            saved = InstrumentPanel._extremes_by_equipment.get(
+                self._extremes_key(equipment_id, suffix))
+            if saved:
+                try:
+                    views.restore_extremes(saved)
+                except Exception as e:  # pragma: no cover - defensive
+                    logger.debug("Could not restore min/max for %s: %s"
+                                 % (equipment_id, e))
+
+    def _hear_about_resets(self) -> None:
+        """Connect each readout's Reset to forgetting the kept copy.
+
+        Once per widget: these are long-lived and a panel binds many
+        times, so connecting on every bind would forget once per bind.
+        """
+        for _suffix, views in self.measurement_views():
+            signal = getattr(views, "extremes_reset", None)
+            if signal is None or getattr(views, "_reset_heard", False):
+                continue
+            signal.connect(self.forget_extremes)
+            views._reset_heard = True
+
+    def forget_extremes(self) -> None:
+        """Drop what was kept. Reset is the only thing that does this."""
+        equipment_id = self.equipment_id
+        if not equipment_id:
+            return
+        for suffix, _views in self.measurement_views():
+            InstrumentPanel._extremes_by_equipment.pop(
+                self._extremes_key(equipment_id, suffix), None)
+
     def set_instrument(self, equipment: Optional[Equipment], client) -> None:
         """Bind the panel to an instrument on a particular server connection.
 
@@ -224,6 +301,9 @@ class InstrumentPanel(QWidget):
         the queue took. Twenty seconds, on a bench with a DS1000Z.
         """
         self.stop()
+        # Before anything else: these belong to the instrument being
+        # left, and configure() on the next one will reset the widget.
+        self.remember_extremes()
         self.commit_typed_values_on_enter_only()
         # What was commanded belonged to the instrument being left. Carried
         # over, it would suppress the new one's readings.
@@ -441,6 +521,10 @@ class InstrumentPanel(QWidget):
             self.configure(self.capabilities)
         except Exception as e:
             logger.error(f"Error configuring controls from capabilities: {e}")
+        # After configure, which re-ranges the readout and resets it:
+        # the scale belongs to the instrument, and so do the extremes.
+        self._hear_about_resets()
+        self.restore_extremes()
         await self._refresh_settings_guarded()
 
     def _schedule_refresh_settings(self):

@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
 
 from PyQt6.QtCharts import QChart, QLineSeries, QValueAxis
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (QButtonGroup, QGroupBox, QHBoxLayout, QLabel,
                              QPushButton, QRadioButton, QSizePolicy,
@@ -74,6 +74,11 @@ VOLTS_AMPS_WATTS = (
 
 class MeasurementViews(QWidget):
     """The Digital / Analog / Graph stack, its selector, and its tools."""
+
+    #: Emitted when Reset drops the extremes. A panel keeps them per
+    #: instrument, and 'cleared' has to reach that copy too or the
+    #: old figures come back on the next switch.
+    extremes_reset = pyqtSignal()
 
     def __init__(self, channels: Iterable[Channel], parent=None,
                  vertical: bool = False, with_selector: bool = True,
@@ -406,6 +411,27 @@ class MeasurementViews(QWidget):
             ]
         self._update_minmax()
 
+    def extremes(self):
+        """What has been seen, as plain data.
+
+        Copied out so a caller holding it cannot be surprised by this
+        widget carrying on. Used to keep one instrument's extremes
+        while the panel shows another.
+        """
+        return {key: list(pair) for key, pair in self._extremes.items()}
+
+    def restore_extremes(self, saved) -> None:
+        """Put back what an instrument had seen before.
+
+        Channels the caller does not know about are left alone, so a
+        saved set from an instrument with different channels cannot
+        blank the ones it does not mention.
+        """
+        for key, pair in (saved or {}).items():
+            if key in self._extremes and isinstance(pair, (list, tuple)):
+                self._extremes[key] = [pair[0], pair[1]]
+        self._update_minmax()
+
     def reset_extremes(self):
         """Forget what has been seen and start again."""
         self._extremes = {c.key: [None, None] for c in self.channels}
@@ -413,6 +439,7 @@ class MeasurementViews(QWidget):
         # would otherwise leave the dial stuck wide open.
         self._auto_top = {c.key: None for c in self.channels}
         self._update_minmax()
+        self.extremes_reset.emit()
 
     def _update_minmax(self):
         self._mark_gauges()
