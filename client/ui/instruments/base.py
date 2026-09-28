@@ -540,6 +540,10 @@ class InstrumentPanel(QWidget):
         equipment type, so the supply's 10 Hz is not imposed on the scope.
         """
         group = QGroupBox("Refresh Rate")
+        # Held so a panel that rearranges itself can move the one
+        # rate control rather than building a second that could
+        # disagree with it.
+        self._rate_group = group
         layout = QHBoxLayout(group)
         layout.addWidget(QLabel("Update Rate (Hz):"))
         self.refresh_spinbox = QDoubleSpinBox()

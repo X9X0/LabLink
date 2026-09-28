@@ -346,11 +346,40 @@ class PowerSupplyPanel(InstrumentPanel):
         self.channel_bar.setVisible(False)
         layout.addWidget(self.channel_bar)
 
+        # Controls band: a column of controls per channel, plus room
+        # for whatever belongs to the supply rather than to a channel.
         self.channel_area = QWidget()
         self._channel_layout = QHBoxLayout(self.channel_area)
         self._channel_layout.setContentsMargins(0, 0, 0, 0)
         self.channel_area.setVisible(False)
-        layout.addWidget(self.channel_area, 1)
+        layout.addWidget(self.channel_area)
+
+        # One selector and one rate for the instrument. Three of either
+        # would be three things to keep in step, and the rate is a
+        # property of the poll, which is per instrument.
+        self.shared_bar = QWidget()
+        shared = QHBoxLayout(self.shared_bar)
+        shared.setContentsMargins(0, 0, 0, 0)
+        self.display_mode_group = QGroupBox("Display Mode")
+        modes = QHBoxLayout(self.display_mode_group)
+        self.shared_mode_buttons = QButtonGroup(self)
+        for index, name in enumerate(("Digital", "Analog", "Graph")):
+            radio = QRadioButton(name)
+            radio.setChecked(index == 0)
+            self.shared_mode_buttons.addButton(radio, index)
+            modes.addWidget(radio)
+        self.shared_mode_buttons.idToggled.connect(self._on_shared_mode)
+        shared.addWidget(self.display_mode_group, 1)
+        self.shared_bar.setVisible(False)
+        layout.addWidget(self.shared_bar)
+
+        # Readings band: a column per readable channel.
+        self.readout_area = QWidget()
+        self._readout_layout = QHBoxLayout(self.readout_area)
+        self._readout_layout.setContentsMargins(0, 0, 0, 0)
+        self.readout_area.setVisible(False)
+        layout.addWidget(self.readout_area, 1)
+        self._channel_views = {}
 
     # ------------------------------------------------------------------ #
     # Multi-channel supplies
@@ -385,6 +414,10 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.setParent(None)
             strip.deleteLater()
         self._strips = {}
+        for views in self._channel_views.values():
+            views.setParent(None)
+            views.deleteLater()
+        self._channel_views = {}
         self._clear_channel_boxes()
 
         single = count <= 1
@@ -396,6 +429,10 @@ class PowerSupplyPanel(InstrumentPanel):
         if single:
             return
 
+        self.shared_bar.setVisible(True)
+        self.readout_area.setVisible(True)
+        self._adopt_rate_control()
+
         self._hidden_channels = set(self._remembered_hidden())
         for number in range(1, count + 1):
             strip = ChannelStrip(number,
@@ -405,14 +442,71 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.output_toggled.connect(self._strip_output_requested)
             self._channel_layout.addWidget(strip, 1)
             self._strips[number] = strip
+            if number in programmable:
+                self._channel_views[number] = self._build_channel_views(
+                    number, capabilities)
             self._add_channel_box(number)
         self._range_strips(capabilities)
         self._apply_channel_visibility()
+
+    def _build_channel_views(self, number: int,
+                             capabilities: Dict[str, Any]):
+        """One channel's readings: digital, analog and graph.
+
+        Vertical, and without its own selector or tools -- the panel
+        keeps one of each above and drives every column from it.
+        """
+        max_voltage = capabilities.get("max_voltage",
+                                       self.instrument_max_voltage)
+        max_current = capabilities.get("max_current",
+                                       self.instrument_max_current)
+        views = MeasurementViews(
+            (
+                Channel("voltage", "CH%d Voltage" % number, "V",
+                        capabilities.get("voltage_decimals", 3),
+                        max_voltage, 1.0, "#4a9eff"),
+                Channel("current", "CH%d Current" % number, "A",
+                        capabilities.get("current_decimals", 3),
+                        max_current, 0.1, "#ff9d4a"),
+                Channel("power", "CH%d Power" % number, "W", 2,
+                        max_voltage * max_current, 1.0, "#7ed957"),
+            ),
+            vertical=True, with_selector=False, with_tools=False,
+        )
+        views.set_mode(self.shared_mode_buttons.checkedId())
+        self._readout_layout.addWidget(views, 1)
+        return views
+
+    def _adopt_rate_control(self):
+        """Move the one rate control into the shared band.
+
+        There is exactly one, and it is built inside the single-channel
+        controls group -- which the columns hide. Re-parenting it keeps
+        one widget and one set of handlers rather than a second rate
+        that could disagree with the first.
+        """
+        rate = getattr(self, "_rate_group", None)
+        if rate is None or rate.parent() is self.shared_bar:
+            return
+        self.shared_bar.layout().addWidget(rate)
+        rate.setVisible(True)
+
+    def _on_shared_mode(self, index: int, checked: bool):
+        if not checked:
+            return
+        for views in self._channel_views.values():
+            views.set_mode(index)
 
     def _single_channel_widgets_visible(self, visible: bool):
         for widget in (getattr(self, "_controls_group", None), self.views):
             if widget is not None:
                 widget.setVisible(visible)
+        if not visible:
+            return
+        # Coming back to a single-channel instrument: put the bands the
+        # columns borrowed back out of the way.
+        for widget in (self.shared_bar, self.readout_area):
+            widget.setVisible(False)
 
     def _range_strips(self, capabilities: Dict[str, Any]):
         for strip in self._strips.values():
@@ -466,6 +560,11 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.setVisible(shown)
             self._channel_layout.setStretch(
                 self._channel_layout.indexOf(strip), 1 if shown else 0)
+            views = self._channel_views.get(number)
+            if views is not None:
+                views.setVisible(shown)
+                self._readout_layout.setStretch(
+                    self._readout_layout.indexOf(views), 1 if shown else 0)
 
     def _remembered_hidden(self):
         """What was hidden on this instrument last time.
@@ -558,9 +657,6 @@ class PowerSupplyPanel(InstrumentPanel):
             strip = self._strips.get(entry.get("channel"))
             if strip is None:
                 continue
-            strip.show_readings(entry.get("voltage_actual"),
-                                entry.get("current_actual"),
-                                entry.get("power_actual"))
             # Not while somebody is typing into them; see
             # _apply_readings. Asked per column, because focus in one
             # channel says nothing about the other two.
@@ -570,6 +666,19 @@ class PowerSupplyPanel(InstrumentPanel):
             strip.show_output(bool(entry.get("output_enabled")))
             strip.show_mode(bool(entry.get("in_cv_mode")),
                             bool(entry.get("in_cc_mode")))
+            views = self._channel_views.get(entry.get("channel"))
+            if views is not None:
+                voltage = entry.get("voltage_actual") or 0.0
+                current = entry.get("current_actual") or 0.0
+                # Power as the supply reports it when it does, and
+                # otherwise the product of the two readings beside it,
+                # so the third figure agrees with the first two.
+                power = entry.get("power_actual")
+                views.set_readings({
+                    "voltage": voltage,
+                    "current": current,
+                    "power": voltage * current if power is None else power,
+                })
 
     def _create_control_section(self) -> QGroupBox:
         group = QGroupBox("Controls")

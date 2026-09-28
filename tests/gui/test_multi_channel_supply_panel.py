@@ -131,6 +131,24 @@ class TestThreeChannelsGetThreeColumns:
         assert made._strips[1].voltage_spinbox.maximum() == pytest.approx(32.0)
         assert made._strips[2].current_spinbox.maximum() == pytest.approx(3.2)
 
+    def test_the_dials_are_ranged_with_the_boxes(self, qapp):
+        """A dial left at another instrument's scale puts the needle
+        somewhere the number is not."""
+        made = panel(qapp, SIGLENT)
+        assert made._strips[1].voltage_dial.maximum() == 320   # 32.0 V
+        assert made._strips[1].current_dial.maximum() == 32    # 3.2 A
+
+    def test_each_channel_has_its_own_switch_and_indicators(self, qapp):
+        made = panel(qapp, SIGLENT)
+        for number in (1, 2):
+            strip = made._strips[number]
+            assert strip.output_button is not None
+            assert strip.cv_indicator is not None
+            assert strip.cc_indicator is not None
+        # And they are not the same widgets shared between columns.
+        assert (made._strips[1].output_button
+                is not made._strips[2].output_button)
+
 
 class TestTheFixedRail:
     """CH3 answers no measurement query, and does not refuse them -- it
@@ -146,8 +164,10 @@ class TestTheFixedRail:
         assert strip.voltage_spinbox is None
         assert strip.current_spinbox is None
 
-    def test_it_shows_no_readouts(self, qapp):
-        assert panel(qapp, SIGLENT)._strips[3].readouts == {}
+    def test_it_gets_no_readout_column(self, qapp):
+        """Nothing to put in one. CH1 and CH2 get a column each."""
+        made = panel(qapp, SIGLENT)
+        assert sorted(made._channel_views) == [1, 2]
 
     def test_it_still_has_its_switch(self, qapp):
         """The one thing remote control can do with it."""
@@ -228,11 +248,21 @@ class TestApplyingAReading:
         "coupling": "independent",
     }
 
+    def _digits(self, made, channel):
+        return [d.text() for d
+                in made._channel_views[channel].displays.values()]
+
     def test_each_column_shows_its_own_reading(self, qapp):
         made = self._made(qapp)
         made._apply_all_readings(self.REPLY)
-        assert "4.970" in made._strips[1].readouts["voltage"].text()
-        assert "3.300" in made._strips[2].readouts["voltage"].text()
+        assert "4.970 V" in self._digits(made, 1)
+        assert "3.300 V" in self._digits(made, 2)
+
+    def test_watts_reach_the_third_readout(self, qapp):
+        """The figure the operator was working out in their head."""
+        made = self._made(qapp)
+        made._apply_all_readings(self.REPLY)
+        assert "5.96 W" in self._digits(made, 1)
 
     def test_the_setpoints_land_on_the_right_column(self, qapp):
         made = self._made(qapp)
@@ -255,7 +285,7 @@ class TestApplyingAReading:
         """The fixed rail is absent from `channels` by design."""
         made = self._made(qapp)
         made._apply_all_readings({"channels": [self.REPLY["channels"][0]]})
-        assert made._strips[3].readouts == {}
+        assert 3 not in made._channel_views
 
     def test_an_empty_reply_is_survivable(self, qapp):
         made = self._made(qapp)
@@ -290,7 +320,8 @@ class TestApplyingAReading:
 
         made._apply_all_readings(self.REPLY)
 
-        assert "4.970" in made._strips[1].readouts["voltage"].text()
+        assert "4.970 V" in [
+            d.text() for d in made._channel_views[1].displays.values()]
 
 
 class TestAStripCommandsNothingItself:
@@ -405,3 +436,92 @@ class TestLosingFocusIsNotACommand:
         made._strips[1].output_button.click()
         qapp.processEvents()
         assert not made._strips[1].output_button.isChecked()
+
+
+class TestOneSelectorAndOneRate:
+    """Shared, not repeated.
+
+    Three display-mode selectors would be three things to keep in
+    step, and the refresh rate is a property of the poll, which is per
+    instrument rather than per channel.
+    """
+
+    def test_there_is_one_display_mode_selector(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made.shared_bar.isVisible()
+        assert made.shared_mode_buttons.buttons()
+
+    def test_the_columns_have_no_selector_of_their_own(self, qapp):
+        made = panel(qapp, SIGLENT)
+        for views in made._channel_views.values():
+            assert views.mode_group is None
+
+    @pytest.mark.parametrize("index,expected", [
+        (0, "digital"), (1, "analog"), (2, "graph")])
+    def test_it_drives_every_column(self, qapp, index, expected):
+        made = panel(qapp, SIGLENT)
+        made.shared_mode_buttons.button(index).setChecked(True)
+        qapp.processEvents()
+        for views in made._channel_views.values():
+            assert views.current_mode() == expected
+
+    def test_the_readings_are_stacked_in_a_column(self, qapp):
+        """Three quantities read well in a row for one channel. Three
+        channels of three do not, so each column stacks its own."""
+        made = panel(qapp, SIGLENT)
+        assert all(v.vertical for v in made._channel_views.values())
+
+    def test_there_is_one_refresh_rate_for_the_supply(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made._rate_group.parent() is made.shared_bar
+        assert made._rate_group.isVisible()
+
+    def test_the_rate_control_is_not_duplicated(self, qapp):
+        """It is the panel's own, moved rather than rebuilt: a second
+        one could disagree with the first about the poll."""
+        from PyQt6.QtWidgets import QGroupBox
+
+        made = panel(qapp, SIGLENT)
+        rates = [g for g in made.findChildren(QGroupBox)
+                 if g.title() == "Refresh Rate"]
+        assert len(rates) == 1, rates
+
+
+class TestComingBackToOneChannel:
+    """The Control tab switches instruments in place, so the same panel
+    object serves the Siglent and then the B&K beside it."""
+
+    def test_the_shared_bands_stand_down(self, qapp):
+        made = panel(qapp, SIGLENT)
+        assert made.shared_bar.isVisible()
+
+        made.configure(SINGLE)
+        qapp.processEvents()
+
+        assert not made.shared_bar.isVisible()
+        assert not made.readout_area.isVisible()
+        assert not made.channel_area.isVisible()
+
+    def test_the_original_body_comes_back(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made.configure(SINGLE)
+        qapp.processEvents()
+        assert made._controls_group.isVisible()
+        assert made.views.isVisible()
+
+    def test_the_columns_are_let_go_of(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made.configure(SINGLE)
+        qapp.processEvents()
+        assert made._strips == {}
+        assert made._channel_views == {}
+
+    def test_and_back_again(self, qapp):
+        made = panel(qapp, SIGLENT)
+        made.configure(SINGLE)
+        qapp.processEvents()
+        made.configure(SIGLENT)
+        qapp.processEvents()
+        assert sorted(made._strips) == [1, 2, 3]
+        assert sorted(made._channel_views) == [1, 2]
+        assert made._rate_group.isVisible()

@@ -75,11 +75,28 @@ VOLTS_AMPS_WATTS = (
 class MeasurementViews(QWidget):
     """The Digital / Analog / Graph stack, its selector, and its tools."""
 
-    def __init__(self, channels: Iterable[Channel], parent=None):
+    def __init__(self, channels: Iterable[Channel], parent=None,
+                 vertical: bool = False, with_selector: bool = True,
+                 with_tools: bool = True):
+        """The stack, and optionally the furniture around it.
+
+        ``vertical`` stacks the readings and the gauges instead of
+        putting them in a row. One instrument's three quantities read
+        well side by side; three channels of three quantities do not,
+        and a column per channel is what the bench asked for.
+
+        ``with_selector`` and ``with_tools`` leave out the Display Mode
+        radios and the Min/Max and Auto Range buttons. Three faces with
+        three selectors would be three things to keep in step; the
+        panel keeps one of each and drives every face from it.
+        """
         super().__init__(parent)
         self.channels = tuple(channels)
         if not self.channels:
             raise ValueError("MeasurementViews needs at least one channel")
+        self.vertical = bool(vertical)
+        self._with_selector = bool(with_selector)
+        self._with_tools = bool(with_tools)
 
         self._extremes: Dict[str, list] = {
             c.key: [None, None] for c in self.channels
@@ -127,7 +144,10 @@ class MeasurementViews(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(self._build_mode_selector())
+        self.mode_group = None
+        self.digital_radio = self.analog_radio = self.graph_radio = None
+        if self._with_selector:
+            layout.addWidget(self._build_mode_selector())
 
         self.stack = QStackedWidget()
         # Kept by name as well as by index: a caller that wants to grab
@@ -143,7 +163,10 @@ class MeasurementViews(QWidget):
                                  QSizePolicy.Policy.Expanding)
         layout.addWidget(self.stack, 1)
 
-        layout.addWidget(self._build_tools())
+        self.minmax_button = self.minmax_label = None
+        self.minmax_reset_button = self.autorange_button = None
+        if self._with_tools:
+            layout.addWidget(self._build_tools())
 
     def _build_mode_selector(self) -> QGroupBox:
         group = QGroupBox("Display Mode")
@@ -178,7 +201,8 @@ class MeasurementViews(QWidget):
             # readings rather than a border cutting the panel into parts.
             "QWidget#digitalDivider { background-color: #3f4a3f; margin: 16px 0; }"
         )
-        readings = QHBoxLayout(panel)
+        readings = (QVBoxLayout(panel) if self.vertical
+                    else QHBoxLayout(panel))
         readings.setContentsMargins(12, 12, 12, 12)
         readings.setSpacing(12)
 
@@ -189,9 +213,14 @@ class MeasurementViews(QWidget):
                 # supplies, and is all but invisible on black.
                 divider = QWidget()
                 divider.setObjectName("digitalDivider")
-                divider.setFixedWidth(8)
-                divider.setSizePolicy(QSizePolicy.Policy.Fixed,
-                                      QSizePolicy.Policy.Expanding)
+                if self.vertical:
+                    divider.setFixedHeight(4)
+                    divider.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                          QSizePolicy.Policy.Fixed)
+                else:
+                    divider.setFixedWidth(8)
+                    divider.setSizePolicy(QSizePolicy.Policy.Fixed,
+                                          QSizePolicy.Policy.Expanding)
                 readings.addWidget(divider)
                 self.dividers.append(divider)
             readout = FittedReadout(
@@ -206,7 +235,8 @@ class MeasurementViews(QWidget):
         widget = QWidget()
         widget.setSizePolicy(QSizePolicy.Policy.Expanding,
                              QSizePolicy.Policy.Expanding)
-        row = QHBoxLayout(widget)
+        row = (QVBoxLayout(widget) if self.vertical
+               else QHBoxLayout(widget))
         row.setContentsMargins(0, 0, 0, 0)
         for channel in self.channels:
             gauge = AnalogGauge(channel.label, 0, channel.maximum, channel.unit)
@@ -356,7 +386,7 @@ class MeasurementViews(QWidget):
     # ------------------------------------------------------------------ #
 
     def _track_extremes(self):
-        if not self.minmax_button.isChecked():
+        if self.minmax_button is None or not self.minmax_button.isChecked():
             return
         for channel in self.channels:
             value = self._last[channel.key]
@@ -379,9 +409,11 @@ class MeasurementViews(QWidget):
         self._mark_gauges()
         first = self.channels[0]
         if self._extremes[first.key][0] is None:
-            self.minmax_label.setText(
-                "waiting for a reading..."
-                if self.minmax_button.isChecked() else "")
+            if self.minmax_label is not None:
+                tracking = (self.minmax_button is not None
+                            and self.minmax_button.isChecked())
+                self.minmax_label.setText(
+                    "waiting for a reading..." if tracking else "")
             return
         parts = []
         for channel in self.channels:
@@ -389,7 +421,8 @@ class MeasurementViews(QWidget):
             places = self._decimals[channel.key]
             parts.append(f"{channel.unit}  {low:.{places}f} / "
                          f"{high:.{places}f}")
-        self.minmax_label.setText("       ".join(parts))
+        if self.minmax_label is not None:
+            self.minmax_label.setText("       ".join(parts))
 
     def _mark_gauges(self):
         """Put the extremes on the meter faces, or take them off.
@@ -397,7 +430,8 @@ class MeasurementViews(QWidget):
         Cleared when tracking is off, so a stale pair cannot sit on the
         face looking current.
         """
-        tracking = self.minmax_button.isChecked()
+        tracking = (self.minmax_button is not None
+                    and self.minmax_button.isChecked())
         for channel in self.channels:
             gauge = self.gauges[channel.key]
             if tracking:
@@ -406,11 +440,13 @@ class MeasurementViews(QWidget):
                 gauge.set_markers(None, None)
 
     def _on_minmax_toggled(self, enabled: bool):
-        self.minmax_reset_button.setEnabled(enabled)
+        if self.minmax_reset_button is not None:
+            self.minmax_reset_button.setEnabled(enabled)
         if enabled:
             self.reset_extremes()
         else:
-            self.minmax_label.setText("")
+            if self.minmax_label is not None:
+                self.minmax_label.setText("")
             self._mark_gauges()
 
     # ------------------------------------------------------------------ #
@@ -422,7 +458,7 @@ class MeasurementViews(QWidget):
         if key not in self._full_scale:
             return
         self._full_scale[key] = float(maximum)
-        if not self.autorange_button.isChecked():
+        if self.autorange_button is None or not self.autorange_button.isChecked():
             self.gauges[key].max_value = float(maximum)
             self.axes[key].setRange(0, float(maximum))
             self.gauges[key].update()
@@ -442,7 +478,7 @@ class MeasurementViews(QWidget):
         self._apply_auto_range()
 
     def _apply_auto_range(self):
-        if not self.autorange_button.isChecked():
+        if self.autorange_button is None or not self.autorange_button.isChecked():
             return
         for channel in self.channels:
             top = nice_range(self._last[channel.key],
@@ -470,9 +506,41 @@ class MeasurementViews(QWidget):
     # Mode
     # ------------------------------------------------------------------ #
 
+    #: Display modes, in the order the stack holds them.
+    MODES = ("digital", "analog", "graph")
+
     def _on_mode_changed(self, index: int, checked: bool):
         if checked:
             self.stack.setCurrentIndex(index)
+
+    def set_mode(self, mode) -> None:
+        """Show one of the three faces.
+
+        Takes the name or the index, so a shared selector can drive
+        several of these without knowing how the stack is ordered.
+        """
+        if isinstance(mode, str):
+            try:
+                index = self.MODES.index(mode.strip().lower())
+            except ValueError:
+                raise ValueError(
+                    "Display mode must be one of %s" % ", ".join(self.MODES))
+        else:
+            index = int(mode)
+        if not 0 <= index < len(self.MODES):
+            raise ValueError("No display mode %r" % mode)
+        self.stack.setCurrentIndex(index)
+        # Keep this view's own radios in step when it has them, without
+        # bouncing the signal back through _on_mode_changed.
+        if self.mode_group is not None:
+            button = self.mode_group.button(index)
+            if button is not None and not button.isChecked():
+                button.blockSignals(True)
+                button.setChecked(True)
+                button.blockSignals(False)
+
+    def current_mode(self) -> str:
+        return self.MODES[self.stack.currentIndex()]
 
     def current_mode(self) -> str:
         return ("digital", "analog", "graph")[self.stack.currentIndex()]
