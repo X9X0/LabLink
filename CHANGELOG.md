@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.2] - 2026-09-28
+
+Bench-verified against the instruments on 192.168.91.191: a Rigol
+DL3021A load, a Siglent SPD3303X-E supply, B&K 1902B and 9205B
+supplies, and a Rigol DS1054Z.
+
+### Added
+- **Siglent support.** A driver for the SPD power supplies, verified
+  against an SPD3303X-E, and a registry that identifies Siglent's
+  catalogue. Siglent speaks two protocols under one badge -- the
+  supplies, loads and meters are conventional SCPI, the scopes and
+  generators use published short/long pairs (`BSWV` for `BASIC_WAVE`)
+  -- and the registry records which, so nothing is connected with a
+  driver that cannot talk to it. A model no entry names is still
+  placed by Siglent's own prefix scheme, and never reported as
+  drivable.
+- **Multi-channel supply panels.** A column per channel: its own
+  dials, output switch and CV/CC indicator, with one display-mode
+  selector, one refresh rate and one set of Min/Max and Auto Range
+  for the instrument. Channels can be hidden and the rest take the
+  width; remembered per instrument.
+- **Series, parallel and the timer** for the SPD, with an editor for
+  the five timing groups and an indicator showing the coupling the
+  supply reports rather than the button last pressed.
+- **Min/max is kept per instrument** and survives switching between
+  instruments, cleared only by Reset.
+
+### Fixed
+- **A DL3000 list needed a trigger and nothing sent one.** Selecting
+  `:FUNCtion:MODE LIST` arms a list; it does not start it. The guide
+  never connects the two. Also: stopping a running list did not stop
+  it, and left the load sinking at the fixed setpoint.
+- **Sixteen driver setters were reachable without an equipment lock**,
+  including the load's setpoints in CR and CP mode and its whole
+  transient generator. `requires_control` now treats any `set_*`
+  action as control by rule rather than by a list of remembered
+  names.
+- **Health monitoring stopped at the first instrument connected.**
+  Iterating the live equipment dict while awaiting meant every
+  instrument after the mutation went unchecked until the next
+  interval.
+- **Discovery could not place a Siglent**, offering it as "unknown"
+  and refusing to connect it; and a supply that connected then failed
+  to describe itself.
+- **The watts trace had no scale** in graph mode, on supplies and
+  loads alike.
+- A layout test measured this machine's font metrics and failed CI on
+  every run of the branch.
+
+### Notes
+- The SPD3303X-E's CH3 is a fixed rail: it can be switched and
+  nothing else, and the supply does not report its state, so the
+  panel shows what it was last told and says so.
+- Timer progress is estimated by the client. The instrument has no
+  remaining-time query.
+
+---
+
 ## [2.4.1] - 2026-09-15
 
 ### ✨ Added
