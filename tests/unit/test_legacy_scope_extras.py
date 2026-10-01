@@ -754,3 +754,66 @@ def test_an_unreadable_window_does_not_write_one():
 
     assert not any(w.startswith((":WAV:STAR", ":WAV:STOP"))
                    for w in inst.writes), inst.writes
+
+
+@pytest.mark.unit
+def test_a_refused_window_is_not_asked_for_again():
+    """An input the instrument rejects must not be re-sent every trace.
+
+    Each attempt makes a DS1000Z flash "Invalid Input!" and beep, so a
+    correction that cannot succeed turns into four beeps a second for
+    as long as the panel is open. A trace as long as the window allows
+    is short; short and beeping is worse. The driver asks once, finds
+    the window did not move, and stops asking.
+    """
+    class Stubborn(ScriptedScope):
+        """A scope that will not widen its window."""
+
+        def _set_window(self, start=None, stop=None):
+            # Accepts the write, keeps its own window. Which is what
+            # "Invalid Input!" looks like from this side: no error in
+            # the queue, nothing in the data, and the value unchanged.
+            return
+
+    inst = Stubborn()
+    inst.packet_ceiling = None
+    inst.start, inst.stop = 1, 400
+    inst.acquired_points = 1200
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    # First trace: one attempt, which is reasonable.
+    inst.writes.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+    first = [w for w in inst.writes if w.startswith((":WAV:STAR", ":WAV:STOP"))]
+    assert first == [":WAV:STOP 1200", ":WAV:STAR 1"], inst.writes
+
+    # Every trace after it: none at all.
+    for _ in range(4):
+        inst.writes.clear()
+        asyncio.run(scope.get_waveform_data(channel=1))
+        assert not [w for w in inst.writes
+                    if w.startswith((":WAV:STAR", ":WAV:STOP"))], (
+            "kept re-sending a write the instrument refuses: %s" % inst.writes)
+
+
+@pytest.mark.unit
+def test_giving_up_still_returns_the_trace():
+    """Short, but a reading rather than nothing."""
+    class Stubborn(ScriptedScope):
+        def _set_window(self, start=None, stop=None):
+            return
+
+    inst = Stubborn()
+    inst.packet_ceiling = None
+    inst.start, inst.stop = 1, 400
+    inst.acquired_points = 1200
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    data = asyncio.run(scope.get_waveform_data(channel=1))
+    assert data["num_samples"] == 400

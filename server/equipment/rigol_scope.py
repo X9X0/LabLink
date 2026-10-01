@@ -136,6 +136,32 @@ class LegacyScopeExtras:
         link = str(self.resource_string or "").upper().lstrip("/")
         return int(self.trace_block_points) if link.startswith("USB") else 0
 
+    async def _widen_window(self) -> bool:
+        """Open the read window to the full screen. Once.
+
+        Returns whether the window moved, so the caller knows whether
+        the preamble is worth re-reading.
+
+        If the instrument will not take it, stop asking. Repeating a
+        write the instrument refuses is its own fault, not a transient:
+        a DS1000Z flashes "Invalid Input!" and beeps on every one, and
+        nothing about the next attempt is more likely to succeed than
+        the last. A trace read through a window the scope will not
+        widen is short, and short is better than short *and* beeping
+        four times a second -- which is how this was reported.
+        """
+        await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
+        await self._write(":WAV:STAR 1")
+        if not await self._window_is_narrowed():
+            return True
+        self._window_widening_refused = True
+        logger.warning(
+            "%s would not widen its waveform window to %d points. Traces "
+            "will be as long as the window allows; not asking again, "
+            "because each attempt makes this instrument beep."
+            % (self.resource_string, self.WAVEFORM_POINTS))
+        return False
+
     async def _window_is_narrowed(self) -> bool:
         """Whether :WAV:STARt/:WAV:STOP have been left narrower than the
         screen.
@@ -161,6 +187,9 @@ class LegacyScopeExtras:
         Two queries, where being wrong costs two writes, an extra
         preamble read and a beep per trace.
         """
+        if getattr(self, "_window_widening_refused", False):
+            # Already asked, already refused. Asking again only beeps.
+            return False
         try:
             start = int(float((await self._query(":WAV:STAR?")).strip()))
             stop = int(float((await self._query(":WAV:STOP?")).strip()))
@@ -277,9 +306,8 @@ class LegacyScopeExtras:
             # window is actually narrow, rather than writing it before every
             # trace: each :WAV:STOP write makes the instrument beep and flash
             # "Stop point changed!", so in steady state we write none.
-            await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
-            await self._write(":WAV:STAR 1")
-            preamble = parse_preamble(await self._query(":WAV:PRE?"))
+            if await self._widen_window():
+                preamble = parse_preamble(await self._query(":WAV:PRE?"))
         if blocks:
             raw = await self._read_trace_in_blocks(int(preamble.get("points") or 0))
         else:
