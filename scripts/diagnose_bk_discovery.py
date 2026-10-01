@@ -100,7 +100,7 @@ def check_sysfs_ids(paths: list) -> dict:
     This is what LabLink's `usb_only` filter keys on. A port whose VID cannot
     be read is skipped by default, so a blank here explains a missing device.
     """
-    heading(2, "USB vendor/product IDs from sysfs")
+    heading(3, "USB vendor/product IDs from sysfs")
 
     if not paths:
         line(WARN, "No ports to inspect")
@@ -137,8 +137,77 @@ def check_sysfs_ids(paths: list) -> dict:
 # Layer 3: pyserial, and LabLink's port filter
 # ---------------------------------------------------------------------------
 
+def check_usb_nodes() -> None:
+    """Whether every USB device the kernel knows about has a node here.
+
+    They can disagree, and when they do nothing else in this report
+    will say so. /sys is mounted live, so sysfs lists an instrument
+    the moment it is plugged in; /dev/bus/usb can be a snapshot taken
+    when the container started, in which case the node pyusb has to
+    open does not exist and VISA never lists the instrument.
+
+    Seen on the bench with a B&K 9205B plugged in after a restart:
+
+        host      /dev/bus/usb/001/ : 004 005 010 014
+        container /dev/bus/usb/001/ : 001 002 003 004 005
+
+    The cause is a compose `devices:` entry, which Docker resolves
+    once. A bind mount tracks the directory and hotplug works.
+    """
+    heading(2, "USB device nodes against sysfs")
+
+    sysfs = sorted(glob.glob("/sys/bus/usb/devices/*/busnum"))
+    if not sysfs:
+        line(WARN, "No /sys/bus/usb/devices -- sysfs is not mounted here")
+        detail("Without it this check cannot run. LabLink's compose file")
+        detail("mounts /sys read-only for exactly this sort of lookup.")
+        return
+
+    missing, seen = [], 0
+    for busnum_path in sysfs:
+        device_dir = os.path.dirname(busnum_path)
+        try:
+            bus = int(Path(busnum_path).read_text(
+                encoding="utf-8").strip())
+            number = int(
+                (Path(device_dir) / "devnum").read_text(
+                    encoding="utf-8").strip())
+        except Exception:
+            continue
+        seen += 1
+        node = "/dev/bus/usb/%03d/%03d" % (bus, number)
+        if os.path.exists(node):
+            continue
+        name = device_dir.rsplit("/", 1)[-1]
+        try:
+            ids = "%s:%s" % (
+                (Path(device_dir) / "idVendor").read_text(
+                    encoding="utf-8").strip(),
+                (Path(device_dir) / "idProduct").read_text(
+                    encoding="utf-8").strip())
+        except Exception:
+            ids = "unknown"
+        missing.append((name, ids, node))
+
+    if not missing:
+        line(PASS, f"all {seen} USB device(s) have a node under /dev/bus/usb")
+        return
+
+    line(FAIL, f"{len(missing)} of {seen} USB device(s) have no device node")
+    for name, ids, node in missing:
+        detail(f"{name} ({ids}) -- {node} does not exist")
+    detail("The kernel has enumerated these and pyusb cannot open them, so")
+    detail("VISA will not list them and discovery will not show them.")
+    detail("In a container this is the /dev/bus/usb snapshot: a compose")
+    detail("`devices:` entry is resolved once at start, so anything")
+    detail("plugged in later never appears. Use a bind mount instead")
+    detail("(volumes: - /dev/bus/usb:/dev/bus/usb) with")
+    detail("device_cgroup_rules for the permission. Restarting the")
+    detail("container is the workaround until then.")
+
+
 def check_pyserial(all_ports: bool) -> list:
-    heading(3, "pyserial enumeration and LabLink's port filter")
+    heading(4, "pyserial enumeration and LabLink's port filter")
 
     try:
         from serial.tools import list_ports
@@ -178,7 +247,7 @@ def check_pyserial(all_ports: bool) -> list:
 
 def check_probe(ports: list, timeout: float) -> None:
     """Open each port and ask who is there, at each candidate baud rate."""
-    heading(4, "Serial probe (*IDN? then GMAX, at each baud rate)")
+    heading(5, "Serial probe (*IDN? then GMAX, at each baud rate)")
 
     if not ports:
         line(WARN, "No ports to probe")
@@ -230,7 +299,7 @@ def check_probe(ports: list, timeout: float) -> None:
 
 def check_visa() -> None:
     """What VISA sees. USB-CDC instruments will not be here — that is expected."""
-    heading(5, "VISA resources")
+    heading(6, "VISA resources")
 
     try:
         import pyvisa
@@ -271,7 +340,7 @@ def check_visa() -> None:
 
 async def check_full_scan(all_ports: bool, probe: bool) -> None:
     """The whole pipeline, exactly as the server runs it."""
-    heading(6, "Full discovery scan (what the client would show)")
+    heading(7, "Full discovery scan (what the client would show)")
 
     try:
         from discovery.manager import DiscoveryManager
@@ -328,10 +397,11 @@ def main() -> int:
         print("running inside a container")
 
     paths = check_os_devices()
+    check_usb_nodes()
     check_sysfs_ids(paths)
     ports = check_pyserial(args.all_ports)
     if args.no_probe:
-        heading(4, "Serial probe — SKIPPED (--no-probe)")
+        heading(5, "Serial probe — SKIPPED (--no-probe)")
     else:
         check_probe(ports, args.timeout)
     check_visa()

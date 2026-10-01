@@ -614,7 +614,93 @@ screen while the main window stays on whatever they are driving.
 
 ---
 
-#### 6. Report an Unrecognised Instrument 💡
+#### 6. Supply List Mode, Internal and External 💡
+**Priority:** ⭐⭐⭐
+**Target:** next
+**Effort:** 1-2 weeks
+**Related:** `docs/SIGLENT.md`, the DL3000 list in `rigol_electronic_load.py`
+
+A sequence of voltage/current/duration steps for a power supply, as the
+load already has. Two tabs, because there are two genuinely different
+things and the instrument decides which are available -- B&K's own
+software is laid out this way for the same reason.
+
+**Internal** -- the instrument keeps the steps and times them. Survives
+the link going down, and the timing is the instrument's. Offered only
+where the hardware has it.
+
+**External** -- LabLink keeps the steps and times them, driving
+setpoints on a clock. The only option for a supply with no list of its
+own, and useful even on one that has it: longer sequences than the
+instrument can store, steps computed as they go, logging tied to each
+step. Its accuracy depends on the host and the link, and it must say
+so rather than look like instrument timing.
+
+**What the bench instruments actually offer**
+
+| Supply | Internal list | Notes |
+|---|---|---|
+| B&K 9205B / 9206B (9200B) | yes | 10 files x 150 steps in non-volatile memory, `LIST:REP` 1-65535 |
+| Siglent SPD3303X-E | partly | 5 timing groups per channel, whole seconds only -- already implemented as the timer |
+| B&K 1902B (1900B) | **no** | fixed-width protocol, `PROM` holds three V/I pairs with no time at all |
+| B&K 9206B, 9130B, 1685B | to check | |
+
+So the 1902B gets the External tab only, and that is not a limitation
+of LabLink: B&K's own software calls its 1900B feature "External Timed
+Program" and the manual says plainly that "the PC counts the step
+time".
+
+**The 9200B command set** (from the 9200 Series user manual, section
+5.9 -- there is no separate programming manual)
+
+```
+[SOURce:]LIST:FUNCtion <0|1>     enable/disable list mode
+LIST:VOLTage <step>,<volts>      LIST:VOLT? <step>
+LIST:CURRent <step>,<amps>       LIST:CURR? <step>
+LIST:TIMEr   <step>,<seconds>    LIST:TIME? <step>
+LIST:REP     <1-65535>           repeat count
+LIST:SAVE    <0-9>               save to one of ten files
+LIST:LOAD    <0-9>               recall one
+TRIGger:SOURce MANUAL|BUS        MANUAL is the default
+TRIGger[:IMMediate]              same as *TRG
+```
+
+**A list needs a trigger, and the default source is the front panel.**
+The same trap the DL3000 sprang, except this manual says so: "The
+trigger function is used to initiate the start of running a program
+sequence (list)." So `TRIG:SOUR BUS` before `*TRG`, and the source set
+before the mode is armed.
+
+**To settle on the bench before building** (the DL3000 and the SPD both
+differed from their manuals):
+- The step time resolution and minimum. The command reference says only
+  "MIN to MAX, unit S"; the front panel offers a per-list unit of Sec
+  or Min; B&K's software shows widths of 0.2, 1.0 and 4.0 with a 0.1
+  default; and the separate output-timer feature is specified as
+  0.1-99999.9 s. None of that is the list's own specification.
+- Whether `LIST:VOLT? 1` really takes the step as a parameter. The
+  syntax block shows a bare `LIST:VOLTage?` and the example shows
+  `LIST:VOLT? 1`; the examples look right and the syntax blocks look
+  copy-pasted.
+- What a trigger does with no list loaded, and what `LIST:FUNC 0` does
+  to a running one.
+- Whether the working list is separate from the ten saved files, so an
+  editor can avoid overwriting somebody's stored sequences.
+
+**Design notes**
+- The timer resolution pattern from the SPD applies: the driver reports
+  what it will accept (`timer_seconds_decimals`, `min_timer_seconds`)
+  through capabilities, and the editor ranges itself from the
+  instrument rather than hard-coding one family's limits.
+- The existing list editor (`client/ui/instruments/list_dialog.py`,
+  built for the DL3000) already does steps, cycles, JSON import and
+  export. Worth reusing rather than writing a third editor.
+- An External run belongs on the server, not in the client: a sequence
+  that stops when somebody closes a window is not a test.
+
+---
+
+#### 7. Report an Unrecognised Instrument 💡
 **Priority:** ⭐⭐
 **Target:** TBD
 **Effort:** 3-5 days
@@ -665,7 +751,7 @@ and the instrument stays unsupported.
 
 ### Lower Priority (v1.4.0+) ⭐
 
-#### 7. Advanced Analytics & ML 💡
+#### 8. Advanced Analytics & ML 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 2-3 weeks
@@ -684,7 +770,7 @@ and the instrument stays unsupported.
 
 ---
 
-#### 8. Multi-Server Aggregation 💡
+#### 9. Multi-Server Aggregation 💡
 **Priority:** ⭐
 **Target:** v1.4.0
 **Effort:** 1-2 weeks
@@ -703,7 +789,7 @@ and the instrument stays unsupported.
 
 ---
 
-#### 9. Web Dashboard Enhancements 💡
+#### 10. Web Dashboard Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 1-2 weeks
@@ -723,7 +809,7 @@ and the instrument stays unsupported.
 
 ---
 
-#### 10. Equipment Discovery Enhancements 💡
+#### 11. Equipment Discovery Enhancements 💡
 **Priority:** ⭐
 **Target:** v1.5.0
 **Effort:** 3-5 days

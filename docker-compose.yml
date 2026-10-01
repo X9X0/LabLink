@@ -21,6 +21,12 @@ services:
       # Configuration (optional - mount your own config)
       - ./config:/app/config:ro
 
+      # USB device access for equipment. A bind mount rather than a
+      # `devices:` entry, so an instrument plugged in after the container
+      # started is visible without restarting it -- see the note by
+      # device_cgroup_rules below.
+      - /dev/bus/usb:/dev/bus/usb
+
       # USB device identification via sysfs (needed for serial device VID:PID extraction)
       - /sys:/sys:ro
 
@@ -69,9 +75,27 @@ services:
       - LABLINK_SAFE_STATE_ON_DISCONNECT=true
       - LABLINK_ENABLE_EQUIPMENT_LOCKS=true
 
-    devices:
-      # USB device access for equipment
-      - /dev/bus/usb:/dev/bus/usb
+    # Not a `devices:` entry. Docker resolves that at container start and
+    # the container then keeps that snapshot of /dev/bus/usb for its whole
+    # life: an instrument plugged in afterwards enumerates on the host and
+    # does not exist inside the container, so VISA never lists it and
+    # discovery cannot find it. Seen on the bench with a B&K 9205B --
+    #
+    #   host      /dev/bus/usb/001/ : 004 005 010 014
+    #   container /dev/bus/usb/001/ : 001 002 003 004 005
+    #
+    # 010 and 014 had been plugged in after the container started; 001 to
+    # 003 had been unplugged and were still listed inside. A bind mount
+    # tracks the host directory live, so hotplug works without a restart.
+    #
+    # device_cgroup_rules carries the permission that `devices:` used to
+    # grant, so this still works with LABLINK_PRIVILEGED=false. Major 189
+    # is usb_device; 166 is ACM and 188 is usb-serial, for the USB-CDC
+    # instruments that appear as /dev/ttyUSB* or /dev/ttyACM*.
+    device_cgroup_rules:
+      - "c 189:* rmw"
+      - "c 188:* rmw"
+      - "c 166:* rmw"
 
     # Privileged mode for USB/Serial access
     privileged: ${LABLINK_PRIVILEGED:-true}

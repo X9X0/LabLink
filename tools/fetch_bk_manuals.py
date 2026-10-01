@@ -29,6 +29,17 @@ FAMILIES = [
     "BA6010", "MDL", "MR", "RFM3000",
 ]
 
+#: Families whose command set is published in the *user* manual rather
+#: than a programming manual, with the URL that actually serves it.
+#: The 9200B's LIST subsystem is in section 5.9 of this one, and every
+#: programming-manual pattern below 404s for it -- which is why it was
+#: missing while the rest of the line downloaded.
+USER_MANUALS = [
+    ("9200_Series_manual.pdf",
+     "https://bkpmedia.s3.amazonaws.com/downloads/manuals/en-us/"
+     "9200_Series_manual.pdf"),
+]
+
 PATTERNS = [
     "{f}_Series_programming_manual.pdf",
     "{f}_programming_manual.pdf",
@@ -93,6 +104,23 @@ def main():
                 break
         if not found:
             missing.append(family)
+
+    # The families that publish their command set in the user manual
+    # rather than a programming manual. The 9200B's LIST subsystem is
+    # in section 5.9 of its user manual, and every pattern above 404s
+    # for it -- which is why it was the one family missing while the
+    # rest of the line downloaded.
+    for name, url in USER_MANUALS:
+        dest = os.path.join(OUT, name)
+        if os.path.exists(dest):
+            print(f"  have  {'user':<8} {name}")
+            continue
+        n, err = fetch(url, dest)
+        if n:
+            print(f"  got   {'user':<8} {name}  ({n // 1024} KB)")
+            got.append(("user", name, n))
+        else:
+            print(f"  bad   {'user':<8} {name}: {err}")
 
     print(f"\ndownloaded {len(got)}; no programming manual found for "
           f"{len(missing)}:")
