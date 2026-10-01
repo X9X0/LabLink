@@ -625,10 +625,41 @@ class TestTrackingAndTheTimer:
 
     @pytest.mark.asyncio
     async def test_a_timing_group_carries_volts_amps_and_seconds(self):
-        psu = supply(answers={"STATus": "0x4"})
+        psu = supply(answers={"STATus": "0x4",
+                              "TIMEr:SET?": "3.00,0.50,2"})
         await psu.set_timer_step(1, 2, voltage=3.0, current=0.5, seconds=2)
-        assert any(c.startswith("TIMEr:SET CH1,2,3.000,0.500,2")
-                   for c in sent(psu)), sent(psu)
+        assert "TIMEr:SET CH1,2,3.00,0.50,2" in sent(psu), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_the_time_is_whole_seconds(self):
+        """The instrument keeps an integer and truncates -- 0.9 stored
+        as 0, 1.6 as 1, 2.5 as 2 -- so the driver truncates too and a
+        caller is told what it will actually get rather than what it
+        asked for."""
+        psu = supply(answers={"STATus": "0x4",
+                              "TIMEr:SET?": "1.00,0.10,1"})
+        await psu.set_timer_step(1, 1, voltage=1.0, current=0.1, seconds=1.6)
+        assert "TIMEr:SET CH1,1,1.00,0.10,1" in sent(psu), sent(psu)
+
+    @pytest.mark.asyncio
+    async def test_the_error_queue_is_not_believed_for_this_command(self):
+        """TIMEr:SET faults with -103 "Invalid separator" every time it
+        is given, in every spelling including the guide's own example,
+        and obeys every time. A driver that believed the queue reported
+        every timing group as refused while every one landed."""
+        psu = supply(answers={"STATus": "0x4",
+                              "TIMEr:SET?": "1.00,0.10,2",
+                              "ERRor": "-103,Invalid separator,TIMEr:SET"})
+        await psu.set_timer_step(1, 1, voltage=1.0, current=0.1, seconds=2)
+
+    @pytest.mark.asyncio
+    async def test_a_group_that_did_not_take_is_reported(self):
+        """The read-back is the check the error queue could not be."""
+        psu = supply(answers={"STATus": "0x4",
+                              "TIMEr:SET?": "9.00,9.00,99"})
+        with pytest.raises(CommandRejected):
+            await psu.set_timer_step(1, 1, voltage=1.0, current=0.1,
+                                     seconds=2)
 
     @pytest.mark.asyncio
     async def test_a_group_reads_back(self):

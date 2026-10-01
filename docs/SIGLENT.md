@@ -173,6 +173,53 @@ Two conditions the instrument does not enforce:
   it, and it resumes when the output comes back on. The timer switches
   itself off when the time reaches zero.
 
+**The time is whole seconds, and the guide does not say so.** It gives
+only the maximum -- "the longest time of each group is 10000s" -- with
+no minimum and no resolution. The instrument keeps an integer and
+truncates:
+
+```
+asked  stored
+0.9    0
+1.0    1
+1.6    1
+2.5    2
+9999   9999
+10000  10000
+```
+
+So a second is the resolution and **one second is the shortest
+interval a group can actually hold for**. A group set below that holds
+for no time, which is a legal way to skip one but not a short one.
+
+This is the SPD's limit, not a property of timers. It lives on the
+driver class as `timer_seconds_decimals` / `min_timer_seconds` and is
+reported through `get_status` capabilities, so the editor ranges
+itself from the instrument. B&K's timing profiles are finer, and an
+editor that hard-coded this family's resolution would refuse to offer
+what those support.
+
+**`TIMEr:SET` faults every time and obeys every time.** Every form of
+the command queues `-103,Invalid separator`, including the one the
+guide prints as its own example, and every form takes effect:
+
+```
+TIMEr:SET CH1,1,1.000,0.100,3  -> -103, stored 1.00,0.10,3
+TIMEr:SET CH1,1,2,0.2,4        -> -103, stored 2.00,0.20,4
+TIMER:SET CH1,1,3,0.3,6        -> -103, stored 3.00,0.30,6
+TIMEr:SET CH1,1, 4, 0.4, 8     -> -103, stored 4.00,0.40,8
+```
+
+The error queue therefore cannot say whether a timing group was
+accepted. A driver that believes it reports every group as refused
+while every group lands. `set_timer_step` writes without the error
+check and reads the group back instead, which is a better test than
+the queue would have been.
+
+`TIMEr:SET?` replies with a trailing comma -- `0.00,0.00,5,` -- and
+with the voltage and current to two decimals and the time as a bare
+integer, which is the format hinting at the truncation above.
+
 There is **no remaining-time query** — the subsystem is `TIMEr:SET`,
 `TIMEr:SET?` and `TIMEr`, and none of them reports progress. Bits 6 and
 7 of the status word say whether a channel's timer is running, and that

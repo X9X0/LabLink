@@ -54,6 +54,19 @@ from .siglent_registry import MANUFACTURER, resolve_idn, resolve_model
 logger = logging.getLogger(__name__)
 
 
+def _quantise(seconds: float, decimals: int) -> float:
+    """A time the instrument will keep unchanged.
+
+    Truncated rather than rounded, because that is what the SPD does
+    with what it is given: asking for 1.6 s and being shown 2 s would
+    be this driver inventing a value the instrument never held.
+    """
+    if decimals <= 0:
+        return float(int(seconds))
+    factor = 10 ** decimals
+    return int(float(seconds) * factor) / factor
+
+
 #: Channels that accept a setpoint. CH3 is a fixed rail: it appears in
 #: OUTPut and nowhere else.
 PROGRAMMABLE_CHANNELS = (1, 2)
@@ -69,6 +82,28 @@ TIMER_GROUPS = (1, 2, 3, 4, 5)
 
 #: Longest a single timing group can hold, per the guide.
 MAX_TIMER_SECONDS = 10000.0
+
+#: Fallbacks. The real values are class attributes on SiglentSPD, so a
+#: model with a finer timer can say so without every caller assuming
+#: this family's limits -- B&K's timing profiles are finer than this.
+MIN_TIMER_SECONDS = 1.0
+TIMER_SECONDS_DECIMALS = 0
+
+#: The error TIMEr:SET always queues, however it is spelled.
+#:
+#: Every form of the command faults with -103, including the one the
+#: guide prints as its example, and every form is obeyed:
+#:
+#:   TIMEr:SET CH1,1,1.000,0.100,3  -> -103, stored 1.00,0.10,3
+#:   TIMEr:SET CH1,1,2,0.2,4        -> -103, stored 2.00,0.20,4
+#:   TIMER:SET CH1,1,3,0.3,6        -> -103, stored 3.00,0.30,6
+#:   TIMEr:SET CH1,1, 4, 0.4, 8     -> -103, stored 4.00,0.40,8
+#:
+#: So the error queue cannot say whether a timing group was accepted,
+#: and a driver that believes it will report every group as refused
+#: while every group lands. set_timer_step reads the group back
+#: instead, which is a better check than the queue would have been.
+TIMER_SET_ALWAYS_FAULTS = -103
 TRACK_BY_NAME = {name: value for value, name in TRACK_MODES.items()}
 
 
@@ -102,6 +137,19 @@ class SiglentSPD(BaseEquipment):
     #: Whether the family has the fixed third rail at all. The single
     #: channel SPD1000X does not.
     has_fixed_rail = True
+
+    #: What the timer will accept, as the instrument rather than the
+    #: subsystem defines it. Verified on an SPD3303X-E: the time is
+    #: kept as an integer and truncated -- 0.9 stored as 0, 1.6 as 1,
+    #: 2.5 as 2 -- so a second is the resolution and one second is the
+    #: shortest interval a group can actually hold for.
+    #:
+    #: On the class so a model with a finer timer can override it, and
+    #: reported through get_status capabilities so the editor ranges
+    #: itself from the instrument instead of assuming this family.
+    timer_seconds_decimals = 0
+    min_timer_seconds = 1.0
+    max_timer_seconds = MAX_TIMER_SECONDS
 
     def __init__(self, resource_manager, resource_string: str,
                  model: Optional[str] = None):
@@ -266,6 +314,11 @@ class SiglentSPD(BaseEquipment):
             "max_current": self.max_current,
             "has_fixed_rail": self.has_fixed_rail,
             "tracking_modes": sorted(TRACK_BY_NAME),
+            # So the timer editor ranges itself from the instrument.
+            "timer_groups": list(TIMER_GROUPS),
+            "timer_seconds_decimals": self.timer_seconds_decimals,
+            "min_timer_seconds": self.min_timer_seconds,
+            "max_timer_seconds": self.max_timer_seconds,
         }
 
     # ------------------------------------------------------------------ #
@@ -600,6 +653,14 @@ class SiglentSPD(BaseEquipment):
         Each group is a voltage, a current and how long to hold them,
         and the five run one after another -- the guide calls it
         consecutive output. Longest per group is 10000 s.
+
+        The time is whole seconds. The guide gives only the maximum,
+        but the instrument keeps an integer and truncates: asked for
+        0.9 it stores 0, for 1.6 it stores 1, for 2.5 it stores 2. So
+        a second is the resolution, and the shortest interval a group
+        can actually hold for is one second -- anything less is no
+        time at all, which is a legal way to skip a group but not a
+        short one.
         """
         n = self._check_channel(channel)
         number = self._check_timer_group(group)
@@ -613,13 +674,45 @@ class SiglentSPD(BaseEquipment):
             raise SetpointRefused(
                 "%.3f A is outside the %s range of 0 to %g A"
                 % (current, self.model, self.max_current))
-        if seconds < 0 or seconds > MAX_TIMER_SECONDS:
+        if seconds < 0 or seconds > self.max_timer_seconds:
             raise SetpointRefused(
                 "A timer group holds for 0 to %g s; %g was asked for"
-                % (MAX_TIMER_SECONDS, seconds))
+                % (self.max_timer_seconds, seconds))
+        # To the resolution the instrument keeps, truncating as it
+        # does, so the value read back matches the value asked for and
+        # a caller is told what it will actually get.
+        held = _quantise(seconds, self.timer_seconds_decimals)
         await self._refuse_unless_independent("timer")
-        await self._command("TIMEr:SET CH%d,%d,%.3f,%.3f,%g"
-                            % (n, number, voltage, current, seconds))
+
+        # Written without the error check: TIMEr:SET faults with -103
+        # every time and obeys every time, so the queue cannot answer
+        # whether this worked. See TIMER_SET_ALWAYS_FAULTS.
+        await self._write(
+            "TIMEr:SET CH%d,%d,%.2f,%.2f,%.*f"
+            % (n, number, voltage, current,
+               self.timer_seconds_decimals, held))
+        await self._drain_errors()
+
+        # Read it back, which is the real check and the one the queue
+        # could not give.
+        try:
+            stored = await self.get_timer_step(n, number)
+        except Exception as e:
+            logger.debug("%s: could not confirm timer group %d: %s"
+                         % (self.resource_string, number, e))
+            return
+        wrong = [
+            "%s is %s, asked for %s" % (name, stored.get(name), wanted)
+            for name, wanted in (("voltage", round(voltage, 2)),
+                                 ("current", round(current, 2)),
+                                 ("seconds", float(held)))
+            if stored.get(name) is None
+            or abs(stored[name] - wanted) > 0.011
+        ]
+        if wrong:
+            raise CommandRejected(
+                "%s group %d on CH%d did not take: %s"
+                % (self.model, number, n, "; ".join(wrong)))
 
     async def get_timer_step(self, channel: Union[int, str],
                              group: Union[int, str]) -> Dict[str, Any]:

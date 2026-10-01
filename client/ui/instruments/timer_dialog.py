@@ -32,22 +32,40 @@ from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QDoubleSpinBox,
 
 logger = logging.getLogger(__name__)
 
-#: The groups a channel holds. Fixed by the instrument: five, always.
+#: Defaults, for a caller that does not say. The instrument's own
+#: limits arrive through the constructor, because they belong to the
+#: instrument and not to this editor -- the SPD keeps whole seconds,
+#: and B&K's timing profiles are finer.
 GROUPS = (1, 2, 3, 4, 5)
-
-#: Longest a single group can hold, per the guide.
 MAX_SECONDS = 10000.0
+MIN_SECONDS = 1.0
+SECONDS_DECIMALS = 0
 
 
 class TimerDialog(QDialog):
     """Edit one channel's five timing groups."""
 
     def __init__(self, channel: int, max_voltage: float = 32.0,
-                 max_current: float = 3.2, parent=None):
+                 max_current: float = 3.2, parent=None,
+                 groups=GROUPS, seconds_decimals: int = SECONDS_DECIMALS,
+                 min_seconds: float = MIN_SECONDS,
+                 max_seconds: float = MAX_SECONDS):
+        """The editor for one channel's timing groups.
+
+        How many groups there are, and how finely their times can be
+        set, come from the instrument. The SPD keeps whole seconds and
+        truncates; another supply's timer may be finer, and an editor
+        that hard-coded this family's limits would refuse to offer
+        what that one supports.
+        """
         super().__init__(parent)
         self.channel = channel
         self._max_voltage = max_voltage
         self._max_current = max_current
+        self.groups = tuple(groups)
+        self.seconds_decimals = max(0, int(seconds_decimals))
+        self.min_seconds = float(min_seconds)
+        self.max_seconds = float(max_seconds)
         self.setWindowTitle("CH%d timer" % channel)
         # Not modal, for the same reason the list editor is not: the
         # operator wants to watch the readings while setting this up.
@@ -62,20 +80,21 @@ class TimerDialog(QDialog):
         layout = QVBoxLayout(self)
 
         blurb = QLabel(
-            "Five groups, run one after another. Each holds its voltage "
-            "and current for its time, and the timer switches itself off "
-            "when the last one finishes.\n\n"
+            "%d groups, run one after another. Each holds its voltage "
+            "and current for its time, and the timer switches itself "
+            "off when the last one finishes.\n\n%s"
             "The timer only runs in independent mode. Switching the "
             "output off pauses the countdown rather than ending it."
+            % (len(self.groups), self._time_note())
         )
         blurb.setWordWrap(True)
         layout.addWidget(blurb)
 
-        self.table = QTableWidget(len(GROUPS), 3)
+        self.table = QTableWidget(len(self.groups), 3)
         self.table.setHorizontalHeaderLabels(
             ["Voltage (V)", "Current (A)", "Time (s)"])
         self.table.setVerticalHeaderLabels(
-            ["Group %d" % g for g in GROUPS])
+            ["Group %d" % g for g in self.groups])
         # Row height from the widget that has to fit in it, not a
         # number: it differs by theme and by display scaling, and a row
         # shorter than its contents clips them with no other sign.
@@ -84,15 +103,21 @@ class TimerDialog(QDialog):
         for column in range(3):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
 
-        for row, _group in enumerate(GROUPS):
+        for row, _group in enumerate(self.groups):
             self.table.setCellWidget(
                 row, 0, self._spin(0.0, self._max_voltage, 3, 0.1))
             self.table.setCellWidget(
                 row, 1, self._spin(0.0, self._max_current, 3, 0.1))
+            # To the resolution the instrument keeps. A box offering
+            # tenths to a supply that stores whole seconds promises
+            # something the hardware does not have.
+            step = (1.0 if self.seconds_decimals == 0
+                    else 10 ** -self.seconds_decimals)
             self.table.setCellWidget(
-                row, 2, self._spin(0.0, MAX_SECONDS, 1, 1.0))
+                row, 2, self._spin(0.0, self.max_seconds,
+                                   self.seconds_decimals, step))
             self.table.setRowHeight(row, self._row_height())
-        for row in range(len(GROUPS)):
+        for row in range(len(self.groups)):
             for column in range(3):
                 self.table.cellWidget(row, column).valueChanged.connect(
                     self._show_total)
@@ -120,6 +145,19 @@ class TimerDialog(QDialog):
 
         self._show_total()
 
+    def _time_note(self) -> str:
+        """What this instrument will do with a time, if anything odd.
+
+        Silent when the editor can offer what the operator types. The
+        SPD cannot -- it keeps whole seconds -- and somebody typing
+        0.5 deserves to know why it will not hold.
+        """
+        if self.seconds_decimals > 0:
+            return ""
+        return ("Times are whole seconds -- this supply keeps an integer "
+                "and truncates, so a group set to less than %g s holds "
+                "for no time and is skipped.\n\n" % self.min_seconds)
+
     @staticmethod
     def _row_height() -> int:
         """Tall enough for a spin box on this platform, with room."""
@@ -142,7 +180,7 @@ class TimerDialog(QDialog):
     def steps(self) -> List[Dict[str, Any]]:
         """The five groups as the driver wants them."""
         out = []
-        for row, group in enumerate(GROUPS):
+        for row, group in enumerate(self.groups):
             out.append({
                 "group": group,
                 "voltage": self.table.cellWidget(row, 0).value(),
@@ -165,7 +203,7 @@ class TimerDialog(QDialog):
             if isinstance(entry, dict) and entry.get("group") is not None:
                 by_group[int(entry["group"])] = entry
 
-        for row, group in enumerate(GROUPS):
+        for row, group in enumerate(self.groups):
             entry = by_group.get(group) or {}
             for column, key in enumerate(("voltage", "current", "seconds")):
                 box = self.table.cellWidget(row, column)
@@ -190,7 +228,9 @@ class TimerDialog(QDialog):
         """How long the whole sequence runs, which is the number an
         operator is actually deciding."""
         total = sum(step["seconds"] for step in self.steps())
-        used = [s for s in self.steps() if s["seconds"] > 0]
+        # A group under a second holds for no time, so it is not one of
+        # the groups that will run.
+        used = [s for s in self.steps() if s["seconds"] >= self.min_seconds]
         if not used:
             self.total_label.setText(
                 "No group holds for any time, so the timer would finish "

@@ -591,13 +591,21 @@ class PowerSupplyPanel(InstrumentPanel):
             existing.activateWindow()
             return
 
+        # The timer's shape is the instrument's, not this editor's: the
+        # SPD keeps whole seconds, and a supply with a finer timer
+        # should be offered at its own resolution.
         dialog = TimerDialog(
             channel,
             max_voltage=self.capabilities.get("max_voltage",
                                               self.instrument_max_voltage),
             max_current=self.capabilities.get("max_current",
                                               self.instrument_max_current),
-            parent=self)
+            parent=self,
+            groups=self.capabilities.get("timer_groups") or (1, 2, 3, 4, 5),
+            seconds_decimals=self.capabilities.get(
+                "timer_seconds_decimals", 0),
+            min_seconds=self.capabilities.get("min_timer_seconds", 1.0),
+            max_seconds=self.capabilities.get("max_timer_seconds", 10000.0))
         dialog.accepted.connect(
             lambda n=channel: self._timer_steps_requested("send", n))
         dialog.reread_button.clicked.connect(
