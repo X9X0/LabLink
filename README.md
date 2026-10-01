@@ -7,7 +7,7 @@
 ![Coverage](https://img.shields.io/badge/coverage-52--54%25-green.svg)
 ![Security](https://img.shields.io/badge/security-hardened-brightgreen.svg)
 
-A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol and BK Precision scopes, power supplies, and loads).
+A modular client-server application for remote control and data acquisition from laboratory equipment (Rigol, Siglent and BK Precision scopes, power supplies, and loads).
 
 ## Overview
 
