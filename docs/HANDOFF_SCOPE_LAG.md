@@ -198,6 +198,29 @@ beeped twice a second. The operator's eyes found it in one message. Recorded
 here because the same blindness will recur: **this instrument reports some
 conditions only on its own screen.**
 
+**It came back, through the condition rather than the write (2026-10-01).**
+The LAN path corrects a stale window only when the window is wrong, and
+the test for "wrong" compared the preamble's points field against
+`WAVEFORM_POINTS`. Those are not the same question. The points field is
+how many samples the current acquisition holds, and it varies with the
+timebase: on the bench at 200 ms/div it read 806 and then 554 while the
+window was full.
+
+    :WAV:STAR?  1
+    :WAV:STOP?  1200
+    :WAV:POIN?  1200
+    preamble    0,0,806,...   then  0,0,554,...
+
+So the test was always true, the correction ran on every trace, and the
+scope beeped twice a second again -- with two writes and an extra
+preamble read per trace, which is why the operator also noticed the
+readings slowing. `_window_is_narrowed` now asks `:WAV:STAR?` and
+`:WAV:STOP?`, which is the question. The fake scope in
+`tests/unit/test_legacy_scope_extras.py` had the same wrong idea, with
+a comment asserting that points reports the window "exactly as the
+instrument does" -- which is why no test caught it. It models the two
+separately now.
+
 **LAN removes the whole problem class.** Measured with USB unplugged:
 
 | | USB (libusb) | LAN (VXI-11) |

@@ -136,6 +136,44 @@ class LegacyScopeExtras:
         link = str(self.resource_string or "").upper().lstrip("/")
         return int(self.trace_block_points) if link.startswith("USB") else 0
 
+    async def _window_is_narrowed(self) -> bool:
+        """Whether :WAV:STARt/:WAV:STOP have been left narrower than the
+        screen.
+
+        Ask about the window, not about the sample count. This used to
+        compare the preamble's points field against WAVEFORM_POINTS,
+        which looks like the same question and is not: that field is how
+        many samples the current acquisition actually has, and it varies
+        with the timebase and the memory depth. On the bench at
+        200 ms/div it read 806 and then 554 while the window was full --
+
+            :WAV:STAR?  1
+            :WAV:STOP?  1200
+            :WAV:POIN?  1200
+            preamble    0,0,806,...   then  0,0,554,...
+
+        -- so the test was always true, the correction ran on every
+        trace, and every :WAV:STOP write made the scope beep and flash
+        "Stop point changed!" on its own screen. That is the beeping
+        this file's history says was fixed; it came back through the
+        condition rather than the write.
+
+        Two queries, where being wrong costs two writes, an extra
+        preamble read and a beep per trace.
+        """
+        try:
+            start = int(float((await self._query(":WAV:STAR?")).strip()))
+            stop = int(float((await self._query(":WAV:STOP?")).strip()))
+        except Exception as e:
+            # Not being able to ask is not a reason to write the window
+            # on every trace. A narrowed window truncates a trace; a
+            # beep every 500 ms is the thing the operator actually
+            # notices.
+            logger.debug("%s: could not read the waveform window: %s"
+                         % (self.resource_string, e))
+            return False
+        return start > 1 or stop < self.WAVEFORM_POINTS
+
     async def _read_trace_in_blocks(self, total: int) -> bytes:
         """Read ``total`` samples as several windowed :WAV:DATA? replies.
 
@@ -232,13 +270,13 @@ class LegacyScopeExtras:
             await self._write(":WAV:MODE NORM")
             await self._write(":WAV:FORM BYTE")
             preamble = parse_preamble(await self._query(":WAV:PRE?"))
-        if not blocks and int(preamble.get("points") or 0) < self.WAVEFORM_POINTS:
+        if not blocks and await self._window_is_narrowed():
             # A window left from another session -- a blocked read over USB, a
             # previous tool, the operator -- survives a mode change and would
             # silently hand back a fraction of the trace. Correct it when the
-            # preamble shows it is wrong, rather than writing the window before
-            # every trace: each :WAV:STOP write makes the instrument beep and
-            # flash "Stop point changed!", so in steady state we write none.
+            # window is actually narrow, rather than writing it before every
+            # trace: each :WAV:STOP write makes the instrument beep and flash
+            # "Stop point changed!", so in steady state we write none.
             await self._write(f":WAV:STOP {self.WAVEFORM_POINTS}")
             await self._write(":WAV:STAR 1")
             preamble = parse_preamble(await self._query(":WAV:PRE?"))

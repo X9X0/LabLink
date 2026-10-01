@@ -37,6 +37,11 @@ class ScriptedScope:
         self.samples = [128 + int(40 * ((i % 20) - 10) / 10) for i in range(1200)]
         self.start = 1
         self.stop = 1200
+        # How many samples the current acquisition actually holds. Not the
+        # same thing as the window, and not a constant: the bench DS1054Z
+        # reported 806 and then 554 at 200 ms/div with the window full at
+        # 1..1200. The preamble reports whichever is smaller.
+        self.acquired_points = 1200
         # The waveform engine's state, which the driver confirms rather than
         # re-asserting: writing any of these makes a real DS1000Z re-prepare,
         # and the next query blocks ~100 ms on it.
@@ -88,6 +93,10 @@ class ScriptedScope:
             return "RIGOL TECHNOLOGIES,DS1054Z,DS1ZA171409212,00.04.03"
         if c == ":WAV:SOUR?":
             return self.source
+        if c == ":WAV:STAR?":
+            return str(self.start)
+        if c == ":WAV:STOP?":
+            return str(self.stop)
         if c == ":WAV:MODE?":
             return self.mode
         if c == ":WAV:FORM?":
@@ -95,12 +104,17 @@ class ScriptedScope:
         if c == ":WAV:PRE?":
             # format,type,points,count,xinc,xorig,xref,yinc,yorig,yref
             # Fields 0 and 1 report the format and type, which is how the
-            # driver confirms them without a write. Points reports the
-            # *window*, not the screen, exactly as the instrument does --
-            # which is how a stale window silently truncated a trace.
+            # driver confirms them without a write.
+            #
+            # Points is whichever is smaller: the window, or what the
+            # acquisition actually holds. This used to report the window
+            # alone, with a comment claiming that was what the instrument
+            # does -- the bench disproved it. Window 1..1200 and the
+            # preamble reporting 806, then 554, is what made the driver
+            # think the window was stale on every single trace.
             fmt = {"BYTE": 0, "WORD": 1, "ASC": 2}.get(self.fmt, 0)
             typ = {"NORM": 0, "MAX": 1, "RAW": 2}.get(self.mode, 0)
-            points = self.stop - self.start + 1
+            points = min(self.stop - self.start + 1, self.acquired_points)
             return (f"{fmt},{typ},{points},1,1.000000e-06,-6.000000e-04,0,"
                     f"4.000000e-02,0,128")
         if c == ":TIM:MAIN:SCAL?":
@@ -147,7 +161,8 @@ class ScriptedScope:
     def query_binary_values(self, cmd, datatype="B"):
         self.queries.append(cmd)
         assert cmd == ":WAV:DATA?"
-        block = self.samples[self.start - 1:self.stop]
+        last = min(self.stop, self.start - 1 + self.acquired_points)
+        block = self.samples[self.start - 1:last]
         # 11-byte IEEE header plus the payload plus the terminator. Past the
         # ceiling the real scope sends nothing at all and the read waits out
         # the whole VISA timeout.
@@ -622,3 +637,120 @@ def test_get_state_asks_one_question_of_a_dark_channel():
     for ch in ("2", "3", "4"):
         assert not any(q.upper().startswith(f":CHAN{ch}:") and not q.upper().endswith(":DISP?")
                        for q in inst.queries)
+
+
+@pytest.mark.unit
+def test_a_short_acquisition_is_not_a_stale_window():
+    """The beeping, back through the condition rather than the write.
+
+    This file's history records the beeping as fixed: every :WAV:STOP
+    write makes a DS1054Z beep and flash "Stop point changed!" on its
+    own screen, so the LAN path corrects a stale window only when the
+    window is wrong. The test for "wrong" compared the preamble's
+    points field against WAVEFORM_POINTS -- which looks like the same
+    question and is not.
+
+    On the bench at 200 ms/div, with the window full:
+
+        :WAV:STAR?  1
+        :WAV:STOP?  1200
+        :WAV:POIN?  1200
+        preamble    0,0,806,...   then  0,0,554,...
+
+    The points field is how many samples the acquisition holds, and it
+    varies. So the test was always true, the correction ran on every
+    trace, and the scope beeped twice a second again.
+    """
+    inst = ScriptedScope()
+    inst.packet_ceiling = None
+    inst.start, inst.stop = 1, 1200         # the window is full
+    inst.acquired_points = 806              # this timebase holds 806
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    inst.writes.clear()
+    data = asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert data["num_samples"] == 806, "the short acquisition was not read"
+    assert not any(w.startswith((":WAV:STAR", ":WAV:STOP"))
+                   for w in inst.writes), (
+        "wrote the window for an acquisition that was simply short, which "
+        "is the beep: %s" % inst.writes)
+
+
+@pytest.mark.unit
+def test_a_narrowed_window_is_still_corrected():
+    """The thing the correction is actually for, kept working.
+
+    A window left at 1..400 by an earlier USB session survives a mode
+    change and would hand back a third of the trace as though it were
+    all of it.
+    """
+    inst = ScriptedScope()
+    inst.packet_ceiling = None
+    inst.start, inst.stop = 1, 400          # left over
+    inst.acquired_points = 1200
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    inst.writes.clear()
+    data = asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert data["num_samples"] == 1200, "a stale window truncated the trace"
+    assert [w for w in inst.writes
+            if w.startswith((":WAV:STAR", ":WAV:STOP"))] == [
+        ":WAV:STOP 1200", ":WAV:STAR 1"], inst.writes
+
+
+@pytest.mark.unit
+def test_the_window_is_asked_about_not_assumed():
+    """Two queries, where being wrong costs two writes, an extra
+    preamble read and a beep on every trace."""
+    inst = ScriptedScope()
+    inst.packet_ceiling = None
+    inst.acquired_points = 700
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    inst.queries.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+
+    asked = [q for q in inst.queries if q.upper() in (":WAV:STAR?", ":WAV:STOP?")]
+    assert asked, "the window was assumed rather than read: %s" % inst.queries
+
+
+@pytest.mark.unit
+def test_an_unreadable_window_does_not_write_one():
+    """Not being able to ask is not a reason to beep every trace.
+
+    A narrowed window truncates a trace; a beep twice a second is what
+    the operator actually notices, and this failure mode is the one
+    that gets reported.
+    """
+    inst = ScriptedScope()
+    inst.packet_ceiling = None
+    inst.acquired_points = 900
+    real_query = inst.query
+
+    def refuse(cmd):
+        if cmd.upper() in (":WAV:STAR?", ":WAV:STOP?"):
+            raise RuntimeError("no reply")
+        return real_query(cmd)
+
+    inst.query = refuse
+    rm = MagicMock()
+    rm.open_resource = MagicMock(return_value=inst)
+    scope = RigolDS1104(rm, "TCPIP0::192.168.91.37::inst0::INSTR")
+    asyncio.run(scope.connect())
+
+    inst.writes.clear()
+    asyncio.run(scope.get_waveform_data(channel=1))
+
+    assert not any(w.startswith((":WAV:STAR", ":WAV:STOP"))
+                   for w in inst.writes), inst.writes
