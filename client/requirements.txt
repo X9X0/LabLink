@@ -23,17 +23,17 @@ paramiko==5.0.0
 scp==0.16.1
 
 # Discovery
-zeroconf==0.151.3
+zeroconf==0.151.5
 
 # Data Handling
-numpy==2.5.2
-pandas==3.0.5
+numpy==2.5.3
+pandas==3.0.6
 h5py==3.16.0
 
 # Models / configuration
 pydantic==2.13.5
 pydantic-settings==2.15.0
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 python-dateutil==2.9.0.post0
 
 # Credential storage
