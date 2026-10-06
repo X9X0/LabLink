@@ -1,0 +1,27 @@
+# The slow half of server/requirements.txt, installed in its own Docker
+# layer so that changing anything else does not reinstall it.
+#
+# This is a *subset* of server/requirements.txt, not a replacement.
+# Every line here appears there too, pinned identically, and the full
+# file is still installed after this one -- which is what keeps
+# pip-audit (which scans requirements files by path, not the
+# environment) seeing the whole dependency set.
+# tests/unit/test_heavy_requirements_match.py holds the two in step.
+#
+# Why these four: on a Raspberry Pi they are most of the install time,
+# and they change far less often than the rest. A one-line version bump
+# elsewhere -- PyJWT moved twice in a week -- used to invalidate the
+# single pip layer and reinstall all 32 packages, numpy and scipy
+# included, with --no-cache-dir so pip could not even reuse the wheels
+# it had just downloaded. That is the difference between an update that
+# takes seconds and one that takes many minutes, on the machine least
+# able to afford it.
+#
+# Add a package here only if it is genuinely slow to install and
+# genuinely stable. A fast-moving dependency in this file costs a full
+# rebuild every time it moves, which is the problem rather than the fix.
+
+numpy==2.5.2
+scipy==1.18.1
+pandas==3.0.5
+h5py==3.16.0

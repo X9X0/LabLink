@@ -17,7 +17,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Python dependencies, in two layers rather than one.
+#
+# The heavy, stable half first -- numpy, scipy, pandas, h5py. On a Pi
+# those are most of the install time, and they move far less often than
+# the rest. Docker rebuilds from the first layer whose inputs changed,
+# so a one-line bump anywhere else now reuses this layer instead of
+# reinstalling all 32 packages from scratch. PyJWT moved twice in a
+# week and cost two full rebuilds; that is what this is for.
+COPY server/requirements-heavy.txt .
+RUN pip install --no-cache-dir --user -r requirements-heavy.txt
+
+# Then the full list, which still names those four at the same pins, so
+# pip finds them satisfied and installs only the rest. Kept whole rather
+# than split because pip-audit scans requirements files by path: a
+# package moved out of this file would stop being audited.
 COPY server/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
