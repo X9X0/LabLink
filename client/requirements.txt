@@ -13,27 +13,27 @@ qasync==0.28.0
 
 # Networking
 requests==2.34.2
-websockets==17.1
-aiohttp==3.14.3
+websockets==17.2
+aiohttp==3.14.4
 
 # Remote deployment
 # paramiko 5.x drops ssh-rsa (RSA/SHA-1) host keys and DSA entirely; see
 # BREAKING-CHANGES in the 2.0.0 release notes.
 paramiko==5.0.0
-scp==0.16.1
+scp==0.16.2
 
 # Discovery
-zeroconf==0.151.3
+zeroconf==0.151.5
 
 # Data Handling
-numpy==2.5.2
-pandas==3.0.5
+numpy==2.5.3
+pandas==3.0.6
 h5py==3.16.0
 
 # Models / configuration
-pydantic==2.13.5
+pydantic==2.14.0
 pydantic-settings==2.15.0
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 python-dateutil==2.9.0.post0
 
 # Credential storage
